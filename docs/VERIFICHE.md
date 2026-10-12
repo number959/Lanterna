@@ -77,7 +77,7 @@ nessun errore JavaScript; animazioni disattivate con "riduci movimento"; gravit�
 | Parte | Perché | Come è stata coperta | Da provare su un PC |
 | --- | --- | --- | --- |
 | Lettura delle reti Wi-Fi da una scheda vera | Wine non ha schede Wi-Fi | decoder IE e strutture wlanapi collaudati byte per byte; offset confrontati con gli header ufficiali | sezione Wi-Fi: reti, dBm, larghezze, sicurezza della propria rete |
-| Finestra WebView2 | Wine non ha il runtime | interfaccia collaudata in Chromium, che è il motore di WebView2; CI su Windows reale (sotto) | aspetto della finestra, nitidezza con ridimensionamento al 125-150 % |
+| Finestra WebView2 su un PC | Wine non ha il runtime | Chromium (stesso motore) e **finestra vera su Windows Server 2025 in CI**, con cattura dello schermo (sotto) | nitidezza con ridimensionamento al 125-150 % e su più monitor |
 | Permesso di posizione (Windows 11 24H2+) | serve Windows 11 con scheda Wi-Fi | messaggio di Windows riconosciuto nei test; errore `ACCESS_DENIED` tradotto in istruzioni | con posizione disattivata deve comparire la spiegazione, attivandola le reti |
 | UPnP e porte di un router reale | nessun router domestico nel container | router UPnP simulato nei test | modello del router, porte aperte, IP pubblico |
 
@@ -108,3 +108,10 @@ Difetti trovati su Windows reale e corretti:
 4. Windows Server 2025 veniva descritto come "Windows 11" (stessa build): ora si distingue con `ProductType`.
 5. La finestra chiedeva 1320×880 pixel anche su uno schermo 1024×768 e, centrata da go-webview2 con aritmetica senza segno, usciva
    a sinistra. Ora la dimensione segue la scala DPI del sistema ed è limitata al 94 % dell'area di lavoro.
+
+**Seconda esecuzione** (commit `d7458a9`), tutti i passi verdi, correzioni confermate: sistema descritto come "Windows Server 2025
+(build 26100)"; scheda "Ethernet 3" classificata come cavo (100 Gbit/s); con i tentativi TCP distanziati, 8 risposte su 8 da tutti e
+tre i server pubblici (le "perdite" della prima esecuzione dipendevano dai tentativi troppo ravvicinati); router silenzioso ma
+funzionante descritto come informazione; punteggio 99/100. La finestra ora sta interamente nello schermo:
+
+![LANterna su Windows reale](img/windows-reale.png)

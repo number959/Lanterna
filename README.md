@@ -5,6 +5,10 @@ rete e cosa fare per migliorarla. Le azioni correttive confluiscono in un piano 
 
 ![Panoramica](docs/img/panoramica.png)
 
+<sub>Sopra: dati dimostrativi. Sotto: la finestra su Windows reale (macchina di collaudo della CI) con i dati misurati.</sub>
+
+![LANterna su Windows reale](docs/img/windows-reale.png)
+
 ## Cosa misura
 
 | Area | Misure |
