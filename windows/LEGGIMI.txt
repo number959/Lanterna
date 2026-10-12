@@ -19,6 +19,14 @@ REQUISITI
     localizzazione" e "Consenti alle app desktop di accedere alla posizione".
   - Non servono privilegi di amministratore.
 
+INTERFACCIA
+  Tasti 1-8: sezioni; tasto /: cerca nella guida. Il tema (automatico, scuro,
+  chiaro) si cambia con il pulsante in alto a destra.
+  Su macchine virtuali o in desktop remoto, se le animazioni risultano lente,
+  LANterna passa da sola alla "grafica leggera" (si puo' anche scegliere in
+  fondo alla barra laterale). Se in Windows le animazioni sono disattivate,
+  restano solo brevi dissolvenze.
+
 RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
   lanterna-cli report                 rapporto a schermo
   lanterna-cli report --verbose       con spiegazioni e passi da seguire

@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"io/fs"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -25,6 +26,12 @@ import (
 	"lanterna/internal/collect"
 	"lanterna/internal/scan"
 )
+
+// I font dell'interfaccia sono woff2: il tipo è dichiarato qui perché la tabella
+// interna di Go non lo contiene e il registro di Windows non sempre lo riporta.
+func init() {
+	_ = mime.AddExtensionType(".woff2", "font/woff2")
+}
 
 type Server struct {
 	Collector *collect.Collector

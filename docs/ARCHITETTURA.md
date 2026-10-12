@@ -55,6 +55,38 @@ motore lo mostra come "non misurato" invece di inventare un giudizio.
   (BSS Load). A 2,4 GHz consiglia solo 1, 6 o 11; a 5 GHz preferisce 36-48, poi i blocchi DFS, per ultimo 149-161 (in Italia/UE
   ammesso solo a bassa potenza).
 
+## Interfaccia
+
+React 18 con un piccolo insieme di librerie, ciascuna con un compito preciso (versioni e licenze in `THIRD_PARTY_NOTICES.md`):
+
+| Libreria | A cosa serve |
+| --- | --- |
+| Motion 13 (`motion/react`, MIT) | tutte le animazioni: entrate in cascata, molle fisiche, `AnimatePresence` per pagine/avvisi/pannelli, indicatori che scivolano (`layoutId`), tracciamento delle linee SVG (`pathLength`), barra superiore legata allo scorrimento. Caricata con `LazyMotion` in modalità *strict* e `MotionConfig reducedMotion="user"` |
+| Lucide (`lucide-react`, ISC) | icone: si importano solo quelle usate |
+| Radix Colors (MIT) | scale dei colori di stato (verde, blu, ambra, rosso, ciano) per tema chiaro e scuro, nella variante P3 dove lo schermo la supporta |
+| Fontsource (font OFL-1.1) | Inter (testo), Space Grotesk (titoli e numeri grandi), JetBrains Mono (valori misurati); solo i sottoinsiemi latini, incorporati nell'exe (~200 kB) |
+
+Organizzazione di `core/src/ui/`:
+
+- `motion.ts`: il linguaggio del movimento in un solo posto. Curva di uscita lunga per ciò che entra, curva simmetrica e breve per
+  ciò che esce, tre molle (`snappy` per pressioni e indicatori, `smooth` per pannelli e layout, `gentle` per numeri e grafici).
+  Tempi: 150-200 ms le microinterazioni, 300-450 ms le transizioni, 600-1200 ms i dati.
+- `styles.css`: token di colore, raggi e ombre per i due temi; nessun framework CSS.
+- `theme.ts`: tema automatico, scuro o chiaro (classi `dark`/`light` su `<html>`, le stesse usate da Radix); il cambio usa le View
+  Transitions con un cerchio che si apre dal pulsante.
+- `fx.ts`: grafica leggera. Misura la mediana del tempo tra i fotogrammi nei primi secondi; se supera 26 ms (meno di ~38 fps) toglie
+  sfocature, trasparenze, grana, bagliori animati e la rivelazione circolare del tema. La scelta manuale nella barra laterale vince
+  sulla misura ed è ricordata.
+- `scan.tsx`: la schermata di analisi. Ogni sonda è un nodo in orbita attorno alla lanterna e cambia stato con l'avanzamento reale
+  di `/api/progress`.
+- `charts.tsx`: grafici SVG disegnati alla larghezza reale del contenitore (1 unità = 1 pixel, testi mai deformati), curve monotone
+  che non inventano picchi; il monitor scorre in modo continuo invece che a scatti.
+
+Accessibilità: navigazione completa da tastiera (scorciatoie `1`…`8` e `/`, ignorate mentre si scrive; frecce nei selettori a
+segmenti; collegamento "Vai al contenuto"), ruoli e stati ARIA su schede espandibili, interruttori e caselle, tabelle scorrevoli
+raggiungibili con Tab, contrasto WCAG 2.1 AA in entrambi i temi, `prefers-reduced-motion` e `prefers-reduced-transparency`
+rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFICHE.md).
+
 ## Agente Windows
 
 | Misura | Come | Note |
@@ -93,3 +125,8 @@ eventuali altri agenti esporranno la stessa API, quindi l'interfaccia non cambia
 - **WebView2 invece di Electron**: l'eseguibile pesa ~16 MB invece di ~150 MB; il motore di rendering è lo stesso Chromium.
 - **goja invece di riscrivere il motore in Go**: una sola implementazione delle spiegazioni e delle soglie.
 - **IcmpSendEcho invece di `ping.exe`**: niente output localizzato da interpretare, nessuna finestra di console, tempi sotto il millisecondo.
+- **Motion invece di GSAP**: copre da sola animazioni React, layout e SVG; GSAP avrebbe duplicato le stesse funzioni con una licenza
+  propria non OSI. Nessun framework CSS (Tailwind, shadcn/ui, daisyUI): i componenti sono pochi e su misura, e i token CSS bastano.
+- **SVG disegnato a mano invece di Three.js, Lottie o particelle**: grafici e schermata di analisi rappresentano dati veri; una scena
+  3D o un'animazione preconfezionata avrebbero aggiunto peso senza informazione. Niente scorrimento "morbido" simulato (Lenis):
+  quello nativo di WebView2 è già fluido e rispetta le impostazioni di accessibilità.

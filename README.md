@@ -3,11 +3,28 @@
 Diagnostica della rete di casa che **spiega ogni valore**: per ciascuna misura dice cos'è, come si legge, quanto è grave nella tua
 rete e cosa fare per migliorarla. Le azioni correttive confluiscono in un piano unico, ordinato per gravità, impatto e facilità.
 
-![Panoramica](docs/img/panoramica.png)
+![Panoramica](docs/img/panoramica.webp)
 
 <sub>Sopra: dati dimostrativi. Sotto: la finestra su Windows reale (macchina di collaudo della CI) con i dati misurati.</sub>
 
 ![LANterna su Windows reale](docs/img/windows-reale.png)
+
+## Interfaccia
+
+Tema scuro "luce nella notte" (blu notte con l'accento color lanterna) e tema chiaro color carta, che segue quello di Windows o si
+sceglie con il pulsante in alto (il nuovo tema si apre come un cerchio di luce). Il movimento accompagna la lettura: le sezioni
+entrano in cascata, i numeri si assestano con una molla, durante l'analisi ogni sonda si accende in orbita attorno alla lanterna
+seguendo l'avanzamento reale, il monitor scorre in modo continuo. Se in Windows le animazioni sono disattivate restano solo
+brevi dissolvenze: niente spostamenti, rotazioni o scorrimenti.
+
+- **Tastiera**: `1`…`8` per le sezioni, `/` per cercare nella guida, frecce nei selettori; ogni comando è raggiungibile con Tab.
+- **Grafica leggera**: senza accelerazione grafica (macchine virtuali, desktop remoto) LANterna se ne accorge dai fotogrammi lenti e
+  toglie sfocature e trasparenze; si può anche attivare a mano in fondo alla barra laterale.
+- Contrasto conforme a WCAG 2.1 AA in entrambi i temi; la gravità è sempre indicata da icona e testo, non solo dal colore.
+
+| Wi-Fi e spettro radio | Piano d'azione (tema chiaro) | Mobile |
+| --- | --- | --- |
+| ![Wi-Fi](docs/img/wifi.webp) | ![Piano d'azione](docs/img/piano.webp) | ![Mobile](docs/img/mobile.webp) |
 
 ## Cosa misura
 
@@ -75,4 +92,5 @@ PC con scheda Wi-Fi: [docs/VERIFICHE.md](docs/VERIFICHE.md).
 ## Licenze
 
 I componenti di terze parti inclusi nell'eseguibile e le loro licenze sono in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
-(MIT, BSD, ISC, Apache-2.0 e la licenza del loader WebView2 di Microsoft). La licenza di LANterna stessa non è ancora stata scelta.
+(MIT, BSD, ISC, Apache-2.0, SIL Open Font License 1.1 per i font e la licenza del loader WebView2 di Microsoft), generato da
+`scripts/notices.sh` a partire da ciò che finisce davvero nel bundle. La licenza di LANterna stessa non è ancora stata scelta.

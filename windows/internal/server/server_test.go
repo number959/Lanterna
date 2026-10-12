@@ -56,8 +56,12 @@ func newServer() *Server {
 	return &Server{
 		Collector: c,
 		Version:   "t",
-		Web:       fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>LANterna</title>")}},
-		Ping:      c.QuickPing,
+		Web: fstest.MapFS{
+			"index.html":           {Data: []byte("<!doctype html><title>LANterna</title>")},
+			"assets/inter.woff2":   {Data: []byte("wOF2\x00\x01\x00\x00")},
+			"assets/index-abc.css": {Data: []byte("body{}")},
+		},
+		Ping: c.QuickPing,
 	}
 }
 
@@ -94,6 +98,17 @@ func TestGuards(t *testing.T) {
 	r := do(t, h, "GET", "/", nil)
 	if r.Code != 200 || !strings.Contains(r.Header().Get("Content-Security-Policy"), "default-src 'self'") || r.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("intestazioni di sicurezza mancanti: %d %v", r.Code, r.Header())
+	}
+}
+
+// I file dell'interfaccia escono con il tipo giusto: con nosniff il browser
+// rifiuterebbe un foglio di stile servito come testo generico.
+func TestStaticTypes(t *testing.T) {
+	h := newServer().Handler()
+	for path, want := range map[string]string{"/assets/inter.woff2": "font/woff2", "/assets/index-abc.css": "text/css; charset=utf-8"} {
+		if r := do(t, h, "GET", path, nil); r.Code != 200 || r.Header().Get("Content-Type") != want {
+			t.Errorf("%s: %d %q, atteso %q", path, r.Code, r.Header().Get("Content-Type"), want)
+		}
 	}
 }
 
