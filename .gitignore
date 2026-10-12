@@ -1,0 +1,9 @@
+node_modules/
+core/dist/
+core/dist-engine/
+windows/internal/assets/dist/*
+!windows/internal/assets/dist/.gitkeep
+build/
+*.exe
+.wine/
+test-results/
