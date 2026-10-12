@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -15,6 +17,7 @@ import (
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 
+	"lanterna/internal/probe"
 	"lanterna/internal/scan"
 )
 
@@ -140,4 +143,21 @@ func firewallRegistry() (*scan.FirewallData, error) {
 		return nil, fmt.Errorf("stato del firewall non leggibile (servizio non presente?)")
 	}
 	return fw, nil
+}
+
+// SystemProxy legge il proxy statico dalle impostazioni Internet di Windows
+// (quelle usate da Edge e Chrome). Restituisce nil se non è configurato o se
+// è impostato solo uno script di configurazione automatica (PAC).
+func SystemProxy() func(*http.Request) (*url.URL, error) {
+	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Internet Settings`, registry.QUERY_VALUE)
+	if err != nil {
+		return nil
+	}
+	defer k.Close()
+	if en, _, err := k.GetIntegerValue("ProxyEnable"); err != nil || en == 0 {
+		return nil
+	}
+	server, _, _ := k.GetStringValue("ProxyServer")
+	override, _, _ := k.GetStringValue("ProxyOverride")
+	return probe.WinProxy(server, override)
 }

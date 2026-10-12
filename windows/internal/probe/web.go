@@ -78,11 +78,11 @@ func RouterWeb(ctx context.Context, host string, httpsOpen bool) (*scan.RouterWe
 	return w, nil
 }
 
-// HTTPCheck verifica la navigazione con una richiesta HTTPS reale.
-// Usa le impostazioni proxy del sistema, come farebbe il browser.
+// HTTPCheck verifica la navigazione con una richiesta HTTPS reale,
+// passando dal proxy come farebbe il browser (vedi HTTPProxy).
 func HTTPCheck(ctx context.Context, url string) scan.HTTPCheck {
 	r := scan.HTTPCheck{URL: url}
-	c := &http.Client{Timeout: 6 * time.Second, Transport: &http.Transport{Proxy: http.ProxyFromEnvironment}}
+	c := &http.Client{Timeout: 6 * time.Second, Transport: &http.Transport{Proxy: HTTPProxy}}
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	req.Header.Set("User-Agent", "LANterna (diagnostica di rete)")
 	start := time.Now()

@@ -23,8 +23,10 @@ import (
 	"lanterna/internal/collect"
 	"lanterna/internal/engine"
 	"lanterna/internal/gui"
+	"lanterna/internal/probe"
 	"lanterna/internal/scan"
 	"lanterna/internal/server"
+	"lanterna/internal/winapi"
 )
 
 // version viene impostata in fase di build (-ldflags "-X main.version=...").
@@ -55,6 +57,11 @@ func newCollector(quick bool) *collect.Collector {
 }
 
 func main() {
+	// La verifica HTTPS passa dal proxy di sistema, come il browser
+	// (le variabili d'ambiente, se presenti, hanno la precedenza).
+	if p := winapi.SystemProxy(); p != nil && !probe.EnvProxySet() {
+		probe.HTTPProxy = p
+	}
 	args := os.Args[1:]
 	if len(args) > 0 {
 		attachConsole()

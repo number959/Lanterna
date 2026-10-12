@@ -4,6 +4,8 @@ package winapi
 
 import (
 	"context"
+	"net/http"
+	"net/url"
 
 	"lanterna/internal/scan"
 )
@@ -15,3 +17,4 @@ func Wifi(context.Context, bool) (*scan.WifiData, error)   { return nil, ErrUnsu
 func Firewall(context.Context) (*scan.FirewallData, error) { return nil, ErrUnsupported }
 func Elevated() bool                                       { return false }
 func OSDescription() string                                { return "sistema non Windows" }
+func SystemProxy() func(*http.Request) (*url.URL, error)   { return nil }

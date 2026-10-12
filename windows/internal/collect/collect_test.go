@@ -205,6 +205,7 @@ func TestNoGateway(t *testing.T) {
 	if s.Gateway != nil {
 		t.Fatalf("gateway inventato: %+v", s.Gateway)
 	}
+	// Il Wi-Fi qui fallisce davvero (errore della piattaforma), quindi conta.
 	probes := map[string]bool{}
 	for _, e := range s.Errors {
 		probes[e.Probe] = true
@@ -237,4 +238,25 @@ func TestQuickPingHonoursMethod(t *testing.T) {
 	if v := c.QuickPing(context.Background(), "192.168.1.1", []int{443}, false); v == nil || *v != 3 {
 		t.Fatalf("ICMP funzionante: %v", v)
 	}
+}
+
+func TestNoWifiAdapterIsNotAFailure(t *testing.T) {
+	n := &fakeNet{hops: 3, mtu: 1500, silent: map[string]bool{}, rtt: func(string) time.Duration { return time.Millisecond }}
+	p := &noWifiPlatform{fakePlatform{n: n, adapters: homeAdapters}}
+	c := &Collector{Platform: p, Net: fakeNetwork(false), Opt: fastOpts()}
+	s := c.Run(context.Background(), nil)
+	for _, e := range s.Errors {
+		if e.Probe == "Reti Wi-Fi e segnale" {
+			t.Fatalf("un PC senza scheda Wi-Fi non deve avere una misura fallita: %+v", s.Errors)
+		}
+	}
+	if s.Wifi == nil || s.Wifi.Error != scan.NoWifiAdapter {
+		t.Fatalf("%+v", s.Wifi)
+	}
+}
+
+type noWifiPlatform struct{ fakePlatform }
+
+func (*noWifiPlatform) Wifi(context.Context, bool) (*scan.WifiData, error) {
+	return &scan.WifiData{Source: "test", Networks: []scan.Bss{}, Error: scan.NoWifiAdapter}, nil
 }

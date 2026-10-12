@@ -220,7 +220,7 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 		mu.Lock()
 		s.Wifi = w
 		mu.Unlock()
-		if w.Error != "" && w.Connected == nil && len(w.Networks) == 0 {
+		if w.Error != "" && w.Error != scan.NoWifiAdapter && w.Connected == nil && len(w.Networks) == 0 {
 			return fmt.Errorf("%s", w.Error)
 		}
 		return nil

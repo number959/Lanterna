@@ -95,6 +95,10 @@ type WifiConnection struct {
 	Cipher        string `json:"cipher,omitempty"`
 }
 
+// NoWifiAdapter è l'errore Wi-Fi di un PC senza scheda Wi-Fi: non è una
+// misura fallita ma una sezione non applicabile.
+const NoWifiAdapter = "nessuna scheda Wi-Fi presente"
+
 type WifiData struct {
 	Source    string          `json:"source"`
 	Connected *WifiConnection `json:"connected,omitempty"`

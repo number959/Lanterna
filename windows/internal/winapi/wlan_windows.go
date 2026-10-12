@@ -149,7 +149,7 @@ func Wifi(ctx context.Context, rescan bool) (*scan.WifiData, error) {
 	}
 	data := &scan.WifiData{Source: "wlanapi", Networks: []scan.Bss{}}
 	if len(ifaces) == 0 {
-		data.Error = "nessuna scheda Wi-Fi presente"
+		data.Error = scan.NoWifiAdapter
 		return data, nil
 	}
 	// Si usa la prima scheda collegata, altrimenti la prima disponibile.
@@ -235,7 +235,7 @@ func wifiFromNetsh(ctx context.Context, apiErr error) (*scan.WifiData, error) {
 	data := &scan.WifiData{Source: "netsh", Networks: []scan.Bss{}}
 	ifs := netsh.ParseInterfaces(out)
 	if len(ifs) == 0 {
-		data.Error = "nessuna scheda Wi-Fi presente"
+		data.Error = scan.NoWifiAdapter
 		return data, nil
 	}
 	c := netsh.Connected(ifs)
