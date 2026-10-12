@@ -40,7 +40,7 @@ export function renderText(scan: Scan, a: Analysis, opts: { verbose?: boolean; w
   out.push('');
   for (const c of a.categories) {
     if (c.score === null) continue;
-    out.push(`   ${c.label.padEnd(14)} ${String(c.score).padStart(3)}  ${bar(c.score, 20)}  ${c.counts.crit ? c.counts.crit + ' critici ' : ''}${c.counts.warn ? c.counts.warn + ' avvisi' : ''}`);
+    out.push(`   ${c.label.padEnd(14)} ${String(c.score).padStart(3)}  ${bar(c.score, 20)}  ${c.counts.crit ? `${c.counts.crit} ${c.counts.crit === 1 ? 'critico' : 'critici'}  ` : ''}${c.counts.warn ? `${c.counts.warn} ${c.counts.warn === 1 ? 'avviso' : 'avvisi'}` : ''}`);
   }
   const byCat = new Map<string, Finding[]>();
   for (const f of a.findings) byCat.set(f.category, [...(byCat.get(f.category) ?? []), f]);

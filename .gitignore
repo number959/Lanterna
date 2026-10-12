@@ -7,3 +7,4 @@ build/
 *.exe
 .wine/
 test-results/
+/windows/cmd/lanterna/rsrc_windows_*.syso

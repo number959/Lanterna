@@ -40,7 +40,9 @@ export function worse(a: Severity, b: Severity): Severity {
   return SEV_RANK[a] >= SEV_RANK[b] ? a : b;
 }
 
-const fmt = (n: number, d = 0) => n.toLocaleString('it-IT', { minimumFractionDigits: d, maximumFractionDigits: d });
+// Formattazione numerica senza Intl: il motore gira anche in goja (exe
+// Windows), dove toLocaleString ignorerebbe le opzioni.
+const fmt = (n: number, d = 0) => n.toFixed(d).replace('.', ',');
 const ms = (n: number) => (n < 1 ? '<1 ms' : `${fmt(n, n < 10 ? 1 : 0)} ms`);
 const lostText = (lost: number, sent: number) =>
   lost === 1 ? `si è perso 1 pacchetto su ${sent}` : `si sono persi ${lost} pacchetti su ${sent}`;
@@ -581,7 +583,7 @@ function analyzeLan(scan: Scan, c: Collector, primary?: Adapter) {
       numeric: n,
       severity: 'info',
       verdict: n
-        ? `Il PC ha comunicato di recente con ${n} dispositivi della rete. Confrontali con l'elenco del router se sospetti intrusi.`
+        ? `Il PC ha comunicato di recente con ${n === 1 ? 'un dispositivo' : `${n} dispositivi`} della rete. Confrontali con l'elenco del router se sospetti intrusi.`
         : 'Nessun altro dispositivo nella tabella del sistema.',
       actions: n > 15 ? ['separate-iot'] : [],
     });
@@ -701,6 +703,7 @@ function analyzeInternet(scan: Scan, c: Collector, primary?: Adapter) {
       if (jump > 30 && persistent && (!worst || jump > worst.jump)) worst = { at: resp[i].ttl, jump };
     }
     const silent = hops.filter((h) => !h.ip).length;
+    const reached = !!net.traceTarget && hops.some((h) => h.ip === net.traceTarget);
     c.add({
       id: 'net.trace',
       metric: 'net.trace',
@@ -711,7 +714,9 @@ function analyzeInternet(scan: Scan, c: Collector, primary?: Adapter) {
       severity: worst ? 'warn' : 'ok',
       verdict: worst
         ? `Al salto ${worst.at} la latenza cresce di ${ms(worst.jump)} e resta alta: lì c'è congestione o una tratta lunga.${worst.at <= 3 ? ' È vicino a casa: probabilmente la linea di accesso.' : ''}`
-        : `Percorso regolare verso ${net.traceTarget ?? 'Internet'}: nessun salto anomalo.${silent ? ' I nodi muti ignorano i traceroute: è normale.' : ''}`,
+        : reached
+          ? `Percorso regolare verso ${net.traceTarget}: nessun salto anomalo.${silent ? ' I nodi muti ignorano i traceroute: è normale.' : ''}`
+          : `Percorso parziale: la destinazione ${net.traceTarget ?? ''} non risponde ai traceroute (spesso filtrati da operatori e firewall). Nei salti misurati nessuna anomalia.`,
       actions: worst ? ['contact-isp'] : [],
     });
   }
@@ -981,17 +986,18 @@ function buildPlan(findings: Finding[]): PlanItem[] {
   return [...map.values()].sort((a, b) => b.priority - a.priority);
 }
 
-function headline(score: number, findings: Finding[], cats: CategoryScore[]): string {
+function headline(score: number, findings: Finding[], cats: CategoryScore[], failed: number): string {
   const crit = findings.filter((f) => f.severity === 'crit');
   const warn = findings.filter((f) => f.severity === 'warn');
-  if (!crit.length && !warn.length) return 'La rete è in ottima forma: nessun problema rilevato.';
+  const note = failed ? ` ${failed === 1 ? 'Una misura non è riuscita' : `${failed} misure non sono riuscite`}: quelle aree non sono valutate.` : '';
+  if (!crit.length && !warn.length) return `Nessun problema rilevato nelle misure eseguite.${note}`;
   const top = crit[0] ?? warn[0];
   const parts: string[] = [];
   if (crit.length) parts.push(`${crit.length} ${crit.length === 1 ? 'problema critico' : 'problemi critici'}`);
   if (warn.length) parts.push(`${warn.length} ${warn.length === 1 ? 'avviso' : 'avvisi'}`);
   const lead = crit.length ? 'Attenzione' : score >= 70 ? 'Rete in buona salute, ma migliorabile' : 'Rete migliorabile';
   const worstCat = cats.find((c) => c.category === top.category)?.label ?? '';
-  return `${lead}: ${parts.join(' e ')}. Il più urgente (${worstCat}): ${top.title.toLowerCase()}, ${top.value}.`;
+  return `${lead}: ${parts.join(' e ')}. Il più urgente (${worstCat}): ${top.title.toLowerCase()}, ${top.value}.${note}`;
 }
 
 export function analyze(scan: Scan): Analysis {
@@ -1021,7 +1027,7 @@ export function analyze(scan: Scan): Analysis {
     engineVersion: ENGINE_VERSION,
     score,
     grade,
-    headline: headline(score, findings, categories),
+    headline: headline(score, findings, categories, scan.errors.length),
     categories,
     findings,
     plan: buildPlan(findings),

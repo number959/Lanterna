@@ -237,6 +237,15 @@ describe('Internet e DNS', () => {
     expect(f.verdict).toContain('salto 3');
   });
 
+  it('traceroute che non raggiunge la destinazione è dichiarato parziale', () => {
+    const s = base();
+    s.internet!.traceTarget = '1.1.1.1';
+    s.internet!.traceroute = [{ ttl: 1, ip: '192.168.1.1', rttMs: 1 }, { ttl: 2, ip: '10.0.0.1', rttMs: 9 }, { ttl: 3 }];
+    expect(find(s, 'net.trace')?.verdict).toContain('Percorso parziale');
+    s.internet!.traceroute.push({ ttl: 4, ip: '1.1.1.1', rttMs: 12 });
+    expect(find(s, 'net.trace')?.verdict).toContain('Percorso regolare');
+  });
+
   it('MTU', () => {
     const s = base();
     expect(find(s, 'net.mtu')?.severity).toBe('ok');
@@ -288,6 +297,13 @@ describe('sintesi', () => {
     expect(a.grade).toBe('ottima');
   });
 
+  it('il titolo segnala le misure non riuscite', () => {
+    const s = base();
+    expect(analyze(s).headline).toBe('Nessun problema rilevato nelle misure eseguite.');
+    s.errors = [{ probe: 'Firewall di Windows', message: 'non leggibile' }, { probe: 'UPnP', message: 'x' }];
+    expect(analyze(s).headline).toContain('2 misure non sono riuscite');
+  });
+
   it('ogni problema rimanda a voci di knowledge base e azioni esistenti', () => {
     const a = analyze(demoScan);
     for (const f of a.findings) {
@@ -332,6 +348,7 @@ describe('bundle per host senza moduli (goja)', () => {
     expect(code).not.toMatch(/\basync\b|\bawait\b/);
     expect(code).not.toMatch(/[\w)\]]\s*\?\?\s*[\w("'[]/); // nullish coalescing
     expect(code).not.toMatch(/[\w)\]]\?\.[\w([]/); // optional chaining
+    expect(code).not.toContain('toLocaleString'); // goja non implementa Intl
     const ctx: Record<string, unknown> = {};
     ctx.globalThis = ctx;
     vm.createContext(ctx);

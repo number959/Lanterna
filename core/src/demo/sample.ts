@@ -28,8 +28,10 @@ const nets: Bss[] = [
   { ssid: 'Condominio-Ospiti', bssid: '9c:c9:eb:10:20:30', rssiDbm: -79, freqMhz: 2452, channel: 9, band: '2.4', widthMhz: 20, phy: '802.11g', security: sec('wep', { akm: [], pairwise: ['WEP'] }) },
 ];
 
-const pingSamples = (base: number, spread: number, n: number, lost: number[] = []) =>
-  Array.from({ length: n }, (_, i) => (lost.includes(i) ? null : Math.round((base + spread * Math.abs(Math.sin(i * 1.7))) * 10) / 10));
+const pingSamples = (base: number, spread: number, n: number, lost: number[] = [], phase = 0) =>
+  Array.from({ length: n }, (_, i) =>
+    lost.includes(i) ? null : Math.round((base + spread * Math.abs(Math.sin(i * 1.7 + phase)) * (0.6 + 0.4 * Math.abs(Math.cos(i * 0.9 + phase)))) * 10) / 10,
+  );
 
 function stats(target: string, label: string, samples: (number | null)[]) {
   const ok = samples.filter((s): s is number => s !== null);
@@ -82,8 +84,8 @@ export const demoScan: Scan = {
   internet: {
     targets: [
       stats('1.1.1.1', 'Cloudflare', pingSamples(31, 24, 20)),
-      stats('8.8.8.8', 'Google', pingSamples(34, 22, 20, [7])),
-      stats('9.9.9.9', 'Quad9', pingSamples(38, 20, 20)),
+      stats('8.8.8.8', 'Google', pingSamples(34, 22, 20, [7], 1.1)),
+      stats('9.9.9.9', 'Quad9', pingSamples(38, 20, 20, [], 2.3)),
     ],
     traceTarget: '1.1.1.1',
     traceroute: [

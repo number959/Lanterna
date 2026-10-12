@@ -1,0 +1,37 @@
+LANterna - diagnostica della rete di casa
+=========================================
+
+Programma portatile: non va installato. Copia la cartella dove vuoi
+(anche su una chiavetta) e fai doppio clic su LANterna.exe.
+
+COSA FA
+  Misura Wi-Fi (segnale in dBm, canale, larghezza, carico dell'access point,
+  reti vicine), rete locale (router, perdite, stabilita'), Internet (latenza,
+  percorso, MTU), DNS, servizi esposti dal router, UPnP e firewall di Windows.
+  Per ogni valore spiega cosa significa, quanto e' grave e cosa fare.
+
+REQUISITI
+  - Windows 10 o 11, 64 bit.
+  - Microsoft Edge WebView2 Runtime (gia' presente su Windows 11 e sui Windows 10
+    aggiornati). Se manca, LANterna si apre nel browser.
+  - Windows 11 24H2 e successivi: per leggere le reti Wi-Fi serve il permesso di
+    posizione. Impostazioni > Privacy e sicurezza > Posizione: attiva "Servizi di
+    localizzazione" e "Consenti alle app desktop di accedere alla posizione".
+  - Non servono privilegi di amministratore.
+
+RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
+  lanterna-cli report                 rapporto a schermo
+  lanterna-cli report --verbose       con spiegazioni e passi da seguire
+  lanterna-cli report --out r.txt     salva il rapporto in un file
+  lanterna-cli report --json          dati grezzi, riapribili con "Importa"
+  lanterna-cli serve --open           interfaccia nel browser (http://127.0.0.1:8737)
+
+PRIVACY
+  Tutto resta su questo PC: LANterna non invia dati a nessun servizio esterno.
+  Per misurare la rete contatta il tuo router, i resolver DNS pubblici
+  1.1.1.1, 8.8.8.8 e 9.9.9.9 (ping e richieste DNS) e due indirizzi di prova
+  (www.google.com/generate_204 e cp.cloudflare.com/generate_204).
+  Il controllo dei servizi riguarda esclusivamente il router della rete a cui
+  sei collegato. I dati di WebView2 sono in %LOCALAPPDATA%\LANterna.
+
+Licenze dei componenti inclusi: THIRD_PARTY_NOTICES.md
