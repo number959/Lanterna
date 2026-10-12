@@ -145,8 +145,8 @@ export function FindingCard({ f, i = 0, onAction }: { f: Finding; i?: number; on
           <span className="sr-only">{SEV_LABEL[f.severity]}</span>
         </span>
         <span>
-          <div className="finding-title">{f.title}</div>
-          <div className="finding-verdict">{f.verdict}</div>
+          <span className="finding-title">{f.title}</span>
+          <span className="finding-verdict">{f.verdict}</span>
         </span>
         <span className="finding-value">{f.value}</span>
         <span className="chev"><Icon name="chevron" /></span>

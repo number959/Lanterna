@@ -31,13 +31,14 @@ func Run(url string) error {
 	// Dati del motore WebView2 fuori dalla cartella del programma, che deve
 	// restare portatile (anche su chiavetta in sola lettura).
 	data := filepath.Join(os.Getenv("LOCALAPPDATA"), "LANterna", "WebView2")
+	width, height := windowSize()
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus: true,
 		DataPath:  data,
 		WindowOptions: webview2.WindowOptions{
 			Title:  "LANterna",
-			Width:  1320,
-			Height: 880,
+			Width:  width,
+			Height: height,
 			IconId: 1, // icona incorporata da go-winres (rsrc_windows_*.syso)
 			Center: true,
 		},
@@ -74,6 +75,32 @@ func Error(msg string) {
 	t, _ := windows.UTF16PtrFromString("LANterna")
 	m, _ := windows.UTF16PtrFromString(msg)
 	windows.MessageBox(0, m, t, windows.MB_OK|windows.MB_ICONERROR)
+}
+
+// windowSize calcola la dimensione della finestra in pixel fisici: 1320×880
+// alla scala del sistema (il programma dichiara DPI per-monitor, quindi
+// Windows non ingrandisce da solo), mai oltre il 94 % dell'area di lavoro.
+// go-webview2 centra la finestra con aritmetica senza segno: se fosse più
+// grande dello schermo finirebbe parzialmente fuori a sinistra.
+func windowSize() (uint, uint) {
+	user32 := windows.NewLazySystemDLL("user32.dll")
+	dpi := uintptr(96)
+	if p := user32.NewProc("GetDpiForSystem"); p.Find() == nil {
+		if r, _, _ := p.Call(); r >= 96 {
+			dpi = r
+		}
+	}
+	w, h := uint(1320*dpi/96), uint(880*dpi/96)
+	var work struct{ Left, Top, Right, Bottom int32 }
+	if r, _, _ := user32.NewProc("SystemParametersInfoW").Call(0x0030, 0, uintptr(unsafe.Pointer(&work)), 0); r != 0 { // SPI_GETWORKAREA
+		if maxW := uint(work.Right-work.Left) * 94 / 100; maxW > 0 && w > maxW {
+			w = maxW
+		}
+		if maxH := uint(work.Bottom-work.Top) * 94 / 100; maxH > 0 && h > maxH {
+			h = maxH
+		}
+	}
+	return w, h
 }
 
 // hideOrphanWindow nasconde la finestra che go-webview2 crea e mostra prima

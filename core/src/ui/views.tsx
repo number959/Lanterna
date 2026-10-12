@@ -49,19 +49,19 @@ export function Overview({ scan, analysis: a, go }: ViewProps) {
       <div className="tiles">
         {a.categories.map((c, i) => (
           <button key={c.category} className="tile reveal" style={{ ['--i' as string]: i }} onClick={() => go(CAT_VIEW[c.category])}>
-            <div className="t-label">
+            <span className="t-label">
               <Icon name={CAT_ICON[c.category]} size={16} /> {c.label}
               <span style={{ marginLeft: 'auto' }} className={`c-${c.worst}`}><SevIcon sev={c.worst} size={16} /></span>
-            </div>
-            <div className="t-score mono">{c.score ?? '—'}</div>
-            <div className="meter"><i style={{ width: `${c.score ?? 0}%`, background: sevColor(c.worst === 'unknown' ? 'unknown' : c.worst), ['--i' as string]: i }} /></div>
-            <div className="faint" style={{ fontSize: 12.5, marginTop: 8 }}>
+            </span>
+            <span className="t-score mono">{c.score ?? '—'}</span>
+            <span className="meter"><i style={{ width: `${c.score ?? 0}%`, background: sevColor(c.worst === 'unknown' ? 'unknown' : c.worst), ['--i' as string]: i }} /></span>
+            <span className="faint" style={{ fontSize: 12.5, marginTop: 8 }}>
               {c.score === null
                 ? 'non misurato'
                 : [c.counts.crit && `${c.counts.crit} ${c.counts.crit === 1 ? 'critico' : 'critici'}`, c.counts.warn && `${c.counts.warn} ${c.counts.warn === 1 ? 'avviso' : 'avvisi'}`]
                     .filter(Boolean)
                     .join(' · ') || 'tutto ok'}
-            </div>
+            </span>
           </button>
         ))}
       </div>
@@ -79,9 +79,9 @@ export function Overview({ scan, analysis: a, go }: ViewProps) {
           <div className="grid cols-3">
             {a.plan.slice(0, 3).map((p, i) => (
               <button key={p.action.id} className="tile reveal" style={{ ['--i' as string]: i }} onClick={() => go('plan', p.action.id)}>
-                <div className="t-label"><span className={`c-${p.severity}`}><SevIcon sev={p.severity} size={16} /></span> Passo {i + 1}</div>
-                <div style={{ fontWeight: 650, margin: '6px 0' }}>{p.action.title}</div>
-                <div className="faint" style={{ fontSize: 13 }}>Impatto {p.action.impact} · difficoltà {p.action.effort}</div>
+                <span className="t-label"><span className={`c-${p.severity}`}><SevIcon sev={p.severity} size={16} /></span> Passo {i + 1}</span>
+                <span style={{ fontWeight: 650, margin: '6px 0' }}>{p.action.title}</span>
+                <span className="faint" style={{ fontSize: 13 }}>Impatto {p.action.impact} · difficoltà {p.action.effort}</span>
               </button>
             ))}
           </div>

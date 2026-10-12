@@ -178,7 +178,23 @@ describe('rete locale', () => {
     s.gateway!.ping = { target: '192.168.1.1', sent: 5, received: 0 };
     expect(find(s, 'lan.gwloss')?.severity).toBe('info');
     s.gateway!.ports = [];
+    // Nessun servizio, ma il traffico verso Internet passa: il router funziona.
+    expect(find(s, 'lan.gwloss')?.severity).toBe('info');
+    expect(find(s, 'lan.gwloss')?.verdict).toContain('inoltra regolarmente il traffico');
+    s.internet!.targets = [{ target: '1.1.1.1', sent: 4, received: 0 }];
+    s.internet!.http = [{ url: 'x', ok: false }];
     expect(find(s, 'lan.gwloss')?.severity).toBe('crit');
+  });
+
+  it('perdite misurate via TCP: giudizio prudente e nessun confronto con un router muto', () => {
+    const s = base();
+    s.gateway!.ping = { target: '192.168.1.1', sent: 4, received: 0 };
+    s.internet!.targets = [{ target: '9.9.9.9', sent: 24, received: 21, avgMs: 3, method: 'tcp' }];
+    const f = find(s, 'net.loss')!;
+    expect(f.severity).toBe('warn'); // 12,5 % ma via TCP
+    expect(f.verdict).toContain('connessioni TCP');
+    expect(f.verdict).not.toContain('Anche verso il router');
+    expect(find(s, 'net.latency')?.verdict).toContain('connessioni TCP');
   });
 
   it('latenza e perdite verso il router', () => {

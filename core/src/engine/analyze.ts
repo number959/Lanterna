@@ -470,7 +470,9 @@ function analyzeLan(scan: Scan, c: Collector, primary?: Adapter) {
   const chAction = wifiBand === '2.4' ? 'change-channel-24' : 'change-channel-5';
   if (gp && gp.sent > 0) {
     const loss = lossPct(gp);
-    const reachableOtherwise = scan.gateway?.ports?.some((p) => p.open) || scan.gateway?.upnp?.found;
+    const otherServices = scan.gateway?.ports?.some((p) => p.open) || scan.gateway?.upnp?.found;
+    // Se il traffico verso Internet passa, il router è vivo per definizione: lo inoltra lui.
+    const forwards = scan.internet?.targets.some((t) => t.received > 0) || scan.internet?.http?.some((h) => h.ok);
     if (gp.received === 0) {
       c.add({
         id: 'lan.gwloss',
@@ -478,11 +480,13 @@ function analyzeLan(scan: Scan, c: Collector, primary?: Adapter) {
         category: 'lan',
         title: 'Risposta del router al ping',
         value: 'nessuna risposta',
-        severity: reachableOtherwise ? 'info' : 'crit',
-        verdict: reachableOtherwise
+        severity: otherServices || forwards ? 'info' : 'crit',
+        verdict: otherServices
           ? 'Il router non risponde al ping ma risponde su altri servizi: è configurato per ignorare i ping, non è un guasto.'
-          : 'Il router non risponde: rete locale interrotta, router bloccato o Wi-Fi scollegato.',
-        actions: reachableOtherwise ? [] : ['restart-network'],
+          : forwards
+            ? 'Il router non risponde alle misure dirette (ping e connessioni), ma inoltra regolarmente il traffico verso Internet: è configurato per non rispondere. La latenza del tratto locale non è misurabile.'
+            : 'Il router non risponde: rete locale interrotta, router bloccato o Wi-Fi scollegato.',
+        actions: otherServices || forwards ? [] : ['restart-network'],
       });
     } else {
       const avg = gp.avgMs ?? 0;
@@ -634,6 +638,7 @@ function analyzeInternet(scan: Scan, c: Collector, primary?: Adapter) {
               : 'Latenza buona.'
             : `Latenza ${sev === 'crit' ? 'alta' : 'discreta'}: si sente nei giochi e nelle videochiamate.`) +
           ` Server più vicino: ${best.label ?? best.target}.` +
+          (best.method === 'tcp' ? ' (Misurata con connessioni TCP: i ping sono bloccati in questa rete.)' : '') +
           (gwAvg !== undefined && sev !== 'ok'
             ? localCause
               ? ` Di questi, ${ms(gwAvg)} si accumulano già tra PC e router: il problema è in casa.`
@@ -649,8 +654,14 @@ function analyzeInternet(scan: Scan, c: Collector, primary?: Adapter) {
       const sentC = counted.reduce((s, t) => s + t.sent, 0);
       const recvC = counted.reduce((s, t) => s + t.received, 0);
       const loss = sentC ? (100 * (sentC - recvC)) / sentC : 0;
-      const gwLoss = scan.gateway?.ping ? lossPct(scan.gateway.ping) : 0;
-      const sevL: Severity = loss === 0 ? 'ok' : loss <= 2 ? 'warn' : 'crit';
+      // Il confronto con il router ha senso solo se il router risponde alle misure.
+      const gwPing = scan.gateway?.ping;
+      const gwLoss = gwPing && gwPing.received > 0 ? lossPct(gwPing) : 0;
+      // Con i ping bloccati si misura con connessioni TCP: un tentativo fallito può
+      // dipendere dai limiti del server, quindi il giudizio resta prudente.
+      const viaTcp = counted.every((t) => t.method === 'tcp');
+      let sevL: Severity = loss === 0 ? 'ok' : loss <= 2 ? 'warn' : 'crit';
+      if (viaTcp && sevL === 'crit') sevL = 'warn';
       c.add({
         id: 'net.loss',
         metric: 'net.loss',
@@ -662,7 +673,10 @@ function analyzeInternet(scan: Scan, c: Collector, primary?: Adapter) {
         verdict:
           (sevL === 'ok' ? 'Nessuna perdita verso Internet.' : `Verso Internet ${lostText(sentC - recvC, sentC)}.`) +
           (sevL !== 'ok' ? (gwLoss > 0 ? ' Anche verso il router ci sono perdite: la causa è (anche) in casa.' : ' Verso il router nessuna perdita: la causa è sulla linea.') : '') +
-          (silent && sent !== recv ? ` (${silent} server ignorano i ping e sono esclusi dal calcolo.)` : ''),
+          (silent && sent !== recv ? ` (${silent} server ignorano i ping e sono esclusi dal calcolo.)` : '') +
+          (viaTcp && sevL !== 'ok'
+            ? ' Misura fatta con connessioni TCP perché i ping sono bloccati: un tentativo fallito può dipendere dai limiti del server e non solo dalla linea.'
+            : ''),
         actions: sevL === 'ok' ? [] : gwLoss > 0 ? ['move-closer', 'use-ethernet'] : ['contact-isp', 'reduce-load'],
       });
       if (best.jitterMs !== undefined) {
@@ -709,7 +723,7 @@ function analyzeInternet(scan: Scan, c: Collector, primary?: Adapter) {
       metric: 'net.trace',
       category: 'internet',
       title: 'Percorso verso Internet',
-      value: `${hops.length} salti${silent ? ` (${silent} muti)` : ''}`,
+      value: `${hops.length} ${hops.length === 1 ? 'salto' : 'salti'}${silent ? ` (${silent} ${silent === 1 ? 'muto' : 'muti'})` : ''}`,
       numeric: hops.length,
       severity: worst ? 'warn' : 'ok',
       verdict: worst

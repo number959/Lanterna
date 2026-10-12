@@ -80,9 +80,12 @@ type Options struct {
 	UpnpWait     time.Duration
 	MaxHops      int
 	TraceStagger time.Duration
+	// TCPInterval distanzia i tentativi della riserva TCP: connessioni troppo
+	// ravvicinate verso lo stesso server possono essere rifiutate.
+	TCPInterval time.Duration
 }
 
-var DefaultOptions = Options{PingCount: 20, PingInterval: 250 * time.Millisecond, PingTimeout: time.Second, Rescan: true, UpnpWait: 2500 * time.Millisecond, MaxHops: 20, TraceStagger: 40 * time.Millisecond}
+var DefaultOptions = Options{PingCount: 20, PingInterval: 250 * time.Millisecond, PingTimeout: time.Second, Rescan: true, UpnpWait: 2500 * time.Millisecond, MaxHops: 20, TraceStagger: 40 * time.Millisecond, TCPInterval: 500 * time.Millisecond}
 
 // Destinazioni pubbliche: resolver anycast, vicini a quasi tutti gli utenti.
 var InternetTargets = []struct{ IP, Label string }{{"1.1.1.1", "Cloudflare"}, {"8.8.8.8", "Google"}, {"9.9.9.9", "Quad9"}}

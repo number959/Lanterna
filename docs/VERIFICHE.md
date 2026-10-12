@@ -83,7 +83,28 @@ nessun errore JavaScript; animazioni disattivate con "riduci movimento"; gravit�
 
 ## 6. Collaudo su Windows reale (CI)
 
-Il workflow `.github/workflows/ci.yml` esegue tutti i test, compila lo zip (scaricabile come artefatto `LANterna-windows-amd64`)
-e lo collauda su una macchina `windows-latest` di GitHub: versione e rilevamento di WebView2, rapporto con controlli sui dati
-letti dalle API native (schede, gateway, firewall via PowerShell, HTTPS), server locale con analisi completa via API e, come prova
-non bloccante, avvio della finestra grafica con cattura dello schermo (artefatto `collaudo-windows`).
+Il workflow `.github/workflows/ci.yml` esegue tutti i test, compila lo zip (artefatto `LANterna-windows-amd64`) e lo collauda su
+una macchina `windows-latest` di GitHub (Windows Server 2025, build 26100, scheda di rete virtuale Hyper-V, nessuna scheda Wi-Fi).
+
+**Prima esecuzione** (commit `5baa2c6`), tutti i passi verdi:
+
+- `version`: rilevato WebView2 153.0.4234.48;
+- rapporto: schede lette con `GetAdaptersAddresses` (Ethernet 3, 10.1.0.163/20, gateway 10.1.0.1), DNS di sistema 51 ms contro
+  Quad9 8,5 ms, HTTPS in 73 ms, **firewall letto via PowerShell** (tre profili attivi, in uso "Pubblica"), analisi in 9,9 s;
+- server locale: `204` prima dell'analisi, analisi completa via API con avanzamento, interfaccia servita con CSP;
+- **finestra grafica con WebView2 vero**: processo attivo, titolo "LANterna", 6 processi `msedgewebview2`; la cattura dello schermo
+  mostra l'interfaccia con i dati reali della macchina e l'icona di LANterna nella barra delle applicazioni.
+
+Difetti trovati su Windows reale e corretti:
+
+1. Il gateway di Azure non risponde né ai ping né a TCP e LANterna lo dichiarava "router non risponde: rete interrotta" (critico)
+   mentre Internet funzionava attraverso di lui. Ora: se il traffico verso Internet passa, il router è vivo per definizione e la
+   voce diventa informativa, con la spiegazione.
+2. "Anche verso il router ci sono perdite" veniva dedotto da un router che non risponde affatto: il confronto ora si fa solo se il
+   router risponde. Le perdite misurate con connessioni TCP (ping bloccati) restano al massimo "da migliorare", con la spiegazione
+   del limite; i tentativi TCP sono distanziati di 500 ms.
+3. La scheda di rete di una macchina virtuale ("Microsoft Hyper-V Network Adapter") era classificata come virtuale: ora sono
+   virtuali solo gli switch ("Hyper-V Virtual Ethernet Adapter", "vEthernet").
+4. Windows Server 2025 veniva descritto come "Windows 11" (stessa build): ora si distingue con `ProductType`.
+5. La finestra chiedeva 1320×880 pixel anche su uno schermo 1024×768 e, centrata da go-webview2 con aritmetica senza segno, usciva
+   a sinistra. Ora la dimensione segue la scala DPI del sistema ed è limitata al 94 % dell'area di lavoro.

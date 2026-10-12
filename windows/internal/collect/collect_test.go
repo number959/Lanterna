@@ -111,7 +111,7 @@ var homeAdapters = []scan.Adapter{
 }
 
 func fastOpts() Options {
-	return Options{PingCount: 6, PingInterval: time.Millisecond, PingTimeout: 50 * time.Millisecond, UpnpWait: time.Millisecond, MaxHops: 12}
+	return Options{PingCount: 6, PingInterval: time.Millisecond, PingTimeout: 50 * time.Millisecond, UpnpWait: time.Millisecond, MaxHops: 12, TCPInterval: time.Millisecond}
 }
 
 func TestRunHealthyNetwork(t *testing.T) {

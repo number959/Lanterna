@@ -80,7 +80,7 @@ func (c *Collector) pingSeries(ctx context.Context, target, label string, tcpPor
 					break // porta filtrata: si prova la successiva
 				}
 			}
-			sleepCtx(ctx, c.Opt.PingInterval-time.Since(t0))
+			sleepCtx(ctx, c.Opt.TCPInterval-time.Since(t0))
 		}
 		if countOK(tcp) > 0 {
 			return probe.PingStats(target, label, "tcp", tcp)

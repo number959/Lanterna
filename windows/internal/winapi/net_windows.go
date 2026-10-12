@@ -27,7 +27,11 @@ const (
 	ifOperStatusUp     = 1
 )
 
-var virtualHints = []string{"virtual", "hyper-v", "vmware", "virtualbox", "tap-", "tap ", "wireguard", "wintun", "vpn", "loopback", "bluetooth", "wsl", "docker", "npcap", "zerotier", "tailscale", "teredo", "isatap", "6to4", "pseudo"}
+// Indizi di schede virtuali (switch, VPN, tunnel). "virtual" copre gli switch
+// Hyper-V dell'host ("Hyper-V Virtual Ethernet Adapter"); la scheda di rete di
+// una macchina virtuale ("Microsoft Hyper-V Network Adapter") è invece la
+// connessione reale di quella macchina e resta "ethernet".
+var virtualHints = []string{"virtual", "vethernet", "vmware", "virtualbox", "tap-", "tap ", "wireguard", "wintun", "vpn", "loopback", "bluetooth", "wsl", "docker", "npcap", "zerotier", "tailscale", "teredo", "isatap", "6to4", "pseudo"}
 
 type adapterInfo struct {
 	scan.Adapter

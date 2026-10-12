@@ -40,9 +40,15 @@ func Elevated() bool { return windows.GetCurrentProcessToken().IsElevated() }
 func OSDescription() string {
 	v := windows.RtlGetVersion()
 	name := "Windows 10"
-	if v.MajorVersion == 10 && v.BuildNumber >= 22000 {
+	switch {
+	case v.ProductType != 1: // VER_NT_WORKSTATION: le versioni server condividono le build
+		name = map[uint32]string{26100: "Windows Server 2025", 20348: "Windows Server 2022", 17763: "Windows Server 2019", 14393: "Windows Server 2016"}[v.BuildNumber]
+		if name == "" {
+			name = "Windows Server"
+		}
+	case v.MajorVersion == 10 && v.BuildNumber >= 22000:
 		name = "Windows 11"
-	} else if v.MajorVersion != 10 {
+	case v.MajorVersion != 10:
 		name = fmt.Sprintf("Windows %d.%d", v.MajorVersion, v.MinorVersion)
 	}
 	desc := fmt.Sprintf("%s (build %d)", name, v.BuildNumber)
