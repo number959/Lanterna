@@ -31,6 +31,10 @@ jobs:
           npm test
       - name: Build per Windows
         run: scripts/build-windows.sh
+      - name: Licenze di terze parti allineate alle dipendenze incluse
+        run: |
+          scripts/notices.sh
+          git diff --exit-code THIRD_PARTY_NOTICES.md
       - name: Test dell'agente
         working-directory: windows
         run: |
