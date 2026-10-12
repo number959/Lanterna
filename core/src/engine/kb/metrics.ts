@@ -347,8 +347,8 @@ const list: Metric[] = [
     category: 'internet',
     what: 'Una richiesta HTTPS reale verso un sito molto diffuso, per verificare che la navigazione funzioni end-to-end (DNS, TCP, TLS, eventuali proxy).',
     scale: [
-      { range: 'risposta in meno di 500 ms', severity: 'ok', meaning: 'Navigazione regolare.' },
-      { range: 'risposta lenta', severity: 'warn', meaning: 'Navigazione rallentata.' },
+      { range: 'risposta in meno di 800 ms', severity: 'ok', meaning: 'Navigazione regolare (la prima richiesta include ricerca DNS, connessione e cifratura).' },
+      { range: 'oltre 800 ms', severity: 'warn', meaning: 'Navigazione rallentata.' },
       { range: 'nessuna risposta', severity: 'crit', meaning: 'Non si naviga anche se la rete locale funziona.' },
     ],
     why: 'Il ping può funzionare anche quando la navigazione no (proxy, firewall aziendale, captive portal di hotel e aeroporti): questo test lo verifica.',

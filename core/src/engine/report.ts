@@ -3,7 +3,8 @@ import { METRICS } from './kb/metrics';
 import type { Analysis, Finding, Scan, Severity } from './types';
 
 // Rapporto testuale, usato dalla riga di comando e dall'esportazione .txt.
-// Solo ASCII esteso semplice: deve leggersi bene anche nella console di Windows.
+// Testo UTF-8: Go scrive sulla console di Windows in Unicode (WriteConsoleW)
+// e i file salvati hanno il BOM, quindi gli accenti si leggono ovunque.
 
 const TAG: Record<Severity, string> = { ok: '[ OK ]', info: '[INFO]', warn: '[ !! ]', crit: '[CRIT]', unknown: '[ ?? ]' };
 
@@ -57,7 +58,7 @@ export function renderText(scan: Scan, a: Analysis, opts: { verbose?: boolean; w
       if (opts.verbose) {
         const m = METRICS[f.metric];
         if (m) {
-          out.push(wrap('Cos\'e\': ' + m.what, W - 9, '        '));
+          out.push(wrap('Cos\'è: ' + m.what, W - 9, '        '));
           if (m.scale) for (const s of m.scale) out.push(wrap(`${TAG[s.severity]} ${s.range}: ${s.meaning}`, W - 11, '          '));
         }
       }
@@ -76,12 +77,12 @@ export function renderText(scan: Scan, a: Analysis, opts: { verbose?: boolean; w
   if (a.plan.length) {
     out.push('');
     out.push(hr);
-    out.push(' PIANO D\'AZIONE (in ordine di priorita\')');
+    out.push(' PIANO D\'AZIONE (in ordine di priorità)');
     out.push(hr);
     a.plan.forEach((p, i) => {
       const act = ACTIONS[p.action.id];
       out.push(` ${String(i + 1).padStart(2)}. ${TAG[p.severity]} ${act.title}`);
-      out.push(wrap(`impatto ${act.impact}, difficolta' ${act.effort}; risolve: ${p.findings.join(', ')}`, W - 9, '        '));
+      out.push(wrap(`impatto ${act.impact}, difficoltà ${act.effort}; risolve: ${p.findings.join(', ')}`, W - 9, '        '));
       if (opts.verbose) {
         out.push(wrap(act.why, W - 9, '        '));
         act.steps.forEach((s, j) => out.push(wrap(`${j + 1}) ${s}`, W - 11, '          ')));

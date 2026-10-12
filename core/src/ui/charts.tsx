@@ -111,7 +111,14 @@ export function SpectrumChart({ networks, band, mySsid }: { networks: Bss[]; ban
                 <path className="fade" d={`${d} Z`} fill={col} fillOpacity={mine ? 0.22 : 0.1} />
                 <path className="draw" d={d} fill="none" stroke={col} strokeWidth={mine ? 3 : 1.8} pathLength={1} style={{ ['--len' as string]: 1 }} />
                 {labels.has(n.bssid) && (
-                  <text className="fade" x={labels.get(n.bssid)!.x} y={labels.get(n.bssid)!.y} textAnchor="middle" style={{ fill: col, fontWeight: mine ? 700 : 500 }}>
+                  <text
+                    className="fade"
+                    x={labels.get(n.bssid)!.x}
+                    y={labels.get(n.bssid)!.y}
+                    textAnchor="middle"
+                    // Contorno del colore di fondo: il nome resta leggibile sopra le curve.
+                    style={{ fill: col, fontWeight: mine ? 700 : 500, paintOrder: 'stroke', stroke: 'var(--surface)', strokeWidth: 3, strokeLinejoin: 'round' }}
+                  >
                     {(n.ssid || '(nascosta)').slice(0, 18)}
                   </text>
                 )}

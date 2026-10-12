@@ -3,6 +3,7 @@
 package winapi
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 	"net"
@@ -173,6 +174,8 @@ func containsAny(s string, subs []string) bool {
 }
 
 var procGetIpNetTable = iphlpapi.NewProc("GetIpNetTable")
+
+func u32(b []byte, off int) uint32 { return binary.LittleEndian.Uint32(b[off:]) }
 
 // Neighbors legge la tabella ARP IPv4 (dispositivi con cui il PC ha
 // comunicato di recente), escludendo broadcast e multicast.

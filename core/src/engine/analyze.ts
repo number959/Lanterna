@@ -747,7 +747,8 @@ function analyzeInternet(scan: Scan, c: Collector, primary?: Adapter) {
   if (net.http && net.http.length) {
     const ok = net.http.filter((h) => h.ok);
     const t = ok.length ? Math.min(...ok.map((h) => h.timeMs ?? 0)) : undefined;
-    const sev: Severity = !ok.length ? 'crit' : (t ?? 0) <= 500 ? 'ok' : 'warn';
+    // Una sola richiesta "a freddo" (DNS, TCP, TLS, risposta): sotto 800 ms è normale.
+    const sev: Severity = !ok.length ? 'crit' : (t ?? 0) <= 800 ? 'ok' : 'warn';
     c.add({
       id: 'net.http',
       metric: 'net.http',

@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-build:
+    name: Test e build (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: core/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: windows/go.mod
+          cache-dependency-path: windows/go.sum
+      - name: Motore di analisi e interfaccia
+        working-directory: core
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc --noEmit
+          npm test
+      - name: Build per Windows
+        run: scripts/build-windows.sh
+      - name: Test dell'agente
+        working-directory: windows
+        run: |
+          go vet ./...
+          GOOS=windows go vet ./...
+          go test -race ./...
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LANterna-windows-amd64
+          path: build/LANterna/
+
+  windows-smoke:
+    name: Collaudo su Windows reale
+    needs: test-build
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: LANterna
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: LANterna-windows-amd64
+          path: LANterna
+      - name: Versione e WebView2
+        run: |
+          ./lanterna-cli.exe version
+          if ($LASTEXITCODE -ne 0) { throw "version fallito" }
+      - name: Rapporto da riga di comando
+        run: |
+          ./lanterna-cli.exe report --quick --verbose
+          if ($LASTEXITCODE -ne 0) { throw "report fallito" }
+          ./lanterna-cli.exe report --quick --json --out scan.json
+          $s = Get-Content scan.json -Raw | ConvertFrom-Json
+          "Sistema: $($s.agent.os); amministratore: $($s.agent.elevated)"
+          "Schede: " + (($s.adapters | ForEach-Object { "$($_.name) [$($_.kind)] $($_.ipv4 -join ',') gw=$($_.gateways -join ',')" }) -join ' | ')
+          "Router: $($s.gateway.ip); ping $($s.gateway.ping.received)/$($s.gateway.ping.sent) via $($s.gateway.ping.method)"
+          "Internet: " + (($s.internet.targets | ForEach-Object { "$($_.target) $($_.received)/$($_.sent) $($_.method)" }) -join ' | ')
+          "Firewall ($($s.firewall.source)): " + (($s.firewall.profiles | ForEach-Object { "$($_.name)=$($_.enabled) attivo=$($_.active)" }) -join ' | ')
+          "Errori: " + (($s.errors | ForEach-Object { "$($_.probe): $($_.message)" }) -join ' | ')
+          if ($s.agent.os -notmatch '^Windows') { throw "sistema non riconosciuto: $($s.agent.os)" }
+          if ($s.adapters.Count -lt 1) { throw "GetAdaptersAddresses non ha restituito schede" }
+          if (-not $s.gateway.ip) { throw "gateway non individuato" }
+          if ($s.firewall.profiles.Count -ne 3) { throw "profili del firewall non letti" }
+          if (-not $s.internet.http.Where({ $_.ok })) { throw "verifica HTTPS fallita" }
+      - name: Server locale e API
+        run: |
+          $p = Start-Process -FilePath ./lanterna-cli.exe -ArgumentList 'serve','--port','8737' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $info = Invoke-RestMethod http://127.0.0.1:8737/api/info
+            "Agente: $($info.name) $($info.version) su $($info.host)"
+            $r = Invoke-WebRequest http://127.0.0.1:8737/api/scan -UseBasicParsing
+            if ($r.StatusCode -ne 204) { throw "atteso 204 prima dell'analisi, ottenuto $($r.StatusCode)" }
+            Invoke-RestMethod -Method Post http://127.0.0.1:8737/api/scan | Out-Null
+            $t = 0
+            do { Start-Sleep 1; $t++; $pr = Invoke-RestMethod http://127.0.0.1:8737/api/progress } while ($pr.running -and $t -lt 90)
+            ($pr.steps | ForEach-Object { "$($_.state.PadRight(7)) $($_.label)" }) -join "`n"
+            $scan = Invoke-RestMethod http://127.0.0.1:8737/api/scan
+            if (-not $scan.gateway.ip) { throw "analisi via API senza gateway" }
+            $ping = Invoke-RestMethod "http://127.0.0.1:8737/api/ping?target=gateway"
+            "Ping singolo verso il router: $($ping.ms) ms"
+            $html = Invoke-WebRequest http://127.0.0.1:8737/ -UseBasicParsing
+            if ($html.Content -notmatch '<title>LANterna</title>') { throw "interfaccia non servita" }
+            if (-not $html.Headers['Content-Security-Policy']) { throw "CSP mancante" }
+          } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+      - name: Finestra grafica con WebView2 (prova non bloccante)
+        continue-on-error: true
+        run: |
+          $gui = Start-Process -FilePath ./LANterna.exe -PassThru
+          Start-Sleep 30
+          $gui.Refresh()
+          "Processo attivo: $(-not $gui.HasExited); titolo finestra: '$($gui.MainWindowTitle)'"
+          "Processi WebView2: $((Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count)"
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$PWD\finestra.png")
+          Stop-Process $gui -ErrorAction SilentlyContinue
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: collaudo-windows
+          path: |
+            LANterna/scan.json
+            LANterna/finestra.png
+          if-no-files-found: ignore

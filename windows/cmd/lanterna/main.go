@@ -73,7 +73,11 @@ func main() {
 		if e == nil {
 			ev = eng.Version()
 		}
-		fmt.Printf("LANterna %s (motore di analisi %s)\n", version, ev)
+		wv := gui.RuntimeVersion()
+		if wv == "" {
+			wv = "non installato (l'interfaccia si aprirà nel browser)"
+		}
+		fmt.Printf("LANterna %s (motore di analisi %s)\nWebView2: %s\n", version, ev, wv)
 	case args[0] == "help" || args[0] == "--help" || args[0] == "-h" || args[0] == "/?":
 		fmt.Printf(usage, version)
 	default:
