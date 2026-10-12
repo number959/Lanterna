@@ -165,6 +165,14 @@ Difetti trovati su Windows reale e corretti:
 **Seconda esecuzione** (commit `d7458a9`), tutti i passi verdi, correzioni confermate: sistema descritto come "Windows Server 2025
 (build 26100)"; scheda "Ethernet 3" classificata come cavo (100 Gbit/s); con i tentativi TCP distanziati, 8 risposte su 8 da tutti e
 tre i server pubblici (le "perdite" della prima esecuzione dipendevano dai tentativi troppo ravvicinati); router silenzioso ma
-funzionante descritto come informazione; punteggio 99/100. La finestra ora sta interamente nello schermo:
+funzionante descritto come informazione; punteggio 99/100; la finestra sta interamente nello schermo.
 
-![LANterna su Windows reale](img/windows-reale.png)
+**Terza esecuzione** (commit `4614eb5`, versione 0.2.0 con la nuova interfaccia), tutti i passi verdi: analisi in 9,5 s su
+"Windows Server 2025 (build 26100)"; via API tutte le 11 fasi, con la sola "Router: risposta e stabilità" in errore (il gateway di
+Azure non risponde né ai ping né a TCP, ed è descritto come informazione); 8 risposte su 8 da ciascuno dei tre server pubblici,
+misurate via TCP; finestra WebView2 attiva con titolo "LANterna" e 6 processi `msedgewebview2`. La cattura mostra la nuova
+interfaccia nel tema chiaro (quello impostato in Windows su quella macchina), con i font incorporati, il punteggio 99/100 e la
+disposizione a tre colonne di una finestra larga circa 950 pixel. La grafica leggera non è scattata, quindi anche su quella
+macchina virtuale la mediana dei tempi tra i fotogrammi è rimasta sotto 26 ms.
+
+![LANterna su Windows reale](img/windows-reale.webp)
