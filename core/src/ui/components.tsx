@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  BookOpenText,
   CircleCheck,
   CircleHelp,
   ChevronDown,
@@ -14,7 +15,12 @@ import { createContext, useCallback, useContext, useEffect, useId, useRef, useSt
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react';
 import { ACTIONS, METRICS } from '../engine';
 import type { Finding, Severity } from '../engine';
+import { guidesForMetric } from '../guides';
 import { ease, rise, spring } from './motion';
+
+/** Apre una guida da qualunque punto dell'interfaccia (lo fornisce la shell). */
+export const GuideLinkContext = createContext<((id: string) => void) | null>(null);
+export const useOpenGuide = () => useContext(GuideLinkContext);
 
 export const SEV_LABEL: Record<Severity, string> = {
   ok: 'Ok',
@@ -78,6 +84,8 @@ export function FindingCard({ f, onAction }: { f: Finding; onAction?: (id: strin
   const [open, setOpen] = useState(false);
   const m_ = METRICS[f.metric];
   const bodyId = useId();
+  const openGuide = useOpenGuide();
+  const guides = guidesForMetric(f.metric).slice(0, 3);
   return (
     <m.article className="finding" data-sev={f.severity} variants={rise}>
       <button className="finding-head" aria-expanded={open} aria-controls={bodyId} onClick={() => setOpen(!open)}>
@@ -150,6 +158,19 @@ export function FindingCard({ f, onAction }: { f: Finding; onAction?: (id: strin
                       <button key={a} className="btn small" onClick={() => onAction?.(a)}>
                         {ACTIONS[a].title}
                         <ArrowRight className="arrow" size={15} aria-hidden />
+                      </button>
+                    ))}
+                  </div>
+                </m.div>
+              )}
+              {openGuide && guides.length > 0 && (
+                <m.div className="kb-block" variants={rise}>
+                  <h3>Approfondisci</h3>
+                  <div className="chip-actions">
+                    {guides.map((g) => (
+                      <button key={g.id} className="btn small" onClick={() => openGuide(g.id)}>
+                        <BookOpenText size={14} aria-hidden />
+                        {g.title}
                       </button>
                     ))}
                   </div>

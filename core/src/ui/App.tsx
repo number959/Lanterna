@@ -27,13 +27,14 @@ import { demoScan } from '../demo/sample';
 import { agentInfo, download, isScan, lastScan, runScan } from './api';
 import type { AgentInfo, Progress } from './api';
 import { BrandLogo, BrandSymbol } from './brand';
-import { ToastProvider, useToast } from './components';
+import { GuideLinkContext, ToastProvider, useToast } from './components';
 import { setFxPref, useFx } from './fx';
 import { ease, page, spring } from './motion';
 import { ScanOrbit } from './scan';
 import { useTheme } from './theme';
 import type { ThemePref } from './theme';
-import { GuideView, InternetView, LanView, MonitorView, Overview, PlanView, RouterView, WifiView } from './views';
+import { GuideView } from './guides';
+import { InternetView, LanView, MonitorView, Overview, PlanView, RouterView, WifiView } from './views';
 import type { View, ViewProps } from './views';
 
 type Source = 'agent' | 'demo' | 'file';
@@ -184,6 +185,8 @@ function Shell() {
     [reduce],
   );
 
+  const openGuide = useCallback((id: string) => go('guide', `g:${id}`), [go]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return;
@@ -244,7 +247,7 @@ function Shell() {
   const ThemeIcon = THEME_ICON[theme];
 
   return (
-    <>
+    <GuideLinkContext.Provider value={openGuide}>
       <a className="skip-link" href="#main">Vai al contenuto</a>
       <div className="backdrop" aria-hidden="true">
         <div className="glow g1" />
@@ -437,6 +440,6 @@ function Shell() {
           </AnimatePresence>
         </main>
       </div>
-    </>
+    </GuideLinkContext.Provider>
   );
 }

@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   BookOpen,
+  BookOpenText,
   ExternalLink,
   Globe,
   ListChecks,
@@ -9,7 +10,6 @@ import {
   Play,
   RotateCcw,
   Router,
-  Search,
   Shield,
   TriangleAlert,
   Wifi,
@@ -18,12 +18,13 @@ import {
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ACTIONS, CATEGORY_LABELS, METRIC_LIST, phyLabel, primaryAdapter } from '../engine';
-import type { Analysis, Band, Bss, Category, Finding, Scan, Severity } from '../engine';
+import { phyLabel, primaryAdapter } from '../engine';
+import type { Analysis, Band, Bss, Category, Scan, Severity } from '../engine';
 import { ping } from './api';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
 import { HexGauge } from './brand';
-import { AnimatedNumber, FindingList, Segmented, SevBadge, SevIcon, Stat, TableWrap, fmtNum, sevColor, spotHandlers } from './components';
+import { guidesForAction } from '../guides';
+import { AnimatedNumber, FindingList, Segmented, SevBadge, SevIcon, Stat, TableWrap, fmtNum, sevColor, spotHandlers, useOpenGuide } from './components';
 import { useFx } from './fx';
 import { useLocalState } from './hooks';
 import { cascade, ease, rise, spring } from './motion';
@@ -110,7 +111,7 @@ export function Overview({ scan, analysis: a, go }: ViewProps) {
                 <ListChecks size={17} aria-hidden /> Vedi il piano d'azione ({a.plan.length})
               </button>
             )}
-            <button className="btn" onClick={() => go('guide')}>
+            <button className="btn" onClick={() => go('guide', 'tab:misure')}>
               <BookOpen size={17} aria-hidden /> Come leggere i valori
             </button>
           </div>
@@ -690,6 +691,7 @@ function Check({ checked, onChange, label }: { checked: boolean; onChange: () =>
 }
 
 export function PlanView({ analysis: a, focus, scan }: ViewProps) {
+  const openGuide = useOpenGuide();
   const key = `polaris.done.${scan.agent.host ?? 'demo'}`;
   const [done, setDone] = useLocalState<string[]>(key, []);
   const titles = useMemo(() => new Map(a.findings.map((f) => [f.id, f])), [a]);
@@ -761,6 +763,15 @@ export function PlanView({ analysis: a, focus, scan }: ViewProps) {
                       <ol className="steps">
                         {p.action.steps.map((s, j) => <li key={j}>{s}</li>)}
                       </ol>
+                      {openGuide && guidesForAction(p.action.id).length > 0 && (
+                        <p className="plan-guides">
+                          <BookOpenText size={14} aria-hidden />
+                          <span>Approfondisci:</span>
+                          {guidesForAction(p.action.id).slice(0, 3).map((g) => (
+                            <button key={g.id} className="link-btn" onClick={() => openGuide(g.id)}>{g.title}</button>
+                          ))}
+                        </p>
+                      )}
                     </m.div>
                   )}
                 </AnimatePresence>
@@ -901,90 +912,6 @@ export function MonitorView({ live, scan }: ViewProps) {
         Usalo mentre riproduci il problema (una videochiamata che scatta, un gioco a scatti): se i picchi compaiono anche sulla linea del router il
         problema è in casa (Wi-Fi o rete locale); se compaiono solo su quella di Internet è sulla linea o dall'operatore.
       </m.p>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------- Guida
-
-export function GuideView({ analysis: a }: ViewProps) {
-  const [q, setQ] = useState('');
-  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const match = (...xs: (string | undefined)[]) => !q || xs.some((x) => x && norm(x).includes(norm(q)));
-  const measured = new Map<string, Finding>();
-  for (const f of a.findings) if (!measured.has(f.metric)) measured.set(f.metric, f);
-  const cats = Object.keys(CATEGORY_LABELS) as Category[];
-  const metrics = METRIC_LIST.filter((mm) => match(mm.label, mm.what, mm.why, mm.limits, ...(mm.scale ?? []).map((s) => s.meaning)));
-  const actions = Object.values(ACTIONS).filter((x) => match(x.title, x.why, ...x.steps));
-  return (
-    <>
-      <m.div variants={rise} className="search-wrap">
-        <Search size={18} aria-hidden />
-        <input className="search" type="search" placeholder="Cerca un termine: dBm, canale, DNS, jitter, UPnP…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cerca nella guida" data-search />
-      </m.div>
-      {cats.map((c) => {
-        const ms = metrics.filter((mm) => mm.category === c);
-        if (!ms.length) return null;
-        return (
-          <m.div key={c} variants={rise} layout="position" transition={spring.smooth}>
-            <h2 className="section-title">{CATEGORY_LABELS[c]}</h2>
-            <div className="grid cols-2">
-              <AnimatePresence mode="popLayout" initial={false}>
-                {ms.map((mm) => {
-                  const f = measured.get(mm.id);
-                  return (
-                    <m.section
-                      key={mm.id}
-                      layout
-                      className="card"
-                      initial={{ opacity: 0, scale: 0.97 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.15 } }}
-                      transition={spring.smooth}
-                    >
-                      <div className="card-head">
-                        <h2>{mm.label}</h2>
-                        <span className="spacer" />
-                        {f && <span className={`sev ${f.severity}`} title="valore misurato nella tua rete"><SevIcon sev={f.severity} size={14} />{f.value}</span>}
-                      </div>
-                      <p className="muted" style={{ marginTop: 0 }}>{mm.what}</p>
-                      {mm.scale && (
-                        <div className="scale" style={{ margin: '10px 0' }}>
-                          {mm.scale.map((s) => (
-                            <div key={s.range} className={`scale-row ${f?.severity === s.severity ? 'here' : ''}`} style={f?.severity === s.severity ? { ['--sev-bg' as string]: `var(--${s.severity}-bg)` } : undefined}>
-                              <span className={`range c-${s.severity}`}><SevIcon sev={s.severity} size={14} />{s.range}</span>
-                              <span className="muted">{s.meaning}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <p style={{ marginBottom: 0 }}><b>Perché conta.</b> <span className="muted">{mm.why}</span></p>
-                      {mm.limits && <p className="faint" style={{ fontSize: 13.5, marginBottom: 0 }}><b>Limiti:</b> {mm.limits}</p>}
-                    </m.section>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
-          </m.div>
-        );
-      })}
-      {actions.length > 0 && (
-        <m.div variants={rise} layout="position">
-          <h2 className="section-title">Tutte le azioni correttive</h2>
-          <div className="grid cols-2">
-            {actions.map((x) => (
-              <details key={x.id} className="card">
-                <summary>
-                  <ArrowRight size={16} className="c-ok" aria-hidden /> {x.title}
-                </summary>
-                <p className="muted">{x.why}</p>
-                <ol className="steps">{x.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
-              </details>
-            ))}
-          </div>
-        </m.div>
-      )}
-      {!metrics.length && !actions.length && <div className="empty">Nessun risultato per "{q}".</div>}
     </>
   );
 }

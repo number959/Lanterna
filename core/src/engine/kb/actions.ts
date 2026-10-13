@@ -12,7 +12,7 @@ const list: Action[] = [
     steps: [
       'Posiziona il router in un punto centrale della casa, in alto (mensola o parete), non dentro mobili o dietro la TV.',
       'Tieni le antenne esterne in verticale; con due antenne mettine una verticale e una orizzontale per dispositivi orientati diversamente.',
-      'Allontanalo da forni a microonde, basi di telefoni cordless DECT, baby monitor e casse Bluetooth.',
+      'Allontanalo da forni a microonde, vecchi telefoni cordless a 2,4 GHz, videosorveglianza o baby monitor analogici e casse Bluetooth (i cordless DECT europei lavorano a 1,9 GHz e non disturbano il Wi-Fi).',
       'Ripeti l\'analisi da Polaris nel punto in cui usi il dispositivo: punta ad almeno -65 dBm.',
     ],
     effort: 'facile',
