@@ -230,3 +230,12 @@ stesso viola, e su mobile il marchio spariva insieme alla barra laterale (ora il
 - **finestra senza WebView2**: messaggio con il nuovo nome, interfaccia su una porta libera, chiusura con OK.
 
 ![Analisi in corso con l'exe sotto Wine](img/analisi-wine.webp)
+
+**Windows reale (CI, commit `b725f9e`)**, tutti i passi verdi:
+- rapporto, server con le API e finestra WebView2 attiva con titolo "STARNET Polaris";
+- nella cattura si vedono la nuova icona nella barra del titolo e in quella delle applicazioni, il logo a colori nel tema chiaro
+  impostato su quella macchina e il punteggio 99/100 nell'esagono;
+- la finestra alta 720 pixel ha mostrato che in fondo alla barra laterale l'interruttore "Grafica leggera" restava fuori vista:
+  ora la barra scorre e sugli schermi bassi il logo è più compatto.
+
+![STARNET Polaris su Windows reale](img/windows-reale.webp)
