@@ -1,12 +1,12 @@
 import { useSyncExternalStore } from 'react';
 
-// Grafica leggera: niente trasparenze sfocate, grana, bagliori in movimento e
+// Grafica leggera: niente trasparenze sfocate, bagliori e stelle in movimento e
 // filtri SVG di sfocatura. Si attiva da sola se i fotogrammi risultano lenti
 // (rendering senza GPU: macchine virtuali, desktop remoto, PC datati) oppure
 // per scelta dell'utente, che vince sulla misura automatica.
 
 export type FxPref = 'auto' | 'full' | 'lite';
-const KEY = 'lanterna.fx';
+const KEY = 'polaris.fx';
 
 interface FxState {
   lite: boolean;

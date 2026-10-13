@@ -1,6 +1,6 @@
 import type { Transition, Variants } from 'motion/react';
 
-// Linguaggio del movimento di LANterna: "una luce che si accende".
+// Linguaggio del movimento di STARNET Polaris: "una stella che si accende".
 // Gli elementi entrano salendo appena e rischiarandosi, con una curva che
 // decelera a lungo (nessun rimbalzo gratuito); le interazioni dirette usano
 // molle fisiche, così seguono il gesto e si possono interrompere a metà.

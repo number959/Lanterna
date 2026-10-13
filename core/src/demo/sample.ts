@@ -53,7 +53,7 @@ function stats(target: string, label: string, samples: (number | null)[]) {
 
 export const demoScan: Scan = {
   schema: 1,
-  agent: { name: 'LANterna', version: 'demo', platform: 'demo', host: 'PORTATILE-DEMO', os: 'Dati dimostrativi', startedAt: '2026-10-12T20:30:00Z', durationMs: 14200 },
+  agent: { name: 'STARNET Polaris', version: 'demo', platform: 'demo', host: 'PORTATILE-DEMO', os: 'Dati dimostrativi', startedAt: '2026-10-12T20:30:00Z', durationMs: 14200 },
   adapters: [
     { name: 'Wi-Fi', description: 'Intel(R) Wi-Fi 6 AX201 160MHz', kind: 'wifi', mac: '3c:58:c2:aa:bb:cc', up: true, ipv4: ['192.168.1.34/24'], ipv6: ['fe80::1c2d:3e4f:5a6b:7c8d/64'], gateways: ['192.168.1.1'], dns: ['192.168.1.1'], dhcp: true, mtu: 1500, linkMbps: 144 },
     { name: 'Ethernet', description: 'Realtek PCIe GbE Family Controller', kind: 'ethernet', mac: '3c:58:c2:aa:bb:cd', up: false, ipv4: [], ipv6: [], gateways: [], dns: [] },

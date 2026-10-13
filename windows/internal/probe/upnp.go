@@ -33,7 +33,7 @@ func mSearch(st string) []byte {
 		"MAN: \"ssdp:discover\"\r\n" +
 		"MX: 2\r\n" +
 		"ST: " + st + "\r\n" +
-		"USER-AGENT: Windows/10 UPnP/1.1 LANterna/1.0\r\n\r\n")
+		"USER-AGENT: Windows/10 UPnP/1.1 STARNET-Polaris/1.0\r\n\r\n")
 }
 
 // ParseSSDP legge una risposta SSDP (formato simile a HTTP) e restituisce

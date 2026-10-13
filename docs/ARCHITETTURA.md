@@ -1,5 +1,8 @@
 # Architettura
 
+Il programma si chiamava LANterna fino alla versione 0.2.0: il repository e il modulo Go (`lanterna/...`) conservano quel
+nome, che non compare più all'utente.
+
 ```
             ┌──────────────────────────── core/ (TypeScript) ────────────────────────────┐
             │  engine/   motore di analisi puro, senza DOM                                │
@@ -57,16 +60,25 @@ motore lo mostra come "non misurato" invece di inventare un giudizio.
 
 ## Interfaccia
 
+L'identità visiva viene dal marchio STARNET (`brand/`): blu profondo `#022D62` e ciano `#00B9FE`, esagono a punta in alto come la
+cornice del logo, stella a quattro punte come accento. Il logo si usa solo nelle due versioni previste dalla sua guida (bianco sui
+fondi scuri, a colori sui chiari), mai con ombre o deformazioni.
+
 React 18 con un piccolo insieme di librerie, ciascuna con un compito preciso (versioni e licenze in `THIRD_PARTY_NOTICES.md`):
 
 | Libreria | A cosa serve |
 | --- | --- |
 | Motion 13 (`motion/react`, MIT) | tutte le animazioni: entrate in cascata, molle fisiche, `AnimatePresence` per pagine/avvisi/pannelli, indicatori che scivolano (`layoutId`), tracciamento delle linee SVG (`pathLength`), barra superiore legata allo scorrimento. Caricata con `LazyMotion` in modalità *strict* e `MotionConfig reducedMotion="user"` |
 | Lucide (`lucide-react`, ISC) | icone: si importano solo quelle usate |
-| Radix Colors (MIT) | scale dei colori di stato (verde, blu, ambra, rosso, ciano) per tema chiaro e scuro, nella variante P3 dove lo schermo la supporta |
-| Fontsource (font OFL-1.1) | Inter (testo), Space Grotesk (titoli e numeri grandi), JetBrains Mono (valori misurati); solo i sottoinsiemi latini, incorporati nell'exe (~200 kB) |
+| Radix Colors (MIT) | scale dei colori di stato (verde, indaco, ambra, rosso) per tema chiaro e scuro, nella variante P3 dove lo schermo la supporta; il blu e il ciano sono lasciati al marchio |
+| Fontsource (font OFL-1.1) | Inter (testo), Saira con l'asse della larghezza (titoli e numeri grandi in versione estesa, vicina alla scritta STARNET), JetBrains Mono (valori misurati); solo i sottoinsiemi latini, incorporati nell'exe (~270 kB) |
 
 Organizzazione di `core/src/ui/`:
+
+- `brand.tsx` e `brand-paths.ts`: il marchio disegnato con i tracciati originali (generati da `scripts/brand.mjs` a partire dagli
+  SVG ufficiali, mai ricopiati a mano). All'avvio la cornice si rivela in senso orario dal vertice alto, come il tratto ciano, e
+  le due metà della stella si incastrano lungo la S; la forma finale è sempre quella originale. Da qui anche l'esagono del
+  punteggio (`HexGauge`), che si riempie nello stesso verso.
 
 - `motion.ts`: il linguaggio del movimento in un solo posto. Curva di uscita lunga per ciò che entra, curva simmetrica e breve per
   ciò che esce, tre molle (`snappy` per pressioni e indicatori, `smooth` per pannelli e layout, `gentle` per numeri e grafici).
@@ -75,10 +87,10 @@ Organizzazione di `core/src/ui/`:
 - `theme.ts`: tema automatico, scuro o chiaro (classi `dark`/`light` su `<html>`, le stesse usate da Radix); il cambio usa le View
   Transitions con un cerchio che si apre dal pulsante.
 - `fx.ts`: grafica leggera. Misura la mediana del tempo tra i fotogrammi nei primi secondi; se supera 26 ms (meno di ~38 fps) toglie
-  sfocature, trasparenze, grana, bagliori animati e la rivelazione circolare del tema. La scelta manuale nella barra laterale vince
+  sfocature, trasparenze, bagliori e stelle animati e la rivelazione circolare del tema. La scelta manuale nella barra laterale vince
   sulla misura ed è ricordata.
-- `scan.tsx`: la schermata di analisi. Ogni sonda è un nodo in orbita attorno alla lanterna e cambia stato con l'avanzamento reale
-  di `/api/progress`.
+- `scan.tsx`: la schermata di analisi. Al centro il simbolo STARNET, con una cornice esagonale che si completa con l'avanzamento
+  reale di `/api/progress`; ogni sonda è una stella in orbita che, finita, si collega alla precedente formando una costellazione.
 - `charts.tsx`: grafici SVG disegnati alla larghezza reale del contenitore (1 unità = 1 pixel, testi mai deformati), curve monotone
   che non inventano picchi; il monitor scorre in modo continuo invece che a scatti.
 
@@ -100,9 +112,9 @@ rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFIC
 | UPnP | SSDP + descrizione XML + `GetExternalIPAddress` | si contattano solo URL http della LAN privata |
 | Router | connessione TCP alle porte di gestione comuni del **solo gateway**; intestazione e titolo del pannello | nessuna autenticazione |
 
-Modalità del programma: `LANterna.exe` (finestra), `report`, `serve`. La finestra usa WebView2; se il runtime manca (o non
-funziona) LANterna lo dice con un messaggio e apre l'interfaccia nel browser predefinito. `LANterna.exe` è compilato come
-applicazione grafica e si aggancia alla console del prompt quando riceve un comando; `lanterna-cli.exe` è la stessa cosa compilata
+Modalità del programma: `Polaris.exe` (finestra), `report`, `serve`. La finestra usa WebView2; se il runtime manca (o non
+funziona) STARNET Polaris lo dice con un messaggio e apre l'interfaccia nel browser predefinito. `Polaris.exe` è compilato come
+applicazione grafica e si aggancia alla console del prompt quando riceve un comando; `polaris-cli.exe` è la stessa cosa compilata
 per la console, comoda negli script.
 
 ## API locale

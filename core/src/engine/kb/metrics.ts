@@ -1,6 +1,6 @@
 import type { Category, Severity } from '../types';
 
-// Knowledge base delle metriche: per ogni valore che LANterna mostra spiega
+// Knowledge base delle metriche: per ogni valore che STARNET Polaris mostra spiega
 // cos'è, come si legge (con le soglie usate dal motore), perché conta e
 // quali limiti ha la misura. Le soglie qui scritte sono le stesse applicate
 // in `analyze.ts`: se ne cambi una, aggiorna anche l'altra (i test lo
@@ -52,7 +52,7 @@ const list: Metric[] = [
       { range: '50-63 %', severity: 'warn', meaning: 'Circa -75/-68 dBm: debole.' },
       { range: 'sotto 50 %', severity: 'crit', meaning: 'Oltre -75 dBm: insufficiente.' },
     ],
-    why: 'È utile come confronto rapido, ma il valore in dBm è più preciso: quando sono disponibili entrambi LANterna valuta i dBm.',
+    why: 'È utile come confronto rapido, ma il valore in dBm è più preciso: quando sono disponibili entrambi Polaris valuta i dBm.',
   },
   {
     id: 'wifi.linkrate',
@@ -248,7 +248,7 @@ const list: Metric[] = [
     label: 'Jitter (variazione della latenza)',
     category: 'internet',
     unit: 'ms',
-    what: 'Quanto varia la latenza da un pacchetto al successivo. Una rete con 10 ms costanti è migliore di una che alterna 2 ms e 40 ms. LANterna lo misura sia verso il router (tratto locale) sia verso Internet.',
+    what: 'Quanto varia la latenza da un pacchetto al successivo. Una rete con 10 ms costanti è migliore di una che alterna 2 ms e 40 ms. Polaris lo misura sia verso il router (tratto locale) sia verso Internet.',
     scale: [
       { range: 'sotto 10 ms', severity: 'ok', meaning: 'Stabile (via cavo, verso il router, è normale stare sotto 1 ms).' },
       { range: '10-30 ms', severity: 'warn', meaning: 'Variabile: le chiamate possono avere piccoli scatti.' },
@@ -368,7 +368,7 @@ const list: Metric[] = [
       { range: 'oltre 250 ms o nessuna risposta', severity: 'crit', meaning: 'Molto lento o guasto: la navigazione sembra bloccata.' },
     ],
     why: 'Una pagina web moderna contatta decine di domini diversi: un DNS lento si moltiplica per ciascuno.',
-    limits: 'Il primo accesso a un nome non in cache è più lento dei successivi: LANterna usa la mediana di più richieste con nomi diversi.',
+    limits: 'Il primo accesso a un nome non in cache è più lento dei successivi: Polaris usa la mediana di più richieste con nomi diversi.',
   },
   {
     id: 'dns.compare',
@@ -387,7 +387,7 @@ const list: Metric[] = [
     id: 'router.port',
     label: 'Servizi esposti dal router',
     category: 'router',
-    what: 'LANterna prova ad aprire una connessione verso le porte di gestione più comuni del *tuo* router (solo il gateway, solo dalla rete di casa), per capire quali servizi sono attivi.',
+    what: 'Polaris prova ad aprire una connessione verso le porte di gestione più comuni del *tuo* router (solo il gateway, solo dalla rete di casa), per capire quali servizi sono attivi.',
     scale: [
       { range: 'HTTP/HTTPS (80, 443, 8080, 8443)', severity: 'info', meaning: 'Pannello di gestione: normale.' },
       { range: 'DNS (53)', severity: 'ok', meaning: 'Il router fa da DNS per la rete: normale.' },
@@ -396,7 +396,7 @@ const list: Metric[] = [
       { range: 'Telnet (23)', severity: 'crit', meaning: 'Accesso amministrativo con password in chiaro: bersaglio classico dei malware.' },
     ],
     why: 'Meno servizi sono attivi sul router, minore è la superficie di attacco: ogni servizio è un programma che può avere vulnerabilità.',
-    limits: 'Il controllo è fatto dalla rete locale: non dice cosa è esposto verso Internet. La prova di porte su dispositivi altrui senza autorizzazione è vietata: LANterna controlla esclusivamente il gateway della rete a cui sei collegato.',
+    limits: 'Il controllo è fatto dalla rete locale: non dice cosa è esposto verso Internet. La prova di porte su dispositivi altrui senza autorizzazione è vietata: Polaris controlla esclusivamente il gateway della rete a cui sei collegato.',
   },
   {
     id: 'router.upnp',
@@ -413,7 +413,7 @@ const list: Metric[] = [
     id: 'router.web',
     label: 'Pannello di gestione del router',
     category: 'router',
-    what: 'La pagina web di configurazione del router. LANterna legge solo l\'intestazione pubblica e il titolo della pagina, senza autenticarsi.',
+    what: 'La pagina web di configurazione del router. Polaris legge solo l\'intestazione pubblica e il titolo della pagina, senza autenticarsi.',
     scale: [
       { range: 'raggiungibile via HTTPS', severity: 'ok', meaning: 'La password di amministrazione viaggia cifrata.' },
       { range: 'solo HTTP', severity: 'info', meaning: 'La password viaggia in chiaro nella rete locale.' },

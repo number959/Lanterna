@@ -57,9 +57,10 @@ func newServer() *Server {
 		Collector: c,
 		Version:   "t",
 		Web: fstest.MapFS{
-			"index.html":           {Data: []byte("<!doctype html><title>LANterna</title>")},
+			"index.html":           {Data: []byte("<!doctype html><title>STARNET Polaris</title>")},
 			"assets/inter.woff2":   {Data: []byte("wOF2\x00\x01\x00\x00")},
 			"assets/index-abc.css": {Data: []byte("body{}")},
+			"favicon.ico":          {Data: []byte("\x00\x00\x01\x00\x01\x00")},
 		},
 		Ping: c.QuickPing,
 	}
@@ -105,7 +106,7 @@ func TestGuards(t *testing.T) {
 // rifiuterebbe un foglio di stile servito come testo generico.
 func TestStaticTypes(t *testing.T) {
 	h := newServer().Handler()
-	for path, want := range map[string]string{"/assets/inter.woff2": "font/woff2", "/assets/index-abc.css": "text/css; charset=utf-8"} {
+	for path, want := range map[string]string{"/assets/inter.woff2": "font/woff2", "/assets/index-abc.css": "text/css; charset=utf-8", "/favicon.ico": "image/x-icon"} {
 		if r := do(t, h, "GET", path, nil); r.Code != 200 || r.Header().Get("Content-Type") != want {
 			t.Errorf("%s: %d %q, atteso %q", path, r.Code, r.Header().Get("Content-Type"), want)
 		}

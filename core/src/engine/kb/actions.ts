@@ -13,7 +13,7 @@ const list: Action[] = [
       'Posiziona il router in un punto centrale della casa, in alto (mensola o parete), non dentro mobili o dietro la TV.',
       'Tieni le antenne esterne in verticale; con due antenne mettine una verticale e una orizzontale per dispositivi orientati diversamente.',
       'Allontanalo da forni a microonde, basi di telefoni cordless DECT, baby monitor e casse Bluetooth.',
-      'Ripeti l\'analisi da LANterna nel punto in cui usi il dispositivo: punta ad almeno -65 dBm.',
+      'Ripeti l\'analisi da Polaris nel punto in cui usi il dispositivo: punta ad almeno -65 dBm.',
     ],
     effort: 'facile',
     impact: 'alto',
@@ -52,7 +52,7 @@ const list: Action[] = [
     steps: [
       'Apri il pannello del router (l\'indirizzo del gateway nel browser, es. http://192.168.1.1).',
       'Cerca Wi-Fi / Wireless > 2,4 GHz > Canale.',
-      'Sostituisci "Auto" con il canale consigliato da LANterna nella sezione Wi-Fi (sempre 1, 6 o 11).',
+      'Sostituisci "Auto" con il canale consigliato da Polaris nella sezione Wi-Fi (sempre 1, 6 o 11).',
       'Imposta la larghezza di canale a 20 MHz: a 40 MHz su 2,4 GHz occuperesti metà della banda disponibile.',
       'Salva, attendi il riavvio della radio e ripeti l\'analisi.',
     ],
@@ -65,7 +65,7 @@ const list: Action[] = [
     why: 'Se altre reti vicine usano lo stesso blocco di canali a 5 GHz, i dispositivi devono attendere il proprio turno per trasmettere e la velocità reale scende.',
     steps: [
       'Nel pannello del router vai su Wi-Fi > 5 GHz > Canale.',
-      'Scegli il canale consigliato da LANterna. I canali 36-48 sono sempre disponibili; 52-144 (DFS) sono spesso liberi ma il router deve cambiarli se rileva un radar.',
+      'Scegli il canale consigliato da Polaris. I canali 36-48 sono sempre disponibili; 52-144 (DFS) sono spesso liberi ma il router deve cambiarli se rileva un radar.',
       'Mantieni 80 MHz di larghezza se il blocco è libero, scendi a 40 MHz se è affollato.',
       'Se dopo il cambio la rete sparisce per un minuto è normale: sui canali DFS il router ascolta prima di trasmettere.',
     ],
@@ -164,7 +164,7 @@ const list: Action[] = [
     why: 'Gli aggiornamenti correggono vulnerabilità di sicurezza note e spesso migliorano stabilità e prestazioni Wi-Fi. I router forniti dagli operatori di solito si aggiornano da soli, quelli acquistati spesso no.',
     steps: [
       'Pannello del router > Sistema / Manutenzione > Aggiornamento firmware > Controlla.',
-      'In alternativa scarica il firmware dal sito del produttore cercando il modello esatto (lo trovi sull\'etichetta o nella sezione Router di LANterna).',
+      'In alternativa scarica il firmware dal sito del produttore cercando il modello esatto (lo trovi sull\'etichetta o nella sezione Router di Polaris).',
       'Non spegnere il router durante l\'aggiornamento.',
       'Se il produttore non rilascia aggiornamenti da anni, valuta la sostituzione del router.',
     ],
@@ -237,7 +237,7 @@ const list: Action[] = [
     title: 'Usa un server DNS più veloce o affidabile',
     why: 'Il DNS traduce i nomi dei siti in indirizzi: ogni nuova pagina aspetta questa risposta prima di caricarsi. Un DNS lento rende "pigra" tutta la navigazione anche con una connessione veloce.',
     steps: [
-      'Scegli il server più rapido tra quelli misurati da LANterna nella sezione Internet > DNS.',
+      'Scegli il server più rapido tra quelli misurati da Polaris nella sezione Internet > DNS.',
       'Soluzione per tutta la casa: pannello del router > DHCP/LAN > Server DNS primario e secondario.',
       'Solo per questo PC: Impostazioni > Rete e Internet > (connessione) > Assegnazione server DNS > Modifica > Manuale > IPv4.',
       'Esempi pubblici: 1.1.1.1 / 1.0.0.1 (Cloudflare), 9.9.9.9 / 149.112.112.112 (Quad9, con filtro malware), 8.8.8.8 / 8.8.4.4 (Google).',
@@ -252,7 +252,7 @@ const list: Action[] = [
     why: 'Se la rete di casa è sana (gateway veloce e senza perdite) ma la latenza o le perdite compaiono dai primi salti dopo il router, il problema è sulla linea o nella rete dell\'operatore.',
     steps: [
       'Ripeti l\'analisi in orari diversi e collegato via cavo per escludere il Wi-Fi.',
-      'Salva il rapporto di LANterna (pulsante Esporta) come prova: mostra latenza, perdite e il salto in cui iniziano.',
+      'Salva il rapporto di Polaris (pulsante Esporta) come prova: mostra latenza, perdite e il salto in cui iniziano.',
       'Contatta l\'assistenza tecnica dell\'operatore indicando che il problema è presente anche via cavo e riavviando il modem.',
       'Chiedi la verifica dei parametri di linea (attenuazione, SNR, errori) se hai FTTC/ADSL.',
     ],
@@ -302,7 +302,7 @@ const list: Action[] = [
     steps: [
       'Nel pannello del router (WAN/Internet) verifica il valore MTU: 1500 per fibra/Ethernet, 1492 per connessioni PPPoE.',
       'Se usi una VPN, è normale un valore più basso (1400-1420): verifica le impostazioni del client VPN.',
-      'Non abbassare l\'MTU a caso: se LANterna rileva 1500 il valore è già ottimale.',
+      'Non abbassare l\'MTU a caso: se Polaris rileva 1500 il valore è già ottimale.',
     ],
     effort: 'avanzata',
     impact: 'basso',

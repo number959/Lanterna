@@ -15,16 +15,17 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
-import { useId } from 'react';
 import type { Progress } from './api';
-import { AnimatedNumber, Logo } from './components';
+import { BrandSymbol, hexPath } from './brand';
+import { AnimatedNumber } from './components';
 import { useFx } from './fx';
 import { ease, spring } from './motion';
 
-// Schermata di analisi: ogni sonda è un nodo in orbita attorno alla lanterna.
-// Il nodo pulsa mentre la misura è in corso e si accende quando termina; il
-// fascio di luce verso il centro si traccia nello stesso momento. Tutto è
-// guidato dall'avanzamento reale restituito dall'agente.
+// Schermata di analisi: al centro il simbolo STARNET dentro una cornice
+// esagonale che si completa con l'avanzamento, come il tratto ciano del
+// marchio. Ogni sonda è una stella in orbita: si accende quando la misura
+// parte e, finita, si collega alla precedente formando una costellazione.
+// Tutto è guidato dall'avanzamento reale restituito dall'agente.
 
 const ICONS: Record<string, LucideIcon> = {
   adapters: Network,
@@ -41,16 +42,16 @@ const ICONS: Record<string, LucideIcon> = {
 };
 
 const C = 200; // centro del disegno (viewBox 400×400)
-const ORBIT = 150;
-const ORB = 54;
+const ORBIT = 152;
+const CORE = 66; // raggio della cornice esagonale attorno al simbolo
 
 export function ScanOrbit({ progress, connecting }: { progress: Progress | null; connecting?: boolean }) {
   const reduce = useReducedMotion();
   const { lite } = useFx();
-  const gid = useId();
   const steps = progress?.steps ?? [];
   const n = steps.length || 11;
-  const done = steps.filter((s) => s.state === 'done' || s.state === 'error').length;
+  const finished = (s: { state: string }) => s.state === 'done' || s.state === 'error';
+  const done = steps.filter(finished).length;
   const pct = steps.length ? Math.round((100 * done) / steps.length) : 0;
   const current = steps.find((s) => s.state === 'running');
   const pos = (i: number) => {
@@ -63,111 +64,100 @@ export function ScanOrbit({ progress, connecting }: { progress: Progress | null;
         <m.div
           className="scan-sweep"
           animate={reduce ? undefined : { rotate: 360 }}
-          transition={{ duration: 3.2, repeat: Infinity, ease: 'linear' }}
+          transition={{ duration: 3.6, repeat: Infinity, ease: 'linear' }}
         />
         <svg viewBox="0 0 400 400" aria-hidden="true">
-          <defs>
-            <radialGradient id={`${gid}-orb`} cx="50%" cy="45%" r="60%">
-              <stop offset="0" stopColor="#fff3c4" stopOpacity="0.95" />
-              <stop offset="0.35" stopColor="#ffb547" stopOpacity="0.9" />
-              <stop offset="1" stopColor="#ff8a3d" stopOpacity="0.05" />
-            </radialGradient>
-            <filter id={`${gid}-glow`} x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="8" />
-            </filter>
-          </defs>
-
-          {/* Anelli concentrici che ruotano lentamente in versi opposti. */}
-          {[ORBIT, ORBIT - 46, ORBIT + 28].map((r, i) => (
-            <m.circle
+          {/* Esagoni concentrici che ruotano piano in versi opposti. */}
+          {[ORBIT + 30, ORBIT - 44].map((r, i) => (
+            <m.path
               key={r}
-              cx={C}
-              cy={C}
-              r={r}
+              d={hexPath(C, C, r)}
               fill="none"
               stroke="var(--line-strong)"
-              strokeWidth={i === 0 ? 1.2 : 1}
-              strokeDasharray={i === 0 ? '2 7' : i === 1 ? '1 10' : '18 14'}
+              strokeWidth={1}
+              strokeDasharray={i === 0 ? '14 12' : '2 9'}
               style={{ originX: '50%', originY: '50%', transformBox: 'view-box' }}
-              animate={reduce ? undefined : { rotate: i % 2 ? -360 : 360 }}
-              transition={{ duration: 60 + i * 25, repeat: Infinity, ease: 'linear' }}
+              animate={reduce ? undefined : { rotate: i ? -360 : 360 }}
+              transition={{ duration: 90 + i * 30, repeat: Infinity, ease: 'linear' }}
             />
           ))}
+          <circle cx={C} cy={C} r={ORBIT} fill="none" stroke="var(--line)" strokeWidth={1} />
 
-          {/* Onde di luce che partono dalla lanterna. */}
+          {/* Impulsi esagonali che partono dal centro. */}
           {!reduce &&
             [0, 1, 2].map((i) => (
-              <m.circle
+              <m.path
                 key={`w${i}`}
-                cx={C}
-                cy={C}
-                r={ORB}
+                d={hexPath(C, C, CORE + 6)}
                 fill="none"
                 stroke="var(--accent)"
                 strokeWidth={1.5}
-                initial={{ r: ORB, opacity: 0.55 }}
-                animate={{ r: ORBIT + 40, opacity: 0 }}
+                style={{ originX: '50%', originY: '50%', transformBox: 'view-box' }}
+                initial={{ scale: 1, opacity: 0.5 }}
+                animate={{ scale: 2.25, opacity: 0 }}
                 transition={{ duration: 3.6, repeat: Infinity, delay: i * 1.2, ease: ease.out }}
               />
             ))}
 
-          {/* Fasci tra la lanterna e le sonde. */}
+          {/* Costellazione: ogni sonda conclusa si collega alla precedente. */}
+          {steps.map((s, i) => {
+            if (i === 0) return null;
+            const a = pos(i - 1);
+            const b = pos(i);
+            const lit = finished(s) && finished(steps[i - 1]);
+            return (
+              <m.line
+                key={`k${s.id}`}
+                x1={a.x}
+                y1={a.y}
+                x2={b.x}
+                y2={b.y}
+                stroke="var(--accent)"
+                strokeWidth={1.3}
+                strokeLinecap="round"
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={{ pathLength: lit ? 1 : 0, opacity: lit ? 0.55 : 0 }}
+                transition={{ duration: 0.7, ease: ease.out }}
+              />
+            );
+          })}
+
+          {/* Fasci tra il centro e le sonde in corso o concluse. */}
           {steps.map((s, i) => {
             const p = pos(i);
-            const lit = s.state === 'done' || s.state === 'running' || s.state === 'error';
-            const x0 = C + (ORB + 22) * Math.cos(p.a);
-            const y0 = C + (ORB + 22) * Math.sin(p.a);
-            const x1 = C + (ORBIT - 24) * Math.cos(p.a);
-            const y1 = C + (ORBIT - 24) * Math.sin(p.a);
+            const lit = s.state !== 'pending';
             return (
               <m.line
                 key={`b${s.id}`}
-                x1={x0}
-                y1={y0}
-                x2={x1}
-                y2={y1}
+                x1={C + (CORE + 14) * Math.cos(p.a)}
+                y1={C + (CORE + 14) * Math.sin(p.a)}
+                x2={C + (ORBIT - 25) * Math.cos(p.a)}
+                y2={C + (ORBIT - 25) * Math.sin(p.a)}
                 stroke={s.state === 'error' ? 'var(--warn)' : s.state === 'running' ? 'var(--accent)' : 'var(--ok)'}
-                strokeWidth={s.state === 'running' ? 2 : 1.4}
+                strokeWidth={s.state === 'running' ? 2 : 1.2}
                 strokeLinecap="round"
                 initial={{ pathLength: 0, opacity: 0 }}
-                animate={{ pathLength: lit ? 1 : 0, opacity: lit ? (s.state === 'running' ? 0.9 : 0.5) : 0 }}
+                animate={{ pathLength: lit ? 1 : 0, opacity: lit ? (s.state === 'running' ? 0.9 : 0.35) : 0 }}
                 transition={{ duration: 0.6, ease: ease.out }}
               />
             );
           })}
 
-          {/* Lanterna centrale con anello di avanzamento. */}
-          <m.circle
-            cx={C}
-            cy={C}
-            r={ORB + 10}
-            fill={`url(#${gid}-orb)`}
-            className="orb-glow"
-            filter={`url(#${gid}-glow)`}
-            style={{ originX: '50%', originY: '50%', transformBox: 'view-box' }}
-            animate={reduce ? undefined : { scale: [0.94, 1.06, 0.94], opacity: [0.65, 1, 0.65] }}
-            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+          {/* Cornice esagonale che si completa dal vertice alto in senso orario. */}
+          <path d={hexPath(C, C, CORE)} fill="var(--surface)" stroke="var(--line-strong)" strokeWidth={1} />
+          <path d={hexPath(C, C, CORE + 8)} fill="none" stroke="var(--surface-3)" strokeWidth={6} strokeLinejoin="round" />
+          <m.path
+            d={hexPath(C, C, CORE + 8)}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth={6}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: steps.length ? done / steps.length : 0.03 }}
+            transition={spring.gentle}
           />
-          <circle cx={C} cy={C} r={ORB} fill="var(--surface)" stroke="var(--line-strong)" />
-          <circle cx={C} cy={C} r={ORB + 16} fill="none" stroke="var(--surface-3)" strokeWidth={4} />
-          <g transform={`rotate(-90 ${C} ${C})`}>
-            <m.circle
-              cx={C}
-              cy={C}
-              r={ORB + 16}
-              fill="none"
-              stroke="var(--accent)"
-              strokeWidth={4}
-              strokeLinecap="round"
-              initial={{ pathLength: 0 }}
-              animate={{ pathLength: steps.length ? done / steps.length : 0.04 }}
-              transition={spring.gentle}
-            />
-          </g>
-          {/* Logo ingrandito 1,4 volte con la fiamma (16,19) esattamente al centro del bagliore. */}
-          <g transform={`translate(${C - 16 * 1.4} ${C - 19 * 1.4}) scale(1.4)`} style={{ color: 'var(--text)' }}>
-            <Logo size={32} busy />
-          </g>
+          <BrandSymbol x={C - 46} y={C - 46} size={92} intro delay={0.1} />
 
           {/* Sonde in orbita. */}
           {steps.map((s, i) => {
@@ -178,38 +168,35 @@ export function ScanOrbit({ progress, connecting }: { progress: Progress | null;
             return (
               <g key={s.id} transform={`translate(${p.x} ${p.y})`}>
                 {s.state === 'running' && !reduce && (
-                  <m.circle
-                    r={20}
+                  <m.path
+                    d={hexPath(0, 0, 22)}
                     fill="none"
                     stroke="var(--accent)"
                     strokeWidth={2}
-                    initial={{ r: 20, opacity: 0.8 }}
-                    animate={{ r: 34, opacity: 0 }}
+                    initial={{ scale: 1, opacity: 0.8 }}
+                    animate={{ scale: 1.6, opacity: 0 }}
                     transition={{ duration: 1.3, repeat: Infinity, ease: ease.out }}
                   />
                 )}
-                <m.g
-                  initial={false}
-                  animate={{ scale: s.state === 'running' ? 1.14 : 1 }}
-                  transition={spring.snappy}
-                >
-                  <m.circle
-                    r={21}
+                <m.g initial={false} animate={{ scale: s.state === 'running' ? 1.14 : 1 }} transition={spring.snappy}>
+                  <m.path
+                    d={hexPath(0, 0, 22)}
                     fill="var(--surface)"
                     strokeWidth={s.state === 'pending' ? 1 : 2}
+                    strokeLinejoin="round"
                     initial={false}
                     animate={{ stroke: color }}
                     transition={{ duration: 0.35 }}
-                    style={{ filter: !lite && (s.state === 'done' || s.state === 'running') ? `drop-shadow(0 0 8px ${color})` : 'none' }}
+                    style={{ filter: !lite && (s.state === 'done' || s.state === 'running') ? `drop-shadow(0 0 7px ${color})` : 'none' }}
                   />
                   <g transform="translate(-10 -10)" style={{ color }}>
                     <I size={20} strokeWidth={1.8} />
                   </g>
                   <AnimatePresence>
-                    {(s.state === 'done' || s.state === 'error') && (
+                    {finished(s) && (
                       // La posizione sta nel <g> esterno: la scala animata di Motion
                       // diventa una trasformazione CSS che sostituirebbe l'attributo.
-                      <g key="badge" transform="translate(15 -15)">
+                      <g key="badge" transform="translate(16 -16)">
                         <m.g initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }} transition={spring.snappy}>
                           <circle r={8.5} fill={s.state === 'done' ? 'var(--ok)' : 'var(--warn)'} />
                           <g transform="translate(-5.5 -5.5)" style={{ color: 'var(--surface)' }}>
@@ -256,12 +243,7 @@ export function ScanOrbit({ progress, connecting }: { progress: Progress | null;
           {steps.map((s) => {
             const I = ICONS[s.id] ?? Globe;
             return (
-              <m.div
-                key={s.id}
-                data-state={s.state}
-                layout
-                transition={spring.smooth}
-              >
+              <m.div key={s.id} data-state={s.state} layout transition={spring.smooth}>
                 <I size={15} aria-hidden />
                 <span style={{ flex: 1 }}>{s.label}</span>
                 <AnimatePresence mode="popLayout" initial={false}>

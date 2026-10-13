@@ -9,7 +9,8 @@ OUT="$ROOT/THIRD_PARTY_NOTICES.md"
 {
   echo "# Componenti di terze parti"
   echo
-  echo "LANterna include i componenti elencati sotto. Ciascuno resta soggetto alla propria licenza, riportata integralmente."
+  echo "STARNET Polaris include i componenti elencati sotto. Ciascuno resta soggetto alla propria licenza, riportata integralmente."
+  echo "Il marchio STARNET (logo e simbolo in brand/) appartiene al suo titolare e non è coperto da queste licenze."
   echo "File generato da \`scripts/notices.sh\`: non modificarlo a mano."
   echo
   cd "$ROOT/windows"

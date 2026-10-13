@@ -43,8 +43,8 @@ jobs:
           go test -race ./...
       - uses: actions/upload-artifact@v4
         with:
-          name: LANterna-windows-amd64
-          path: build/LANterna/
+          name: STARNET-Polaris-windows-amd64
+          path: build/STARNET-Polaris/
 
   windows-smoke:
     name: Collaudo su Windows reale
@@ -53,21 +53,21 @@ jobs:
     defaults:
       run:
         shell: pwsh
-        working-directory: LANterna
+        working-directory: STARNET-Polaris
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: LANterna-windows-amd64
-          path: LANterna
+          name: STARNET-Polaris-windows-amd64
+          path: STARNET-Polaris
       - name: Versione e WebView2
         run: |
-          ./lanterna-cli.exe version
+          ./polaris-cli.exe version
           if ($LASTEXITCODE -ne 0) { throw "version fallito" }
       - name: Rapporto da riga di comando
         run: |
-          ./lanterna-cli.exe report --quick --verbose
+          ./polaris-cli.exe report --quick --verbose
           if ($LASTEXITCODE -ne 0) { throw "report fallito" }
-          ./lanterna-cli.exe report --quick --json --out scan.json
+          ./polaris-cli.exe report --quick --json --out scan.json
           $s = Get-Content scan.json -Raw | ConvertFrom-Json
           "Sistema: $($s.agent.os); amministratore: $($s.agent.elevated)"
           "Schede: " + (($s.adapters | ForEach-Object { "$($_.name) [$($_.kind)] $($_.ipv4 -join ',') gw=$($_.gateways -join ',')" }) -join ' | ')
@@ -82,7 +82,7 @@ jobs:
           if (-not $s.internet.http.Where({ $_.ok })) { throw "verifica HTTPS fallita" }
       - name: Server locale e API
         run: |
-          $p = Start-Process -FilePath ./lanterna-cli.exe -ArgumentList 'serve','--port','8737' -PassThru -NoNewWindow
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8737' -PassThru -NoNewWindow
           try {
             Start-Sleep 2
             $info = Invoke-RestMethod http://127.0.0.1:8737/api/info
@@ -98,13 +98,13 @@ jobs:
             $ping = Invoke-RestMethod "http://127.0.0.1:8737/api/ping?target=gateway"
             "Ping singolo verso il router: $($ping.ms) ms"
             $html = Invoke-WebRequest http://127.0.0.1:8737/ -UseBasicParsing
-            if ($html.Content -notmatch '<title>LANterna</title>') { throw "interfaccia non servita" }
+            if ($html.Content -notmatch '<title>STARNET Polaris</title>') { throw "interfaccia non servita" }
             if (-not $html.Headers['Content-Security-Policy']) { throw "CSP mancante" }
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
       - name: Finestra grafica con WebView2 (prova non bloccante)
         continue-on-error: true
         run: |
-          $gui = Start-Process -FilePath ./LANterna.exe -PassThru
+          $gui = Start-Process -FilePath ./Polaris.exe -PassThru
           Start-Sleep 30
           $gui.Refresh()
           "Processo attivo: $(-not $gui.HasExited); titolo finestra: '$($gui.MainWindowTitle)'"
@@ -120,6 +120,6 @@ jobs:
         with:
           name: collaudo-windows
           path: |
-            LANterna/scan.json
-            LANterna/finestra.png
+            STARNET-Polaris/scan.json
+            STARNET-Polaris/finestra.png
           if-no-files-found: ignore

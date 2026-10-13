@@ -27,10 +27,11 @@ import (
 	"lanterna/internal/scan"
 )
 
-// I font dell'interfaccia sono woff2: il tipo è dichiarato qui perché la tabella
-// interna di Go non lo contiene e il registro di Windows non sempre lo riporta.
+// I font dell'interfaccia (woff2) e il favicon (ico) hanno il tipo dichiarato qui:
+// la tabella interna di Go non li contiene e il registro di Windows non sempre li riporta.
 func init() {
 	_ = mime.AddExtensionType(".woff2", "font/woff2")
+	_ = mime.AddExtensionType(".ico", "image/x-icon")
 }
 
 type Server struct {
@@ -131,7 +132,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/info", func(w http.ResponseWriter, r *http.Request) {
 		host, _ := os.Hostname()
-		writeJSON(w, 200, map[string]string{"name": "LANterna", "version": s.Version, "platform": "windows", "host": host})
+		writeJSON(w, 200, map[string]string{"name": "STARNET Polaris", "version": s.Version, "platform": "windows", "host": host})
 	})
 	mux.HandleFunc("GET /api/scan", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()

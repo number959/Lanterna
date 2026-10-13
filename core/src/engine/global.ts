@@ -18,4 +18,4 @@ const api = {
   },
 };
 
-(globalThis as unknown as { LanternaEngine: typeof api }).LanternaEngine = api;
+(globalThis as unknown as { PolarisEngine: typeof api }).PolarisEngine = api;

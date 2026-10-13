@@ -1,6 +1,7 @@
 # Componenti di terze parti
 
-LANterna include i componenti elencati sotto. Ciascuno resta soggetto alla propria licenza, riportata integralmente.
+STARNET Polaris include i componenti elencati sotto. Ciascuno resta soggetto alla propria licenza, riportata integralmente.
+Il marchio STARNET (logo e simbolo in brand/) appartiene al suo titolare e non è coperto da queste licenze.
 File generato da `scripts/notices.sh`: non modificarlo a mano.
 
 ## github.com/dlclark/regexp2 (v1.11.4)
@@ -620,12 +621,12 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 ```
 
-## @fontsource-variable/space-grotesk (5.3.0, npm, OFL-1.1)
+## @fontsource-variable/saira (5.3.0, npm, OFL-1.1)
 
 Font incorporato (solo sottoinsiemi latini, file woff2 di Fontsource).
 
 ```
-Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk)
+Copyright 2020 The Saira Project Authors (https://github.com/Omnibus-Type/Saira) Saira-Italic[wdth,wght].ttf: Copyright 2020 The Saira Project Authors (https://github.com/Omnibus-Type/Saira)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

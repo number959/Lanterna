@@ -1,4 +1,4 @@
-# LANterna per Android: progetto
+# STARNET Polaris per Android: progetto
 
 Stato: **progettato, non ancora realizzato**. Obiettivo: la stessa analisi e la stessa interfaccia della versione Windows, con le
 misure che Android consente a un'app normale (senza root).

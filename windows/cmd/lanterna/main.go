@@ -1,9 +1,12 @@
-// LANterna: diagnostica della rete locale per Windows.
+// STARNET Polaris: diagnostica della rete locale per Windows.
 //
-//	LANterna.exe                       finestra con l'interfaccia completa
-//	LANterna.exe report [opzioni]      analisi e rapporto testuale
-//	LANterna.exe serve [opzioni]       interfaccia nel browser (http://127.0.0.1:8737)
-//	LANterna.exe version
+//	Polaris.exe                        finestra con l'interfaccia completa
+//	polaris-cli.exe report [opzioni]   analisi e rapporto testuale
+//	polaris-cli.exe serve [opzioni]    interfaccia nel browser (http://127.0.0.1:8737)
+//	polaris-cli.exe version
+//
+// Polaris.exe è compilato come applicazione grafica, polaris-cli.exe per la
+// console: accettano gli stessi comandi.
 package main
 
 import (
@@ -32,20 +35,20 @@ import (
 // version viene impostata in fase di build (-ldflags "-X main.version=...").
 var version = "dev"
 
-const usage = `LANterna %s - diagnostica della rete locale
+const usage = `STARNET Polaris %s - diagnostica della rete locale
 
 Uso:
-  LANterna                       apre la finestra con l'interfaccia completa
-  LANterna report [opzioni]      esegue l'analisi e stampa il rapporto
+  Polaris                        apre la finestra con l'interfaccia completa
+  polaris-cli report [opzioni]   esegue l'analisi e stampa il rapporto
       --json                     stampa i dati grezzi (JSON) invece del testo
       --verbose                  include spiegazioni e passi di ogni azione
       --out FILE                 scrive su file invece che a schermo
       --input FILE               analizza un rapporto JSON salvato invece di misurare
       --quick                    analisi rapida (meno ping, niente nuova scansione Wi-Fi)
-  LANterna serve [opzioni]       interfaccia nel browser
+  polaris-cli serve [opzioni]    interfaccia nel browser
       --port N                   porta locale (predefinita 8737)
       --open                     apre il browser automaticamente
-  LANterna version               versione del programma e del motore
+  polaris-cli version            versione del programma e del motore
 `
 
 func newCollector(quick bool) *collect.Collector {
@@ -84,7 +87,7 @@ func main() {
 		if wv == "" {
 			wv = "non installato (l'interfaccia si aprirà nel browser)"
 		}
-		fmt.Printf("LANterna %s (motore di analisi %s)\nWebView2: %s\n", version, ev, wv)
+		fmt.Printf("STARNET Polaris %s (motore di analisi %s)\nWebView2: %s\n", version, ev, wv)
 	case args[0] == "help" || args[0] == "--help" || args[0] == "-h" || args[0] == "/?":
 		fmt.Printf(usage, version)
 	default:
@@ -120,7 +123,7 @@ func runReport(args []string) error {
 		}
 		var s scan.Scan
 		if err := json.Unmarshal(b, &s); err != nil || s.Schema == 0 {
-			return fmt.Errorf("%s non è un rapporto JSON di LANterna", *input)
+			return fmt.Errorf("%s non è un rapporto JSON di STARNET Polaris", *input)
 		}
 		data = b
 	} else {
@@ -200,7 +203,7 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("LANterna è in ascolto su %s (Ctrl+C per terminare)\n", url)
+	fmt.Printf("STARNET Polaris è in ascolto su %s (Ctrl+C per terminare)\n", url)
 	if *open {
 		go gui.Fallback(url)
 	}

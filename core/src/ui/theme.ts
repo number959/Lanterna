@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 // come classe "dark"/"light" su <html> (la usano anche le scale Radix Colors).
 
 export type ThemePref = 'auto' | 'dark' | 'light';
-const KEY = 'lanterna.theme';
+const KEY = 'polaris.theme';
 
 const media = () => window.matchMedia?.('(prefers-color-scheme: light)');
 

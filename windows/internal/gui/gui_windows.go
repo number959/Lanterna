@@ -21,22 +21,22 @@ func RuntimeVersion() string {
 // Run apre la finestra sull'URL indicato e ritorna quando viene chiusa.
 func Run(url string) error {
 	// Si verifica il runtime prima di creare la finestra: senza, go-webview2
-	// mostrerebbe comunque una finestra vuota. LANTERNA_SKIP_WEBVIEW2_CHECK=1
+	// mostrerebbe comunque una finestra vuota. POLARIS_SKIP_WEBVIEW2_CHECK=1
 	// salta il controllo (solo per collaudare la gestione dell'errore).
-	if os.Getenv("LANTERNA_SKIP_WEBVIEW2_CHECK") != "1" {
+	if os.Getenv("POLARIS_SKIP_WEBVIEW2_CHECK") != "1" {
 		if v, err := webviewloader.GetInstalledVersion(); err == nil && v == "" {
 			return ErrNoWebView2
 		}
 	}
 	// Dati del motore WebView2 fuori dalla cartella del programma, che deve
 	// restare portatile (anche su chiavetta in sola lettura).
-	data := filepath.Join(os.Getenv("LOCALAPPDATA"), "LANterna", "WebView2")
+	data := filepath.Join(os.Getenv("LOCALAPPDATA"), "STARNET Polaris", "WebView2")
 	width, height := windowSize()
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus: true,
 		DataPath:  data,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "LANterna",
+			Title:  "STARNET Polaris",
 			Width:  width,
 			Height: height,
 			IconId: 1, // icona incorporata da go-winres (rsrc_windows_*.syso)
@@ -57,9 +57,9 @@ func Run(url string) error {
 // predefinito e tiene vivo il programma finché l'utente non lo chiude.
 func Fallback(url string) {
 	open(url)
-	msg := "Su questo PC manca il componente Microsoft Edge WebView2, quindi LANterna si è aperto nel browser:\n\n" + url +
-		"\n\nPer la finestra integrata installa \"WebView2 Runtime\" dal sito Microsoft (gratuito).\n\nPremi OK per chiudere LANterna."
-	t, _ := windows.UTF16PtrFromString("LANterna")
+	msg := "Su questo PC manca il componente Microsoft Edge WebView2, quindi STARNET Polaris si è aperto nel browser:\n\n" + url +
+		"\n\nPer la finestra integrata installa \"WebView2 Runtime\" dal sito Microsoft (gratuito).\n\nPremi OK per chiudere STARNET Polaris."
+	t, _ := windows.UTF16PtrFromString("STARNET Polaris")
 	m, _ := windows.UTF16PtrFromString(msg)
 	windows.MessageBox(0, m, t, windows.MB_OK|windows.MB_ICONINFORMATION|windows.MB_SETFOREGROUND)
 }
@@ -72,7 +72,7 @@ func open(url string) {
 
 // Error mostra un errore bloccante in una finestra di dialogo.
 func Error(msg string) {
-	t, _ := windows.UTF16PtrFromString("LANterna")
+	t, _ := windows.UTF16PtrFromString("STARNET Polaris")
 	m, _ := windows.UTF16PtrFromString(msg)
 	windows.MessageBox(0, m, t, windows.MB_OK|windows.MB_ICONERROR)
 }

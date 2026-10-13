@@ -26,7 +26,8 @@ import type { Scan, Severity } from '../engine';
 import { demoScan } from '../demo/sample';
 import { agentInfo, download, isScan, lastScan, runScan } from './api';
 import type { AgentInfo, Progress } from './api';
-import { Logo, ToastProvider, useToast } from './components';
+import { BrandLogo, BrandSymbol } from './brand';
+import { ToastProvider, useToast } from './components';
 import { setFxPref, useFx } from './fx';
 import { ease, page, spring } from './motion';
 import { ScanOrbit } from './scan';
@@ -201,7 +202,7 @@ function Shell() {
 
   const current = NAV.find((n) => n.id === view)!;
   useEffect(() => {
-    document.title = `${current.label} · LANterna`;
+    document.title = `${current.label} · STARNET Polaris`;
   }, [current]);
 
   const onImport = async (file: File) => {
@@ -212,7 +213,7 @@ function Shell() {
       } catch {
         throw new Error('il file non contiene JSON valido');
       }
-      if (!isScan(data)) throw new Error('il file non è un rapporto di LANterna');
+      if (!isScan(data)) throw new Error('il file non è un rapporto di STARNET Polaris');
       setScan(data);
       setSource('file');
       setError(null);
@@ -249,14 +250,18 @@ function Shell() {
         <div className="glow g1" />
         <div className="glow g2" />
         <div className="glow g3" />
-        <div className="grain" />
+        <div className="hexgrid" />
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <span key={i} className={`spark s${i}`} />
+        ))}
       </div>
 
       <div className="app">
         <aside className="sidebar">
+          {/* Logo completo nella versione del tema (bianco sui fondi scuri, a colori sui chiari) e nome del prodotto. */}
           <div className="brand">
-            <Logo busy={scanning} />
-            <span>LAN<b>terna</b></span>
+            <BrandLogo width={112} intro title="STARNET" />
+            <span className="brand-product">Polaris</span>
           </div>
           <nav className="nav" aria-label="Sezioni">
             {NAV.map((n, i) => {
@@ -298,6 +303,10 @@ function Shell() {
         <main id="main" className="main" tabIndex={-1}>
           <header className="topbar">
             <m.div className="topbar-bg" style={{ opacity: barOpacity }} aria-hidden="true" />
+            {/* Su mobile la barra laterale diventa la barra in basso: il simbolo resta qui. */}
+            <span className="mobile-mark" aria-hidden="true">
+              <BrandSymbol size={30} />
+            </span>
             <AnimatePresence mode="wait" initial={false}>
               <m.h1
                 key={view}
@@ -329,7 +338,7 @@ function Shell() {
                 <>
                   <button
                     className="btn"
-                    onClick={() => save(`lanterna-${stamp}.json`, JSON.stringify(scan, null, 2), 'application/json')}
+                    onClick={() => save(`polaris-${stamp}.json`, JSON.stringify(scan, null, 2), 'application/json')}
                     title="Salva i dati grezzi: potrai riaprirli o confrontarli"
                     aria-label="Esporta JSON"
                   >
@@ -337,7 +346,7 @@ function Shell() {
                   </button>
                   <button
                     className="btn"
-                    onClick={() => save(`lanterna-${stamp}.txt`, renderText(scan, analysis, { verbose: true }), 'text/plain;charset=utf-8')}
+                    onClick={() => save(`polaris-${stamp}.txt`, renderText(scan, analysis, { verbose: true }), 'text/plain;charset=utf-8')}
                     title="Rapporto leggibile da allegare a una segnalazione"
                     aria-label="Esporta rapporto di testo"
                   >
@@ -390,7 +399,7 @@ function Shell() {
                 <div className="notice">
                   <Info size={18} aria-hidden />
                   <span>
-                    Stai guardando una <b>rete dimostrativa</b>. Per analizzare la tua rete avvia <span className="mono">LANterna.exe</span> su
+                    Stai guardando una <b>rete dimostrativa</b>. Per analizzare la tua rete avvia <span className="mono">Polaris.exe</span> su
                     Windows, oppure importa un rapporto JSON.
                   </span>
                 </div>

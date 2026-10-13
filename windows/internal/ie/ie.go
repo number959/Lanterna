@@ -73,7 +73,7 @@ type Security struct {
 	WPS      bool
 }
 
-// Info riassume quello che serve a LANterna di una singola rete.
+// Info riassume quello che serve a Polaris di una singola rete.
 type Info struct {
 	SSID          string
 	DSChannel     int

@@ -1,6 +1,8 @@
 # Verifiche
 
-Cosa è stato verificato, come, e cosa resta da provare. Data: 12 ottobre 2026, versione 0.2.0 (nuova interfaccia, sezione 4).
+Cosa è stato verificato, come, e cosa resta da provare. Versione attuale: 0.3.0 (13 ottobre 2026), con il marchio STARNET e il
+nome STARNET Polaris (sezione 7). Fino alla versione 0.2.0 il programma si chiamava LANterna: le sezioni che descrivono prove
+precedenti riportano i nomi di allora.
 
 ## 1. Test automatici
 
@@ -12,7 +14,7 @@ Cosa è stato verificato, come, e cosa resta da provare. Data: 12 ottobre 2026, 
 | Parser netsh (`windows/internal/netsh`) | 4 | output inglese e italiano, anche con lettere accentate storpiate dalla code page CP850; messaggio di Windows 11 sul permesso di posizione |
 | Sonde di rete (`windows/internal/probe`) | 12 | proxy di sistema di Windows (proxy unico o per schema, eccezioni `<local>` e con caratteri jolly); pacchetto DNS confrontato byte per byte, server DNS finto (risposta, REFUSED, SERVFAIL, timeout); router UPnP finto completo (SSDP, descrizione XML, SOAP `GetExternalIPAddress`); filtro degli URL SSDP (solo LAN privata); porte; titolo del pannello; HTTPS |
 | Orchestrazione (`windows/internal/collect`) | 8 | analisi completa su piattaforma simulata; traceroute; MTU con ricerca binaria; riserva TCP quando l'ICMP non funziona; interruzione rapida se l'host non risponde; assenza di gateway; PC senza scheda Wi-Fi; scelta del metodo nel monitor |
-| Server locale (`windows/internal/server`) | 4 | rifiuto di Host estranei, POST da altre origini e cross-site; CSP; tipi dei file dell'interfaccia (font `woff2`, CSS con `nosniff`); ciclo avvio, avanzamento e risultato; ping del monitor; avvii concorrenti |
+| Server locale (`windows/internal/server`) | 4 | rifiuto di Host estranei, POST da altre origini e cross-site; CSP; tipi dei file dell'interfaccia (font `woff2`, favicon `ico`, CSS con `nosniff`); ciclo avvio, avanzamento e risultato; ping del monitor; avvii concorrenti |
 | Motore in goja (`windows/internal/engine`) | 3 | il vero `engine.js` eseguito nell'interprete dell'exe: rapporto e analisi, formattazione dei numeri con la virgola |
 
 In totale 41 test TypeScript e 52 test Go, questi ultimi eseguiti anche con il race detector.
@@ -58,7 +60,7 @@ Wine, è segnato in giallo), poi la panoramica con i dati dell'exe e l'avviso "A
 `font/woff2` e risultano caricati; monitor con ping veri, seconda analisi dal pulsante, nessun errore in console con la CSP attiva;
 la finestra grafica senza WebView2 mostra il messaggio, serve l'interfaccia su una porta libera e con OK termina.
 
-![Analisi in corso con l'exe sotto Wine](img/analisi-wine.webp)
+La schermata di analisi di allora è stata sostituita da quella della versione 0.3.0 (sezione 7).
 
 ### Difetti trovati grazie a Wine e corretti
 
@@ -175,4 +177,56 @@ interfaccia nel tema chiaro (quello impostato in Windows su quella macchina), co
 disposizione a tre colonne di una finestra larga circa 950 pixel. La grafica leggera non è scattata, quindi anche su quella
 macchina virtuale la mediana dei tempi tra i fotogrammi è rimasta sotto 26 ms.
 
-![LANterna su Windows reale](img/windows-reale.webp)
+La cattura di questa esecuzione è stata sostituita da quella della versione 0.3.0 (sezione 7).
+
+## 7. Versione 0.3.0: marchio STARNET e nome STARNET Polaris
+
+**Marchio.** I master del pacchetto STARNET 22 sono copiati in `brand/` senza modifiche: le impronte SHA-256 coincidono con il
+`MANIFEST.json` del pacchetto. I tracciati usati dall'interfaccia sono generati da `scripts/brand.mjs`, che verifica anche la
+struttura del master (ritagli delle parti ciano, sette lettere). Regole della guida applicate e controllate sulle catture: logo
+bianco sui fondi scuri, a colori sui chiari, solo il simbolo negli spazi piccoli, nessuna ombra né deformazione. L'animazione
+d'entrata è stata controllata fotogramma per fotogramma nei due temi: la cornice si rivela in senso orario dal vertice alto (nel
+tema chiaro compare per primo proprio il tratto ciano), le metà della stella si incastrano, le lettere arrivano in sequenza e
+l'ultimo fotogramma è il logo originale.
+
+![Entrata del logo, tema scuro e chiaro](img/intro-marchio.webp)
+
+**Nome ed eseguibili.** `Polaris.exe` (finestra) e `polaris-cli.exe` (console); cartella dei dati di WebView2
+`%LOCALAPPDATA%\STARNET Polaris`. Nelle risorse dell'exe ci sono nome, descrizione, `CompanyName` STARNET e versione 0.3.0.
+L'icona è il simbolo a colori su piastra bianca, renderizzato dal vettoriale a 9 dimensioni (16-256 px): leggibile sulla barra
+delle applicazioni chiara e su quella scura.
+
+**Carattere.** Saira 5.3.0 (OFL 1.1, pubblicato il 19 luglio 2026) sostituisce Space Grotesk per i titoli, con l'asse della larghezza
+al 108-125 % per avvicinarsi alla scritta STARNET. Il confronto è stato fatto a schermo con Michroma, Exo 2 e Chakra Petch.
+Nell'interfaccia servita dall'exe sotto Wine i titoli risultano in "Saira Variable" al 112 % e i file dei caratteri arrivano
+come `font/woff2` e risultano caricati.
+
+**Colori.** Contrasti calcolati prima di applicarli. Nel tema scuro testo e accenti stanno fra 5,4:1 e 17,7:1. Nel tema chiaro
+le azioni sono in blu profondo con testo bianco (13,5:1) e i colori di stato sono scuriti quanto basta per restare almeno a
+4,5:1 anche sulle superfici tinte. Il blu e il ciano restano al marchio: le informazioni usano l'indaco.
+
+**Stessa batteria della sezione 4**, sulla build finale:
+
+| Verifica | Esito |
+| --- | --- |
+| Aspetto (8 sezioni × 2 temi × desktop e mobile) | nessuno scorrimento orizzontale, nessun elemento invisibile o fuori dal riquadro, nessun errore in console |
+| axe-core 4.11.4, WCAG 2.1 A/AA (32 combinazioni) | 0 violazioni |
+| Tastiera | invariata: "Vai al contenuto", ordine logico, frecce e Home nel selettore, Invio e Spazio, scorciatoie `1`…`8` e `/` |
+| Movimento ridotto | nessuna animazione in corso dopo l'entrata (anche le stelle dello sfondo si fermano) |
+| Grafica leggera | automatica dopo 4,6 s con fotogrammi lenti; scelta manuale ricordata; cambio tema senza transizione |
+| Esportazioni e import | file scaricati, JSON reimportato, file estraneo rifiutato con il nuovo nome nel messaggio |
+| Fluidità senza GPU | 60 fps mediani da fermi, nei cambi pagina, nell'apertura delle schede, nel cambio banda e nel monitor; circa 30 fps nella rivelazione circolare del tema |
+
+Revisione visiva: due difetti trovati e corretti. Nel grafico della latenza verso Internet Cloudflare e Quad9 avevano quasi lo
+stesso viola, e su mobile il marchio spariva insieme alla barra laterale (ora il simbolo resta nella barra superiore).
+
+**Exe sotto Wine nei tre modi**:
+- **rapporto**: 14,5 s, intestazione "STARNET Polaris - rapporto di diagnostica di rete";
+- **server**:
+  - analisi in 14,8 s con le 11 fasi, nella nuova schermata (sotto);
+  - favicon servito come `image/x-icon`;
+  - monitor con ping veri e seconda analisi dal pulsante;
+  - nessun errore in console;
+- **finestra senza WebView2**: messaggio con il nuovo nome, interfaccia su una porta libera, chiusura con OK.
+
+![Analisi in corso con l'exe sotto Wine](img/analisi-wine.webp)

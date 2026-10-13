@@ -1,6 +1,6 @@
 import type { Scan } from '../engine';
 
-// Comunicazione con l'agente locale (lanterna.exe serve / finestra).
+// Comunicazione con l'agente locale (Polaris.exe serve / finestra).
 // L'interfaccia è servita dallo stesso agente, quindi i percorsi sono relativi.
 
 export interface AgentInfo {

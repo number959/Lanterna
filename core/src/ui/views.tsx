@@ -22,7 +22,8 @@ import { ACTIONS, CATEGORY_LABELS, METRIC_LIST, phyLabel, primaryAdapter } from 
 import type { Analysis, Band, Bss, Category, Finding, Scan, Severity } from '../engine';
 import { ping } from './api';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
-import { AnimatedNumber, FindingList, ScoreRing, Segmented, SevBadge, SevIcon, Stat, TableWrap, fmtNum, sevColor, spotHandlers } from './components';
+import { HexGauge } from './brand';
+import { AnimatedNumber, FindingList, Segmented, SevBadge, SevIcon, Stat, TableWrap, fmtNum, sevColor, spotHandlers } from './components';
 import { useFx } from './fx';
 import { useLocalState } from './hooks';
 import { cascade, ease, rise, spring } from './motion';
@@ -92,7 +93,7 @@ export function Overview({ scan, analysis: a, go }: ViewProps) {
   return (
     <>
       <m.section variants={rise} className="card hero" style={{ ['--hero-tint' as string]: sevColor(sev) }}>
-        <ScoreRing score={a.score} />
+        <HexGauge score={a.score} />
         <div>
           <div className={`grade c-${sev}`}>
             <SevIcon sev={sev} size={15} /> Salute della rete: {a.grade}
@@ -471,7 +472,8 @@ export function LanView({ scan, analysis: a, go }: ViewProps) {
 
 // ---------------------------------------------------------------- Internet
 
-const SERIES_COLORS = ['var(--signal)', 'var(--ok)', '#c792ea', 'var(--accent)'];
+// Serie dei grafici: il ciano del marchio per la prima, poi tinte ben distinte e adatte a entrambi i temi.
+const SERIES_COLORS = ['var(--accent)', 'var(--signal)', 'var(--p1)', 'var(--p4)'];
 
 export function InternetView({ scan, analysis: a, go }: ViewProps) {
   const reduce = useReducedMotion();
@@ -586,7 +588,7 @@ export function RouterView({ scan, analysis: a, go }: ViewProps) {
           ) : (
             <p className="muted">Nessun gateway rilevato.</p>
           )}
-          <p className="faint" style={{ fontSize: 13, marginBottom: 0 }}>LANterna interroga solo il gateway della rete a cui sei collegato, senza autenticarsi.</p>
+          <p className="faint" style={{ fontSize: 13, marginBottom: 0 }}>STARNET Polaris interroga solo il gateway della rete a cui sei collegato, senza autenticarsi.</p>
         </m.section>
         <m.section variants={rise} className="card">
           <div className="card-head"><h2>Servizi del router</h2></div>
@@ -688,7 +690,7 @@ function Check({ checked, onChange, label }: { checked: boolean; onChange: () =>
 }
 
 export function PlanView({ analysis: a, focus, scan }: ViewProps) {
-  const key = `lanterna.done.${scan.agent.host ?? 'demo'}`;
+  const key = `polaris.done.${scan.agent.host ?? 'demo'}`;
   const [done, setDone] = useLocalState<string[]>(key, []);
   const titles = useMemo(() => new Map(a.findings.map((f) => [f.id, f])), [a]);
   const refs = useRef(new Map<string, HTMLElement>());
@@ -874,7 +876,7 @@ export function MonitorView({ live, scan }: ViewProps) {
         {!live && (
           <div className="notice" style={{ marginBottom: 12 }}>
             <TriangleAlert size={18} aria-hidden />
-            Modalità demo: i valori sono simulati. Avvia LANterna.exe per misurare la tua rete.
+            Modalità demo: i valori sono simulati. Avvia Polaris.exe per misurare la tua rete.
           </div>
         )}
         <LiveChart

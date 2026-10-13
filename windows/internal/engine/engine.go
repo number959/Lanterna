@@ -35,18 +35,18 @@ func Load(src []byte) (*Engine, error) {
 	if _, err := vm.RunScript("engine.js", string(src)); err != nil {
 		return nil, fmt.Errorf("caricamento del motore: %w", err)
 	}
-	obj := vm.Get("LanternaEngine")
+	obj := vm.Get("PolarisEngine")
 	if obj == nil || goja.IsUndefined(obj) {
-		return nil, fmt.Errorf("engine.js non definisce LanternaEngine")
+		return nil, fmt.Errorf("engine.js non definisce PolarisEngine")
 	}
 	o := obj.ToObject(vm)
 	e := &Engine{vm: vm, version: o.Get("version").String()}
 	var ok bool
 	if e.report, ok = goja.AssertFunction(o.Get("reportText")); !ok {
-		return nil, fmt.Errorf("LanternaEngine.reportText mancante")
+		return nil, fmt.Errorf("PolarisEngine.reportText mancante")
 	}
 	if e.analyze, ok = goja.AssertFunction(o.Get("analyzeJson")); !ok {
-		return nil, fmt.Errorf("LanternaEngine.analyzeJson mancante")
+		return nil, fmt.Errorf("PolarisEngine.analyzeJson mancante")
 	}
 	return e, nil
 }

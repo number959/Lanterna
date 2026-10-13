@@ -1,4 +1,4 @@
-// Contratto dati di LANterna.
+// Contratto dati di STARNET Polaris.
 // Ogni sonda (Windows oggi, Android ed ESP32 in futuro) produce uno `Scan`
 // con soli dati grezzi; l'interpretazione la fa sempre e solo il motore
 // (`analyze`), così le spiegazioni restano identiche su ogni piattaforma.

@@ -369,10 +369,10 @@ describe('bundle per host senza moduli (goja)', () => {
     ctx.globalThis = ctx;
     vm.createContext(ctx);
     vm.runInContext(code, ctx);
-    const engine = ctx.LanternaEngine as { analyzeJson(s: string): string; reportText(s: string, v: boolean): string };
+    const engine = ctx.PolarisEngine as { analyzeJson(s: string): string; reportText(s: string, v: boolean): string };
     const json = JSON.stringify(demoScan);
     expect(JSON.parse(engine.analyzeJson(json))).toEqual(JSON.parse(JSON.stringify(analyze(demoScan))));
-    expect(engine.reportText(json, false)).toContain('LANterna');
-    expect(readFileSync(entry, 'utf8')).toContain('LanternaEngine');
+    expect(engine.reportText(json, false)).toContain('STARNET Polaris');
+    expect(readFileSync(entry, 'utf8')).toContain('PolarisEngine');
   });
 });

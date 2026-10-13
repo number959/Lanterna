@@ -48,7 +48,7 @@ func RouterWeb(ctx context.Context, host string, httpsOpen bool) (*scan.RouterWe
 			continue
 		}
 		req, _ := http.NewRequestWithContext(ctx, "GET", scheme+"://"+host+"/", nil)
-		req.Header.Set("User-Agent", "LANterna (diagnostica di rete)")
+		req.Header.Set("User-Agent", "STARNET Polaris (diagnostica di rete)")
 		resp, err := c.Do(req)
 		if err != nil {
 			lastErr = err
@@ -84,7 +84,7 @@ func HTTPCheck(ctx context.Context, url string) scan.HTTPCheck {
 	r := scan.HTTPCheck{URL: url}
 	c := &http.Client{Timeout: 6 * time.Second, Transport: &http.Transport{Proxy: HTTPProxy}}
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-	req.Header.Set("User-Agent", "LANterna (diagnostica di rete)")
+	req.Header.Set("User-Agent", "STARNET Polaris (diagnostica di rete)")
 	start := time.Now()
 	resp, err := c.Do(req)
 	if err != nil {

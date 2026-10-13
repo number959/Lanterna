@@ -1,4 +1,4 @@
-# LANterna per ESP32: progetto
+# STARNET Polaris per ESP32: progetto
 
 Stato: **progettato, non ancora realizzato**. Un piccolo strumento dedicato, in due usi:
 

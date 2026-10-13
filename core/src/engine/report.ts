@@ -32,7 +32,7 @@ export function renderText(scan: Scan, a: Analysis, opts: { verbose?: boolean; w
   const out: string[] = [];
   const hr = '='.repeat(W);
   out.push(hr);
-  out.push(' LANterna - rapporto di diagnostica di rete');
+  out.push(' STARNET Polaris - rapporto di diagnostica di rete');
   out.push(` ${scan.agent.host ?? ''}  ${scan.agent.os ?? scan.agent.platform}  ${scan.agent.startedAt}  (${Math.round(scan.agent.durationMs / 100) / 10} s)`);
   out.push(hr);
   out.push('');

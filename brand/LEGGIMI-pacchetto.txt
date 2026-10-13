@@ -1,0 +1,45 @@
+STARNET 22 - PACCHETTO ALTA QUALITÀ
+
+Versione: 22 / Stella Fortezza rifinita
+
+CONTENUTO
+01_SVG_Vettoriali: 6 master SVG, logo completo e simbolo, colore/nero/bianco.
+02_PDF_Vettoriali: le stesse 6 varianti in PDF vettoriale, senza font esterni.
+03_PNG_8192_Trasparenti: 6 PNG con lato lungo 8192 pixel, trasparenti.
+04_PNG_2048_Web: 6 PNG con lato lungo 2048 pixel, trasparenti.
+05_JPG_8192_Sfondo_Bianco: logo completo e simbolo a colori su bianco.
+06_Icone_Web: favicon ICO 16, 24, 32, 48, 64, 128 e 256 px; PNG web 192/512 px;
+               PNG Apple 180 px con fondo bianco.
+07_Riferimenti_Originali: immagini originali delle proposte 02, 11, 21 e 22.
+STARNET_22_Anteprima_e_Guida.pdf: anteprima delle 6 varianti e guida ai formati.
+MANIFEST.json: elenco dei file con dimensioni e impronte SHA-256.
+
+DIMENSIONI
+Logo completo: PNG/JPG 8192 x 6764 px; PNG web 2048 x 1691 px.
+Solo simbolo: PNG/JPG 8192 x 8192 px; PNG web 2048 x 2048 px.
+SVG e PDF: scalabili senza perdita di definizione. Nessuna immagine raster incorporata.
+I PNG/JPG 8K sono renderizzati dal vettoriale e riportano 300 ppi nei metadati.
+Il numero di pixel determina il dettaglio; per ingrandimenti ulteriori usare SVG/PDF.
+
+COLORI
+Blu profondo: #022D62 / RGB 2, 45, 98
+Ciano: #00B9FE / RGB 0, 185, 254
+Nero: #000000
+Bianco: #FFFFFF
+PNG e JPG con profilo sRGB incorporato; SVG e PDF a colori in RGB.
+Per la stampa, il fornitore converte i colori con il profilo ICC della lavorazione.
+
+USO
+Usare la variante a colori sui fondi chiari e la bianca sui fondi scuri.
+Il bianco ha fondo trasparente: si vede quando viene collocato su un fondo scuro.
+Il canale a S e gli spazi interni sono trasparenti, non riempiti di bianco.
+Mantenere le proporzioni; lasciare margini liberi intorno al marchio.
+Preferire il simbolo per favicon, avatar e spazi piccoli.
+Non serve installare font: anche la scritta STARNET è convertita in tracciati.
+
+RICOSTRUZIONE E RIFERIMENTI
+I master derivano dall'immagine della versione 22: contorni ricostruiti in vettoriale,
+linee geometriche ripulite e due tinte piatte uniformi. Le proporzioni e il disegno
+della proposta sono stati mantenuti; la texture della generazione non è riprodotta.
+I riferimenti 02, 11, 21 e 22 sono conservati alla risoluzione originale,
+senza ingrandimenti artificiali. I master e gli export 8K riguardano la versione 22.

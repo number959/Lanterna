@@ -21,7 +21,7 @@ func load(t *testing.T) *Engine {
 	return e
 }
 
-const scanJSON = `{"schema":1,"agent":{"name":"LANterna","version":"t","platform":"windows","host":"PC","startedAt":"2026-10-12T20:00:00Z","durationMs":9000},
+const scanJSON = `{"schema":1,"agent":{"name":"STARNET Polaris","version":"t","platform":"windows","host":"PC","startedAt":"2026-10-12T20:00:00Z","durationMs":9000},
 "adapters":[{"name":"Wi-Fi","kind":"wifi","up":true,"ipv4":["192.168.1.34/24"],"ipv6":[],"gateways":["192.168.1.1"],"dns":["192.168.1.1"]}],
 "wifi":{"source":"wlanapi","connected":{"ssid":"Casa","bssid":"aa:bb:cc:00:00:01","signalQuality":40,"rxMbps":72,"txMbps":65,"phy":"802.11n"},
  "networks":[{"ssid":"Casa","bssid":"aa:bb:cc:00:00:01","rssiDbm":-78,"freqMhz":2437,"channel":6,"band":"2.4","widthMhz":20,"phy":"802.11n","connected":true,
@@ -35,7 +35,7 @@ func TestReportInGoja(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"LANterna - rapporto", "Punteggio complessivo", "[CRIT] Potenza del segnale: -78 dBm", "Latenza verso il router: 12 ms", "(jitter): 8,0 ms", "PIANO D'AZIONE", "UPnP: nessuna risposta"} {
+	for _, want := range []string{"STARNET Polaris - rapporto", "Punteggio complessivo", "[CRIT] Potenza del segnale: -78 dBm", "Latenza verso il router: 12 ms", "(jitter): 8,0 ms", "PIANO D'AZIONE", "UPnP: nessuna risposta"} {
 		if !strings.Contains(txt, want) {
 			t.Errorf("manca %q nel rapporto:\n%s", want, txt)
 		}
@@ -72,6 +72,6 @@ func TestBadScript(t *testing.T) {
 		t.Fatal("script non valido accettato")
 	}
 	if _, err := Load([]byte("var y = 1;")); err == nil {
-		t.Fatal("script senza LanternaEngine accettato")
+		t.Fatal("script senza PolarisEngine accettato")
 	}
 }

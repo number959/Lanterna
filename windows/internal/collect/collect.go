@@ -169,7 +169,7 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 	host, _ := os.Hostname()
 	s := &scan.Scan{
 		Schema:   scan.SchemaVersion,
-		Agent:    scan.AgentInfo{Name: "LANterna", Version: c.Version, Platform: "windows", Host: host, OS: c.Platform.OS(), StartedAt: start.UTC().Format(time.RFC3339)},
+		Agent:    scan.AgentInfo{Name: "STARNET Polaris", Version: c.Version, Platform: "windows", Host: host, OS: c.Platform.OS(), StartedAt: start.UTC().Format(time.RFC3339)},
 		Adapters: []scan.Adapter{},
 	}
 	el := c.Platform.Elevated()
