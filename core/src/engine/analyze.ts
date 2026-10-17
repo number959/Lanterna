@@ -1,19 +1,38 @@
 import { ACTIONS } from './kb/actions';
+import { scoreAssessment } from './kb/assessment';
 import type {
   Adapter,
   Analysis,
+  Band,
   Bss,
   Category,
   CategoryScore,
   Finding,
   PingStats,
   PlanItem,
+  ReachResult,
+  ReachStatus,
+  Roaming,
   Scan,
+  SecurityProtocol,
   Severity,
+  WifiSecurity,
 } from './types';
-import { adviseChannels, cochannel, phyLabel, phyRank, qualityToDbm, STRONG_NEIGHBOUR_DBM } from './wifi';
+import {
+  adviseChannels,
+  apCount,
+  cochannel,
+  overlappingPairs,
+  ownRadios,
+  phyLabel,
+  phyRank,
+  qualityToDbm,
+  secFamily,
+  siblingOf,
+  STRONG_NEIGHBOUR_DBM,
+} from './wifi';
 
-export const ENGINE_VERSION = '1.0.0';
+export const ENGINE_VERSION = '1.1.0';
 
 const SEV_RANK: Record<Severity, number> = { unknown: 0, ok: 1, info: 2, warn: 3, crit: 4 };
 const SEV_POINTS: Record<Severity, number | null> = { ok: 100, info: 95, warn: 55, crit: 10, unknown: null };
@@ -25,8 +44,12 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   dns: 'DNS',
   router: 'Router',
   security: 'Sicurezza',
+  infra: 'Infrastruttura',
 };
 
+// L'infrastruttura conta solo quando l'utente ha eseguito inventario,
+// verifiche o autovalutazione: senza dati la categoria non ha punteggio ed
+// è esclusa dalla media.
 const CATEGORY_WEIGHT: Record<Category, number> = {
   wifi: 0.25,
   lan: 0.2,
@@ -34,6 +57,7 @@ const CATEGORY_WEIGHT: Record<Category, number> = {
   dns: 0.1,
   router: 0.1,
   security: 0.1,
+  infra: 0.15,
 };
 
 export function worse(a: Severity, b: Severity): Severity {
@@ -47,9 +71,66 @@ const ms = (n: number) => (n < 1 ? '<1 ms' : `${fmt(n, n < 10 ? 1 : 0)} ms`);
 const lostText = (lost: number, sent: number) =>
   lost === 1 ? `si è perso 1 pacchetto su ${sent}` : `si sono persi ${lost} pacchetti su ${sent}`;
 const pct = (n: number) => `${fmt(n, n > 0 && n < 10 ? 1 : 0)} %`;
+const thousands = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const unique = <T>(xs: T[]) => xs.filter((x, i) => xs.indexOf(x) === i);
+/** Coda per gli elenchi troncati: " (e altri 3)". */
+const more = (total: number, shown: number) => (total > shown ? ` (e altri ${total - shown})` : '');
+/** Numero seguito dal verbo concordato: "1 risponde", "3 rispondono". */
+const num = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const bandLabel = (b: Band) => `${b.replace('.', ',')} GHz`;
 
 function isApipa(cidr: string) {
   return cidr.startsWith('169.254.');
+}
+
+function isPrivate4(ip: string) {
+  const p = ip.split('.').map(Number);
+  return p.length === 4 && (p[0] === 10 || (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 192 && p[1] === 168));
+}
+
+const PROTO_LABEL: Record<SecurityProtocol, string> = {
+  open: 'Aperta (nessuna cifratura)',
+  owe: 'Enhanced Open (OWE)',
+  wep: 'WEP',
+  wpa: 'WPA (TKIP)',
+  wpa2: 'WPA2',
+  'wpa2/wpa3': 'WPA2/WPA3 mista',
+  wpa3: 'WPA3',
+  unknown: 'non riconosciuta',
+};
+
+/** Nome della protezione, distinguendo le reti con 802.1X ("Enterprise"). */
+function secLabel(s: WifiSecurity): string {
+  if (secFamily(s) === 'enterprise') {
+    if (s.protocol === 'wpa2/wpa3') return 'WPA2/WPA3-Enterprise';
+    if (s.protocol === 'wpa2' || s.protocol === 'wpa3') return `${PROTO_LABEL[s.protocol]}-Enterprise`;
+  }
+  return PROTO_LABEL[s.protocol];
+}
+
+// Suffissi DNS assegnati dai router domestici e dagli operatori: non indicano
+// una rete aziendale.
+const HOME_SUFFIX = /(^|\.)(home|lan|localdomain|station|router|gateway|box|home\.arpa|homenet\.telecomitalia\.it|fastwebnet\.it)$/i;
+
+export interface CorporateDomain {
+  name: string;
+  /** true = il PC fa parte del dominio; false = dedotto da suffisso e DNS interni. */
+  joined: boolean;
+}
+
+/**
+ * Rete aziendale con dominio: il PC ne fa parte (Active Directory) oppure la
+ * connessione riceve un suffisso DNS non domestico e usa solo DNS interni
+ * diversi dal router. In questi casi i DNS si gestiscono sui server.
+ */
+export function corporateDomain(scan: Scan, primary?: Adapter): CorporateDomain | undefined {
+  if (scan.agent.domain) return { name: scan.agent.domain, joined: true };
+  const sfx = (primary?.dnsSuffix ?? '').trim().replace(/\.$/, '');
+  if (!sfx || sfx.toLowerCase() === 'local' || HOME_SUFFIX.test(sfx)) return undefined;
+  const gw = scan.gateway?.ip ?? primary?.gateways[0];
+  const dns = primary?.dns ?? [];
+  if (!dns.length || dns.some((d) => d === gw) || !dns.some(isPrivate4)) return undefined;
+  return { name: sfx, joined: false };
 }
 
 function lossPct(p: PingStats) {
@@ -107,6 +188,10 @@ function analyzeWifi(scan: Scan, c: Collector, primary?: Adapter) {
   const band = me?.band ?? conn.band;
   const rssi = me?.rssiDbm ?? conn.rssiDbm ?? (conn.signalQuality !== undefined ? qualityToDbm(conn.signalQuality) : undefined);
   const weakSignal = rssi !== undefined && rssi < -67;
+  // Con più AP della stessa rete un segnale debole può dipendere dall'AP scelto, non dalla copertura.
+  const peer = me ? strongestPeer(me, wifi.networks) : undefined;
+  const betterAp = peer && rssi !== undefined && weakSignal && peer.rssiDbm - rssi >= 10 ? peer : undefined;
+  const ownOnBand = me ? ownRadios(wifi.networks, me.ssid).filter((b) => b.band === me.band && compatible(b, me)).length : 0;
 
   if (rssi !== undefined) {
     const sev: Severity = rssi >= -67 ? 'ok' : rssi >= -75 ? 'warn' : 'crit';
@@ -129,8 +214,16 @@ function analyzeWifi(scan: Scan, c: Collector, primary?: Adapter) {
       severity: sev,
       verdict:
         verdicts[sev] +
+        (betterAp ? ` Un altro access point della stessa rete si riceve a ${betterAp.rssiDbm} dBm: il problema è l'AP scelto dal PC, non la copertura.` : '') +
         (derived ? ` Valore stimato dalla qualità ${conn.signalQuality} % riportata da Windows.` : ''),
-      actions: sev === 'ok' ? [] : sev === 'warn' ? ['move-closer', 'add-mesh'] : ['move-closer', 'add-mesh', 'use-ethernet'],
+      actions:
+        sev === 'ok'
+          ? []
+          : betterAp
+            ? ['fix-roaming', 'use-ethernet']
+            : sev === 'warn'
+              ? ['move-closer', 'add-mesh']
+              : ['move-closer', 'add-mesh', 'use-ethernet'],
     });
   }
 
@@ -156,7 +249,7 @@ function analyzeWifi(scan: Scan, c: Collector, primary?: Adapter) {
       verdict:
         `In pratica puoi aspettarti circa ${real} Mbit/s reali via Wi-Fi. ` +
         (sev === 'ok'
-          ? 'Adeguato per la maggior parte delle connessioni domestiche.'
+          ? 'Adeguato alla maggior parte delle connessioni Internet.'
           : sev === 'warn'
             ? 'Se la tua linea è più veloce di così, il Wi-Fi è il collo di bottiglia.'
             : 'Valore molto basso: la connessione radio sta lavorando al minimo.'),
@@ -232,6 +325,8 @@ function analyzeWifi(scan: Scan, c: Collector, primary?: Adapter) {
       actions = ['width-24-20'];
     } else if (band === '2.4') {
       verdict = '20 MHz è la scelta corretta sul 2,4 GHz.';
+    } else if (width < 80 && ownOnBand > 1) {
+      verdict = `Con più access point della stessa rete, canali da ${width} MHz lasciano abbastanza canali per separarli: è la scelta consigliata nelle reti con molti AP.`;
     } else if (width < 80) {
       sev = 'info';
       verdict = `A ${width} MHz la velocità massima è ridotta rispetto agli 80 MHz standard; ha senso solo in ambienti molto affollati.`;
@@ -242,7 +337,12 @@ function analyzeWifi(scan: Scan, c: Collector, primary?: Adapter) {
   }
 
   if (me) {
-    const co = cochannel(me, wifi.networks);
+    // Le altre reti delle stesse radio (ospiti, dispositivi) non sono vicini da evitare.
+    const sibling = siblingOf(wifi.networks, me.ssid);
+    const co = cochannel(
+      me,
+      wifi.networks.filter((b) => !sibling(b)),
+    );
     const n = co.strong.length;
     const sev: Severity = n === 0 ? 'ok' : n <= 3 ? 'warn' : 'crit';
     const chAction = me.band === '2.4' ? 'change-channel-24' : 'change-channel-5';
@@ -263,7 +363,7 @@ function analyzeWifi(scan: Scan, c: Collector, primary?: Adapter) {
           ? co.all.length
             ? `Ci sono ${co.all.length} reti deboli (sotto ${STRONG_NEIGHBOUR_DBM} dBm) sul tuo spettro: disturbo trascurabile.`
             : 'Nessun\'altra rete trasmette sul tuo canale.'
-          : `${n} ${n === 1 ? 'rete forte trasmette' : 'reti forti trasmettono'} sul tuo stesso spettro: ${names}${n > 3 ? '…' : ''}. Il tempo di trasmissione viene diviso con loro.`,
+          : `${n} ${n === 1 ? 'rete forte trasmette' : 'reti forti trasmettono'} sul tuo stesso spettro: ${names}${more(n, 3)}. Il tempo di trasmissione viene diviso con loro.`,
       actions: sev === 'ok' ? [] : me.band === '2.4' ? [chAction, 'use-5ghz'] : [chAction],
     });
 
@@ -293,8 +393,8 @@ function analyzeWifi(scan: Scan, c: Collector, primary?: Adapter) {
         severity: sev,
         verdict:
           sev === 'ok'
-            ? `Il router segnala il canale libero per la maggior parte del tempo, con ${me.bssLoad.stations} dispositivi collegati.`
-            : `Il router segnala il canale occupato il ${pct(u)} del tempo: ${sev === 'crit' ? 'è saturo' : 'è impegnato'}. Restano poche finestre per trasmettere.`,
+            ? `L'access point segnala il canale libero per la maggior parte del tempo, con ${me.bssLoad.stations} dispositivi collegati.`
+            : `L'access point segnala il canale occupato il ${pct(u)} del tempo: ${sev === 'crit' ? 'è saturo' : 'è impegnato'}. Restano poche finestre per trasmettere.`,
         actions: sev === 'ok' ? [] : [me.band === '2.4' ? 'change-channel-24' : 'change-channel-5', 'reduce-load', ...(me.band === '2.4' ? ['use-5ghz'] : [])],
       });
     }
@@ -305,36 +405,32 @@ function analyzeWifi(scan: Scan, c: Collector, primary?: Adapter) {
   if (sec) {
     const p = sec.protocol;
     const tkip = sec.pairwise.includes('TKIP');
+    const enterprise = secFamily(sec) === 'enterprise';
+    const label = secLabel(sec);
     let sev: Severity;
     let verdict: string;
-    const label: Record<string, string> = {
-      open: 'Aperta (nessuna cifratura)',
-      owe: 'Enhanced Open (OWE)',
-      wep: 'WEP',
-      wpa: 'WPA (TKIP)',
-      wpa2: 'WPA2',
-      'wpa2/wpa3': 'WPA2/WPA3 mista',
-      wpa3: 'WPA3',
-      unknown: 'non riconosciuta',
-    };
     if (p === 'open' || p === 'wep' || p === 'wpa') {
       sev = 'crit';
       verdict =
         p === 'open'
           ? 'La rete non è cifrata: chiunque nel raggio può collegarsi e leggere il traffico non protetto da HTTPS.'
-          : `${label[p]} è violabile in pochi minuti con strumenti liberamente disponibili.`;
+          : `${label} è violabile in pochi minuti con strumenti liberamente disponibili.`;
     } else if (p === 'owe') {
       sev = 'info';
       verdict = 'Il traffico è cifrato ma chiunque può collegarsi: adatto a reti ospiti, non alla rete principale.';
     } else if (tkip) {
       sev = 'warn';
-      verdict = `${label[p]} con TKIP: protocollo deprecato, meno sicuro e che limita la velocità a 54 Mbit/s.`;
+      verdict = `${label} con TKIP: protocollo deprecato, meno sicuro e che limita la velocità a 54 Mbit/s.`;
     } else if (p === 'unknown') {
       sev = 'unknown';
       verdict = 'Non è stato possibile determinare il tipo di protezione.';
     } else {
       sev = 'ok';
-      verdict = p === 'wpa2' ? 'WPA2 con AES: sicuro, a patto di usare una password lunga e non banale.' : `${label[p]}: protezione moderna.`;
+      verdict = enterprise
+        ? `${label} (802.1X): ogni utente o dispositivo si autentica con credenziali o certificati propri tramite un server RADIUS, senza una password condivisa. I dispositivi devono verificare il certificato del server.`
+        : p === 'wpa2'
+          ? 'WPA2 con AES: sicuro, a patto di usare una password lunga e non banale.'
+          : `${label}: protezione moderna.`;
     }
     const akm = sec.akm.length ? ` · ${sec.akm.join('/')}` : '';
     const cipher = sec.pairwise.length ? ` · ${sec.pairwise.join('+')}` : '';
@@ -343,7 +439,7 @@ function analyzeWifi(scan: Scan, c: Collector, primary?: Adapter) {
       metric: 'wifi.security',
       category: 'security',
       title: 'Protezione della rete Wi-Fi',
-      value: `${label[p]}${akm}${cipher}`,
+      value: `${label}${akm}${cipher}`,
       severity: sev,
       verdict,
       actions: sev === 'crit' || sev === 'warn' ? ['upgrade-security'] : [],
@@ -379,7 +475,175 @@ function analyzeWifi(scan: Scan, c: Collector, primary?: Adapter) {
     }
   }
 
+  if (me) analyzeOwnNetwork(c, me, wifi.networks);
   networksFinding(c, wifi.networks);
+}
+
+// ---------------------------------------------------------------- Rete con più access point
+
+/** Sotto questa soglia una radio non sente più le trasmissioni altrui e non rimanda le proprie. */
+const OWN_OVERLAP_DBM = -80;
+const ROAM_NAMES: [keyof Pick<Roaming, 'k' | 'v' | 'r'>, string][] = [
+  ['k', '802.11k'],
+  ['v', '802.11v'],
+  ['r', '802.11r'],
+];
+
+/** Stessa famiglia di protezione (o sconosciuta): le radio che fanno davvero parte della rete. */
+function compatible(a: Bss, b: Bss): boolean {
+  const x = secFamily(a.security);
+  const y = secFamily(b.security);
+  return x === y || x === 'unknown' || y === 'unknown';
+}
+
+/** La radio della stessa rete, nella stessa banda, che si riceve meglio di quella collegata. */
+function strongestPeer(me: Bss, networks: Bss[]): Bss | undefined {
+  const peers = ownRadios(networks, me.ssid).filter((b) => b !== me && b.band === me.band && compatible(b, me));
+  return peers.length ? peers.reduce((a, b) => (b.rssiDbm > a.rssiDbm ? b : a)) : undefined;
+}
+
+function analyzeOwnNetwork(c: Collector, me: Bss, networks: Bss[]) {
+  const radios = ownRadios(networks, me.ssid);
+  if (radios.length < 2) return;
+  // Le radio con una protezione diversa non sono AP della rete: le valuta il controllo di sicurezza.
+  const own = radios.filter((b) => compatible(b, me));
+  const aps = apCount(own);
+  const fam = secFamily(me.security);
+  const bands = (['2.4', '5', '6'] as Band[]).filter((b) => own.some((r) => r.band === b));
+  const where = (b: Bss) => `${b.bssid} (${bandLabel(b.band)}, canale ${b.channel}, ${b.rssiDbm} dBm)`;
+
+  if (aps >= 2) {
+    const perBand = bands.map((b) => {
+      const rs = own.filter((r) => r.band === b);
+      const chs = unique(rs.map((r) => r.channel)).sort((x, y) => x - y);
+      return `${bandLabel(b)}: ${rs.length} radio su ${chs.length === 1 ? 'canale' : 'canali'} ${chs.join(', ')}`;
+    });
+    c.add({
+      id: 'wifi.aps',
+      metric: 'wifi.aps',
+      category: 'wifi',
+      title: 'Access point della tua rete',
+      value: `${aps} AP · ${own.length} radio`,
+      numeric: aps,
+      severity: 'info',
+      verdict: `La rete "${me.ssid}" è annunciata da almeno ${aps} access point ricevuti da qui. ${perBand.join('; ')}. Sei collegato a ${where(me)}.`,
+    });
+  }
+
+  // AP della stessa rete che si contendono lo stesso spettro in questo punto.
+  if (bands.some((b) => own.filter((r) => r.band === b).length > 1)) {
+    const pairs = overlappingPairs(own).filter(([a, b]) => a.rssiDbm >= OWN_OVERLAP_DBM && b.rssiDbm >= OWN_OVERLAP_DBM);
+    const mine = pairs.some(([a, b]) => a === me || b === me);
+    const list =
+      pairs
+        .slice(0, 3)
+        .map(([a, b]) => `${bandLabel(a.band)} canale ${a.channel === b.channel ? a.channel : `${a.channel}/${b.channel}`}: ${a.bssid} a ${a.rssiDbm} dBm e ${b.bssid} a ${b.rssiDbm} dBm`)
+        .join('; ') + more(pairs.length, 3);
+    c.add({
+      id: 'wifi.owncochannel',
+      metric: 'wifi.owncochannel',
+      category: 'wifi',
+      title: 'AP della tua rete sullo stesso canale',
+      value: pairs.length ? `${pairs.length} ${pairs.length === 1 ? 'coppia' : 'coppie'}` : 'nessuno',
+      numeric: pairs.length,
+      severity: pairs.length ? 'warn' : 'ok',
+      verdict: pairs.length
+        ? `${list}. Dove si ricevono entrambi, questi AP si dividono il tempo di trasmissione come se fossero uno solo${mine ? ', compreso quello a cui sei collegato' : ''}. Nei sistemi mesh collegati via radio è inevitabile; altrimenti conviene assegnare canali diversi.`
+        : 'Gli AP della tua rete ricevuti da qui usano canali diversi: non si contendono lo spettro.',
+      actions: pairs.length ? ['plan-ap-channels'] : [],
+    });
+  }
+
+  // Sticky client: agganciato a un AP debole mentre uno della stessa rete, nella stessa banda, si sente molto meglio.
+  const best = strongestPeer(me, networks);
+  if (best) {
+    const gain = best.rssiDbm - me.rssiDbm;
+    const sticky = me.rssiDbm < -67 && gain >= 10;
+    c.add({
+      id: 'wifi.sticky',
+      metric: 'wifi.sticky',
+      category: 'wifi',
+      title: sticky ? 'Collegato a un AP lontano' : 'Scelta dell\'access point',
+      value: sticky ? `${gain} dB in più disponibili` : gain > 0 ? `il migliore è ${gain} dB più forte` : 'AP migliore',
+      numeric: Math.max(0, gain),
+      severity: sticky ? 'warn' : 'ok',
+      verdict: sticky
+        ? `Il PC è collegato a ${where(me)}, mentre ${where(best)} della stessa rete si riceve molto meglio. È lo "sticky client": il dispositivo resta sull'AP lontano, va più lento e rallenta anche gli altri utenti di quell'AP.`
+        : gain > 0
+          ? `Un altro AP della rete si riceve ${gain} dB meglio, ma il segnale attuale (${me.rssiDbm} dBm) è adeguato: restare collegati è corretto.`
+          : 'Il PC è collegato all\'AP della rete che si riceve meglio in questa banda.',
+      actions: sticky ? ['fix-roaming', 'update-wifi-driver'] : [],
+    });
+  }
+
+  // Roaming assistito: conta solo dove ci sono più AP tra cui passare.
+  const r = me.roaming;
+  if (aps >= 2 && r) {
+    const missing = ROAM_NAMES.filter(([k]) => !r[k]).map(([, n]) => n);
+    const present = ROAM_NAMES.filter(([k]) => r[k]).map(([, n]) => n);
+    const withData = own.filter((b) => b.roaming);
+    const uneven = withData.some((b) => ROAM_NAMES.some(([k]) => b.roaming![k] !== r[k]));
+    const mdids = unique(withData.filter((b) => b.roaming!.r && b.roaming!.mdid).map((b) => b.roaming!.mdid as string));
+    const why: string[] = [];
+    if (!r.k) why.push('senza 802.11k il dispositivo deve cercare da solo gli AP vicini');
+    if (!r.v) why.push('senza 802.11v la rete non può indirizzarlo verso l\'AP migliore');
+    if (!r.r)
+      why.push(
+        fam === 'enterprise'
+          ? 'senza 802.11r ogni passaggio ripete l\'autenticazione 802.1X con il server RADIUS, che può interrompere chiamate e applicazioni in tempo reale'
+          : 'senza 802.11r ogni passaggio ripete lo scambio delle chiavi, con qualche decina di millisecondi di interruzione',
+      );
+    let verdict = missing.length
+      ? `L'AP a cui sei collegato ${present.length ? `annuncia ${present.join(' e ')} ma non ` : 'non annuncia '}${missing.join(', ')}: ${why.join('; ')}.`
+      : 'L\'AP a cui sei collegato annuncia 802.11k, 802.11v e 802.11r: i dispositivi compatibili ricevono l\'elenco degli AP vicini, vengono indirizzati verso il migliore e passano dall\'uno all\'altro rapidamente.';
+    if (uneven) verdict += ' Non tutti gli AP della rete annunciano le stesse funzioni: tra AP configurati diversamente il roaming non le sfrutta.';
+    if (mdids.length > 1) verdict += ` Gli AP con 802.11r usano Mobility Domain diversi (${mdids.join(', ')}): la transizione veloce funziona solo tra AP dello stesso dominio.`;
+    const sev: Severity = missing.length || uneven || mdids.length > 1 ? 'info' : 'ok';
+    c.add({
+      id: 'wifi.roaming',
+      metric: 'wifi.roaming',
+      category: 'wifi',
+      title: 'Roaming assistito',
+      value: ROAM_NAMES.map(([k]) => `${k} ${r[k] ? 'sì' : 'no'}`).join(' · '),
+      severity: sev,
+      verdict,
+      actions: sev === 'ok' ? [] : ['fix-roaming'],
+    });
+  }
+
+  // Stessa rete annunciata con protezioni diverse: AP configurato male o AP gemello.
+  const known = radios.filter((b) => secFamily(b.security) !== 'unknown');
+  if (known.length >= 2 && fam !== 'unknown' && me.security) {
+    const mySec = me.security;
+    const weak = (f: string) => f === 'open' || f === 'legacy';
+    const oddFam = known.filter((b) => secFamily(b.security) !== fam);
+    const oddProto = known.filter((b) => secFamily(b.security) === fam && b.security!.protocol !== mySec.protocol);
+    let sev: Severity = 'ok';
+    let verdict = `Tutte le ${known.length} radio che annunciano "${me.ssid}" usano la stessa protezione (${secLabel(mySec)}).`;
+    if (oddFam.length) {
+      sev = !weak(fam) && oddFam.some((b) => weak(secFamily(b.security))) ? 'crit' : 'warn';
+      verdict = `La rete "${me.ssid}" è annunciata anche da ${oddFam
+        .slice(0, 3)
+        .map((b) => `${where(b)} con protezione ${secLabel(b.security!)}`)
+        .join('; ')}${more(oddFam.length, 3)}, diversa da quella dell'AP a cui sei collegato (${secLabel(mySec)}). Può essere un access point configurato male o un AP gemello che imita la rete per intercettare chi si collega.`;
+    } else if (oddProto.length) {
+      sev = 'info';
+      verdict = `Gli AP della rete usano varianti diverse della stessa protezione (${unique(known.map((b) => secLabel(b.security!))).join(', ')}): passando da un AP all'altro i dispositivi possono dover ripetere l'autenticazione. Conviene uniformare la configurazione.`;
+    }
+    if (sev !== 'ok' || aps >= 2) {
+      c.add({
+        id: 'wifi.mixedsec',
+        metric: 'wifi.mixedsec',
+        category: 'security',
+        title: 'Protezione degli AP della rete',
+        value: oddFam.length ? `${oddFam.length} ${oddFam.length === 1 ? 'radio diversa' : 'radio diverse'}` : oddProto.length ? 'varianti diverse' : 'coerente',
+        numeric: oddFam.length,
+        severity: sev,
+        verdict,
+        actions: sev === 'crit' || sev === 'warn' ? ['check-rogue-ap'] : [],
+      });
+    }
+  }
 }
 
 function networksFinding(c: Collector, nets: Bss[]) {
@@ -404,7 +668,7 @@ function networksFinding(c: Collector, nets: Bss[]) {
 
 // ---------------------------------------------------------------- LAN
 
-function analyzeLan(scan: Scan, c: Collector, primary?: Adapter) {
+function analyzeLan(scan: Scan, c: Collector, primary?: Adapter, corp?: CorporateDomain) {
   if (!primary) {
     c.add({
       id: 'lan.address',
@@ -420,6 +684,14 @@ function analyzeLan(scan: Scan, c: Collector, primary?: Adapter) {
   }
   const v4 = primary.ipv4.filter((a) => !a.startsWith('127.'));
   const apipa = v4.length > 0 && v4.every(isApipa);
+  const withGw = scan.adapters.filter((a) => a.up && a.gateways.length > 0);
+  const gwIp = scan.gateway?.ip ?? primary.gateways[0];
+  const assigned =
+    primary.dhcp === false
+      ? 'statico'
+      : primary.dhcpServer && primary.dhcpServer !== gwIp
+        ? `assegnato dal server DHCP ${primary.dhcpServer}`
+        : 'assegnato dal router';
   c.add({
     id: 'lan.address',
     metric: 'lan.address',
@@ -431,12 +703,26 @@ function analyzeLan(scan: Scan, c: Collector, primary?: Adapter) {
       ? 'Indirizzo automatico 169.254.x.x: il router non ha assegnato un indirizzo, quindi il PC non può navigare.'
       : v4.length === 0
         ? 'Nessun indirizzo IPv4 assegnato.'
-        : `Indirizzo ${primary.dhcp === false ? 'statico' : 'assegnato dal router'} sulla scheda "${primary.name}"${primary.kind === 'wifi' ? ' (Wi-Fi)' : primary.kind === 'ethernet' ? ' (cavo)' : ''}.`,
+        : `Indirizzo ${assigned} sulla scheda "${primary.name}"${primary.kind === 'wifi' ? ' (Wi-Fi)' : primary.kind === 'ethernet' ? ' (cavo)' : ''}.`,
     actions: apipa || v4.length === 0 ? ['check-dhcp', 'restart-network'] : [],
   });
 
-  const withGw = scan.adapters.filter((a) => a.up && a.gateways.length > 0);
-  const gwIp = scan.gateway?.ip ?? primary.gateways[0];
+  // Sottoreti molto ampie: spesso il segno di una rete piatta, senza zone.
+  const prefix = v4.length && !apipa ? Number(v4[0].split('/')[1]) : NaN;
+  if (prefix >= 8 && prefix <= 20) {
+    const size = Math.pow(2, 32 - prefix) - 2;
+    c.add({
+      id: 'lan.subnet',
+      metric: 'lan.subnet',
+      category: 'lan',
+      title: 'Ampiezza della sottorete',
+      value: `/${prefix} · ${thousands(size)} indirizzi`,
+      numeric: prefix,
+      severity: 'info',
+      verdict: `La sottorete del PC può contenere fino a ${thousands(size)} dispositivi nello stesso dominio di broadcast: è probabilmente una rete piatta. Con molti dispositivi conviene dividerla in zone (VLAN) per funzione, così guasti e infezioni restano circoscritti.`,
+      actions: ['segment-network'],
+    });
+  }
   if (!gwIp) {
     c.add({
       id: 'lan.gateway',
@@ -573,7 +859,9 @@ function analyzeLan(scan: Scan, c: Collector, primary?: Adapter) {
     severity: global6.length ? 'ok' : 'info',
     verdict: global6.length
       ? `Indirizzo globale ${global6[0].split('/')[0]}: la rete supporta IPv6.`
-      : 'Nessun indirizzo IPv6 globale: Internet funziona su IPv4. Non è un problema, ma se l\'operatore lo offre puoi attivarlo nel router.',
+      : corp
+        ? 'Nessun indirizzo IPv6 globale: la rete funziona su IPv4. Nelle reti aziendali l\'adozione di IPv6 è una scelta di progetto, non un problema.'
+        : 'Nessun indirizzo IPv6 globale: Internet funziona su IPv4. Non è un problema, ma se l\'operatore lo offre puoi attivarlo nel router.',
   });
 
   if (scan.lan) {
@@ -592,11 +880,69 @@ function analyzeLan(scan: Scan, c: Collector, primary?: Adapter) {
       actions: n > 15 ? ['separate-iot'] : [],
     });
   }
+
+  if (corp) {
+    const sfx = primary.dnsSuffix;
+    const dns = primary.dns.join(', ');
+    c.add({
+      id: 'lan.domain',
+      metric: 'lan.domain',
+      category: 'lan',
+      title: 'Rete aziendale con dominio',
+      value: corp.name,
+      severity: 'info',
+      verdict:
+        (corp.joined ? `Il PC fa parte del dominio ${corp.name}` : `La connessione riceve il suffisso DNS ${corp.name} e usa solo DNS interni`) +
+        (corp.joined && sfx && sfx.toLowerCase() !== corp.name.toLowerCase() ? ` (suffisso della connessione: ${sfx})` : '') +
+        `. Nomi, accessi e criteri dipendono dai server della rete${dns ? `, in particolare dai DNS ${dns}` : ''}: Polaris non suggerisce di sostituirli con DNS pubblici, che non conoscono i nomi interni.`,
+    });
+  }
+
+  const shared = sharedMacs(scan);
+  if (shared.length) {
+    const gw = scan.gateway?.ip;
+    const gwDup = gw ? shared.find((d) => d.ips.indexOf(gw) >= 0) : undefined;
+    const list = shared
+      .slice(0, 3)
+      .map((d) => `${d.mac} → ${d.ips.join(', ')}`)
+      .join('; ');
+    c.add({
+      id: 'lan.dupmac',
+      metric: 'lan.dupmac',
+      category: gwDup ? 'security' : 'lan',
+      title: 'Stesso MAC per più indirizzi',
+      value: `${shared.length} MAC · ${shared.reduce((s, d) => s + d.ips.length, 0)} indirizzi`,
+      numeric: shared.length,
+      severity: gwDup ? 'warn' : 'info',
+      verdict: gwDup
+        ? `Il MAC del router (${gwDup.mac}) risponde anche per ${gwDup.ips.filter((ip) => ip !== gw).join(', ')}. Può essere un apparato con più indirizzi o un ripetitore, ma anche un dispositivo che si spaccia per il router per intercettare il traffico (ARP spoofing): va verificato.`
+        : `${list}${more(shared.length, 3)}. Di solito è un ripetitore Wi-Fi che traduce gli indirizzi dei dispositivi collegati, un server con più indirizzi o un host di macchine virtuali; se non riconosci il dispositivo, verificalo.`,
+      actions: ['check-arp'],
+    });
+  }
+}
+
+/** MAC che compaiono per più indirizzi IPv4 (tabella ARP, inventario e gateway). */
+function sharedMacs(scan: Scan): { mac: string; ips: string[] }[] {
+  const by: Record<string, string[]> = {};
+  const add = (ip?: string, mac?: string) => {
+    if (!ip || !mac) return;
+    const m = mac.toLowerCase().replace(/-/g, ':');
+    if (m === 'ff:ff:ff:ff:ff:ff' || m === '00:00:00:00:00:00' || m.indexOf('01:00:5e') === 0 || m.indexOf('33:33') === 0) return;
+    const ips = by[m] || (by[m] = []);
+    if (ips.indexOf(ip) < 0) ips.push(ip);
+  };
+  for (const n of scan.lan?.neighbors ?? []) add(n.ip, n.mac);
+  for (const h of scan.infra?.inventory?.hosts ?? []) add(h.ip, h.mac);
+  if (scan.gateway) add(scan.gateway.ip, scan.gateway.mac);
+  return Object.keys(by)
+    .filter((m) => by[m].length > 1)
+    .map((m) => ({ mac: m, ips: by[m] }));
 }
 
 // ---------------------------------------------------------------- Internet
 
-function analyzeInternet(scan: Scan, c: Collector, primary?: Adapter) {
+function analyzeInternet(scan: Scan, c: Collector, primary?: Adapter, corp?: CorporateDomain) {
   const net = scan.internet;
   if (!net) return;
   const gwAvg = scan.gateway?.ping?.received ? scan.gateway.ping.avgMs : undefined;
@@ -776,7 +1122,7 @@ function analyzeInternet(scan: Scan, c: Collector, primary?: Adapter) {
         : sev === 'ok'
           ? 'Una richiesta HTTPS completa (DNS, connessione, cifratura, risposta) va a buon fine rapidamente.'
           : 'La navigazione funziona ma è lenta a rispondere.',
-      actions: !ok.length ? ['restart-network', 'contact-isp'] : sev === 'warn' ? ['change-dns', 'reduce-load'] : [],
+      actions: !ok.length ? ['restart-network', 'contact-isp'] : sev === 'warn' ? [corp ? 'internal-dns' : 'change-dns', 'reduce-load'] : [],
     });
   }
   void primary;
@@ -784,9 +1130,11 @@ function analyzeInternet(scan: Scan, c: Collector, primary?: Adapter) {
 
 // ---------------------------------------------------------------- DNS
 
-function analyzeDns(scan: Scan, c: Collector) {
+function analyzeDns(scan: Scan, c: Collector, corp?: CorporateDomain) {
   const d = scan.dns;
   if (!d || (!d.system.length && !d.public.length)) return;
+  // Con un dominio i DNS si migliorano sui server: cambiarli sul PC rompe i nomi interni.
+  const fixDns = corp ? 'internal-dns' : 'change-dns';
   const sysOk = d.system.filter((s) => s.ok && s.timeMs !== undefined);
   let sysTime: number | undefined;
   if (d.system.length) {
@@ -798,8 +1146,10 @@ function analyzeDns(scan: Scan, c: Collector) {
         title: 'DNS configurato',
         value: 'nessuna risposta',
         severity: 'crit',
-        verdict: `Il server DNS ${d.system.map((s) => s.server).join(', ')} non risponde: i siti non si aprono per nome anche se la connessione funziona.`,
-        actions: ['change-dns', 'restart-network'],
+        verdict:
+          `Il server DNS ${d.system.map((s) => s.server).join(', ')} non risponde: i siti non si aprono per nome anche se la connessione funziona.` +
+          (corp ? ' In una rete con dominio smettono di funzionare anche accessi, cartelle condivise e criteri.' : ''),
+        actions: [fixDns, 'restart-network'],
       });
     } else {
       sysTime = Math.min(...sysOk.map((s) => s.timeMs as number));
@@ -816,9 +1166,9 @@ function analyzeDns(scan: Scan, c: Collector) {
         severity: sev,
         verdict:
           (sev === 'ok' ? 'Risoluzione dei nomi rapida.' : 'Risoluzione dei nomi lenta: ogni nuovo sito parte in ritardo.') +
-          ` Server: ${best.server}${isRouter ? ' (il router, che inoltra all\'operatore)' : ''}.` +
+          ` Server: ${best.server}${isRouter ? ' (il router, che inoltra all\'operatore)' : corp ? ' (DNS interno)' : ''}.` +
           (d.system.length > sysOk.length ? ` ${d.system.length - sysOk.length} server configurati non rispondono.` : ''),
-        actions: sev === 'ok' ? [] : ['change-dns'],
+        actions: sev === 'ok' ? [] : [fixDns],
       });
     }
   }
@@ -827,21 +1177,24 @@ function analyzeDns(scan: Scan, c: Collector) {
     const fastest = pubOk.reduce((a, b) => ((a.timeMs as number) <= (b.timeMs as number) ? a : b));
     const gain = sysTime !== undefined ? sysTime - (fastest.timeMs as number) : undefined;
     const better = gain === undefined || gain > 30;
+    const name = fastest.label ?? fastest.server;
     c.add({
       id: 'dns.compare',
       metric: 'dns.compare',
       category: 'dns',
       title: 'Confronto con DNS pubblici',
-      value: `${fastest.label ?? fastest.server}: ${ms(fastest.timeMs as number)}`,
+      value: `${name}: ${ms(fastest.timeMs as number)}`,
       numeric: fastest.timeMs,
       severity: better ? 'info' : 'ok',
       verdict:
         gain === undefined
-          ? `Il resolver pubblico più veloce da qui è ${fastest.label ?? fastest.server} (${fastest.server}).`
-          : better
-            ? `${fastest.label ?? fastest.server} risponde ${ms(gain)} prima del DNS attuale: cambiarlo renderebbe la navigazione più reattiva.`
-            : 'Il DNS attuale è veloce quanto i migliori resolver pubblici: non serve cambiarlo.',
-      actions: better && gain !== undefined ? ['change-dns'] : [],
+          ? `Il resolver pubblico più veloce da qui è ${name} (${fastest.server}).`
+          : !better
+            ? 'Il DNS attuale è veloce quanto i migliori resolver pubblici: non serve cambiarlo.'
+            : corp
+              ? `${name} risponde ${ms(gain)} prima del DNS interno, ma in una rete con dominio i DNS non si cambiano sul PC: i nomi interni smetterebbero di funzionare. Se il DNS interno è lento va potenziato sul server.`
+              : `${name} risponde ${ms(gain)} prima del DNS attuale: cambiarlo renderebbe la navigazione più reattiva.`,
+      actions: better && gain !== undefined ? [fixDns] : [],
     });
   }
 }
@@ -957,6 +1310,156 @@ function analyzeFirewall(scan: Scan, c: Collector) {
   });
 }
 
+// ---------------------------------------------------------------- Infrastruttura
+
+const REACH_LABEL: Record<ReachStatus, string> = {
+  open: 'porta aperta',
+  closed: 'porta chiusa (rifiuto)',
+  filtered: 'nessuna risposta',
+  reply: 'risponde al ping',
+  noreply: 'non risponde al ping',
+  unresolved: 'nome non risolto',
+  refused: 'non verificata: indirizzo non privato',
+  error: 'errore',
+};
+
+const reachTarget = (r: ReachResult) => {
+  const where = `${r.host}${r.port ? `:${r.port}` : ''}`;
+  if (!r.label) return where;
+  // "Gestione switch (SSH), 10.0.0.2:22" invece di due parentesi di fila.
+  return /\)$/.test(r.label) ? `${r.label}, ${where}` : `${r.label} (${where})`;
+};
+
+/** Oltre questo tempo di apertura della connessione un servizio interno è lento. */
+const SLOW_SERVICE_MS = 100;
+
+function analyzeInfra(scan: Scan, c: Collector) {
+  const inf = scan.infra;
+  if (!inf) return;
+
+  const inv = inf.inventory;
+  if (inv) {
+    const others = inv.hosts.filter((h) => !h.self);
+    const pinged = others.filter((h) => h.rttMs !== undefined).length;
+    const named = others.filter((h) => h.name || h.netbios).length;
+    const unnamed = others.length - named;
+    const random = others.filter((h) => h.randomMac).length;
+    const capacity = inv.scanned + 1; // più il PC stesso
+    // Sottorete esaminata per intero e quasi piena: il DHCP può esaurire gli indirizzi.
+    const full = !inv.note && capacity >= 6 && inv.hosts.length >= 0.85 * capacity;
+    c.add({
+      id: 'infra.inventory',
+      metric: 'infra.inventory',
+      category: 'infra',
+      title: 'Inventario della sottorete',
+      value: `${others.length} ${others.length === 1 ? 'dispositivo' : 'dispositivi'}`,
+      numeric: others.length,
+      severity: full ? 'warn' : 'info',
+      verdict:
+        `Nella sottorete ${inv.subnet} ${others.length === 1 ? 'c\'è 1 dispositivo' : `ci sono ${others.length} dispositivi`} oltre a questo PC: ` +
+        `${num(pinged, 'risponde', 'rispondono')} al ping, ${num(others.length - pinged, 'è stato visto', 'sono stati visti')} solo tramite ARP. ` +
+        `${num(named, 'ha', 'hanno')} un nome (DNS o NetBIOS)${unnamed ? `, ${num(unnamed, 'è senza nome e va identificato', 'sono senza nome e vanno identificati')}` : ''}.` +
+        (random ? ` ${num(random, 'usa', 'usano')} un MAC casuale o virtuale: telefoni e PC con indirizzo privato, macchine virtuali.` : '') +
+        (full ? ` La sottorete è quasi piena (${inv.hosts.length} indirizzi occupati su ${capacity}): il DHCP rischia di esaurire gli indirizzi.` : '') +
+        (inv.note ? ` ${inv.note}` : ''),
+      actions: [...(unnamed ? ['identify-devices'] : []), ...(full ? ['dhcp-capacity'] : [])],
+    });
+  }
+
+  const results = inf.reach?.results ?? [];
+  const untestedText = (n: number) =>
+    n ? ` ${n === 1 ? 'Una destinazione non è stata verificata' : `${n} destinazioni non sono state verificate`} (nome non risolto, indirizzo non privato o errore).` : '';
+
+  const iso = results.filter((r) => r.expect === 'isolated');
+  if (iso.length) {
+    const breach = iso.filter((r) => r.status === 'open' || r.status === 'reply');
+    const reject = iso.filter((r) => r.status === 'closed');
+    const tested = iso.filter((r) => r.status !== 'unresolved' && r.status !== 'refused' && r.status !== 'error');
+    const sev: Severity = breach.length ? 'crit' : reject.length ? 'warn' : tested.length ? 'ok' : 'unknown';
+    let verdict = '';
+    if (breach.length)
+      verdict += `Raggiungibili da questa rete, mentre dovrebbero essere isolate: ${breach
+        .slice(0, 4)
+        .map((r) => `${reachTarget(r)}, ${REACH_LABEL[r.status]}`)
+        .join('; ')}${more(breach.length, 4)}.`;
+    if (reject.length)
+      verdict += `${verdict ? ' ' : ''}Rispondono con un rifiuto, quindi il traffico arriva fino all'host o a un firewall che rifiuta: ${reject
+        .slice(0, 4)
+        .map(reachTarget)
+        .join('; ')}${more(reject.length, 4)}.`;
+    if (sev === 'ok')
+      verdict += `${tested.length === 1 ? 'La destinazione verificata risulta isolata' : `Le ${tested.length} destinazioni verificate risultano isolate`} da questa rete, come previsto. Ripeti il test da ogni zona e dopo ogni modifica alle regole.`;
+    verdict = (verdict + untestedText(iso.length - tested.length)).trim();
+    c.add({
+      id: 'infra.seg',
+      metric: 'infra.seg',
+      category: 'infra',
+      title: 'Test di segmentazione',
+      value: `${iso.filter((r) => r.ok).length}/${iso.length} isolate`,
+      numeric: breach.length,
+      severity: sev,
+      verdict,
+      actions: breach.length || reject.length ? ['segment-network'] : [],
+    });
+  }
+
+  const svc = results.filter((r) => r.expect === 'reachable');
+  if (svc.length) {
+    const down = svc.filter((r) => r.status === 'filtered' || r.status === 'noreply' || r.status === 'closed' || r.status === 'unresolved');
+    const up = svc.filter((r) => r.status === 'open' || r.status === 'reply');
+    const slow = up.filter((r) => (r.rttMs ?? 0) > SLOW_SERVICE_MS);
+    const times = up.filter((r) => r.rttMs !== undefined).map((r) => r.rttMs as number);
+    const worst = times.length ? Math.max(...times) : undefined;
+    const sev: Severity = down.length ? 'crit' : slow.length ? 'warn' : up.length ? 'ok' : 'unknown';
+    let verdict = '';
+    if (down.length)
+      verdict += `Non raggiungibili da questa rete: ${down
+        .slice(0, 4)
+        .map((r) => `${reachTarget(r)}, ${REACH_LABEL[r.status]}`)
+        .join('; ')}${more(down.length, 4)}.`;
+    if (slow.length) verdict += `${verdict ? ' ' : ''}Lenti a rispondere: ${slow.map((r) => `${reachTarget(r)}, ${ms(r.rttMs as number)}`).join('; ')}.`;
+    if (up.length && (down.length || slow.length)) verdict += ` Rispondono regolarmente: ${up.length - slow.length} su ${svc.length}.`;
+    if (sev === 'ok')
+      verdict += `${up.length === 1 ? 'Il servizio verificato risponde' : `Tutti i ${up.length} servizi verificati rispondono`}${worst !== undefined ? ` (connessione più lenta: ${ms(worst)})` : ''}.`;
+    verdict = (verdict + untestedText(svc.length - down.length - up.length)).trim();
+    c.add({
+      id: 'infra.services',
+      metric: 'infra.services',
+      category: 'infra',
+      title: 'Servizi critici',
+      value: `${up.length}/${svc.length} raggiungibili`,
+      numeric: worst,
+      severity: sev,
+      verdict,
+      actions: down.length || slow.length ? ['check-critical-service'] : [],
+    });
+  }
+
+  const asmt = inf.assessment;
+  if (asmt) {
+    for (const s of scoreAssessment(asmt.answers)) {
+      if (s.score === null) continue;
+      const sev: Severity = s.score >= 80 ? 'ok' : s.score >= 50 ? 'warn' : 'crit';
+      c.add({
+        id: `assess.${s.area.id}`,
+        metric: 'infra.assessment',
+        category: 'infra',
+        title: `Autovalutazione · ${s.area.title}`,
+        value: `${s.score}/100`,
+        numeric: s.score,
+        severity: sev,
+        verdict:
+          (s.gaps.length
+            ? `Da completare: ${s.gaps.map((g) => g.q.short + (g.answer === 'partial' ? ' (in parte)' : '')).join('; ')}.`
+            : 'Le misure di quest\'area risultano presenti.') +
+          (s.open ? ` ${s.open === 1 ? 'Una domanda è' : `${s.open} domande sono`} ancora senza risposta.` : '') +
+          ' Valutazione dichiarata, non misurata da Polaris.',
+        actions: unique(s.gaps.map((g) => g.q.action)),
+      });
+    }
+  }
+}
+
 // ---------------------------------------------------------------- Sintesi
 
 function scoreCategories(findings: Finding[]): CategoryScore[] {
@@ -1018,12 +1521,14 @@ function headline(score: number, findings: Finding[], cats: CategoryScore[], fai
 export function analyze(scan: Scan): Analysis {
   const c = new Collector();
   const primary = primaryAdapter(scan);
+  const corp = corporateDomain(scan, primary);
   analyzeWifi(scan, c, primary);
-  analyzeLan(scan, c, primary);
-  analyzeInternet(scan, c, primary);
-  analyzeDns(scan, c);
+  analyzeLan(scan, c, primary, corp);
+  analyzeInternet(scan, c, primary, corp);
+  analyzeDns(scan, c, corp);
   analyzeRouter(scan, c);
   analyzeFirewall(scan, c);
+  analyzeInfra(scan, c);
 
   const findings = c.findings.sort((a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity]);
   const categories = scoreCategories(findings);

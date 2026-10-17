@@ -36,6 +36,17 @@ func runHidden(ctx context.Context, timeout time.Duration, name string, args ...
 // Elevated indica se il programma gira come amministratore.
 func Elevated() bool { return windows.GetCurrentProcessToken().IsElevated() }
 
+// Domain restituisce il dominio DNS del computer (Active Directory); vuoto per
+// i PC in un gruppo di lavoro.
+func Domain() string {
+	n := uint32(256)
+	buf := make([]uint16, n)
+	if err := windows.GetComputerNameEx(windows.ComputerNameDnsDomain, &buf[0], &n); err != nil {
+		return ""
+	}
+	return windows.UTF16ToString(buf[:n])
+}
+
 // OSDescription descrive il sistema, segnalando se si tratta di Wine.
 func OSDescription() string {
 	v := windows.RtlGetVersion()

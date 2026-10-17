@@ -50,7 +50,7 @@ export const servizi: Guide[] = [
     summary: 'Collegare sedi diverse, lavorare da fuori e far entrare i fornitori in assistenza senza aprire la rete a Internet.',
     level: 'intermedio',
     metrics: ['router.port', 'net.mtu'],
-    actions: ['close-router-port', 'fix-mtu'],
+    actions: ['vendor-access', 'close-router-port', 'fix-mtu'],
     tags: ['vpn', 'ipsec', 'ikev2', 'wireguard', 'openvpn', 'ssl vpn', 'mfa', 'autenticazione a più fattori', 'rdp', 'desktop remoto', 'teleassistenza', 'fornitori', 'ztna', 'split tunnel', 'smart working', 'sede remota'],
     blocks: [
       { t: 'p', text: 'Una **VPN** crea un tunnel cifrato attraverso Internet: i pacchetti viaggiano dentro altri pacchetti, protetti da cifratura e autenticazione. Chi si trova dall\'altra parte del tunnel lavora come se fosse collegato alla rete interna, nei limiti delle regole del firewall.' },
@@ -291,14 +291,14 @@ export const servizi: Guide[] = [
     title: 'Dominio, DNS interni e DHCP aziendale',
     summary: 'Active Directory, controller di dominio, DNS interni e DHCP con ridondanza: il cuore delle reti aziendali e l\'errore di DNS più comune.',
     level: 'avanzato',
-    metrics: ['dns.time', 'lan.address'],
-    actions: ['check-dhcp'],
+    metrics: ['lan.domain', 'dns.time', 'lan.address'],
+    actions: ['internal-dns', 'check-dhcp'],
     tags: ['active directory', 'dominio', 'controller di dominio', 'dc', 'kerberos', 'ldap', 'gpo', 'criteri di gruppo', 'dns interno', 'split dns', 'dhcp relay', 'dhcp failover', 'entra id', 'nltest', 'gpresult', 'logonserver'],
     blocks: [
       { t: 'p', text: 'Nelle reti aziendali e sanitarie i PC fanno parte di un **dominio**, quasi sempre Active Directory: un elenco centrale di utenti, computer e permessi gestito da server chiamati **controller di dominio**. Accesso ai PC, cartelle condivise, stampanti, applicazioni cliniche e criteri di sicurezza dipendono da loro.' },
       { t: 'h', text: 'Il DNS è il sistema nervoso del dominio' },
       { t: 'p', text: 'Un PC trova i controller di dominio interrogando il DNS (record di servizio come `_ldap._tcp.dc._msdcs.nomedominio`). Per questo i PC del dominio devono usare **solo i DNS interni**, che a loro volta inoltrano a Internet le richieste per i nomi esterni.' },
-      { t: 'note', kind: 'warn', title: 'L\'errore più comune', text: 'Impostare sui PC del dominio un DNS pubblico (per esempio 8.8.8.8), o il router come DNS secondario, produce guasti intermittenti e difficili da capire: accessi lenti, criteri non applicati, cartelle che non si aprono, profilo di rete che resta "Pubblica". Nelle reti con dominio i DNS si cambiano sui server, non sui PC. Il suggerimento di STARNET Polaris di cambiare DNS vale per le reti domestiche e i piccoli uffici senza dominio; quando rileva un suffisso DNS aziendale lo segnala.' },
+      { t: 'note', kind: 'warn', title: 'L\'errore più comune', text: 'Impostare sui PC del dominio un DNS pubblico (per esempio 8.8.8.8), o il router come DNS secondario, produce guasti intermittenti e difficili da capire: accessi lenti, criteri non applicati, cartelle che non si aprono, profilo di rete che resta "Pubblica". Nelle reti con dominio i DNS si cambiano sui server, non sui PC. Il suggerimento di STARNET Polaris di cambiare DNS vale per le reti domestiche e i piccoli uffici senza dominio: quando rileva che il PC fa parte di un dominio, o che la connessione ha un suffisso DNS aziendale con DNS interni, lo segnala e propone invece di potenziare il DNS interno.' },
       { t: 'h', text: 'Porte usate da Active Directory' },
       { t: 'table', head: ['Servizio', 'Porta'], rows: [
         ['DNS', 'UDP e TCP 53'],

@@ -2,7 +2,9 @@ import {
   ArrowRight,
   BookOpen,
   BookOpenText,
+  Building2,
   ExternalLink,
+  FileSpreadsheet,
   Globe,
   ListChecks,
   Network,
@@ -18,18 +20,36 @@ import {
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { phyLabel, primaryAdapter } from '../engine';
-import type { Analysis, Band, Bss, Category, Scan, Severity } from '../engine';
-import { ping } from './api';
+import { apCount, ownRadios, phyLabel, primaryAdapter, secFamily } from '../engine';
+import type { Analysis, AnswerValue, Band, Bss, Category, InfraData, Scan, Severity } from '../engine';
+import { download } from './api';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
 import { HexGauge } from './brand';
 import { guidesForAction } from '../guides';
-import { AnimatedNumber, FindingList, Segmented, SevBadge, SevIcon, Stat, TableWrap, fmtNum, sevColor, spotHandlers, useOpenGuide } from './components';
+import { AnimatedNumber, FindingList, Segmented, SevBadge, SevIcon, Stat, TableWrap, fmtNum, sevColor, spotHandlers, useOpenGuide, useToast } from './components';
 import { useFx } from './fx';
 import { useLocalState } from './hooks';
+import { monitorCsv, summarize } from './monitor';
+import type { MonitorEvent, MonitorSession } from './monitor';
 import { cascade, ease, rise, spring } from './motion';
 
-export type View = 'overview' | 'wifi' | 'lan' | 'internet' | 'router' | 'plan' | 'monitor' | 'guide';
+export type View = 'overview' | 'wifi' | 'lan' | 'internet' | 'router' | 'infra' | 'plan' | 'monitor' | 'guide';
+
+/** Risposte dell'autovalutazione: restano sul PC, l'App le unisce al rapporto. */
+export interface AssessmentState {
+  answers: Record<string, AnswerValue>;
+  /** Rapporto importato: le risposte si consultano ma non si modificano. */
+  readOnly: boolean;
+  set: (id: string, v?: AnswerValue) => void;
+  reset: () => void;
+}
+
+/** Il MAC del router è cambiato rispetto all'analisi precedente su questo PC. */
+export interface GatewayMacChange {
+  prev: string;
+  prevAt: string;
+  now: string;
+}
 
 export interface ViewProps {
   scan: Scan;
@@ -37,15 +57,22 @@ export interface ViewProps {
   go: (v: View, focus?: string) => void;
   focus?: string;
   live: boolean;
+  /** Da dove vengono i dati mostrati: agente, demo o rapporto importato. */
+  source: 'agent' | 'demo' | 'file';
+  /** Unisce al rapporto i risultati di inventario e verifiche. */
+  setInfra: (patch: Partial<InfraData>) => void;
+  assessment: AssessmentState;
+  monitor: MonitorSession;
+  gwMacChange?: GatewayMacChange;
 }
 
 const byCat = (a: Analysis, ...cats: Category[]) => a.findings.filter((f) => cats.includes(f.category));
-const CAT_VIEW: Record<Category, View> = { wifi: 'wifi', lan: 'lan', internet: 'internet', dns: 'internet', router: 'router', security: 'router' };
-const CAT_ICON: Record<Category, LucideIcon> = { wifi: Wifi, lan: Network, internet: Globe, dns: Globe, router: Router, security: Shield };
+const CAT_VIEW: Record<Category, View> = { wifi: 'wifi', lan: 'lan', internet: 'internet', dns: 'internet', router: 'router', security: 'router', infra: 'infra' };
+const CAT_ICON: Record<Category, LucideIcon> = { wifi: Wifi, lan: Network, internet: Globe, dns: Globe, router: Router, security: Shield, infra: Building2 };
 const fmtMs = (v?: number) => (v === undefined ? '—' : v < 1 ? '<1 ms' : `${fmtNum(v, v < 10 ? 1 : 0)} ms`);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <m.section variants={rise}>
       <h2 className="section-title">{title}</h2>
@@ -280,6 +307,86 @@ function NetworksTable({ nets, mySsid }: { nets: Bss[]; mySsid?: string }) {
   );
 }
 
+const ROAM_TIPS = {
+  k: '802.11k: l\'AP fornisce l\'elenco degli AP vicini',
+  v: '802.11v: la rete può suggerire l\'AP migliore',
+  r: '802.11r: passaggio rapido tra AP (Fast Transition)',
+} as const;
+
+function secShort(b: Bss): string {
+  const s = b.security;
+  if (!s) return '—';
+  const p = s.protocol === 'open' ? 'aperta' : s.protocol === 'owe' ? 'OWE' : s.protocol.toUpperCase();
+  return secFamily(s) === 'enterprise' ? `${p} Enterprise` : p;
+}
+
+/** Le radio che annunciano la rete collegata: canali, segnale, roaming e protezione a confronto. */
+function OwnApsCard({ nets, me, ssid }: { nets: Bss[]; me?: Bss; ssid: string }) {
+  const radios = ownRadios(nets, ssid).sort((a, b) => b.rssiDbm - a.rssiDbm);
+  const fam = secFamily(me?.security);
+  const odd = (b: Bss) => {
+    const f = secFamily(b.security);
+    return f !== 'unknown' && fam !== 'unknown' && f !== fam;
+  };
+  const aps = apCount(radios.filter((b) => !odd(b)));
+  const better = me && me.rssiDbm < -67 ? radios.find((b) => b !== me && !odd(b) && b.band === me.band && b.rssiDbm - me.rssiDbm >= 10) : undefined;
+  const note = (b: Bss) =>
+    [
+      b === me && 'collegato',
+      odd(b) && 'protezione diversa: AP estraneo o configurato male?',
+      me && b !== me && !odd(b) && b.band === me.band && b.channel === me.channel && b.rssiDbm >= -80 && 'stesso canale del tuo AP',
+      b === better && 'si riceve molto meglio',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  return (
+    <m.section variants={rise} className="card" style={{ marginTop: 16 }}>
+      <div className="card-head">
+        <h2>Access point della rete "{ssid}"</h2>
+        <span className="sub">almeno {aps} AP · {radios.length} radio ricevute da qui</span>
+      </div>
+      <TableWrap label="Access point della tua rete">
+        <table>
+          <thead>
+            <tr><th>BSSID</th><th>Banda</th><th>Canale</th><th>Segnale</th><th>Carico</th><th>Roaming</th><th>Protezione</th><th>Note</th></tr>
+          </thead>
+          <tbody>
+            {radios.map((b) => {
+              const r = b.roaming;
+              return (
+                <tr key={b.bssid} className={b === me ? 'mine' : ''}>
+                  <td className="mono">{b.bssid}</td>
+                  <td>{b.band.replace('.', ',')} GHz</td>
+                  <td className="mono">{b.channel}{b.widthMhz ? ` · ${b.widthMhz} MHz` : ''}</td>
+                  <td className={`mono c-${b.rssiDbm >= -67 ? 'ok' : b.rssiDbm >= -75 ? 'warn' : 'crit'}`}>{b.rssiDbm} dBm</td>
+                  <td className="mono">{b.bssLoad ? `${b.bssLoad.utilizationPct} % · ${b.bssLoad.stations} disp.` : '—'}</td>
+                  <td>
+                    {r ? (
+                      <span className="roam" role="img" aria-label={`802.11k ${r.k ? 'sì' : 'no'}, 802.11v ${r.v ? 'sì' : 'no'}, 802.11r ${r.r ? 'sì' : 'no'}`}>
+                        {(['k', 'v', 'r'] as const).map((k) => (
+                          <span key={k} className={`rb ${r[k] ? 'on' : ''}`} title={`${ROAM_TIPS[k]}${r[k] ? '' : ': non annunciato'}`}>{k}</span>
+                        ))}
+                      </span>
+                    ) : (
+                      <span className="faint">—</span>
+                    )}
+                  </td>
+                  <td className={odd(b) ? 'c-crit' : undefined}>{secShort(b)}</td>
+                  <td className="faint wrap">{note(b)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </TableWrap>
+      <p className="faint" style={{ fontSize: 13, marginBottom: 0 }}>
+        Roaming: k = elenco degli AP vicini, v = suggerimento dell'AP migliore, r = passaggio rapido. Il numero di AP è una stima: ogni AP ha di solito una radio per
+        banda, e reti diverse con lo stesso nome vengono raggruppate insieme.
+      </p>
+    </m.section>
+  );
+}
+
 /** Dove cade il segnale tra -95 e -30 dBm, con le fasce critica/debole/buona. */
 function SignalMeter({ rssi }: { rssi: number }) {
   const pct = Math.max(0, Math.min(100, ((rssi + 95) / 65) * 100));
@@ -365,6 +472,8 @@ export function WifiView({ scan, analysis: a, go }: ViewProps) {
         </m.section>
       )}
 
+      {conn && ownRadios(wifi.networks, conn.ssid).length > 1 && <OwnApsCard nets={wifi.networks} me={me} ssid={conn.ssid} />}
+
       <Section title="Valutazione">
         <FindingList findings={a.findings.filter((x) => x.id.startsWith('wifi.'))} onAction={(id) => go('plan', id)} />
       </Section>
@@ -378,11 +487,28 @@ export function WifiView({ scan, analysis: a, go }: ViewProps) {
 
 // ---------------------------------------------------------------- LAN
 
-export function LanView({ scan, analysis: a, go }: ViewProps) {
+/** Avviso: il MAC del router non è quello dell'analisi precedente su questo PC. */
+function GatewayMacNotice({ change }: { change?: GatewayMacChange }) {
+  if (!change) return null;
+  const when = new Date(change.prevAt).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
+  return (
+    <m.div variants={rise} className="notice warn" style={{ marginBottom: 16 }}>
+      <TriangleAlert size={18} aria-hidden />
+      <span>
+        <b>Il MAC del router è cambiato</b> rispetto all'analisi del {when}: prima <span className="mono">{change.prev}</span>, ora{' '}
+        <span className="mono">{change.now}</span>. Se il router non è stato sostituito o riconfigurato, verifica: un dispositivo che si spaccia per il router (ARP
+        spoofing) produce proprio questo effetto.
+      </span>
+    </m.div>
+  );
+}
+
+export function LanView({ scan, analysis: a, go, gwMacChange }: ViewProps) {
   const primary = primaryAdapter(scan);
   const g = scan.gateway;
   return (
     <>
+      <GatewayMacNotice change={gwMacChange} />
       <m.div className="grid cols-2" variants={cascade(0.06)}>
         <m.section variants={rise} className="card">
           <div className="card-head"><h2>Scheda in uso</h2></div>
@@ -395,7 +521,10 @@ export function LanView({ scan, analysis: a, go }: ViewProps) {
               <dt>IPv6</dt><dd>{primary.ipv6.join(', ') || '—'}</dd>
               <dt>Gateway</dt><dd>{primary.gateways.join(', ') || '—'}</dd>
               <dt>DNS</dt><dd>{primary.dns.join(', ') || '—'}</dd>
+              {primary.dnsSuffix && (<><dt>Suffisso DNS</dt><dd>{primary.dnsSuffix}</dd></>)}
+              {scan.agent.domain && (<><dt>Dominio</dt><dd>{scan.agent.domain}</dd></>)}
               <dt>DHCP</dt><dd>{primary.dhcp === undefined ? '—' : primary.dhcp ? 'sì' : 'no (statico)'}</dd>
+              {primary.dhcpServer && (<><dt>Server DHCP</dt><dd>{primary.dhcpServer}</dd></>)}
               <dt>MAC</dt><dd>{primary.mac ?? '—'}</dd>
               {primary.mtu ? (<><dt>MTU</dt><dd>{primary.mtu}</dd></>) : null}
               {primary.linkMbps ? (<><dt>Velocità link</dt><dd>{primary.linkMbps} Mbit/s</dd></>) : null}
@@ -562,12 +691,13 @@ export function InternetView({ scan, analysis: a, go }: ViewProps) {
 
 // ---------------------------------------------------------------- Router e sicurezza
 
-export function RouterView({ scan, analysis: a, go }: ViewProps) {
+export function RouterView({ scan, analysis: a, go, gwMacChange }: ViewProps) {
   const g = scan.gateway;
   const igd = g?.upnp?.devices.find((d) => /InternetGatewayDevice/i.test(d.deviceType ?? '')) ?? g?.upnp?.devices[0];
   const fwNames = { domain: 'Dominio', private: 'Privata', public: 'Pubblica' };
   return (
     <>
+      <GatewayMacNotice change={gwMacChange} />
       <m.div className="grid cols-2" variants={cascade(0.06)}>
         <m.section variants={rise} className="card">
           <div className="card-head"><h2>Il tuo router</h2></div>
@@ -811,40 +941,36 @@ function MsValue({ v }: { v?: number | null }) {
   return <AnimatedNumber value={v} decimals={v < 10 ? 1 : 0} suffix=" ms" />;
 }
 
-export function MonitorView({ live, scan }: ViewProps) {
-  const [running, setRunning] = useState(true);
-  const [gw, setGw] = useState<(number | null)[]>([]);
-  const [inet, setInet] = useState<(number | null)[]>([]);
-  const [tick, setTick] = useState(0);
+const clock = (t: number) => new Date(t).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function duration(sec: number) {
+  const s = Math.max(0, Math.round(sec));
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`;
+  return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`;
+}
+const SERIES_NAME = { gw: 'Router', inet: 'Internet' } as const;
+
+function eventText(e: MonitorEvent) {
+  const len = Math.round((e.end - e.start) / 1000) + 1;
+  return e.kind === 'outage' ? `interruzione di ${duration(len)}` : `picco di ${fmtMs(e.max)}${len > 1 ? ` per ${duration(len)}` : ''}`;
+}
+
+export function MonitorView({ scan, monitor }: ViewProps) {
+  const { live, running, samples, tick, start, pause, reset, startedAt } = monitor;
+  const toast = useToast();
+  // Alla prima apertura la sessione parte da sola; poi prosegue anche nelle altre sezioni.
   useEffect(() => {
-    if (!running) return;
-    let alive = true;
-    let n = 0;
-    const push = (set: typeof setGw, v: number | null) => set((xs) => [...xs, v].slice(-WINDOW));
-    const id = setInterval(async () => {
-      n++;
-      let a: number | null;
-      let b: number | null;
-      if (live) {
-        [a, b] = await Promise.all([ping('gateway').catch(() => null), ping('internet').catch(() => null)]);
-        if (!alive) return;
-      } else {
-        // Demo: valori simulati, chiaramente indicati nell'interfaccia.
-        const burst = n % 23 > 17;
-        a = Math.random() < 0.03 ? null : Math.round((4 + Math.random() * 6 + (burst ? 25 : 0)) * 10) / 10;
-        b = Math.random() < 0.02 ? null : Math.round((26 + Math.random() * 9 + (burst ? 40 : 0)) * 10) / 10;
-      }
-      push(setGw, a);
-      push(setInet, b);
-      setTick((t) => t + 1);
-    }, 1000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [running, live]);
+    if (startedAt === undefined) start();
+  }, [startedAt, start]);
+  const recent = samples.slice(-WINDOW);
+  const gw = recent.map((x) => x.gw);
+  const inet = recent.map((x) => x.inet);
   const sg = summary(gw);
   const si = summary(inet);
+  const session = useMemo(() => ({ gw: summarize(samples, 'gw'), inet: summarize(samples, 'inet') }), [samples]);
+  const events = [...session.gw.events, ...session.inet.events].sort((a, b) => b.start - a.start);
+  const first = samples[0]?.t;
+  const last = samples[samples.length - 1]?.t;
   const box = (label: string, s: ReturnType<typeof summary>, color: string) => (
     <m.section variants={rise} className="card" style={{ boxShadow: 'none' }}>
       <h3 style={{ color }}>{label}</h3>
@@ -858,6 +984,21 @@ export function MonitorView({ live, scan }: ViewProps) {
       </div>
     </m.section>
   );
+  const sessionCol = (key: 'gw' | 'inet', color: string) => {
+    const st = session[key].stats;
+    return (
+      <div>
+        <h3 style={{ color }}>{SERIES_NAME[key]}</h3>
+        <dl className="kv">
+          <dt>Media</dt><dd>{fmtMs(st.avg)}</dd>
+          <dt>95° percentile</dt><dd>{fmtMs(st.p95)}</dd>
+          <dt>Massimo</dt><dd>{st.max === undefined ? '—' : `${fmtMs(st.max)} alle ${clock(st.maxAt as number)}`}</dd>
+          <dt>Persi</dt><dd className={st.lostPct > 2 ? 'c-crit' : st.lostPct > 0 ? 'c-warn' : undefined}>{`${fmtNum(st.lostPct, st.lostPct > 0 && st.lostPct < 10 ? 1 : 0)} %`}</dd>
+          <dt>Interruzioni</dt><dd>{st.outages ? `${st.outages} · ${duration(st.outageSec)} in totale` : 'nessuna'}</dd>
+        </dl>
+      </div>
+    );
+  };
   return (
     <>
       <m.section variants={rise} className="card">
@@ -869,10 +1010,10 @@ export function MonitorView({ live, scan }: ViewProps) {
             Monitor in tempo reale
           </h2>
           <span className="sub">
-            un ping al secondo verso il router{scan.gateway ? ` (${scan.gateway.ip})` : ''} e verso Internet, ultimi {WINDOW} secondi
+            un ping al secondo verso il router{scan.gateway ? ` (${scan.gateway.ip})` : ''} e verso Internet; il grafico mostra gli ultimi {WINDOW} secondi
           </span>
           <span className="spacer" />
-          <button className="btn small" onClick={() => setRunning(!running)} aria-pressed={!running}>
+          <button className="btn small" onClick={running ? pause : start} aria-pressed={!running}>
             <AnimatePresence mode="popLayout" initial={false}>
               <m.span key={running ? 'p' : 'r'} style={{ display: 'flex' }} initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }} transition={spring.snappy}>
                 {running ? <Pause size={15} aria-hidden /> : <Play size={15} aria-hidden />}
@@ -880,7 +1021,7 @@ export function MonitorView({ live, scan }: ViewProps) {
             </AnimatePresence>
             {running ? 'Pausa' : 'Riprendi'}
           </button>
-          <button className="btn small" onClick={() => { setGw([]); setInet([]); setTick(0); }}>
+          <button className="btn small" onClick={reset}>
             <RotateCcw size={15} aria-hidden /> Azzera
           </button>
         </div>
@@ -908,6 +1049,49 @@ export function MonitorView({ live, scan }: ViewProps) {
         {box('Router', sg, 'var(--accent-text)')}
         {box('Internet', si, 'var(--signal)')}
       </m.div>
+
+      <Section title="Riepilogo della sessione">
+        <m.section variants={rise} className="card">
+          <div className="card-head">
+            <h2>{first ? `Dalle ${clock(first)} · ${duration(((last as number) - first) / 1000 + 1)} · ${samples.length} misure` : 'In attesa delle prime misure'}</h2>
+            <span className="spacer" />
+            <button
+              className="btn small"
+              disabled={!samples.length}
+              onClick={() => {
+                const name = `polaris-monitor-${new Date(first ?? Date.now()).toISOString().slice(0, 16).replace(/[:T]/g, '-')}.csv`;
+                download(name, monitorCsv(samples), 'text/csv;charset=utf-8');
+                toast(`Download avviato · ${name}`);
+              }}
+            >
+              <FileSpreadsheet size={15} aria-hidden /> Esporta CSV
+            </button>
+          </div>
+          <div className="grid cols-2">
+            {sessionCol('gw', 'var(--accent-text)')}
+            {sessionCol('inet', 'var(--signal)')}
+          </div>
+          <h3 style={{ marginTop: 20 }}>Eventi {events.length > 0 && `(${events.length})`}</h3>
+          {events.length ? (
+            <ul className="events">
+              {events.slice(0, 40).map((e) => (
+                <li key={`${e.series}-${e.kind}-${e.start}`} data-kind={e.kind}>
+                  <span className="mono">{clock(e.start)}</span>
+                  <span style={{ color: e.series === 'gw' ? 'var(--accent-text)' : 'var(--signal)' }}>{SERIES_NAME[e.series]}</span>
+                  <span>{eventText(e)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="faint" style={{ margin: 0 }}>Nessun picco né interruzione finora. Picco: valore oltre 2,5 volte il tipico della sessione; interruzione: almeno tre ping persi di fila.</p>
+          )}
+          <p className="faint" style={{ fontSize: 13, marginBottom: 0 }}>
+            La sessione continua anche mentre consulti le altre sezioni (fino a 12 ore). Per seguire un problema intermittente lascia il monitor attivo durante
+            l'orario critico ed esporta il CSV: ogni riga ha l'ora e i due tempi di risposta.
+          </p>
+        </m.section>
+      </Section>
+
       <m.p variants={rise} className="muted" style={{ fontSize: 14 }}>
         Usalo mentre riproduci il problema (una videochiamata che scatta, un gioco a scatti): se i picchi compaiono anche sulla linea del router il
         problema è in casa (Wi-Fi o rete locale); se compaiono solo su quella di Internet è sulla linea o dall'operatore.

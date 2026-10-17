@@ -19,6 +19,12 @@ export interface Scan {
   dns?: DnsData;
   lan?: LanData;
   firewall?: FirewallData;
+  /**
+   * Inventario e verifiche di raggiungibilità: non li produce l'analisi
+   * automatica ma l'utente, su richiesta esplicita, dalla sezione
+   * Infrastruttura; l'interfaccia li unisce al rapporto.
+   */
+  infra?: InfraData;
   /** Sonde fallite: non bloccano l'analisi, vengono mostrate all'utente. */
   errors: ProbeError[];
 }
@@ -32,6 +38,8 @@ export interface AgentInfo {
   startedAt: string; // ISO 8601
   durationMs: number;
   elevated?: boolean;
+  /** Dominio DNS del PC (Active Directory); assente nei gruppi di lavoro. */
+  domain?: string;
 }
 
 export interface ProbeError {
@@ -55,6 +63,10 @@ export interface Adapter {
   mtu?: number;
   /** Velocità di collegamento negoziata in Mbit/s (trasmissione). */
   linkMbps?: number;
+  /** Suffisso DNS della connessione, es. "clinica.local". */
+  dnsSuffix?: string;
+  /** Server DHCP che ha assegnato l'indirizzo IPv4. */
+  dhcpServer?: string;
 }
 
 // ---------- Wi-Fi ----------
@@ -72,6 +84,19 @@ export interface WifiSecurity {
   group?: string;
   pmf?: Pmf;
   wps?: boolean;
+}
+
+/** Funzioni di roaming assistito annunciate nel beacon. */
+export interface Roaming {
+  /** 802.11k: l'AP fornisce l'elenco dei vicini (Neighbor Report). */
+  k: boolean;
+  /** 802.11v: gestione della transizione (BSS Transition Management). */
+  v: boolean;
+  /** 802.11r: transizione veloce (Fast BSS Transition). */
+  r: boolean;
+  /** Identificativo del Mobility Domain: gli AP con lo stesso valore condividono le chiavi FT. */
+  mdid?: string;
+  ftOverDs?: boolean;
 }
 
 export interface BssLoad {
@@ -96,6 +121,8 @@ export interface Bss {
   bssLoad?: BssLoad;
   security?: WifiSecurity;
   country?: string;
+  /** Assente quando la sonda non ha potuto leggere gli elementi del beacon. */
+  roaming?: Roaming;
   connected?: boolean;
 }
 
@@ -237,10 +264,79 @@ export interface FirewallData {
   profiles: FirewallProfile[];
 }
 
+// ---------- Infrastruttura (su richiesta) ----------
+
+export interface InventoryHost {
+  ip: string;
+  mac?: string;
+  /** MAC amministrato localmente: casuale (telefoni, PC moderni) o virtuale. */
+  randomMac?: boolean;
+  /** Nome dal DNS inverso. */
+  name?: string;
+  netbios?: string;
+  /** Tempo di risposta al ping; assente = visto solo tramite ARP. */
+  rttMs?: number;
+  self?: boolean;
+  gateway?: boolean;
+}
+
+export interface Inventory {
+  subnet: string;
+  adapter?: string;
+  scanned: number;
+  note?: string;
+  startedAt: string;
+  durationMs: number;
+  hosts: InventoryHost[];
+}
+
+export type ReachExpect = 'reachable' | 'isolated';
+export type ReachStatus = 'open' | 'closed' | 'filtered' | 'reply' | 'noreply' | 'unresolved' | 'refused' | 'error';
+
+export interface ReachTarget {
+  label?: string;
+  host: string;
+  /** 0 o assente = solo ping. */
+  port?: number;
+  expect: ReachExpect;
+}
+
+export interface ReachResult extends ReachTarget {
+  ip?: string;
+  status: ReachStatus;
+  rttMs?: number;
+  /** true = l'esito corrisponde all'attesa. */
+  ok: boolean;
+  error?: string;
+}
+
+export interface ReachData {
+  startedAt: string;
+  /** Indirizzo del PC da cui sono partite le verifiche. */
+  from?: string;
+  results: ReachResult[];
+}
+
+/** Risposta a una domanda dell'autovalutazione; "na" = non applicabile. */
+export type AnswerValue = 'yes' | 'partial' | 'no' | 'na';
+
+export interface AssessmentData {
+  /** Risposte per identificativo di domanda (catalogo in kb/assessment). */
+  answers: Record<string, AnswerValue>;
+  updatedAt?: string;
+}
+
+export interface InfraData {
+  inventory?: Inventory;
+  reach?: ReachData;
+  /** Autovalutazione delle misure organizzative: dichiarata dall'utente, non misurata. */
+  assessment?: AssessmentData;
+}
+
 // ---------- Risultato dell'analisi ----------
 
 export type Severity = 'ok' | 'info' | 'warn' | 'crit' | 'unknown';
-export type Category = 'wifi' | 'lan' | 'internet' | 'dns' | 'router' | 'security';
+export type Category = 'wifi' | 'lan' | 'internet' | 'dns' | 'router' | 'security' | 'infra';
 
 export interface Finding {
   /** Identificativo stabile, es. "wifi.rssi" o "router.port.23". */

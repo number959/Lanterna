@@ -9,6 +9,8 @@ export const complesse: Guide[] = [
     title: 'Com\'è fatta la rete di una clinica',
     summary: 'Una visione d\'insieme: sistemi, zone, flussi, servizi critici e ciò che rende una rete sanitaria diversa da quella di un ufficio.',
     level: 'intermedio',
+    metrics: ['infra.seg', 'lan.subnet', 'lan.domain'],
+    actions: ['segment-network', 'medical-devices'],
     tags: ['clinica', 'ospedale', 'poliambulatorio', 'casa di cura', 'rete sanitaria', 'his', 'cartella clinica', 'ris', 'pacs', 'lis', 'architettura', 'zone', 'reparto', 'fascicolo sanitario'],
     blocks: [
       { t: 'p', text: 'Una clinica, anche piccola, fa convivere sulla stessa infrastruttura sistemi molto diversi: cartella clinica e gestionale, diagnostica per immagini, laboratorio, monitor dei pazienti, telefonia e chiamata infermieri, videosorveglianza, Wi-Fi per i pazienti. Ognuno ha esigenze diverse di disponibilità, sicurezza e prestazioni, e spesso un fornitore diverso.' },
@@ -53,6 +55,7 @@ export const complesse: Guide[] = [
     title: 'Dispositivi medicali in rete',
     summary: 'Perché i dispositivi medicali sono speciali, chi ne risponde, quali documenti chiedere e come si collegano e si proteggono senza comprometterne il funzionamento.',
     level: 'avanzato',
+    actions: ['medical-devices', 'segment-network', 'vendor-access'],
     tags: ['dispositivi medicali', 'dispositivo medico', 'mdr', '2017/745', 'iec 80001', 'mds2', 'mdcg 2019-16', 'ingegneria clinica', 'pompe infusionali', 'monitor', 'ecografo', 'tac', 'risonanza', 'legacy', 'sbom', 'teleassistenza'],
     blocks: [
       { t: 'p', text: 'Ecografi, TAC, risonanze, analizzatori di laboratorio, monitor multiparametrici, pompe infusionali, ventilatori, sistemi di telemetria: sempre più dispositivi medicali si collegano alla rete per inviare immagini e risultati, ricevere liste di lavoro, essere sorvegliati da una centrale o assistiti dal produttore.' },
@@ -149,8 +152,8 @@ export const complesse: Guide[] = [
     title: 'Wi-Fi in ambiente sanitario',
     summary: 'Progettare e verificare il Wi-Fi per carrelli, telefoni, telemetria e dispositivi medicali: copertura, capacità, roaming, sicurezza e convivenza radio.',
     level: 'avanzato',
-    metrics: ['wifi.rssi', 'wifi.cochannel', 'wifi.bssload', 'wifi.security', 'wifi.networks'],
-    actions: ['add-mesh', 'change-channel-5', 'upgrade-security'],
+    metrics: ['wifi.rssi', 'wifi.aps', 'wifi.roaming', 'wifi.sticky', 'wifi.owncochannel', 'wifi.cochannel', 'wifi.bssload', 'wifi.security', 'wifi.mixedsec'],
+    actions: ['add-mesh', 'plan-ap-channels', 'fix-roaming', 'upgrade-security', 'check-rogue-ap'],
     tags: ['wifi ospedale', 'wifi clinico', 'carrelli', 'telemetria', 'pompe infusionali', 'cordless', 'roaming', '802.11r', '802.11k', '802.11v', 'site survey', 'rilievo', 'ssid', '802.1x', 'ospiti', 'wips', 'rtls', 'localizzazione', 'owe'],
     blocks: [
       { t: 'p', text: 'In una clinica il Wi-Fi non serve solo a navigare: porta la cartella clinica sui carrelli e sui tablet al letto del paziente, le chiamate dei cordless e gli allarmi, la telemetria, le pompe infusionali, la localizzazione delle apparecchiature. Va progettato per i dispositivi più esigenti, non per il portatile medio.' },
@@ -200,6 +203,8 @@ export const complesse: Guide[] = [
     title: 'Privacy, NIS2 e norme per le reti sanitarie',
     summary: 'Che cosa chiedono GDPR, provvedimenti del Garante, NIS2 e norme tecniche a chi gestisce la rete di una struttura sanitaria: misure, registri, notifiche e responsabilità.',
     level: 'avanzato',
+    metrics: ['infra.assessment'],
+    actions: ['incident-response', 'vendor-access'],
     tags: ['gdpr', 'privacy', 'garante', 'dati sanitari', 'articolo 9', 'articolo 32', 'data breach', 'violazione', 'dpia', 'dpo', 'nis2', 'd.lgs. 138/2024', 'acn', 'csirt', 'iso 27001', 'iso 27799', 'iec 80001', 'amministratori di sistema', 'dossier sanitario', 'responsabile del trattamento'],
     blocks: [
       { t: 'note', kind: 'warn', title: 'Non è una consulenza legale', text: 'Questa guida riassume i riferimenti principali per orientarsi. Gli obblighi precisi dipendono dal tipo e dalle dimensioni della struttura e dalle norme in vigore al momento: vanno verificati con il responsabile della protezione dei dati, con un consulente legale e sui testi ufficiali aggiornati.' },
@@ -250,6 +255,8 @@ export const complesse: Guide[] = [
     title: 'Continuità dei servizi critici',
     summary: 'Punti di guasto unici, ridondanza, alimentazione, procedure di emergenza e prove: come una struttura sanitaria continua a lavorare quando la rete o un sistema si ferma.',
     level: 'avanzato',
+    metrics: ['infra.services'],
+    actions: ['check-critical-service', 'continuity-plan'],
     tags: ['continuità operativa', 'business continuity', 'disaster recovery', 'ridondanza', 'ups', 'gruppo elettrogeno', 'punto di guasto unico', 'single point of failure', 'procedure di emergenza', 'downtime', 'failover', 'vrrp', 'alta affidabilità', 'esercitazione'],
     blocks: [
       { t: 'p', text: 'Ogni componente prima o poi si guasta: uno switch, una linea, un server, un alimentatore. La continuità operativa non pretende che non succeda: fa in modo che un singolo guasto non fermi un servizio critico e che, quando un sistema è fermo, tutti sappiano come continuare a lavorare.' },
@@ -301,7 +308,8 @@ export const complesse: Guide[] = [
     title: 'Inventario e documentazione della rete',
     summary: 'Che cosa censire, come scoprire i dispositivi in modo sicuro, quali schemi e registri tenere aggiornati e come funziona l\'inventario di STARNET Polaris.',
     level: 'intermedio',
-    metrics: ['lan.neighbors'],
+    metrics: ['infra.inventory', 'lan.neighbors', 'lan.dupmac'],
+    actions: ['identify-devices', 'dhcp-capacity'],
     tags: ['inventario', 'censimento', 'asset', 'cmdb', 'documentazione', 'schema di rete', 'ipam', 'piano di indirizzamento', 'arp', 'mac', 'oui', 'produttore', 'netbios', 'registro delle modifiche', 'csv'],
     blocks: [
       { t: 'p', text: 'Non si protegge ciò che non si sa di avere. L\'inventario è la base di tutto il resto: segmentazione, aggiornamenti, risposta agli incidenti, continuità e conformità alle norme. Nelle strutture sanitarie è anche il punto d\'incontro tra servizi informatici e ingegneria clinica.' },
@@ -322,7 +330,7 @@ export const complesse: Guide[] = [
         '**il produttore dal MAC**: i primi tre byte del MAC (OUI) identificano il produttore della scheda di rete; i MAC casuali di telefoni e PC moderni però cambiano e non lo indicano (vedi [[mac-arp-switch]]).',
       ] },
       { t: 'h', text: 'L\'inventario di STARNET Polaris' },
-      { t: 'p', text: 'Nella sezione **Infrastruttura**, dopo la conferma esplicita di essere autorizzati, il programma esamina la sottorete privata a cui è collegato il PC: invia un ping a ogni indirizzo con un ritmo prudente, legge la tabella ARP per ottenere i MAC e il produttore, chiede il nome al DNS e via NetBIOS. Non apre connessioni verso le porte dei dispositivi e non esce dalla sottorete locale. Il risultato si esporta in CSV per l\'inventario.' },
+      { t: 'p', text: 'Nella sezione **Infrastruttura**, dopo la conferma esplicita di essere autorizzati, il programma esamina la sottorete privata a cui è collegato il PC: invia un ping a ogni indirizzo con un ritmo prudente, legge la tabella ARP per ottenere i MAC (segnalando quelli casuali), chiede il nome al DNS e via NetBIOS. Non apre connessioni verso le porte dei dispositivi e non esce dalla sottorete locale. Il risultato si esporta in CSV: il produttore si ricava poi dal MAC con gli elenchi pubblici dell\'IEEE.' },
       { t: 'note', kind: 'tip', title: 'Che cosa resta fuori', text: 'Molti dispositivi non rispondono al ping, ma quasi tutti rispondono alla richiesta ARP che il PC invia prima del ping: per questo il programma legge la tabella ARP dopo il giro di ping e li elenca comunque. Restano invisibili i dispositivi spenti o in sospensione profonda e quelli di altre sottoreti: per un censimento completo si ripete l\'inventario da ogni zona e lo si confronta con le fonti passive.' },
       { t: 'h', text: 'Schemi e registri' },
       { t: 'list', items: [
@@ -341,6 +349,8 @@ export const complesse: Guide[] = [
     title: 'Analizzare una rete grande o complessa',
     summary: 'Come organizzare l\'analisi di una rete con più piani, sedi e zone: dove misurare, che cosa confrontare e come trasformare le misure in un piano di interventi.',
     level: 'avanzato',
+    metrics: ['infra.inventory', 'infra.seg', 'infra.services', 'infra.assessment'],
+    actions: ['segment-network', 'check-critical-service', 'identify-devices'],
     tags: ['analisi', 'audit', 'assessment', 'valutazione', 'rete grande', 'più sedi', 'campagna di misure', 'confronto', 'rapporti', 'priorità', 'servizi critici', 'monitor', 'autovalutazione'],
     blocks: [
       { t: 'p', text: 'In una casa una misura basta. In una clinica con più piani, decine di access point, zone separate e centinaia di dispositivi, una singola misura dice poco: serve una **campagna** di misure organizzata, ripetibile e confrontabile.' },

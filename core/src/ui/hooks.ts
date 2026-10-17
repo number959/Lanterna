@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * Larghezza reale in pixel di un contenitore: i grafici SVG la usano come
@@ -44,22 +44,36 @@ export function useCountUp(target: number, ms = 1200): number {
   return v;
 }
 
+/**
+ * Stato salvato in localStorage. Se la chiave cambia (un'altra rete, un'altra
+ * demo) il valore viene riletto per la nuova chiave.
+ */
 export function useLocalState<T>(key: string, initial: T): [T, (v: T) => void] {
-  const [v, setV] = useState<T>(() => {
+  const read = (k: string): T => {
     try {
-      const raw = localStorage.getItem(key);
+      const raw = localStorage.getItem(k);
       return raw ? (JSON.parse(raw) as T) : initial;
     } catch {
       return initial;
     }
-  });
-  const set = (nv: T) => {
-    setV(nv);
-    try {
-      localStorage.setItem(key, JSON.stringify(nv));
-    } catch {
-      /* archiviazione non disponibile: lo stato resta in memoria */
-    }
   };
+  const [state, setState] = useState<{ key: string; v: T }>(() => ({ key, v: read(key) }));
+  let v = state.v;
+  if (state.key !== key) {
+    // Aggiornamento durante il render, ammesso da React per lo stato derivato.
+    v = read(key);
+    setState({ key, v });
+  }
+  const set = useCallback(
+    (nv: T) => {
+      setState({ key, v: nv });
+      try {
+        localStorage.setItem(key, JSON.stringify(nv));
+      } catch {
+        /* archiviazione non disponibile: lo stato resta in memoria */
+      }
+    },
+    [key],
+  );
   return [v, set];
 }

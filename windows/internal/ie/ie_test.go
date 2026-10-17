@@ -282,3 +282,75 @@ func TestUnknownVendorSuite(t *testing.T) {
 		t.Fatalf("%+v", info.Security)
 	}
 }
+
+// Roaming assistito: RM Enabled Capabilities (70) con Neighbor Report,
+// Extended Capabilities (127) con il bit 19, Mobility Domain (54).
+func TestRoaming(t *testing.T) {
+	rsnFT := el(48,
+		0x01, 0x00,
+		0x00, 0x0f, 0xac, 0x04, // gruppo CCMP
+		0x01, 0x00, 0x00, 0x0f, 0xac, 0x04, // pairwise CCMP
+		0x02, 0x00, 0x00, 0x0f, 0xac, 0x01, 0x00, 0x0f, 0xac, 0x03, // AKM 802.1X e FT-802.1X
+		0x80, 0x00, // MFPC
+	)
+	buf := cat(
+		el(0, []byte("Clinica")...),
+		rsnFT,
+		el(54, 0x4c, 0x1d, 0x01),             // MDID 4c1d, FT over DS
+		el(70, 0x73, 0x00, 0x00, 0x00, 0x00), // link measurement, neighbor report, ...
+		el(127, 0x04, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x40), // bit 2, bit 19 (BSS Transition), bit 62
+	)
+	info, err := Parse(buf, 0x0011, 5180)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Roaming{K: true, V: true, R: true, MDID: "4c1d", FTOverDS: true}
+	if info.Roaming != want {
+		t.Fatalf("roaming = %+v, atteso %+v", info.Roaming, want)
+	}
+	if info.Security.Protocol != "wpa2" || !reflect.DeepEqual(info.Security.AKM, []string{"802.1X", "FT-802.1X"}) {
+		t.Fatalf("sicurezza: %+v", info.Security)
+	}
+}
+
+func TestRoamingAssente(t *testing.T) {
+	buf := cat(
+		el(0, []byte("Casa")...),
+		rsnWPA2(0x0080),
+		el(70, 0x01, 0x00, 0x00, 0x00, 0x00), // solo link measurement: niente Neighbor Report
+		el(127, 0x04, 0x00, 0x00),            // bit 19 spento
+	)
+	info, err := Parse(buf, 0x0011, 2437)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Roaming != (Roaming{}) {
+		t.Fatalf("nessuna funzione di roaming attesa: %+v", info.Roaming)
+	}
+}
+
+// Extended Capabilities troppo corto per contenere il bit 19: nessun errore, V falso.
+func TestRoamingExtCapCorto(t *testing.T) {
+	info, err := Parse(cat(el(127, 0x04, 0x00)), 0x0001, 2412)
+	if err != nil || info.Roaming.V {
+		t.Fatalf("err=%v roaming=%+v", err, info.Roaming)
+	}
+}
+
+// Solo AKM FT-PSK, senza elemento Mobility Domain: 802.11r comunque annunciato.
+func TestRoamingDaAKM(t *testing.T) {
+	rsn := el(48,
+		0x01, 0x00,
+		0x00, 0x0f, 0xac, 0x04,
+		0x01, 0x00, 0x00, 0x0f, 0xac, 0x04,
+		0x01, 0x00, 0x00, 0x0f, 0xac, 0x04, // FT-PSK
+		0x00, 0x00,
+	)
+	info, err := Parse(rsn, 0x0011, 5500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.Roaming.R || info.Roaming.MDID != "" {
+		t.Fatalf("roaming = %+v", info.Roaming)
+	}
+}

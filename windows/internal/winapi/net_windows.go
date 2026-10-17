@@ -140,6 +140,16 @@ func Adapters() ([]scan.Adapter, error) {
 		if a.TransmitLinkSpeed > 0 && a.TransmitLinkSpeed != math.MaxUint64 {
 			ad.LinkMbps = int64(a.TransmitLinkSpeed / 1_000_000)
 		}
+		if a.DnsSuffix != nil {
+			ad.DNSSuffix = windows.UTF16PtrToString(a.DnsSuffix)
+		}
+		// Dhcpv4Server esiste da Windows Vista: si legge solo se la struttura
+		// restituita è abbastanza lunga da contenerlo.
+		if uintptr(a.Length) >= unsafe.Offsetof(a.Dhcpv4Server)+unsafe.Sizeof(a.Dhcpv4Server) && dhcp {
+			if ip := a.Dhcpv4Server.IP(); ip != nil && ip.To4() != nil && !ip.IsUnspecified() {
+				ad.DHCPServer = ip.String()
+			}
+		}
 		list = append(list, adapterInfo{Adapter: ad, metric: a.Ipv4Metric})
 	}
 	hasGw4 := func(a adapterInfo) bool {
@@ -219,7 +229,10 @@ func Neighbors() ([]scan.Neighbor, error) {
 		}
 		mac := net.HardwareAddr(row[8 : 8+ml])
 		ip := net.IPv4(row[16], row[17], row[18], row[19])
-		if ip.IsMulticast() || ip.Equal(net.IPv4bcast) || row[19] == 255 || ip.IsUnspecified() {
+		// Le voci di broadcast della sottorete hanno MAC ff:ff:ff:ff:ff:ff e
+		// vengono scartate sotto: un indirizzo che finisce in .255 può essere
+		// un dispositivo valido nelle sottoreti più ampie di /24.
+		if ip.IsMulticast() || ip.Equal(net.IPv4bcast) || ip.IsUnspecified() {
 			continue
 		}
 		if ml == 0 || mac.String() == "ff:ff:ff:ff:ff:ff" || mac.String() == "00:00:00:00:00:00" {

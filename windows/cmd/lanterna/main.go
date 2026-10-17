@@ -26,6 +26,7 @@ import (
 	"lanterna/internal/collect"
 	"lanterna/internal/engine"
 	"lanterna/internal/gui"
+	"lanterna/internal/infra"
 	"lanterna/internal/probe"
 	"lanterna/internal/scan"
 	"lanterna/internal/server"
@@ -185,7 +186,8 @@ func startServer(port int) (*server.Server, string, error) {
 		return nil, "", fmt.Errorf("porta %d non disponibile: %w", port, err)
 	}
 	c := newCollector(false)
-	srv := &server.Server{Collector: c, Web: assets.Web(), Version: version, Ping: c.QuickPing}
+	prims := infra.Native()
+	srv := &server.Server{Collector: c, Web: assets.Web(), Version: version, Ping: c.QuickPing, Infra: &prims, InfraOpt: infra.Prudent}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = httpSrv.Serve(ln) }()
 	return srv, "http://" + ln.Addr().String() + "/", nil

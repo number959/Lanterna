@@ -74,6 +74,7 @@ func (f *fakePlatform) Firewall(context.Context) (*scan.FirewallData, error) {
 }
 func (f *fakePlatform) OS() string     { return "test" }
 func (f *fakePlatform) Elevated() bool { return false }
+func (f *fakePlatform) Domain() string { return "" }
 
 func fakeNetwork(tcpOK bool) Network {
 	return Network{

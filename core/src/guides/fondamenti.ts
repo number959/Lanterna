@@ -42,7 +42,7 @@ export const fondamenti: Guide[] = [
     title: 'Indirizzi IPv4, maschere e sottoreti',
     summary: 'Che cosa significano 192.168.1.20/24, maschera e gateway; indirizzi privati, APIPA e come si dimensiona una sottorete.',
     level: 'base',
-    metrics: ['lan.address', 'lan.gateway'],
+    metrics: ['lan.address', 'lan.gateway', 'lan.subnet'],
     actions: ['check-dhcp'],
     tags: ['ip', 'ipv4', 'cidr', 'maschera', 'subnet mask', 'sottorete', 'rfc 1918', 'apipa', '169.254', 'broadcast'],
     blocks: [
@@ -84,7 +84,7 @@ export const fondamenti: Guide[] = [
     title: 'Indirizzi MAC, ARP e come lavora uno switch',
     summary: 'Come i dispositivi si trovano nella stessa rete locale, come lo switch decide dove inoltrare e quali problemi nascono a questo livello.',
     level: 'intermedio',
-    metrics: ['lan.neighbors'],
+    metrics: ['lan.neighbors', 'lan.dupmac'],
     tags: ['mac', 'arp', 'switch', 'broadcast', 'tabella mac', 'mac casuale', 'arp spoofing', 'conflitto ip'],
     blocks: [
       { t: 'p', text: 'Ogni scheda di rete ha un **indirizzo MAC** di 48 bit, scritto come `3c:58:c2:aa:bb:cc`. Le prime tre coppie identificano di solito il produttore (OUI), le altre la singola scheda. Dentro una rete locale i frame Ethernet e Wi-Fi sono indirizzati al MAC, non all\'IP.' },
@@ -154,8 +154,8 @@ export const fondamenti: Guide[] = [
     title: 'DNS: dai nomi agli indirizzi',
     summary: 'Come funziona la risoluzione dei nomi, i tipi di record, la cache, il DNS interno delle aziende e i problemi che sembrano "Internet lento".',
     level: 'intermedio',
-    metrics: ['dns.time', 'dns.compare'],
-    actions: ['change-dns'],
+    metrics: ['dns.time', 'dns.compare', 'lan.domain'],
+    actions: ['change-dns', 'internal-dns'],
     tags: ['dns', 'risoluzione', 'record', 'ttl', 'cache', 'split dns', 'active directory', 'doh', 'dot', 'ptr', 'nslookup'],
     blocks: [
       { t: 'p', text: 'Il **DNS** traduce nomi come `www.esempio.it` o `pacs.clinica.local` negli indirizzi IP che i dispositivi usano davvero. Ogni pagina web può richiedere decine di risoluzioni: un DNS lento rende lento tutto, anche con una linea velocissima.' },
@@ -176,7 +176,7 @@ export const fondamenti: Guide[] = [
       ] },
       { t: 'h', text: 'DNS interno e DNS pubblico' },
       { t: 'p', text: 'In un\'azienda o in una clinica i nomi dei server interni (cartella clinica, PACS, file server, controller di dominio Active Directory) li conosce solo il **DNS interno**. Se un PC usa direttamente un DNS pubblico, Internet funziona ma i server interni "spariscono", oppure il login al dominio diventa lentissimo. Il DNS interno a sua volta inoltra a Internet le richieste che non conosce. Quando lo stesso nome deve dare risposte diverse dentro e fuori (per esempio il portale referti), si usa lo **split DNS**.' },
-      { t: 'note', kind: 'warn', title: 'Prima di cambiare DNS', text: 'STARNET Polaris confronta il DNS in uso con quelli pubblici e suggerisce di cambiarlo quando è molto più lento. In una rete aziendale con dominio non va fatto sui singoli PC: va reso più veloce il DNS interno (risorse del server, inoltro verso resolver rapidi), altrimenti si rompono i nomi interni.' },
+      { t: 'note', kind: 'warn', title: 'Prima di cambiare DNS', text: 'STARNET Polaris confronta il DNS in uso con quelli pubblici e suggerisce di cambiarlo quando è molto più lento, ma non nelle reti con dominio: lì non va fatto sui singoli PC, va reso più veloce il DNS interno (risorse del server, inoltro verso resolver rapidi), altrimenti si rompono i nomi interni. Il programma riconosce il dominio e propone questa strada.' },
       { t: 'h', text: 'Cache, TTL e cambi di indirizzo' },
       { t: 'p', text: 'Dopo lo spostamento di un servizio a un nuovo indirizzo, alcuni PC continuano a usare il vecchio finché la cache non scade: è il TTL. Prima di una migrazione si abbassa il TTL a pochi minuti; sul singolo PC si svuota la cache con `ipconfig /flushdns`.' },
       { t: 'h', text: 'Sicurezza e filtri' },

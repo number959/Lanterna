@@ -16,5 +16,6 @@ func Neighbors() ([]scan.Neighbor, error)                  { return nil, ErrUnsu
 func Wifi(context.Context, bool) (*scan.WifiData, error)   { return nil, ErrUnsupported }
 func Firewall(context.Context) (*scan.FirewallData, error) { return nil, ErrUnsupported }
 func Elevated() bool                                       { return false }
+func Domain() string                                       { return "" }
 func OSDescription() string                                { return "sistema non Windows" }
 func SystemProxy() func(*http.Request) (*url.URL, error)   { return nil }

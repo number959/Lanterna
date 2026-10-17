@@ -17,7 +17,10 @@ const (
 	idBSSLoad    = 11
 	idHTCap      = 45
 	idRSN        = 48
+	idMobDomain  = 54
 	idHTOp       = 61
+	idRMEnabled  = 70
+	idExtCap     = 127
 	idVHTCap     = 191
 	idVHTOp      = 192
 	idVendor     = 221
@@ -30,6 +33,12 @@ const (
 	rsnCapMFPR   = 1 << 6
 	rsnCapMFPC   = 1 << 7
 	wpsStateAttr = 0x1044
+	// RM Enabled Capabilities (802.11k), primo ottetto: bit 1 = Neighbor Report.
+	rmNeighborReport = 1 << 1
+	// Extended Capabilities: bit 19 = BSS Transition (802.11v).
+	extCapBSSTransition = 19
+	// Mobility Domain (802.11r), ottetto "FT Capability and Policy": bit 0 = FT over DS.
+	mdeFTOverDS = 1 << 0
 )
 
 // Element è un singolo elemento TLV.
@@ -73,6 +82,15 @@ type Security struct {
 	WPS      bool
 }
 
+// Roaming riassume le funzioni di roaming assistito annunciate dall'AP.
+type Roaming struct {
+	K        bool   // 802.11k: l'AP fornisce l'elenco dei vicini (Neighbor Report)
+	V        bool   // 802.11v: gestione della transizione (BSS Transition Management)
+	R        bool   // 802.11r: transizione veloce (Mobility Domain o AKM FT)
+	MDID     string // identificativo del Mobility Domain, in esadecimale come trasmesso
+	FTOverDS bool   // 802.11r anche attraverso la rete cablata (over the DS)
+}
+
 // Info riassume quello che serve a Polaris di una singola rete.
 type Info struct {
 	SSID          string
@@ -86,6 +104,7 @@ type Info struct {
 	WidthMhz      int // 0 = sconosciuta (si assume 20)
 	CenterChannel int // canale centrale del blocco largo, 0 se 20 MHz
 	Security      Security
+	Roaming       Roaming
 }
 
 var cipherNames = map[byte]string{
@@ -227,6 +246,20 @@ func Parse(buf []byte, capability uint16, freqMhz int) (Info, error) {
 			if r, ok := parseRSN(e.Data, ouiIEEE); ok {
 				rsn = &r
 			}
+		case idMobDomain:
+			if len(e.Data) >= 3 {
+				info.Roaming.R = true
+				info.Roaming.MDID = fmt.Sprintf("%02x%02x", e.Data[0], e.Data[1])
+				info.Roaming.FTOverDS = e.Data[2]&mdeFTOverDS != 0
+			}
+		case idRMEnabled:
+			if len(e.Data) >= 1 && e.Data[0]&rmNeighborReport != 0 {
+				info.Roaming.K = true
+			}
+		case idExtCap:
+			if i := extCapBSSTransition / 8; len(e.Data) > i && e.Data[i]&(1<<(extCapBSSTransition%8)) != 0 {
+				info.Roaming.V = true
+			}
 		case idVendor:
 			if len(e.Data) >= 4 && [3]byte{e.Data[0], e.Data[1], e.Data[2]} == ouiMicrosoft {
 				switch e.Data[3] {
@@ -254,6 +287,10 @@ func Parse(buf []byte, capability uint16, freqMhz int) (Info, error) {
 		}
 	}
 	info.Security = security(rsn, wpa, capability, info.Security.WPS)
+	// Un AKM "FT" annuncia 802.11r anche se il Mobility Domain mancasse.
+	if contains(info.Security.AKM, "FT-802.1X", "FT-PSK", "FT-SAE", "FT-802.1X-SHA384", "FT-SAE-EXT-KEY") {
+		info.Roaming.R = true
+	}
 	info.WidthMhz, info.CenterChannel = width(freqMhz, htOp, vhtOp, heOp, ehtOp)
 	return info, err
 }

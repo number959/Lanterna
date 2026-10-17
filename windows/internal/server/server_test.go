@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"lanterna/internal/collect"
+	"lanterna/internal/infra"
 	"lanterna/internal/scan"
 	"lanterna/internal/winapi"
 )
@@ -32,6 +33,7 @@ func (stubPlatform) Firewall(context.Context) (*scan.FirewallData, error) {
 }
 func (stubPlatform) OS() string     { return "test" }
 func (stubPlatform) Elevated() bool { return false }
+func (stubPlatform) Domain() string { return "" }
 
 type stubPinger struct{}
 
@@ -162,4 +164,116 @@ func TestConcurrentStart(t *testing.T) {
 		t.Fatal("secondo avvio accettato durante l'analisi")
 	}
 	s.Wait()
+}
+
+func doBody(t *testing.T, h http.Handler, method, url, ctype, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, url, strings.NewReader(body))
+	req.Host = "127.0.0.1:8737"
+	req.Header.Set("Origin", "http://127.0.0.1:8737")
+	if ctype != "" {
+		req.Header.Set("Content-Type", ctype)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// Rete finta per inventario e verifiche: rispondono solo .1 e .9.
+func infraServer() *Server {
+	s := newServer()
+	s.Infra = &infra.Prims{
+		NewPinger: func() (winapi.Pinger, error) {
+			return silentPinger{alive: map[string]bool{"192.168.1.1": true, "192.168.1.9": true}}, nil
+		},
+		Neighbors: func() ([]scan.Neighbor, error) {
+			return []scan.Neighbor{{IP: "192.168.1.1", MAC: "a4:2b:b0:00:00:01"}, {IP: "192.168.1.40", MAC: "00:1b:a9:00:00:40"}}, nil
+		},
+		Dial: func(ctx context.Context, addr string, timeout time.Duration) (time.Duration, error) {
+			if addr == "192.168.1.9:443" {
+				return time.Millisecond, nil
+			}
+			return 0, errors.New("i/o timeout")
+		},
+	}
+	s.InfraOpt = infra.Options{Interval: time.Microsecond, Workers: 4, PingTimeout: time.Millisecond, DialTimeout: time.Millisecond, NameTimeout: time.Millisecond}
+	return s
+}
+
+type silentPinger struct{ alive map[string]bool }
+
+func (silentPinger) Close() {}
+func (p silentPinger) Echo(dst net.IP, ttl, size int, df bool, _ time.Duration) winapi.EchoResult {
+	if p.alive[dst.String()] {
+		return winapi.EchoResult{Status: winapi.EchoOK, From: dst, RTT: 2 * time.Millisecond}
+	}
+	return winapi.EchoResult{Status: winapi.EchoTimeout}
+}
+
+func TestInventoryEndpoint(t *testing.T) {
+	s := infraServer()
+	h := s.Handler()
+	if r := doBody(t, h, "POST", "/api/inventory", "text/plain", `{"authorized":true}`); r.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("corpo non JSON accettato: %d", r.Code)
+	}
+	if r := doBody(t, h, "POST", "/api/inventory", "application/json", `{"authorized":false}`); r.Code != http.StatusBadRequest {
+		t.Fatalf("senza conferma: %d", r.Code)
+	}
+	r := doBody(t, h, "POST", "/api/inventory", "application/json", `{"authorized":true}`)
+	if r.Code != http.StatusAccepted || !strings.Contains(r.Body.String(), "192.168.1.5/24") {
+		t.Fatalf("avvio: %d %s", r.Code, r.Body)
+	}
+	s.WaitInventory()
+	var st inventoryState
+	if err := json.Unmarshal(do(t, h, "GET", "/api/inventory", nil).Body.Bytes(), &st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Running || st.Error != "" || st.Result == nil || st.Result.Subnet != "192.168.1.0/24" {
+		t.Fatalf("stato: %+v", st)
+	}
+	ips := []string{}
+	for _, x := range st.Result.Hosts {
+		ips = append(ips, x.IP)
+	}
+	if strings.Join(ips, ",") != "192.168.1.1,192.168.1.5,192.168.1.9,192.168.1.40" {
+		t.Fatalf("host: %v", ips)
+	}
+}
+
+func TestInventoryNonDisponibile(t *testing.T) {
+	h := newServer().Handler() // senza Infra
+	if r := doBody(t, h, "POST", "/api/inventory", "application/json", `{"authorized":true}`); r.Code != http.StatusNotImplemented {
+		t.Fatalf("%d", r.Code)
+	}
+}
+
+func TestReachEndpoint(t *testing.T) {
+	h := infraServer().Handler()
+	if r := do(t, h, "GET", "/api/reach", nil); r.Code != http.StatusNoContent {
+		t.Fatalf("prima della verifica: %d", r.Code)
+	}
+	if r := doBody(t, h, "POST", "/api/reach", "application/json", `{"targets":[]}`); r.Code != http.StatusBadRequest {
+		t.Fatalf("nessuna destinazione: %d", r.Code)
+	}
+	r := doBody(t, h, "POST", "/api/reach", "application/json", `{"targets":[{"host":"192.168.1.9","port":443,"expect":"reachable"},{"host":"10.9.9.9","port":3389,"expect":"isolated"},{"host":"8.8.8.8","port":53,"expect":"reachable"}]}`)
+	var rd scan.ReachData
+	if err := json.Unmarshal(r.Body.Bytes(), &rd); err != nil || r.Code != 200 {
+		t.Fatalf("%d %v %s", r.Code, err, r.Body)
+	}
+	if rd.From != "192.168.1.5" || len(rd.Results) != 3 || rd.Results[0].Status != "open" || !rd.Results[0].OK || rd.Results[1].Status != "filtered" || !rd.Results[1].OK || rd.Results[2].Status != "refused" {
+		t.Fatalf("risultati: %+v", rd)
+	}
+	if r := do(t, h, "GET", "/api/reach", nil); r.Code != 200 {
+		t.Fatalf("ultime verifiche: %d", r.Code)
+	}
+	// Da un'altra origine nemmeno con il JSON giusto.
+	req := httptest.NewRequest("POST", "/api/reach", strings.NewReader(`{"targets":[{"host":"192.168.1.9","port":443,"expect":"reachable"}]}`))
+	req.Host = "127.0.0.1:8737"
+	req.Header.Set("Origin", "https://evil.example")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 403 {
+		t.Fatalf("POST da altra origine: %d", rec.Code)
+	}
 }

@@ -1,6 +1,7 @@
 import {
   Activity,
   BookOpen,
+  Building2,
   FileJson,
   FileText,
   Globe,
@@ -21,23 +22,29 @@ import {
 import { AnimatePresence, LazyMotion, MotionConfig, domMax, m, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
-import { analyze, ENGINE_VERSION, renderText } from '../engine';
-import type { Scan, Severity } from '../engine';
+import { analyze, ENGINE_VERSION, primaryAdapter, renderText } from '../engine';
+import type { AnswerValue, InfraData, Scan, Severity } from '../engine';
+import { clinicScan } from '../demo/clinic';
 import { demoScan } from '../demo/sample';
 import { agentInfo, download, isScan, lastScan, runScan } from './api';
 import type { AgentInfo, Progress } from './api';
 import { BrandLogo, BrandSymbol } from './brand';
-import { GuideLinkContext, ToastProvider, useToast } from './components';
+import { GuideLinkContext, Segmented, ToastProvider, useToast } from './components';
 import { setFxPref, useFx } from './fx';
+import { useLocalState } from './hooks';
+import { InfraView } from './infra';
+import { useMonitor } from './monitor';
 import { ease, page, spring } from './motion';
 import { ScanOrbit } from './scan';
 import { useTheme } from './theme';
 import type { ThemePref } from './theme';
 import { GuideView } from './guides';
 import { InternetView, LanView, MonitorView, Overview, PlanView, RouterView, WifiView } from './views';
-import type { View, ViewProps } from './views';
+import type { AssessmentState, GatewayMacChange, View, ViewProps } from './views';
 
 type Source = 'agent' | 'demo' | 'file';
+type DemoKind = 'home' | 'clinic';
+const DEMOS: Record<DemoKind, Scan> = { home: demoScan, clinic: clinicScan };
 
 const NAV: { id: View; label: string; short: string; icon: LucideIcon; cats?: string[] }[] = [
   { id: 'overview', label: 'Panoramica', short: 'Sintesi', icon: LayoutDashboard },
@@ -45,6 +52,7 @@ const NAV: { id: View; label: string; short: string; icon: LucideIcon; cats?: st
   { id: 'lan', label: 'Rete locale', short: 'LAN', icon: Network, cats: ['lan'] },
   { id: 'internet', label: 'Internet e DNS', short: 'Internet', icon: Globe, cats: ['internet', 'dns'] },
   { id: 'router', label: 'Router e sicurezza', short: 'Router', icon: Router, cats: ['router', 'security'] },
+  { id: 'infra', label: 'Infrastruttura', short: 'Infra', icon: Building2, cats: ['infra'] },
   { id: 'plan', label: "Piano d'azione", short: 'Piano', icon: ListChecks },
   { id: 'monitor', label: 'Monitor', short: 'Monitor', icon: Activity },
   { id: 'guide', label: 'Guida', short: 'Guida', icon: BookOpen },
@@ -69,6 +77,30 @@ function focusSearch() {
     else if (performance.now() - t0 < 1500) requestAnimationFrame(attempt);
   };
   requestAnimationFrame(attempt);
+}
+
+/**
+ * Confronta il MAC del router con quello dell'ultima analisi reale fatta su
+ * questo PC per la stessa rete. Il ricordo si aggiorna solo con un'analisi più
+ * recente, così riaprire la stessa analisi mostra di nuovo l'eventuale cambio.
+ */
+function gatewayMacMemory(scan: Scan): GatewayMacChange | undefined {
+  const gw = scan.gateway;
+  if (!gw?.mac) return undefined;
+  const net = scan.wifi?.connected?.ssid ?? primaryAdapter(scan)?.name ?? '';
+  const key = `polaris.gwmac.${gw.ip}.${net}`;
+  const at = scan.agent.startedAt;
+  try {
+    const rec = JSON.parse(localStorage.getItem(key) ?? 'null') as { mac: string; at: string; prevMac?: string; prevAt?: string } | null;
+    const changed = (r: typeof rec) => (r?.prevMac && r.prevAt && r.prevMac !== r.mac ? { prev: r.prevMac, prevAt: r.prevAt, now: r.mac } : undefined);
+    if (rec && rec.at === at) return changed(rec);
+    if (rec && rec.at > at) return undefined; // analisi più vecchia riaperta: niente confronto
+    const next = { mac: gw.mac, at, ...(rec ? { prevMac: rec.mac, prevAt: rec.at } : {}) };
+    localStorage.setItem(key, JSON.stringify(next));
+    return changed(next);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Avviso che si apre e si chiude in altezza invece di spostare il contenuto a scatti. */
@@ -112,6 +144,7 @@ function Shell() {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [slow, setSlow] = useState(false);
+  const [demoKind, setDemoKind] = useLocalState<DemoKind>('polaris.demo', 'home');
   const [theme, setTheme] = useTheme();
   const fx = useFx();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -133,7 +166,8 @@ function Shell() {
     setProgress(null);
     try {
       const s = await runScan(setProgress);
-      setScan(s);
+      // Inventario e verifiche della stessa rete restano validi: si conservano (con la loro data).
+      setScan((prev) => (prev && !s.infra && prev.infra && prev.gateway?.ip === s.gateway?.ip && prev.agent.platform === s.agent.platform ? { ...s, infra: { ...prev.infra, assessment: undefined } } : s));
       setSource('agent');
       viewRef.current = 'overview';
       focusRef.current = undefined;
@@ -154,7 +188,7 @@ function Shell() {
       const info = await agentInfo();
       setAgent(info);
       if (!info) {
-        setScan(demoScan);
+        setScan(DEMOS[demoKind] ?? demoScan);
         setSource('demo');
         return;
       }
@@ -168,9 +202,45 @@ function Shell() {
         setError(e instanceof Error ? e.message : String(e));
       }
     })();
+    // Solo all'avvio: la scelta della demo si cambia poi con il selettore.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanNow]);
 
-  const analysis = useMemo(() => (scan ? analyze(scan) : null), [scan]);
+  // Autovalutazione: le risposte restano sul PC, separate per contesto (demo o rete aziendale).
+  const assessKey = scan ? `polaris.assessment.${source === 'demo' ? `demo-${scan.agent.host ?? ''}` : scan.agent.domain || scan.agent.host || 'pc'}` : 'polaris.assessment.none';
+  const [answers, setAnswers] = useLocalState<Record<string, AnswerValue>>(assessKey, {});
+  const fileAssessment = source === 'file' ? scan?.infra?.assessment : undefined;
+  const assessment = useMemo<AssessmentState>(
+    () => ({
+      answers: fileAssessment?.answers ?? answers,
+      readOnly: !!fileAssessment,
+      set: (id, v) => {
+        const next = { ...answers };
+        if (v) next[id] = v;
+        else delete next[id];
+        setAnswers(next);
+      },
+      reset: () => setAnswers({}),
+    }),
+    [answers, setAnswers, fileAssessment],
+  );
+  // Il rapporto (analisi, JSON, testo) contiene anche l'autovalutazione, se compilata.
+  const effective = useMemo<Scan | null>(() => {
+    if (!scan || fileAssessment) return scan;
+    const has = Object.keys(answers).length > 0;
+    if (!has && !scan.infra?.assessment) return scan;
+    const infra: InfraData = { ...scan.infra };
+    if (has) infra.assessment = { answers, updatedAt: new Date().toISOString() };
+    else delete infra.assessment;
+    return { ...scan, infra };
+  }, [scan, answers, fileAssessment]);
+  const setInfra = useCallback((patch: Partial<InfraData>) => setScan((s) => (s ? { ...s, infra: { ...s.infra, ...patch } } : s)), []);
+
+  const analysis = useMemo(() => (effective ? analyze(effective) : null), [effective]);
+  const live = source === 'agent' && !!agent;
+  // Il monitor misura la rete attuale: reale se l'agente è collegato, anche mentre si guarda un rapporto importato.
+  const monitor = useMonitor(!!agent);
+  const gwMacChange = useMemo(() => (scan && source === 'agent' ? gatewayMacMemory(scan) : undefined), [scan, source]);
 
   const go = useCallback(
     (v: View, f?: string) => {
@@ -190,7 +260,7 @@ function Shell() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return;
-      if (e.key >= '1' && e.key <= '8') {
+      if (e.key >= '1' && e.key <= '9') {
         e.preventDefault();
         go(NAV[Number(e.key) - 1].id);
       } else if (e.key === '/') {
@@ -243,7 +313,14 @@ function Shell() {
     return worst === 'crit' || worst === 'warn' ? worst : undefined;
   };
   const scanning = busy || (agent === undefined && slow);
-  const props: ViewProps | null = scan && analysis ? { scan, analysis, go, focus, live: source === 'agent' && !!agent } : null;
+  const props: ViewProps | null =
+    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, assessment, monitor, gwMacChange } : null;
+  const pickDemo = (k: DemoKind) => {
+    setDemoKind(k);
+    setScan(DEMOS[k]);
+    setSource('demo');
+    setError(null);
+  };
   const ThemeIcon = THEME_ICON[theme];
 
   return (
@@ -278,6 +355,7 @@ function Shell() {
                   <span className="nav-label">{n.label}</span>
                   <span className="nav-short" aria-hidden="true">{n.short}</span>
                   {dot && <span className={`dot ${dot}`} role="img" aria-label={dot === 'crit' ? 'problemi critici' : 'avvisi'} />}
+                  {n.id === 'monitor' && monitor.running && !on && <span className="dot live" role="img" aria-label="monitor attivo" />}
                 </button>
               );
             })}
@@ -286,7 +364,7 @@ function Shell() {
             <span>{agent ? `Agente ${agent.platform} v${agent.version}` : 'Nessun agente collegato'}</span>
             <span>Motore v{ENGINE_VERSION}</span>
             <span className="keys">
-              <kbd>1</kbd>–<kbd>8</kbd> sezioni · <kbd>/</kbd> cerca
+              <kbd>1</kbd>–<kbd>9</kbd> sezioni · <kbd>/</kbd> cerca
             </span>
             <button
               className="fx-toggle"
@@ -341,7 +419,7 @@ function Shell() {
                 <>
                   <button
                     className="btn"
-                    onClick={() => save(`polaris-${stamp}.json`, JSON.stringify(scan, null, 2), 'application/json')}
+                    onClick={() => save(`polaris-${stamp}.json`, JSON.stringify(effective ?? scan, null, 2), 'application/json')}
                     title="Salva i dati grezzi: potrai riaprirli o confrontarli"
                     aria-label="Esporta JSON"
                   >
@@ -349,7 +427,7 @@ function Shell() {
                   </button>
                   <button
                     className="btn"
-                    onClick={() => save(`polaris-${stamp}.txt`, renderText(scan, analysis, { verbose: true }), 'text/plain;charset=utf-8')}
+                    onClick={() => save(`polaris-${stamp}.txt`, renderText(effective ?? scan, analysis, { verbose: true }), 'text/plain;charset=utf-8')}
                     title="Rapporto leggibile da allegare a una segnalazione"
                     aria-label="Esporta rapporto di testo"
                   >
@@ -405,6 +483,17 @@ function Shell() {
                     Stai guardando una <b>rete dimostrativa</b>. Per analizzare la tua rete avvia <span className="mono">Polaris.exe</span> su
                     Windows, oppure importa un rapporto JSON.
                   </span>
+                  <span className="demo-pick">
+                    <Segmented<DemoKind>
+                      label="Rete dimostrativa"
+                      value={demoKind}
+                      onChange={pickDemo}
+                      options={[
+                        { id: 'home', label: 'Casa' },
+                        { id: 'clinic', label: 'Clinica' },
+                      ]}
+                    />
+                  </span>
                 </div>
               </Collapse>
             )}
@@ -432,6 +521,7 @@ function Shell() {
                 {view === 'lan' && <LanView {...props} />}
                 {view === 'internet' && <InternetView {...props} />}
                 {view === 'router' && <RouterView {...props} />}
+                {view === 'infra' && <InfraView {...props} />}
                 {view === 'plan' && <PlanView {...props} />}
                 {view === 'monitor' && <MonitorView {...props} />}
                 {view === 'guide' && <GuideView {...props} />}

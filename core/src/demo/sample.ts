@@ -1,4 +1,5 @@
 import type { Bss, Scan } from '../engine/types';
+import { pingSamples, stats } from './util';
 
 // Scansione dimostrativa: appartamento in condominio, PC portatile collegato
 // a 2,4 GHz su un canale intermedio con molti vicini. I valori sono plausibili
@@ -27,29 +28,6 @@ const nets: Bss[] = [
   { ssid: 'Iliad-BOX-7F21', bssid: '68:a3:78:44:55:67', rssiDbm: -86, freqMhz: 5745, channel: 149, band: '5', widthMhz: 80, centerChannel: 155, phy: '802.11ax', security: sec('wpa3') },
   { ssid: 'Condominio-Ospiti', bssid: '9c:c9:eb:10:20:30', rssiDbm: -79, freqMhz: 2452, channel: 9, band: '2.4', widthMhz: 20, phy: '802.11g', security: sec('wep', { akm: [], pairwise: ['WEP'] }) },
 ];
-
-const pingSamples = (base: number, spread: number, n: number, lost: number[] = [], phase = 0) =>
-  Array.from({ length: n }, (_, i) =>
-    lost.includes(i) ? null : Math.round((base + spread * Math.abs(Math.sin(i * 1.7 + phase)) * (0.6 + 0.4 * Math.abs(Math.cos(i * 0.9 + phase)))) * 10) / 10,
-  );
-
-function stats(target: string, label: string, samples: (number | null)[]) {
-  const ok = samples.filter((s): s is number => s !== null);
-  let j = 0;
-  for (let i = 1; i < ok.length; i++) j += Math.abs(ok[i] - ok[i - 1]);
-  return {
-    target,
-    label,
-    sent: samples.length,
-    received: ok.length,
-    minMs: Math.min(...ok),
-    avgMs: Math.round((ok.reduce((a, b) => a + b, 0) / ok.length) * 10) / 10,
-    maxMs: Math.max(...ok),
-    jitterMs: Math.round((j / Math.max(1, ok.length - 1)) * 10) / 10,
-    samples,
-    method: 'icmp' as const,
-  };
-}
 
 export const demoScan: Scan = {
   schema: 1,

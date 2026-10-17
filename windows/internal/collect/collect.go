@@ -27,6 +27,7 @@ type Platform interface {
 	Firewall(ctx context.Context) (*scan.FirewallData, error)
 	OS() string
 	Elevated() bool
+	Domain() string
 }
 
 // Native è la piattaforma reale (Windows; altrove ogni misura fallisce con
@@ -40,6 +41,7 @@ func (Native) Neighbors() ([]scan.Neighbor, error)                      { return
 func (Native) Firewall(ctx context.Context) (*scan.FirewallData, error) { return winapi.Firewall(ctx) }
 func (Native) OS() string                                               { return winapi.OSDescription() }
 func (Native) Elevated() bool                                           { return winapi.Elevated() }
+func (Native) Domain() string                                           { return winapi.Domain() }
 
 // Network raccoglie le dipendenze di rete sostituibili nei test.
 type Network struct {
@@ -174,6 +176,7 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 	}
 	el := c.Platform.Elevated()
 	s.Agent.Elevated = &el
+	s.Agent.Domain = c.Platform.Domain()
 	errs := &errList{}
 	step := func(id string, fn func() error) {
 		tr.set(id, "running")

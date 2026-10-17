@@ -1,4 +1,4 @@
-import type { Band, Bss, ChannelAdvice, ChannelScore } from './types';
+import type { Band, Bss, ChannelAdvice, ChannelScore, WifiSecurity } from './types';
 
 // Matematica dei canali Wi-Fi: conversioni frequenza/canale, spettro
 // occupato da ogni rete e stima dell'interferenza per scegliere il canale.
@@ -55,6 +55,73 @@ export function cochannel(mine: Bss, all: Bss[]): { strong: Bss[]; all: Bss[] } 
   return { all: others, strong: others.filter((b) => b.rssiDbm > STRONG_NEIGHBOUR_DBM) };
 }
 
+// ---- Reti con più access point
+
+/** Radio che annunciano la stessa rete (stesso SSID, non nascosto). */
+export function ownRadios(networks: Bss[], ssid?: string): Bss[] {
+  return ssid ? networks.filter((b) => b.ssid === ssid) : [];
+}
+
+function macBytes(mac: string): number[] | null {
+  const p = mac.split(/[:-]/);
+  if (p.length !== 6) return null;
+  const b = p.map((x) => parseInt(x, 16));
+  return b.some((x) => isNaN(x)) ? null : b;
+}
+
+/**
+ * Due reti trasmesse dalla stessa radio fisica (più SSID sullo stesso AP):
+ * stessa banda e canale e BSSID che differiscono solo nell'ultima cifra
+ * esadecimale o solo nel primo ottetto, i due schemi più usati dai produttori.
+ */
+export function sameRadio(a: Bss, b: Bss): boolean {
+  if (a.band !== b.band || a.channel !== b.channel || a.bssid === b.bssid) return false;
+  const x = macBytes(a.bssid);
+  const y = macBytes(b.bssid);
+  if (!x || !y || x[1] !== y[1] || x[2] !== y[2] || x[3] !== y[3] || x[4] !== y[4]) return false;
+  return (x[0] === y[0] && (x[5] & 0xf0) === (y[5] & 0xf0)) || x[5] === y[5];
+}
+
+/** Altre reti (ospiti, dispositivi...) trasmesse dalle stesse radio della rete `ssid`. */
+export function siblingOf(networks: Bss[], ssid?: string): (b: Bss) => boolean {
+  const mine = ownRadios(networks, ssid);
+  return (b) => b.ssid !== ssid && mine.some((m) => sameRadio(m, b));
+}
+
+/**
+ * Stima prudente del numero di access point: un AP ha di norma una sola
+ * radio per banda, quindi un router dual band (stesso SSID a 2,4 e 5 GHz)
+ * conta uno. I BSSID non bastano: ogni produttore li deriva a modo suo.
+ */
+export function apCount(radios: Bss[]): number {
+  const per: Record<Band, number> = { '2.4': 0, '5': 0, '6': 0 };
+  for (const r of radios) per[r.band]++;
+  return Math.max(per['2.4'], per['5'], per['6']);
+}
+
+/** Coppie di radio (della stessa rete) che occupano lo stesso spettro. */
+export function overlappingPairs(radios: Bss[]): [Bss, Bss][] {
+  const out: [Bss, Bss][] = [];
+  for (let i = 0; i < radios.length; i++) {
+    for (let j = i + 1; j < radios.length; j++) {
+      const a = radios[i];
+      const b = radios[j];
+      if (a.band === b.band && overlapMhz(spectrum(a), spectrum(b)) > 0) out.push([a, b]);
+    }
+  }
+  return out;
+}
+
+export type SecFamily = 'open' | 'legacy' | 'personal' | 'enterprise' | 'unknown';
+
+/** Famiglia di protezione: aperta, obsoleta, a password condivisa o con 802.1X. */
+export function secFamily(s?: WifiSecurity): SecFamily {
+  if (!s || s.protocol === 'unknown') return 'unknown';
+  if (s.protocol === 'open' || s.protocol === 'owe') return 'open';
+  if (s.protocol === 'wep' || s.protocol === 'wpa') return 'legacy';
+  return s.akm.some((a) => a.indexOf('802.1X') >= 0) ? 'enterprise' : 'personal';
+}
+
 /** Indice di carico 0-100 di un intervallo di spettro. */
 function loadOf(range: [number, number], others: Bss[]): { load: number; networks: number } {
   let sum = 0;
@@ -86,12 +153,17 @@ const BLOCKS_5: { first: number; last: number; center: number }[] = [
 
 export function adviseChannels(networks: Bss[], mySsid?: string): ChannelAdvice[] {
   const mine = networks.filter((b) => mySsid !== undefined && b.ssid === mySsid);
-  const others = networks.filter((b) => !(mySsid !== undefined && b.ssid === mySsid));
+  // Le altre reti delle stesse radio (ospiti, dispositivi) restano sul canale
+  // della rete principale qualunque esso sia: non sono interferenza da evitare.
+  const sibling = siblingOf(networks, mySsid);
+  const others = networks.filter((b) => !(mySsid !== undefined && b.ssid === mySsid) && !sibling(b));
+  // Con più AP della stessa rete il canale di riferimento è quello dell'AP collegato.
+  const myOn = (band: Band) => mine.find((b) => b.band === band && b.connected) ?? mine.find((b) => b.band === band);
   const out: ChannelAdvice[] = [];
 
   // ---- 2,4 GHz: si valutano tutti i canali, si consiglia solo tra 1, 6, 11.
   const n24 = others.filter((b) => b.band === '2.4');
-  const my24 = mine.find((b) => b.band === '2.4');
+  const my24 = myOn('2.4');
   if (n24.length || my24) {
     const scores: ChannelScore[] = [];
     for (let ch = 1; ch <= 13; ch++) {
@@ -115,7 +187,7 @@ export function adviseChannels(networks: Bss[], mySsid?: string): ChannelAdvice[
 
   // ---- 5 GHz: si valutano i blocchi da 80 MHz.
   const n5 = others.filter((b) => b.band === '5');
-  const my5 = mine.find((b) => b.band === '5');
+  const my5 = myOn('5');
   if (n5.length || my5) {
     const scores: ChannelScore[] = BLOCKS_5.map((blk) => {
       const f = channelToFreq(blk.center, '5');
@@ -151,7 +223,7 @@ export function adviseChannels(networks: Bss[], mySsid?: string): ChannelAdvice[
     out.push({ band: '5', current, recommended, scores, note });
   }
 
-  const my6 = mine.find((b) => b.band === '6');
+  const my6 = myOn('6');
   if (my6 || others.some((b) => b.band === '6')) {
     out.push({
       band: '6',

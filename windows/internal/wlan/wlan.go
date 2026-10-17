@@ -242,6 +242,10 @@ func ParseBssList(b []byte) ([]scan.Bss, error) {
 		if s.Protocol == "open" || s.Protocol == "wep" || s.Protocol == "wpa" {
 			bs.Security.PMF = "" // la PMF non esiste senza RSN
 		}
+		if len(ies) > 0 {
+			r := info.Roaming
+			bs.Roaming = &scan.Roaming{K: r.K, V: r.V, R: r.R, MDID: r.MDID, FTOverDS: r.FTOverDS}
+		}
 		out = append(out, bs)
 	}
 	return out, nil

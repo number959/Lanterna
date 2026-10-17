@@ -82,7 +82,15 @@ func TestParseBssList(t *testing.T) {
 	if a.BssLoad == nil || a.BssLoad.Stations != 9 || a.BssLoad.UtilizationPct != 62 {
 		t.Fatalf("BSS Load: %+v", a.BssLoad)
 	}
+	// Elementi presenti ma nessuna funzione di roaming annunciata: il campo c'è, tutto falso.
+	if a.Roaming == nil || a.Roaming.K || a.Roaming.V || a.Roaming.R {
+		t.Fatalf("roaming voce 1: %+v", a.Roaming)
+	}
 	b := nets[1]
+	// Senza elementi del beacon non si può sapere: il campo manca.
+	if b.Roaming != nil {
+		t.Fatalf("roaming voce 2 senza IE: %+v", b.Roaming)
+	}
 	// Senza IE: rete aperta a 20 MHz, standard dedotto dalle velocità (max 11 Mbit/s = 802.11b).
 	if b.Security.Protocol != "open" || b.Security.PMF != "" || b.WidthMhz != 20 || b.Phy != "802.11b" || b.RssiDbm != -88 {
 		t.Fatalf("voce 2: %+v %+v", b, b.Security)
@@ -91,6 +99,21 @@ func TestParseBssList(t *testing.T) {
 	c := nets[2]
 	if c.Band != "5" || c.Channel != 36 || c.Security.Protocol != "wep" || c.Phy != "802.11a" {
 		t.Fatalf("voce 3: %+v %+v", c, c.Security)
+	}
+}
+
+func TestParseBssListRoaming(t *testing.T) {
+	ies := append(append(append([]byte{}, rsnPSK...),
+		54, 3, 0x12, 0x34, 0x00), // Mobility Domain 1234
+		70, 5, 0x02, 0, 0, 0, 0, // Neighbor Report
+		127, 3, 0, 0, 0x08, // BSS Transition
+	)
+	nets, err := ParseBssList(bssList(entry{ssid: "Reparto", bssid: [6]byte{0, 0x11, 0x22, 0x33, 0x44, 0x55}, rssi: -60, cap: 0x0011, kHz: 5500000, ies: ies}))
+	if err != nil || len(nets) != 1 {
+		t.Fatalf("%v %d", err, len(nets))
+	}
+	if r := nets[0].Roaming; r == nil || !r.K || !r.V || !r.R || r.MDID != "1234" || r.FTOverDS {
+		t.Fatalf("roaming: %+v", r)
 	}
 }
 

@@ -144,8 +144,8 @@ export const wifi: Guide[] = [
     title: 'Sicurezza del Wi-Fi: da WEP a WPA3-Enterprise',
     summary: 'Che cosa protegge davvero la rete, perché WPA2 con password condivisa non basta in un\'azienda e come funziona l\'autenticazione 802.1X.',
     level: 'intermedio',
-    metrics: ['wifi.security', 'wifi.pmf', 'wifi.wps'],
-    actions: ['upgrade-security', 'enable-pmf', 'disable-wps'],
+    metrics: ['wifi.security', 'wifi.pmf', 'wifi.wps', 'wifi.mixedsec'],
+    actions: ['upgrade-security', 'enable-pmf', 'disable-wps', 'check-rogue-ap'],
     tags: ['wpa2', 'wpa3', 'wep', 'tkip', 'ccmp', 'sae', 'pmf', 'wps', '802.1x', 'radius', 'eap', 'eap-tls', 'peap', 'certificati', 'ospiti', 'owe'],
     blocks: [
       { t: 'table', caption: 'I protocolli', head: ['Protocollo', 'Stato', 'Note'], rows: [
@@ -222,7 +222,8 @@ export const wifi: Guide[] = [
     title: 'Roaming tra access point',
     summary: 'Come un dispositivo passa da un AP all\'altro, perché a volte resta attaccato a quello lontano e come aiutano 802.11k, v e r.',
     level: 'avanzato',
-    metrics: ['wifi.rssi'],
+    metrics: ['wifi.rssi', 'wifi.roaming', 'wifi.sticky'],
+    actions: ['fix-roaming'],
     tags: ['roaming', '802.11k', '802.11v', '802.11r', 'fast transition', 'ft', 'sticky client', 'okc', 'pmk caching', 'neighbor report', 'bss transition'],
     blocks: [
       { t: 'p', text: 'Con più AP che trasmettono la stessa rete, è il **dispositivo** a decidere quando passare da uno all\'altro, non l\'AP. Ogni produttore usa i suoi criteri: di solito il passaggio si valuta quando il segnale scende sotto una soglia (spesso tra -70 e -75 dBm) e solo se c\'è un AP sensibilmente migliore.' },
@@ -253,8 +254,8 @@ export const wifi: Guide[] = [
     title: 'Mesh, controller e reti con più access point',
     summary: 'Collegamento cablato o mesh, gestione centralizzata, band steering, equità del tempo d\'aria e quanti SSID usare.',
     level: 'avanzato',
-    metrics: ['wifi.networks', 'wifi.cochannel'],
-    actions: ['add-mesh'],
+    metrics: ['wifi.aps', 'wifi.owncochannel', 'wifi.networks', 'wifi.cochannel'],
+    actions: ['add-mesh', 'plan-ap-channels'],
     tags: ['mesh', 'controller', 'rrm', 'band steering', 'airtime fairness', 'ssid', 'backhaul', 'cloud'],
     blocks: [
       { t: 'h', text: 'Mesh o cavo?' },

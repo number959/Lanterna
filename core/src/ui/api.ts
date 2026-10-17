@@ -1,4 +1,4 @@
-import type { Scan } from '../engine';
+import type { Inventory, ReachData, ReachTarget, Scan } from '../engine';
 
 // Comunicazione con l'agente locale (Polaris.exe serve / finestra).
 // L'interfaccia è servita dallo stesso agente, quindi i percorsi sono relativi.
@@ -68,6 +68,58 @@ export async function ping(target: 'gateway' | 'internet'): Promise<number | nul
   const r = await getJson<{ ms: number | null }>(`api/ping?target=${target}`);
   return r.ms;
 }
+
+// ---- Infrastruttura: partono solo su richiesta esplicita dell'utente.
+
+/** Errore restituito dall'agente, con il messaggio in italiano già pronto da mostrare. */
+async function errorOf(r: Response): Promise<Error> {
+  try {
+    const body = (await r.json()) as { error?: string };
+    if (body.error) return new Error(body.error);
+  } catch {
+    // corpo non JSON
+  }
+  return new Error(`HTTP ${r.status}`);
+}
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const r = await fetch(url, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) throw await errorOf(r);
+  return (await r.json()) as T;
+}
+
+export interface InventoryProgress {
+  running: boolean;
+  phase?: 'ping' | 'nomi' | string;
+  done: number;
+  total: number;
+  error?: string;
+  result?: Inventory;
+}
+
+export const inventoryStatus = () => getJson<InventoryProgress>('api/inventory');
+
+/**
+ * Avvia l'inventario (serve la conferma di autorizzazione) e ne attende la
+ * fine riportando l'avanzamento reale. `resume` riprende un inventario già
+ * in corso senza avviarne un altro.
+ */
+export async function runInventory(onProgress: (p: InventoryProgress) => void, opts: { resume?: boolean; signal?: AbortSignal } = {}): Promise<Inventory> {
+  if (!opts.resume) await postJson<{ started: boolean }>('api/inventory', { authorized: true });
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 500));
+    if (opts.signal?.aborted) throw new DOMException('interrotto', 'AbortError');
+    const p = await inventoryStatus();
+    onProgress(p);
+    if (!p.running) {
+      if (p.error) throw new Error(p.error);
+      if (!p.result) throw new Error('Inventario terminato senza risultato');
+      return p.result;
+    }
+  }
+}
+
+export const runReach = (targets: ReachTarget[]) => postJson<ReachData>('api/reach', { targets });
 
 export function download(name: string, content: string, type: string) {
   const blob = new Blob([content], { type });

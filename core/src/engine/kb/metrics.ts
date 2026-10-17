@@ -190,6 +190,65 @@ const list: Metric[] = [
     what: 'Tutte le reti Wi-Fi che il dispositivo riceve, con potenza, canale, standard e sicurezza. Ogni riga è un "BSS", cioè una singola radio: un router dual-band compare due volte, un sistema mesh una volta per satellite.',
     why: 'Serve a capire quanto è affollato l\'ambiente radio e a scegliere il canale. Una rete con il tuo nome ma da una radio sconosciuta può indicare un ripetitore dimenticato o, raramente, un tentativo di impersonare la tua rete.',
   },
+  {
+    id: 'wifi.aps',
+    label: 'Access point della tua rete',
+    category: 'wifi',
+    what: 'Le radio che annunciano la rete a cui sei collegato: stesso nome, BSSID diversi. Un router dual band ha due radio, una per banda; una rete aziendale o un sistema mesh ne ha molte. Polaris stima il numero di access point contando le radio per banda, perché ogni AP ne ha di solito una per banda.',
+    why: 'Quanti AP della tua rete si ricevono in un punto, su quali canali e con che segnale è la base per capire copertura, roaming e interferenze tra AP. Ripetendo l\'analisi in più punti si ottiene una mappa reale della rete.',
+    limits: 'Si vedono solo gli AP che il PC riceve in quel punto. Reti di proprietari diversi con lo stesso nome (per esempio "Ospiti" di due attività vicine) vengono raggruppate insieme, e i router tri band con due radio a 5 GHz possono far contare un AP in più.',
+  },
+  {
+    id: 'wifi.owncochannel',
+    label: 'AP della tua rete sullo stesso canale',
+    category: 'wifi',
+    what: 'Due o più access point della stessa rete che trasmettono sullo stesso canale e che in questo punto si ricevono entrambi.',
+    scale: [
+      { range: 'canali diversi', severity: 'ok', meaning: 'Gli AP vicini non si contendono lo spettro.' },
+      { range: 'stesso canale, entrambi sopra -80 dBm', severity: 'warn', meaning: 'Si dividono il tempo di trasmissione: la zona ha la capacità di un solo AP.' },
+    ],
+    why: 'Gli AP sullo stesso canale non si sommano: mentre uno trasmette, tutti quelli che lo ricevono devono attendere, quindi due celle sovrapposte offrono la capacità di una. Un buon piano dei canali è la differenza tra una rete che regge le ore di punta e una che rallenta.',
+    limits: 'Nei sistemi mesh con collegamento radio tra i nodi il canale condiviso è una scelta obbligata. La soglia di -80 dBm è vicina al livello minimo a cui una radio riconosce le trasmissioni altrui e rimanda le proprie.',
+  },
+  {
+    id: 'wifi.sticky',
+    label: 'Collegamento a un AP lontano (sticky client)',
+    category: 'wifi',
+    unit: 'dB',
+    what: 'Il PC è collegato a un access point con segnale debole mentre un altro AP della stessa rete, nella stessa banda, si riceve molto meglio.',
+    scale: [
+      { range: 'AP collegato tra i migliori', severity: 'ok', meaning: 'Il dispositivo usa l\'AP giusto.' },
+      { range: 'sotto -67 dBm con un AP più forte di almeno 10 dB', severity: 'warn', meaning: 'Il dispositivo è rimasto agganciato all\'AP sbagliato.' },
+    ],
+    why: 'È il dispositivo, non la rete, a decidere quando cambiare AP, e molti aspettano troppo. Restando su un AP lontano usa modulazioni lente, ritrasmette spesso e occupa il canale più a lungo, rallentando anche gli altri utenti di quell\'AP.',
+    limits: 'Il segnale degli AP non collegati viene dalla scansione, che può risalire a qualche secondo prima: una misura da fermi è più attendibile di una fatta camminando.',
+  },
+  {
+    id: 'wifi.roaming',
+    label: 'Roaming assistito (802.11k/v/r)',
+    category: 'wifi',
+    what: 'Le funzioni che l\'access point annuncia per aiutare i dispositivi a passare da un AP all\'altro: 802.11k (elenco degli AP vicini), 802.11v (la rete suggerisce l\'AP migliore) e 802.11r (Fast Transition: passaggio rapido senza ripetere tutta l\'autenticazione).',
+    scale: [
+      { range: 'k, v e r presenti', severity: 'ok', meaning: 'Roaming rapido e guidato per i dispositivi compatibili.' },
+      { range: 'una o più funzioni assenti', severity: 'info', meaning: 'Il roaming funziona, ma più lento o meno guidato.' },
+    ],
+    why: 'In una rete con più AP il passaggio da un AP all\'altro deve durare poche decine di millisecondi per non interrompere chiamate e applicazioni in tempo reale. Con 802.1X senza 802.11r ogni passaggio può richiedere l\'autenticazione completa con il server RADIUS, che dura molto di più.',
+    limits: 'Polaris legge ciò che l\'AP annuncia nei beacon, non ciò che il PC usa davvero. Altre tecniche di roaming rapido, come la memorizzazione delle chiavi (PMK caching, OKC), non compaiono nei beacon. Il valore si valuta solo se la rete ha più AP.',
+  },
+  {
+    id: 'wifi.mixedsec',
+    label: 'Stessa rete con protezioni diverse',
+    category: 'security',
+    what: 'Confronta la protezione di tutti gli access point che annunciano la rete a cui sei collegato: dovrebbe essere identica su tutti.',
+    scale: [
+      { range: 'protezione uguale su tutti gli AP', severity: 'ok', meaning: 'Configurazione coerente.' },
+      { range: 'varianti dello stesso tipo (es. WPA2 e WPA2/WPA3)', severity: 'info', meaning: 'Configurazione disomogenea: passando da un AP all\'altro può servire una nuova autenticazione.' },
+      { range: 'tipo diverso (es. password condivisa e 802.1X)', severity: 'warn', meaning: 'AP configurato male o estraneo.' },
+      { range: 'AP aperto o obsoleto con il nome di una rete protetta', severity: 'crit', meaning: 'Possibile AP gemello che imita la rete per intercettare chi si collega.' },
+    ],
+    why: 'Un access point gemello (evil twin) usa il nome della rete per attirare i dispositivi. Anche quando è solo un errore di configurazione, un AP con protezione diversa crea problemi di roaming e una falla nella rete.',
+    limits: 'Reti diverse con lo stesso nome, per esempio "Ospiti" di due attività vicine, possono essere segnalate per errore: BSSID e posizione aiutano a distinguerle.',
+  },
 
   // ---------------- LAN ----------------
   {
@@ -285,7 +344,40 @@ const list: Metric[] = [
     label: 'Dispositivi rilevati in rete',
     category: 'lan',
     what: 'Gli altri dispositivi con cui il PC ha comunicato di recente (tabella ARP/neighbor del sistema operativo).',
-    why: 'Aiuta a riconoscere dispositivi sconosciuti. Non è un inventario completo: compaiono solo quelli con cui c\'è stato traffico. Per l\'elenco completo consulta la pagina "dispositivi connessi" del router.',
+    why: 'Aiuta a riconoscere dispositivi sconosciuti. Non è un inventario completo: compaiono solo quelli con cui c\'è stato traffico. Per l\'elenco completo consulta la pagina "dispositivi connessi" del router o esegui l\'inventario della sezione Infrastruttura.',
+  },
+  {
+    id: 'lan.dupmac',
+    label: 'Stesso MAC per più indirizzi',
+    category: 'lan',
+    what: 'Nella tabella ARP del PC (e nell\'inventario, se eseguito) lo stesso indirizzo MAC compare per più indirizzi IP.',
+    scale: [
+      { range: 'doppioni tra dispositivi qualsiasi', severity: 'info', meaning: 'Di solito un ripetitore Wi-Fi che traduce gli indirizzi, un server con più indirizzi o un host di macchine virtuali.' },
+      { range: 'il MAC del gateway compare per altri indirizzi', severity: 'warn', meaning: 'Da verificare: può essere un dispositivo che si spaccia per il router (ARP spoofing).' },
+    ],
+    why: 'L\'ARP spoofing, cioè un dispositivo che risponde alle richieste ARP al posto del router, è il modo classico per intercettare il traffico di una rete locale. Il primo indizio è proprio un MAC che compare per indirizzi che non gli appartengono.',
+    limits: 'La tabella ARP contiene solo i dispositivi con cui il PC ha comunicato di recente. Un attacco può anche sostituire il MAC del gateway senza creare doppioni: per questo l\'interfaccia avvisa se il MAC del router cambia tra un\'analisi e l\'altra sullo stesso PC.',
+  },
+  {
+    id: 'lan.subnet',
+    label: 'Ampiezza della sottorete',
+    category: 'lan',
+    what: 'Quanti indirizzi contiene la sottorete del PC, indicata dal prefisso: /24 = 254 indirizzi utilizzabili, /22 = 1.022, /16 = 65.534.',
+    scale: [
+      { range: 'da /21 a /30', severity: 'ok', meaning: 'Dimensioni comuni.' },
+      { range: '/20 o più ampia', severity: 'info', meaning: 'Rete probabilmente piatta: molti dispositivi nello stesso dominio di broadcast.' },
+    ],
+    why: 'Una sottorete molto ampia è spesso il segno di una rete "piatta", in cui PC, ospiti, stampanti e dispositivi medicali stanno insieme: un guasto o un\'infezione può raggiungere tutto, e il traffico di broadcast cresce con il numero di dispositivi.',
+    limits: 'L\'ampiezza non dice se esistono filtri tra i dispositivi: la separazione si verifica con il test di segmentazione della sezione Infrastruttura.',
+  },
+  {
+    id: 'lan.domain',
+    label: 'Dominio e DNS aziendali',
+    category: 'lan',
+    what: 'Se il PC fa parte di un dominio (Active Directory) o se la connessione riceve un suffisso DNS aziendale con DNS interni. In questi casi nomi, accessi, cartelle condivise e criteri dipendono dai server della rete.',
+    scale: [{ range: 'dominio rilevato', severity: 'info', meaning: 'I DNS si gestiscono sui server: Polaris non suggerisce di cambiarli sul PC.' }],
+    why: 'Il consiglio di passare a un DNS pubblico, utile in casa, in una rete con dominio fa danni: i DNS pubblici non conoscono i nomi interni e il PC smette di trovare server e controller di dominio.',
+    limits: 'Senza dominio il riconoscimento si basa sul suffisso DNS della connessione e su DNS diversi dal router: una rete domestica con un suffisso personalizzato e un DNS locale (per esempio Pi-hole) può sembrare aziendale.',
   },
 
   // ---------------- Internet ----------------
@@ -432,6 +524,62 @@ const list: Metric[] = [
     ],
     why: 'Il firewall è l\'ultima barriera se un altro dispositivo della rete è compromesso o se sei su una rete pubblica.',
     limits: 'Se un antivirus di terze parti sostituisce il firewall di Windows, il profilo può risultare disattivato pur essendo il PC protetto.',
+  },
+
+  // ---------------- Infrastruttura (su richiesta) ----------------
+  {
+    id: 'infra.inventory',
+    label: 'Inventario della sottorete',
+    category: 'infra',
+    unit: 'dispositivi',
+    what: 'Il censimento dei dispositivi della sottorete del PC, eseguito solo su richiesta esplicita: un ping a ogni indirizzo con ritmo prudente, la tabella ARP, i nomi dal DNS inverso e da NetBIOS. Nessuna scansione di porte.',
+    scale: [
+      { range: 'sottorete con spazio libero', severity: 'info', meaning: 'Elenco da confrontare con l\'inventario della struttura.' },
+      { range: 'oltre l\'85 % degli indirizzi occupati', severity: 'warn', meaning: 'Il DHCP rischia di esaurire gli indirizzi.' },
+    ],
+    why: 'Non si protegge ciò che non si sa di avere: i dispositivi senza nome e senza responsabile sono quelli che non vengono aggiornati né inseriti nelle regole del firewall.',
+    limits: 'Restano invisibili i dispositivi spenti, in sospensione profonda o che non rispondono né al ping né all\'ARP, e quelli di altre sottoreti. Delle sottoreti più ampie di /22 si esamina solo il blocco /24 del PC.',
+  },
+  {
+    id: 'infra.seg',
+    label: 'Test di segmentazione',
+    category: 'infra',
+    what: 'Verifica dal PC che le destinazioni che da questa zona devono essere irraggiungibili (altre VLAN, rete di gestione, dispositivi medicali) non rispondano: una connessione TCP alla porta indicata o, senza porta, due ping.',
+    scale: [
+      { range: 'nessuna risposta', severity: 'ok', meaning: 'Isolamento confermato per quella destinazione.' },
+      { range: 'porta chiusa (rifiuto)', severity: 'warn', meaning: 'L\'host o un firewall risponde con un rifiuto: il traffico arriva fin lì, da verificare.' },
+      { range: 'porta aperta o risposta al ping', severity: 'crit', meaning: 'La destinazione è raggiungibile: l\'isolamento non funziona.' },
+    ],
+    why: 'Una segmentazione mai verificata è un\'ipotesi: regole troppo larghe o aggiunte "temporaneamente" sono comuni. Il test va ripetuto da ogni zona e dopo ogni modifica alle regole.',
+    limits: 'Un esito positivo vale per le destinazioni e le porte provate, non per tutte. Un firewall che risponde con un rifiuto al posto del server dà "porta chiusa" anche se il server è protetto.',
+  },
+  {
+    id: 'infra.services',
+    label: 'Servizi critici',
+    category: 'infra',
+    unit: 'ms',
+    what: 'Verifica che i servizi da cui dipende l\'attività (cartella clinica, PACS, DNS interni, controller di dominio...) rispondano da questa zona, misurando il tempo di apertura della connessione.',
+    scale: [
+      { range: 'risponde entro 100 ms', severity: 'ok', meaning: 'Servizio raggiungibile.' },
+      { range: 'risponde oltre 100 ms', severity: 'warn', meaning: 'Raggiungibile ma lento: server o collegamenti sotto carico.' },
+      { range: 'nessuna risposta, porta chiusa o nome non risolto', severity: 'crit', meaning: 'Servizio irraggiungibile da questa zona.' },
+    ],
+    why: 'Un servizio critico irraggiungibile ferma un reparto anche quando tutto il resto funziona. Verificarlo da ogni zona e con la porta giusta distingue un problema di rete da un server fermo o da un problema di DNS.',
+    limits: 'Si misura l\'apertura della connessione, non il funzionamento dell\'applicazione: un servizio può accettare connessioni ed essere comunque bloccato.',
+  },
+  {
+    id: 'infra.assessment',
+    label: 'Autovalutazione organizzativa',
+    category: 'infra',
+    unit: '/100',
+    what: 'Il punteggio per area (segmentazione, dispositivi medicali, accessi e fornitori, backup, continuità, incidenti) calcolato dalle risposte all\'autovalutazione della sezione Infrastruttura: "sì" vale 1, "in parte" 0,5, "no" 0, e le domande più importanti pesano di più; quelle non applicabili non contano.',
+    scale: [
+      { range: '80-100', severity: 'ok', meaning: 'Misure presenti nella sostanza.' },
+      { range: '50-79', severity: 'warn', meaning: 'Lacune importanti da pianificare.' },
+      { range: 'sotto 50', severity: 'crit', meaning: 'Area scoperta: priorità alta.' },
+    ],
+    why: 'Molte difese non si vedono da una misura di rete: backup offline, procedure, accessi dei fornitori. L\'autovalutazione le rende esplicite e aggiunge al piano le azioni mancanti.',
+    limits: 'Le risposte sono dichiarazioni, non verifiche: il punteggio vale quanto la loro accuratezza. Non sostituisce un audit né una valutazione dei rischi formale.',
   },
 ];
 

@@ -45,7 +45,8 @@ export const sicurezza: Guide[] = [
     title: 'Segmentazione: dividere la rete in zone',
     summary: 'Perché una rete piatta è il miglior alleato di un ransomware, come si progettano le zone, la matrice dei flussi e come si verifica che l\'isolamento funzioni davvero.',
     level: 'avanzato',
-    actions: ['separate-iot'],
+    metrics: ['infra.seg', 'lan.subnet'],
+    actions: ['segment-network', 'separate-iot'],
     tags: ['segmentazione', 'zone', 'vlan', 'rete piatta', 'microsegmentazione', 'matrice dei flussi', 'movimento laterale', 'isolamento', 'iot', 'ospiti', 'dispositivi medicali', 'test di segmentazione', 'dmz', 'rete di gestione'],
     blocks: [
       { t: 'p', text: 'In una **rete piatta** ogni dispositivo può parlare con ogni altro: il PC dell\'accettazione con il server dei referti, la telecamera del parcheggio con l\'ecografo, il portatile di un visitatore con la stampante delle ricette. Se uno di loro viene compromesso, l\'attaccante si muove liberamente (**movimento laterale**) e un ransomware cifra tutto ciò che raggiunge.' },
@@ -100,7 +101,7 @@ export const sicurezza: Guide[] = [
     summary: 'Password e frasi segrete, autenticazione a più fattori, account amministrativi, gestione delle vulnerabilità e dei sistemi che non si possono aggiornare.',
     level: 'intermedio',
     metrics: ['router.web', 'wifi.wps'],
-    actions: ['update-firmware', 'router-https', 'disable-wps'],
+    actions: ['credentials-mfa', 'patch-management', 'update-firmware', 'router-https', 'disable-wps'],
     tags: ['password', 'passphrase', 'mfa', '2fa', 'autenticazione a più fattori', 'gestore di password', 'fido2', 'passkey', 'account amministratore', 'laps', 'aggiornamenti', 'patch', 'firmware', 'vulnerabilità', 'cve', 'kev', 'fine supporto', 'end of life', 'legacy'],
     blocks: [
       { t: 'p', text: 'Gran parte delle intrusioni sfrutta una di due debolezze: **credenziali** deboli o rubate, oppure **vulnerabilità** note e non corrette. Entrambe si prevengono più con la disciplina che con prodotti costosi.' },
@@ -145,8 +146,8 @@ export const sicurezza: Guide[] = [
     title: 'Le minacce più comuni',
     summary: 'Phishing, ransomware, attacchi nella rete locale, access point falsi e dispositivi vulnerabili: come funzionano, come si riconoscono e che cosa li ferma.',
     level: 'intermedio',
-    metrics: ['wifi.security', 'router.upnp', 'lan.neighbors'],
-    actions: ['upgrade-security', 'disable-upnp'],
+    metrics: ['wifi.security', 'wifi.mixedsec', 'router.upnp', 'lan.neighbors', 'lan.dupmac'],
+    actions: ['upgrade-security', 'check-rogue-ap', 'check-arp', 'disable-upnp'],
     tags: ['phishing', 'ransomware', 'malware', 'furto di credenziali', 'arp spoofing', 'dhcp abusivo', 'rogue dhcp', 'evil twin', 'access point falso', 'mitm', 'usb', 'botnet', 'iot', 'ingegneria sociale', 'incidente', 'doppia estorsione'],
     blocks: [
       { t: 'p', text: 'Sapere come si muove un attacco aiuta a capire perché le misure servono e a riconoscerne i segnali. Queste sono le minacce che colpiscono più spesso le piccole e medie strutture, sanitarie comprese.' },
@@ -170,7 +171,7 @@ export const sicurezza: Guide[] = [
         ['Dispositivi IoT vulnerabili', 'telecamere e apparati con password di fabbrica arruolati in reti di computer compromessi (botnet)', 'password cambiate, aggiornamenti, zona separata e nessuna esposizione su Internet'],
         ['Chiavette USB', 'malware portato da supporti esterni, a volte lasciati in giro apposta', 'blocco o controllo dei supporti rimovibili, antivirus'],
       ] },
-      { t: 'note', kind: 'tip', title: 'Che cosa può notare STARNET Polaris', text: 'La tabella dei dispositivi vicini mostra quale MAC corrisponde a ogni indirizzo: se il MAC del gateway cambia senza motivo, o lo stesso MAC compare per più indirizzi, è un segnale da approfondire. Nella sezione Wi-Fi il programma segnala quando la stessa rete è annunciata da access point con una sicurezza diversa dagli altri: può essere un AP configurato male o un AP gemello.' },
+      { t: 'note', kind: 'tip', title: 'Che cosa può notare STARNET Polaris', text: 'La tabella dei dispositivi vicini mostra quale MAC corrisponde a ogni indirizzo. Il programma segnala quando lo stesso MAC compare per più indirizzi e avvisa se il MAC del router è cambiato rispetto all\'analisi precedente fatta sullo stesso PC: sono segnali da approfondire, perché hanno anche spiegazioni innocue (un ripetitore, un router sostituito). Nella sezione Wi-Fi segnala quando la stessa rete è annunciata da access point con una sicurezza diversa dagli altri: può essere un AP configurato male o un AP gemello.' },
       { t: 'h', text: 'Se si sospetta un incidente' },
       { t: 'list', ordered: true, items: [
         '**non spegnere** i sistemi coinvolti (si perdono le tracce in memoria), ma **scollegarli dalla rete**: cavo e Wi-Fi;',
@@ -187,6 +188,7 @@ export const sicurezza: Guide[] = [
     title: 'Monitoraggio della sicurezza e log',
     summary: 'Quali log raccogliere, quali eventi osservare, per quanto conservarli e come accorgersi di un attacco prima che diventi un disastro.',
     level: 'avanzato',
+    actions: ['incident-response'],
     tags: ['log', 'siem', 'edr', 'xdr', 'soc', 'mdr', 'monitoraggio', 'conservazione', 'audit', 'eventi windows', '4624', '4625', 'ids', 'anomalie', 'tracciabilità', 'amministratori di sistema'],
     blocks: [
       { t: 'p', text: 'Gli attacchi moderni lasciano tracce per giorni o settimane prima del colpo finale: accessi in orari insoliti, account amministrativi usati da postazioni nuove, traffico verso indirizzi sconosciuti, backup cancellati. Il monitoraggio serve ad accorgersene in quella finestra.' },
@@ -227,6 +229,8 @@ export const sicurezza: Guide[] = [
     title: 'Backup e ripristino',
     summary: 'La regola 3-2-1-1-0, copie immutabili e offline, RPO e RTO, che cosa salvare e perché un backup mai ripristinato non è un backup.',
     level: 'intermedio',
+    metrics: ['infra.assessment'],
+    actions: ['backup-offline', 'continuity-plan'],
     tags: ['backup', 'ripristino', '3-2-1', 'immutabile', 'offline', 'air gap', 'rpo', 'rto', 'snapshot', 'ransomware', 'nas', 'cloud', 'prova di ripristino', 'disaster recovery'],
     blocks: [
       { t: 'p', text: 'Il backup è l\'ultima difesa: quando tutto il resto ha fallito (guasto, errore umano, ransomware), è ciò che permette di ripartire. Ma solo se i dati sono stati copiati, la copia è sopravvissuta all\'incidente e qualcuno sa ripristinarla in tempi accettabili.' },
