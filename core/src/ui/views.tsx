@@ -343,7 +343,10 @@ function OwnApsCard({ nets, me, ssid }: { nets: Bss[]; me?: Bss; ssid: string })
     <m.section variants={rise} className="card" style={{ marginTop: 16 }}>
       <div className="card-head">
         <h2>Access point della rete "{ssid}"</h2>
-        <span className="sub">almeno {aps} AP · {radios.length} radio ricevute da qui</span>
+        <span className="sub">
+          almeno {aps} AP · {radios.filter((b) => !odd(b)).length} radio ricevute da qui
+          {radios.some(odd) ? ` · ${radios.filter(odd).length} con protezione diversa` : ''}
+        </span>
       </div>
       <TableWrap label="Access point della tua rete">
         <table>

@@ -1,7 +1,8 @@
 STARNET Polaris - la stella polare della tua rete
 =================================================
 
-Diagnostica della rete di casa. Programma portatile: non va installato.
+Diagnostica di rete per la casa, lo studio, l'azienda e le strutture
+sanitarie. Programma portatile: non va installato.
 Copia la cartella dove vuoi (anche su una chiavetta) e fai doppio clic su
 Polaris.exe.
 
@@ -10,6 +11,12 @@ COSA FA
   reti vicine), rete locale (router, perdite, stabilita'), Internet (latenza,
   percorso, MTU), DNS, servizi esposti dal router, UPnP e firewall di Windows.
   Per ogni valore spiega cosa significa, quanto e' grave e cosa fare.
+  Nelle reti con piu' access point mostra gli AP della rete, il roaming
+  (802.11k/v/r), gli AP sullo stesso canale e il PC agganciato a un AP lontano;
+  riconosce le reti con dominio. La sezione Infrastruttura censisce la
+  sottorete, verifica la separazione tra le zone e i servizi critici e guida
+  un'autovalutazione delle misure organizzative. 48 guide spiegano la rete,
+  dalle basi alle reti cliniche.
 
 REQUISITI
   - Windows 10 o 11, 64 bit.
@@ -21,7 +28,7 @@ REQUISITI
   - Non servono privilegi di amministratore.
 
 INTERFACCIA
-  Tasti 1-8: sezioni; tasto /: cerca nella guida. Il tema (automatico, scuro,
+  Tasti 1-9: sezioni; tasto /: cerca nella guida. Il tema (automatico, scuro,
   chiaro) si cambia con il pulsante in alto a destra.
   Su macchine virtuali o in desktop remoto, se le animazioni risultano lente,
   Polaris passa da solo alla "grafica leggera" (si puo' anche scegliere in
@@ -42,6 +49,10 @@ PRIVACY
   (www.google.com/generate_204 e cp.cloudflare.com/generate_204).
   Il controllo dei servizi riguarda esclusivamente il router della rete a cui
   sei collegato. I dati di WebView2 sono in %LOCALAPPDATA%\STARNET Polaris.
+  Inventario e verifiche della sezione Infrastruttura partono solo su tua
+  richiesta, solo verso indirizzi privati, con un ritmo prudente e senza
+  scansioni di porte. Avviali solo su reti che sei autorizzato ad analizzare
+  e, dove ci sono dispositivi medicali, d'accordo con l'ingegneria clinica.
 
 Licenze dei componenti inclusi: THIRD_PARTY_NOTICES.md
 Il marchio STARNET appartiene al suo titolare.

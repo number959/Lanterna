@@ -1,23 +1,27 @@
 # Verifiche
 
-Cosa è stato verificato, come, e cosa resta da provare. Versione attuale: 0.3.0 (13 ottobre 2026), con il marchio STARNET e il
-nome STARNET Polaris (sezione 7). Fino alla versione 0.2.0 il programma si chiamava LANterna: le sezioni che descrivono prove
-precedenti riportano i nomi di allora.
+Cosa è stato verificato, come, e cosa resta da provare. Versione attuale: 0.4.0 (17 ottobre 2026), con le guide di rete e gli
+strumenti per le reti complesse e le strutture sanitarie (sezione 8). Fino alla versione 0.2.0 il programma si chiamava LANterna:
+le sezioni che descrivono prove precedenti riportano i nomi di allora.
 
 ## 1. Test automatici
 
 | Parte | Test | Cosa coprono |
 | --- | --- | --- |
 | Motore di analisi (`core/`, vitest) | 41 | conversioni frequenza/canale e spettro; soglie di ogni metrica ai bordi (es. -67/-68/-75/-76 dBm); diagnosi incrociate (latenza in casa o dell'operatore, router che ignora i ping o non risponde affatto ma inoltra il traffico, perdite misurate via TCP, traceroute con nodo lento o percorso parziale, ping bloccati ma web funzionante); sicurezza (aperta, WEP, TKIP, WPA3, PMF, WPS); piano d'azione senza duplicati e con i critici in testa; rapporto testuale; **il bundle `engine.js` gira come script ES2015 senza moduli né Intl** (come in goja) e dà lo stesso risultato |
-| Decoder 802.11 (`windows/internal/ie`) | 16 | beacon costruiti **byte per byte**: RSN (WPA2, WPA3, transizione, OWE, Enterprise, valori impliciti), WPA in modalità mista con TKIP, WEP dal bit Privacy, WPS, BSS Load, Country, HT 40 MHz sopra/sotto, VHT 80/160 (codifica moderna e deprecata), HE 6 GHz con campi opzionali, EHT 320 MHz, elementi troncati |
-| Strutture wlanapi (`windows/internal/wlan`) | 5 | `WLAN_BSS_LIST`, `WLAN_CONNECTION_ATTRIBUTES`, `WLAN_INTERFACE_INFO_LIST` costruite byte per byte: RSSI con segno, frequenza in kHz, velocità in unità da 500 kbit/s, offset IE relativo alla voce e fuori dal buffer, conteggi incoerenti, descrizioni UTF-16 |
+| Reti complesse (`core/test/complex.test.ts`) | 21 | AP della rete (un router dual band non conta due volte), AP propri sullo stesso canale con la soglia di -80 dBm, sticky client e giudizio sul segnale che punta all'AP scelto, roaming (802.1X senza 802.11r, funzioni diverse tra AP, Mobility Domain diversi), AP gemello aperto e varianti della stessa protezione, reti delle stesse radio escluse dai vicini e dal consiglio dei canali; dominio e suffisso DNS (anche suffissi domestici e DNS pubblici), server DHCP, sottorete ampia, MAC condivisi; inventario, segmentazione, servizi critici, autovalutazione con le azioni nel piano; rete dimostrativa Clinica; rapporto con i dettagli entro 90 colonne |
+| Guide (`core/test/guides.test.ts`) | 17 | identificativi e capitoli, collegamenti interni, misure e azioni citate esistenti, **ogni misura spiegata in almeno una guida**, markup chiuso, tabelle coerenti, glossario senza doppioni, argomenti sanitari presenti, ricerca |
+| Decoder 802.11 (`windows/internal/ie`) | 20 | beacon costruiti **byte per byte**: RSN (WPA2, WPA3, transizione, OWE, Enterprise, valori impliciti), WPA in modalità mista con TKIP, WEP dal bit Privacy, WPS, BSS Load, Country, HT 40 MHz sopra/sotto, VHT 80/160 (codifica moderna e deprecata), HE 6 GHz con campi opzionali, EHT 320 MHz, elementi troncati; roaming da Mobility Domain, RM Enabled Capabilities ed Extended Capabilities (anche troncato) e 802.11r dedotto dagli AKM FT |
+| Strutture wlanapi (`windows/internal/wlan`) | 6 | `WLAN_BSS_LIST`, `WLAN_CONNECTION_ATTRIBUTES`, `WLAN_INTERFACE_INFO_LIST` costruite byte per byte: RSSI con segno, frequenza in kHz, velocità in unità da 500 kbit/s, offset IE relativo alla voce e fuori dal buffer, conteggi incoerenti, descrizioni UTF-16 |
 | Parser netsh (`windows/internal/netsh`) | 4 | output inglese e italiano, anche con lettere accentate storpiate dalla code page CP850; messaggio di Windows 11 sul permesso di posizione |
 | Sonde di rete (`windows/internal/probe`) | 12 | proxy di sistema di Windows (proxy unico o per schema, eccezioni `<local>` e con caratteri jolly); pacchetto DNS confrontato byte per byte, server DNS finto (risposta, REFUSED, SERVFAIL, timeout); router UPnP finto completo (SSDP, descrizione XML, SOAP `GetExternalIPAddress`); filtro degli URL SSDP (solo LAN privata); porte; titolo del pannello; HTTPS |
 | Orchestrazione (`windows/internal/collect`) | 8 | analisi completa su piattaforma simulata; traceroute; MTU con ricerca binaria; riserva TCP quando l'ICMP non funziona; interruzione rapida se l'host non risponde; assenza di gateway; PC senza scheda Wi-Fi; scelta del metodo nel monitor |
-| Server locale (`windows/internal/server`) | 4 | rifiuto di Host estranei, POST da altre origini e cross-site; CSP; tipi dei file dell'interfaccia (font `woff2`, favicon `ico`, CSS con `nosniff`); ciclo avvio, avanzamento e risultato; ping del monitor; avvii concorrenti |
+| Server locale (`windows/internal/server`) | 7 | rifiuto di Host estranei, POST da altre origini e cross-site; CSP; tipi dei file dell'interfaccia (font `woff2`, favicon `ico`, CSS con `nosniff`); ciclo avvio, avanzamento e risultato; ping del monitor; avvii concorrenti; inventario (conferma obbligatoria, solo JSON, rete non adatta, già in corso, non disponibile) e verifiche |
+| Infrastruttura (`windows/internal/infra`) | 9 | sottorete da esaminare (/22 intera, ripiego sul /24, reti pubbliche e /31 rifiutate), reti private e MAC casuali, inventario con limite di concorrenza, dispositivi visti solo tramite ARP e nomi, interruzione, verifiche (porta aperta, chiusa o filtrata, ping, nomi risolti preferendo IPv4, destinazioni pubbliche rifiutate), validazione, richiesta e risposta NetBIOS byte per byte |
 | Motore in goja (`windows/internal/engine`) | 3 | il vero `engine.js` eseguito nell'interprete dell'exe: rapporto e analisi, formattazione dei numeri con la virgola |
 
-In totale 41 test TypeScript e 52 test Go, questi ultimi eseguiti anche con il race detector.
+In totale 79 test TypeScript e 69 test Go, questi ultimi eseguiti anche con il race detector. Il conteggio del motore di analisi
+(41) comprende i test di tutte le versioni precedenti.
 
 ## 2. Strutture di Windows confrontate con gli header ufficiali
 
@@ -135,6 +139,9 @@ Difetti trovati con queste prove e corretti prima della consegna:
 | Fluidità con una GPU vera | il container e la CI non hanno GPU | misure in rendering software (caso peggiore) e grafica leggera automatica | animazioni a 60 fps anche aprendo le schede; con desktop remoto deve attivarsi la grafica leggera |
 | Permesso di posizione (Windows 11 24H2+) | serve Windows 11 con scheda Wi-Fi | messaggio di Windows riconosciuto nei test; errore `ACCESS_DENIED` tradotto in istruzioni | con posizione disattivata deve comparire la spiegazione, attivandola le reti |
 | UPnP e porte di un router reale | nessun router domestico nel container | router UPnP simulato nei test | modello del router, porte aperte, IP pubblico |
+| Inventario di una rete privata vera | la rete del container è 192.0.2.0/24, che non è privata; la rete della CI non va scansionata | primitive simulate nei test (ritmo, concorrenza, ARP, nomi); sotto Wine verificato il rifiuto della rete non privata; in CI il rifiuto senza conferma | tempi su una /24, dispositivi visti solo tramite ARP, nomi NetBIOS di PC e stampanti |
+| Roaming 802.11k/v/r da AP veri | nessuna scheda Wi-Fi | elementi costruiti byte per byte secondo lo standard | funzioni e Mobility Domain degli AP di una rete aziendale; segnalazione dello sticky client camminando |
+| Verifiche verso una rete segmentata | nessuna VLAN né firewall interni qui | esiti simulati nei test; sotto Wine verifiche vere (indirizzo pubblico rifiutato, ping senza risposta) | distinzione tra porta chiusa e filtrata attraverso un firewall reale |
 
 ## 6. Collaudo su Windows reale (CI)
 
@@ -239,3 +246,60 @@ stesso viola, e su mobile il marchio spariva insieme alla barra laterale (ora il
   ora la barra scorre e sugli schermi bassi il logo è più compatto.
 
 ![STARNET Polaris su Windows reale](img/windows-reale.webp)
+
+## 8. Versione 0.4.0: guide di rete, reti complesse e strutture sanitarie
+
+**Cosa è nuovo.** La biblioteca di 48 guide con glossario e centro guide (commit `c0c2fb1`); il motore 1.1.0 con le analisi delle
+reti con più access point e delle reti aziendali e la categoria Infrastruttura; nell'agente il pacchetto `infra` (inventario e
+verifiche su richiesta), la lettura del roaming dai beacon, di dominio, suffisso DNS e server DHCP; nell'interfaccia la sezione
+Infrastruttura, gli AP della rete nella sezione Wi-Fi, il monitor di sessione e la rete dimostrativa Clinica (commit `c6d0887`).
+
+**Interfaccia**, prove in Chromium 141 sulla build di produzione, con entrambe le reti dimostrative:
+
+| Verifica | Esito |
+| --- | --- |
+| Aspetto (9 sezioni × 2 temi × desktop e mobile, reti Casa e Clinica) | nessuno scorrimento orizzontale, nessun elemento invisibile o fuori dal riquadro, nessun errore in console |
+| axe-core 4.11.4, WCAG 2.1 A/AA e buone pratiche (36 combinazioni per rete, con una scheda aperta e una risposta data) | 0 violazioni dopo la correzione sotto |
+| Percorso interattivo (25 controlli) | tasto `6`; pulsante dell'inventario disattivo finché non si conferma l'autorizzazione; barra di avanzamento; filtro; CSV con intestazione e BOM; esempi delle destinazioni; campi vuoti segnalati; indirizzo pubblico "non verificato"; risposte da tastiera con le frecce; giudizio e azione nel piano; JSON esportato con inventario, verifiche e autovalutazione; risposte conservate dopo il ricaricamento; monitor che continua cambiando sezione, con il pallino nella navigazione e il CSV; AP della rete nella demo Clinica |
+| Barra in basso su telefono | nove voci con le etichette a 390 px; sotto 370 px solo le icone (il nome resta per i lettori di schermo); nessuno sbordo a 360 e 320 px |
+| Fluidità senza GPU | 60 fps mediani entrando in Infrastruttura, aprendo un'area dell'autovalutazione, rispondendo, durante l'inventario simulato, aggiungendo una destinazione, nel monitor e nella tabella degli AP; p95 di 33 ms solo all'ingresso del monitor |
+
+**Exe 0.4.0 sotto Wine 9.0, nei tre modi:**
+- **rapporto**: analisi in 14,1 s;
+- **server**, nuove API con l'agente vero:
+  - `415` senza corpo JSON, `400` senza conferma, `422` sulla rete del container ("192.0.2.2 non è un indirizzo privato");
+  - `403` con `Origin` o `Host` estranei, `400` con una destinazione vuota;
+  - verifiche in 1,8 s: indirizzo pubblico e `localhost` non verificati, ping senza risposta "isolato come previsto";
+- **interfaccia servita dall'exe** (Chromium):
+  - il rifiuto della rete non privata compare come avviso;
+  - le verifiche danno gli esiti veri e i giudizi;
+  - il monitor misura con ping veri, senza l'avviso della demo;
+  - in console resta solo la riga del browser sulla risposta `422`, attesa;
+- **finestra senza WebView2**: messaggio con l'indirizzo dell'interfaccia su una porta libera, chiusura con OK.
+
+**Windows reale (CI).** Il commit `c6d0887` ha superato test, build e collaudo su Windows reale. Al collaudo si aggiunge un
+controllo prudente delle nuove API: un inventario senza conferma deve essere rifiutato (nessuna scansione della rete della CI) e
+una sola verifica verso il gateway deve dare un esito.
+
+**Difetti trovati e corretti durante il lavoro:**
+1. Un router dual band rischiava di contare come due AP: il conteggio ora è per banda.
+2. Le reti ospiti e dispositivi trasmesse dallo stesso AP risultavano "reti vicine" sul proprio canale e falsavano il consiglio
+   dei canali.
+3. Una radio estranea con il nome della rete entrava nel conteggio degli AP e nelle coppie sullo stesso canale.
+4. Con più AP i canali da 40 MHz, scelta corretta, erano segnalati come limite di velocità.
+5. Con lo sticky client il giudizio sul segnale suggeriva di avvicinarsi al router invece di correggere il roaming.
+6. Una rete WPA2-Enterprise era descritta come protetta "da una password lunga".
+7. La tabella ARP scartava gli indirizzi che finiscono in .255, validi nelle sottoreti /22 e /23.
+8. Lo stato salvato nel browser non seguiva il cambio di chiave: passando da una rete dimostrativa all'altra restavano le
+   risposte della prima.
+9. Un elenco vuoto delle destinazioni aveva il ruolo di elenco senza voci (axe-core).
+10. Testi: "1 sono stati visti", parentesi doppie nelle destinazioni, puntini seguiti dal punto.
+
+**Avvertenze.** Le guide e le domande dell'autovalutazione sono state scritte senza consultare le fonti primarie durante questo
+lavoro: articoli, termini di notifica e riferimenti normativi (GDPR, NIS2, dispositivi medicali) sono una sintesi da verificare sui
+testi ufficiali e non costituiscono consulenza legale. Inventario, verifiche e lettura del roaming sono collaudati con dati simulati
+e sotto Wine, non ancora su una rete aziendale vera (sezione 5).
+
+| AP della rete | Esiti delle verifiche | Autovalutazione |
+| --- | --- | --- |
+| ![AP della rete](img/ap-rete.webp) | ![Verifiche](img/verifiche.webp) | ![Autovalutazione](img/autovalutazione.webp) |

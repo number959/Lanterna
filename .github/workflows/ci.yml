@@ -75,6 +75,7 @@ jobs:
           "Internet: " + (($s.internet.targets | ForEach-Object { "$($_.target) $($_.received)/$($_.sent) $($_.method)" }) -join ' | ')
           "Firewall ($($s.firewall.source)): " + (($s.firewall.profiles | ForEach-Object { "$($_.name)=$($_.enabled) attivo=$($_.active)" }) -join ' | ')
           "Errori: " + (($s.errors | ForEach-Object { "$($_.probe): $($_.message)" }) -join ' | ')
+          "Dominio: '$($s.agent.domain)'; suffissi DNS: " + (($s.adapters | ForEach-Object { "$($_.name)='$($_.dnsSuffix)' dhcp=$($_.dhcpServer)" }) -join ' | ')
           if ($s.agent.os -notmatch '^Windows') { throw "sistema non riconosciuto: $($s.agent.os)" }
           if ($s.adapters.Count -lt 1) { throw "GetAdaptersAddresses non ha restituito schede" }
           if (-not $s.gateway.ip) { throw "gateway non individuato" }
@@ -97,6 +98,18 @@ jobs:
             if (-not $scan.gateway.ip) { throw "analisi via API senza gateway" }
             $ping = Invoke-RestMethod "http://127.0.0.1:8737/api/ping?target=gateway"
             "Ping singolo verso il router: $($ping.ms) ms"
+            # Infrastruttura: nessun inventario senza conferma (nessuna scansione della rete della CI);
+            # una sola verifica di raggiungibilità, un ping verso il gateway.
+            try {
+              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"authorized":false}' http://127.0.0.1:8737/api/inventory | Out-Null
+              throw "inventario accettato senza conferma"
+            } catch {
+              if ($_.Exception.Response.StatusCode.value__ -ne 400) { throw "atteso 400 senza conferma: $($_.Exception.Message)" }
+            }
+            $body = @{ targets = @(@{ label = 'gateway'; host = $scan.gateway.ip; expect = 'reachable' }) } | ConvertTo-Json -Depth 4
+            $reach = Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $body http://127.0.0.1:8737/api/reach
+            "Verifica verso il gateway da $($reach.from): $($reach.results[0].status)"
+            if (-not $reach.results[0].status) { throw "verifica senza esito" }
             $html = Invoke-WebRequest http://127.0.0.1:8737/ -UseBasicParsing
             if ($html.Content -notmatch '<title>STARNET Polaris</title>') { throw "interfaccia non servita" }
             if (-not $html.Headers['Content-Security-Policy']) { throw "CSP mancante" }

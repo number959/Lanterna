@@ -9,10 +9,13 @@ nome, che non compare più all'utente.
             │    types.ts       contratto dati Scan → Analysis                            │
             │    kb/metrics.ts  cos'è, come si legge (soglie), perché conta, limiti      │
             │    kb/actions.ts  catalogo azioni correttive condiviso                      │
+            │    kb/assessment.ts  autovalutazione: aree, domande, punteggi               │
             │    analyze.ts     diagnosi, punteggi, piano d'azione                        │
-            │    wifi.ts        canali, spettro, interferenza, canale consigliato         │
+            │    wifi.ts        canali, spettro, interferenza, AP della rete              │
             │    report.ts      rapporto testuale                                         │
-            │  ui/       interfaccia React (animazioni, grafici SVG, 8 viste)             │
+            │  guides/   48 guide come dati tipizzati, glossario, ricerca                 │
+            │  demo/     reti dimostrative Casa e Clinica, simulazioni                    │
+            │  ui/       interfaccia React (animazioni, grafici SVG, 9 viste)             │
             └───────────────▲───────────────────────────────▲────────────────────────────┘
                             │ stesso bundle                  │ engine.js (IIFE ES2015)
              interfaccia    │                                │
@@ -25,6 +28,7 @@ nome, che non compare più all'utente.
    │   winapi/  wlanapi, IcmpSendEcho, GetAdaptersAddresses, ARP, firewall   │
    │   wlan/ ie/ netsh/  interpretazione byte per byte, collaudata ovunque   │
    │   probe/   DNS, UPnP/SSDP, porte e pannello del router, HTTPS          │
+   │   infra/   inventario e verifiche su richiesta, ritmo prudente          │
    │   collect/ orchestrazione parallela con avanzamento reale               │
    │   server/  API locale + interfaccia incorporata                         │
    └──────────────────────────────────────────────────────────────────────────┘
@@ -56,7 +60,19 @@ motore lo mostra come "non misurato" invece di inventare un giudizio.
   ordina per gravità, impatto, numero di problemi risolti e facilità.
 - Il consiglio sui canali stima l'interferenza dallo spettro occupato da ogni rete, pesato per potenza e per il carico dichiarato
   (BSS Load). A 2,4 GHz consiglia solo 1, 6 o 11; a 5 GHz preferisce 36-48, poi i blocchi DFS, per ultimo 149-161 (in Italia/UE
-  ammesso solo a bassa potenza).
+  ammesso solo a bassa potenza). Le altre reti trasmesse dalle stesse radio (ospiti, dispositivi: BSSID che differiscono solo
+  nell'ultima cifra o nel primo ottetto) non contano come interferenza.
+- **Reti con più access point.** Gli AP della rete collegata si stimano contando le radio per banda (un router dual band conta
+  uno); le radio con una protezione di famiglia diversa non sono AP della rete ma un possibile AP gemello, segnalato a parte. Il
+  motore controlla AP propri sullo stesso canale che si ricevono entrambi sopra -80 dBm, il PC agganciato a un AP debole quando
+  uno della stessa banda è più forte di almeno 10 dB (il giudizio sul segnale allora punta all'AP scelto, non alla copertura) e
+  il roaming assistito (802.11k/v/r, uniformità tra AP, Mobility Domain).
+- **Reti aziendali.** Un dominio (o un suffisso DNS non domestico con soli DNS interni) cambia i consigli: niente DNS pubblici sul
+  PC, ma il DNS interno da potenziare. Sottoreti da /20 in su sono indicate come probabile rete piatta; lo stesso MAC per più
+  indirizzi è un avviso se riguarda il router.
+- **Infrastruttura.** Inventario, verifiche e autovalutazione entrano nello `Scan` (`infra`) e diventano giudizi di una categoria
+  propria, che conta nel punteggio solo quando ci sono dati: segmentazione violata e servizi critici irraggiungibili sono critici;
+  ogni area dell'autovalutazione ha un punteggio pesato e porta nel piano le azioni mancanti.
 
 ## Interfaccia
 
@@ -93,9 +109,19 @@ Organizzazione di `core/src/ui/`:
   reale di `/api/progress`; ogni sonda è una stella in orbita che, finita, si collega alla precedente formando una costellazione.
 - `charts.tsx`: grafici SVG disegnati alla larghezza reale del contenitore (1 unità = 1 pixel, testi mai deformati), curve monotone
   che non inventano picchi; il monitor scorre in modo continuo invece che a scatti.
+- `guides.tsx` e `diagrams.tsx`: il centro guide (biblioteca, lettore con indice, glossario, riferimento delle soglie, ricerca) e i
+  diagrammi SVG animati all'ingresso nella vista, fermi con "riduci movimento".
+- `infra.tsx`: la sezione Infrastruttura. L'inventario vive a livello di modulo, quindi prosegue anche cambiando pagina; senza
+  agente (demo) inventario e verifiche sono simulati da `demo/simulate.ts` e dichiarati come tali; con un rapporto importato si
+  consultano solo i risultati salvati.
+- `monitor.ts`: la sessione del monitor appartiene all'App e continua fra le sezioni; riepilogo dell'intera sessione (media, 95°
+  percentile, massimo con l'ora, perdite, interruzioni di almeno tre ping consecutivi, picchi oltre 2,5 volte il valore tipico) e
+  CSV per i fogli di calcolo italiani (`;` e virgola decimale).
+- Autovalutazione e destinazioni delle verifiche restano in `localStorage`, separate per contesto (rete, demo); l'App le unisce
+  allo `Scan` prima dell'analisi e delle esportazioni. Il MAC del router di ogni rete è ricordato per segnalare un cambio.
 
-Accessibilità: navigazione completa da tastiera (scorciatoie `1`…`8` e `/`, ignorate mentre si scrive; frecce nei selettori a
-segmenti; collegamento "Vai al contenuto"), ruoli e stati ARIA su schede espandibili, interruttori e caselle, tabelle scorrevoli
+Accessibilità: navigazione completa da tastiera (scorciatoie `1`…`9` e `/`, ignorate mentre si scrive; frecce nei selettori a
+segmenti e nei gruppi di risposte; collegamento "Vai al contenuto"), ruoli e stati ARIA su schede espandibili, interruttori e caselle, tabelle scorrevoli
 raggiungibili con Tab, contrasto WCAG 2.1 AA in entrambi i temi, `prefers-reduced-motion` e `prefers-reduced-transparency`
 rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFICHE.md).
 
@@ -111,6 +137,10 @@ rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFIC
 | DNS | richieste UDP costruite a mano, mediana su 5 nomi | NXDOMAIN conta come risposta |
 | UPnP | SSDP + descrizione XML + `GetExternalIPAddress` | si contattano solo URL http della LAN privata |
 | Router | connessione TCP alle porte di gestione comuni del **solo gateway**; intestazione e titolo del pannello | nessuna autenticazione |
+| Roaming | IE 54 (Mobility Domain e FT su DS), 70 (RM Enabled Capabilities, Neighbor Report) e 127 (Extended Capabilities, BSS Transition); AKM FT | per ogni rete visibile, dagli stessi beacon |
+| Dominio e DHCP | `GetComputerNameExW(ComputerNameDnsDomain)`; suffisso DNS e `Dhcpv4Server` da `GetAdaptersAddresses` | il server DHCP solo se la struttura restituita lo contiene |
+| Inventario (su richiesta) | `IcmpSendEcho` a ogni indirizzo della sottorete (circa 30 al secondo, 8 in parallelo), poi `GetIpNetTable`, DNS inverso e richiesta NetBIOS *node status* (UDP 137) ai soli dispositivi trovati | solo reti private; oltre /22 solo il blocco /24 del PC; interruzione dopo 4 minuti |
+| Verifiche (su richiesta) | connessione TCP alla porta indicata (aperta, chiusa con rifiuto, filtrata) o due ping; nomi risolti prima, preferendo IPv4 | solo destinazioni private, al massimo 64, 4 alla volta |
 
 Modalità del programma: `Polaris.exe` (finestra), `report`, `serve`. La finestra usa WebView2; se il runtime manca (o non
 funziona) STARNET Polaris lo dice con un messaggio e apre l'interfaccia nel browser predefinito. `Polaris.exe` è compilato come
@@ -126,9 +156,15 @@ per la console, comoda negli script.
 | `POST /api/scan` | `202` avvia un'analisi, `409` se è già in corso |
 | `GET /api/progress` | fasi dell'analisi con stato reale (`pending`, `running`, `done`, `error`) |
 | `GET /api/ping?target=gateway\|internet` | un singolo tempo di risposta per il monitor; usa la riserva TCP se nell'analisi l'host rispondeva solo così |
+| `POST /api/inventory` | corpo `{"authorized": true}`: `202` avvia l'inventario della sottorete del PC; `400` senza conferma, `415` senza JSON, `422` se la rete non è privata o non ha altri indirizzi, `409` se è già in corso |
+| `GET /api/inventory` | avanzamento (`ping`, poi `nomi`), eventuale errore e ultimo inventario |
+| `POST /api/reach` | corpo `{"targets": [{"label", "host", "port", "expect": "reachable"\|"isolated"}]}`: esiti delle verifiche (sincrono, al massimo 2 minuti); `400` se le destinazioni non sono valide, `409` se ne è già in corso una |
+| `GET /api/reach` | ultime verifiche, oppure `204` |
 
 Sicurezza: ascolto solo su `127.0.0.1`; richieste con `Host` diverso da localhost rifiutate (DNS rebinding); `POST` con `Origin`
-estranea o `Sec-Fetch-Site: cross-site` rifiutate (CSRF); CSP restrittiva sull'interfaccia; nessuna intestazione CORS. ESP32 ed
+estranea o `Sec-Fetch-Site: cross-site` rifiutate (CSRF); i `POST` di inventario e verifiche accettano solo corpi
+`application/json` fino a 64 kB, che una pagina di un altro sito non può inviare senza un preflight CORS; CSP restrittiva
+sull'interfaccia; nessuna intestazione CORS. ESP32 ed
 eventuali altri agenti esporranno la stessa API, quindi l'interfaccia non cambia.
 
 ## Scelte e alternative scartate

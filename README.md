@@ -7,9 +7,14 @@
 
 # STARNET Polaris
 
-**La stella polare della tua rete.** Diagnostica della rete di casa che **spiega ogni valore**: per ciascuna misura dice cos'è,
-come si legge, quanto è grave nella tua rete e cosa fare per migliorarla. Le azioni correttive confluiscono in un piano unico,
-ordinato per gravità, impatto e facilità.
+**La stella polare della tua rete.** Diagnostica di rete che **spiega ogni valore**: per ciascuna misura dice cos'è, come si
+legge, quanto è grave nella tua rete e cosa fare per migliorarla. Le azioni correttive confluiscono in un piano unico, ordinato
+per gravità, impatto e facilità.
+
+Funziona in casa come in uno studio, in un'azienda o in una **struttura sanitaria**: riconosce le reti con più access point e
+con dominio, censisce la sottorete, verifica la separazione tra le zone e i servizi critici e guida un'autovalutazione delle
+misure organizzative. Una biblioteca di **48 guide** in italiano spiega tutto ciò che riguarda la rete, dalle basi alle reti
+cliniche.
 
 Il nome nasce dal marchio STARNET: Polaris è la stella polare, quella che indica la direzione. Qui indica cosa sistemare per primo.
 
@@ -35,7 +40,8 @@ Il movimento riprende il marchio:
 
 Se in Windows le animazioni sono disattivate restano solo brevi dissolvenze: niente spostamenti, rotazioni o scorrimenti.
 
-- **Tastiera**: `1`…`8` per le sezioni, `/` per cercare nella guida, frecce nei selettori; ogni comando è raggiungibile con Tab.
+- **Tastiera**: `1`…`9` per le sezioni, `/` per cercare nella guida, frecce nei selettori e nelle risposte dell'autovalutazione;
+  ogni comando è raggiungibile con Tab.
 - **Grafica leggera**: senza accelerazione grafica (macchine virtuali, desktop remoto) Polaris se ne accorge dai fotogrammi lenti e
   toglie sfocature e trasparenze; si può anche attivare a mano in fondo alla barra laterale.
 - Contrasto conforme a WCAG 2.1 AA in entrambi i temi; la gravità è sempre indicata da icona e testo, non solo dal colore.
@@ -48,11 +54,51 @@ Se in Windows le animazioni sono disattivate restano solo brevi dissolvenze: nie
 
 | Area | Misure |
 | --- | --- |
-| Wi-Fi | potenza in dBm, qualità, velocità radio, banda, standard (Wi-Fi 4…7), larghezza di canale, reti sullo stesso canale, canali 2,4 GHz sovrapposti, carico dichiarato dall'access point (BSS Load), sicurezza (WPA2/WPA3, TKIP, PMF, WPS), canale consigliato per 2,4 e 5 GHz |
-| Rete locale | indirizzo e DHCP (APIPA), gateway, latenza/perdite/jitter verso il router, velocità della porta Ethernet, IPv6, dispositivi visti di recente |
+| Wi-Fi | potenza in dBm, qualità, velocità radio, banda, standard (Wi-Fi 4…7), larghezza di canale, reti sullo stesso canale, canali 2,4 GHz sovrapposti, carico dichiarato dall'access point (BSS Load), sicurezza (WPA2/WPA3 Personal ed Enterprise, TKIP, PMF, WPS), canale consigliato per 2,4 e 5 GHz |
+| Reti con più access point | AP della rete con canali, segnale, carico e roaming assistito (802.11k, 802.11v, 802.11r e Mobility Domain), AP propri sullo stesso canale, PC agganciato a un AP lontano (sticky client), stessa rete annunciata con protezioni diverse (possibile AP gemello) |
+| Rete locale | indirizzo, DHCP e server DHCP (APIPA), gateway, latenza/perdite/jitter verso il router, velocità della porta Ethernet, IPv6, sottoreti molto ampie, dominio e DNS aziendali, stesso MAC per più indirizzi, MAC del router cambiato rispetto all'analisi precedente, dispositivi visti di recente |
 | Internet | latenza, perdite e jitter verso Cloudflare, Google e Quad9, traceroute, MTU del percorso, navigazione HTTPS reale |
 | DNS | tempo di risposta del DNS in uso e confronto con i resolver pubblici |
 | Router e sicurezza | servizi esposti dal *proprio* router (Telnet, FTP, SMB…), UPnP IGD e indirizzo pubblico, pannello di gestione HTTP/HTTPS, profili del firewall di Windows |
+| Infrastruttura (su richiesta) | inventario della sottorete, test di segmentazione tra le zone, raggiungibilità e tempi dei servizi critici, autovalutazione organizzativa in sei aree |
+| Monitor | un ping al secondo verso router e Internet per tutta la sessione (fino a 12 ore, anche cambiando sezione), con picchi, interruzioni e relativa ora; esportazione CSV |
+
+## Reti complesse e strutture sanitarie
+
+![Infrastruttura](docs/img/infrastruttura.webp)
+
+La sezione **Infrastruttura** raccoglie gli strumenti per le reti con più zone. Contattano altri dispositivi, quindi seguono
+regole precise: partono **solo su richiesta**, l'inventario chiede la conferma di essere autorizzati (con l'attività concordata
+con l'ingegneria clinica dove ci sono dispositivi medicali), si rivolgono **solo a indirizzi privati**, con un **ritmo prudente**
+e **senza scansioni di porte**.
+
+- **Inventario della sottorete**: un ping a ogni indirizzo (circa 30 al secondo, 8 alla volta), poi la tabella ARP, che rivela
+  anche i dispositivi che ignorano il ping, e i nomi da DNS inverso e NetBIOS. Elenco filtrabile ed esportabile in CSV; segnala i
+  dispositivi senza nome, i MAC casuali e la sottorete quasi piena. Oltre /22 si esamina solo il blocco /24 del PC.
+- **Test di segmentazione e servizi critici**: si indicano le destinazioni che da questa zona devono rispondere (cartella
+  clinica, PACS, HL7, DNS, controller di dominio…) e quelle che devono restare isolate (dispositivi medicali, gestione degli
+  apparati, telecamere, ospiti). Per ognuna una connessione TCP alla porta indicata o due ping; le destinazioni si ricordano per
+  rete. Una risposta da una zona che doveva essere isolata è un problema critico.
+- **Autovalutazione**: 28 domande su segmentazione, dispositivi medicali, accessi e fornitori, backup, continuità e gestione
+  degli incidenti. Le risposte restano sul PC ed entrano nel rapporto; ogni lacuna aggiunge al piano l'azione corrispondente. È
+  una dichiarazione, non una verifica, e non sostituisce un audit.
+
+Nelle reti con dominio Polaris non suggerisce di cambiare DNS sul PC (romperebbe i nomi interni) ma di potenziare il DNS interno.
+Senza agente, le due reti dimostrative (*Casa* e *Clinica*) mostrano tutte le funzioni con dati e simulazioni dichiarati come tali.
+
+| AP della rete (demo Clinica) | Esiti delle verifiche | Autovalutazione (tema chiaro) |
+| --- | --- | --- |
+| ![AP della rete](docs/img/ap-rete.webp) | ![Verifiche](docs/img/verifiche.webp) | ![Autovalutazione](docs/img/autovalutazione.webp) |
+
+## Guide di rete
+
+![Guide](docs/img/guide.webp)
+
+48 guide in sette capitoli (fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti complesse e sanità, diagnosi), un glossario
+di 152 voci e la ricerca unificata su guide, glossario, misure e azioni. Ogni valore misurato e ogni azione del piano rimandano
+alla guida che li spiega; sette diagrammi animati illustrano livelli, sottoreti, DHCP, canali, roaming, VLAN e zone di una rete
+sanitaria. I riferimenti normativi citati (GDPR, NIS2, dispositivi medicali) sono una sintesi da verificare sui testi ufficiali,
+non una consulenza legale.
 
 ## Piattaforme
 
@@ -92,7 +138,8 @@ cd ../windows && go test ./...       # agente Windows (gira anche su Linux)
 cd .. && scripts/build-windows.sh    # build/STARNET-Polaris/ e build/STARNET-Polaris-windows-amd64.zip
 ```
 
-`npm run dev` usa i dati dimostrativi; con `polaris-cli serve` avviato, il server di sviluppo inoltra `/api` all'agente vero.
+`npm run dev` usa i dati dimostrativi (la rete *Casa*; dal selettore nell'avviso si passa a *Clinica*); con `polaris-cli serve`
+avviato, il server di sviluppo inoltra `/api` all'agente vero.
 
 Fino alla versione 0.2.0 il programma si chiamava LANterna: il repository e il modulo Go conservano quel nome interno.
 I master del marchio sono in `brand/`; `node scripts/brand.mjs` rigenera i tracciati usati dall'interfaccia.
@@ -107,6 +154,9 @@ PC con scheda Wi-Fi: [docs/VERIFICHE.md](docs/VERIFICHE.md).
 - Tutto resta sul PC: nessun dato viene inviato a servizi esterni.
 - Il server locale ascolta solo su `127.0.0.1`, rifiuta host diversi (DNS rebinding) e richieste da altre origini.
 - Il controllo dei servizi esposti riguarda **esclusivamente il gateway** della rete a cui si è collegati, senza autenticarsi.
+- Inventario e verifiche partono solo su richiesta, solo verso indirizzi privati (RFC 1918 e ULA IPv6) e senza scansioni di
+  porte: l'inventario contatta i dispositivi della sola sottorete del PC, le verifiche solo le destinazioni indicate
+  dall'utente. Le API locali rifiutano richieste senza conferma, con destinazioni non valide o pubbliche.
 - Per le misure vengono contattati: il router, i resolver pubblici 1.1.1.1, 8.8.8.8 e 9.9.9.9, `www.google.com/generate_204` e
   `cp.cloudflare.com/generate_204`.
 
