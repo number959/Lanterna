@@ -277,9 +277,18 @@ Infrastruttura, gli AP della rete nella sezione Wi-Fi, il monitor di sessione e 
   - in console resta solo la riga del browser sulla risposta `422`, attesa;
 - **finestra senza WebView2**: messaggio con l'indirizzo dell'interfaccia su una porta libera, chiusura con OK.
 
-**Windows reale (CI).** Il commit `c6d0887` ha superato test, build e collaudo su Windows reale. Al collaudo si aggiunge un
-controllo prudente delle nuove API: un inventario senza conferma deve essere rifiutato (nessuna scansione della rete della CI) e
-una sola verifica verso il gateway deve dare un esito.
+**Windows reale (CI).** I commit `c6d0887` e `859c820` hanno superato test, build e collaudo su Windows reale (Windows Server 2025,
+build 26100). Al collaudo si è aggiunto un controllo prudente delle nuove API, senza scansionare la rete della CI:
+- l'agente legge il suffisso DNS della connessione (`…gx.internal.cloudapp.net`), il server DHCP (168.63.129.16, quello della
+  piattaforma Azure) e un dominio vuoto, come atteso per una macchina fuori dominio;
+- l'inventario senza conferma è rifiutato con `400`;
+- la verifica verso il gateway, un ping con `IcmpSendEcho`, dà "nessuna risposta": il gateway di Azure ignora i ping (sezione 6);
+- la finestra WebView2 è attiva con il titolo "STARNET Polaris" e 6 processi `msedgewebview2`.
+
+Il rapporto di quella macchina ha mostrato un difetto, corretto nella versione consegnata: la sottorete /20 della rete cloud
+portava nel piano "Correggi la separazione tra le zone", un'azione pensata per le eccezioni del test di segmentazione. Ora le
+sottoreti ampie rimandano a un'azione propria ("Dividi la rete in zone separate"), con un giudizio condizionale: è una rete
+piatta solo se ospita insieme PC, ospiti e dispositivi.
 
 **Difetti trovati e corretti durante il lavoro:**
 1. Un router dual band rischiava di contare come due AP: il conteggio ora è per banda.

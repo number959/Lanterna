@@ -406,6 +406,20 @@ const list: Action[] = [
     impact: 'alto',
   },
   {
+    id: 'plan-segmentation',
+    title: 'Dividi la rete in zone separate (VLAN) per funzione',
+    why: 'In una rete piatta PC, ospiti, stampanti, telecamere e dispositivi medicali si vedono tutti: un guasto o un\'infezione può raggiungere ogni cosa e il traffico di broadcast cresce con il numero di dispositivi. Dividere la rete in zone, con regole tra l\'una e l\'altra, limita i danni e semplifica la diagnosi.',
+    steps: [
+      'Elenca i dispositivi per funzione (postazioni, server, stampanti, telefoni, telecamere, dispositivi medicali, ospiti, gestione degli apparati), partendo dall\'inventario.',
+      'Assegna a ogni funzione una VLAN con la sua sottorete e registrala nel piano di indirizzamento.',
+      'Definisci sul firewall i soli flussi necessari tra le zone e blocca il resto; la rete ospiti esce solo verso Internet.',
+      'Separa per prime le zone più esposte o più delicate: ospiti, dispositivi medicali, gestione degli apparati.',
+      'Verifica il risultato con il test di segmentazione da ogni zona.',
+    ],
+    effort: 'avanzata',
+    impact: 'alto',
+  },
+  {
     id: 'check-critical-service',
     title: 'Ripristina la raggiungibilità dei servizi critici',
     why: 'Se un servizio da cui dipende l\'attività (cartella clinica, PACS, DNS, controller di dominio) non risponde da una zona, gli utenti di quella zona sono fermi anche se "la rete funziona".',

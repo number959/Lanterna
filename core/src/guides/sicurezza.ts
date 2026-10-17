@@ -46,7 +46,7 @@ export const sicurezza: Guide[] = [
     summary: 'Perché una rete piatta è il miglior alleato di un ransomware, come si progettano le zone, la matrice dei flussi e come si verifica che l\'isolamento funzioni davvero.',
     level: 'avanzato',
     metrics: ['infra.seg', 'lan.subnet'],
-    actions: ['segment-network', 'separate-iot'],
+    actions: ['plan-segmentation', 'segment-network', 'separate-iot'],
     tags: ['segmentazione', 'zone', 'vlan', 'rete piatta', 'microsegmentazione', 'matrice dei flussi', 'movimento laterale', 'isolamento', 'iot', 'ospiti', 'dispositivi medicali', 'test di segmentazione', 'dmz', 'rete di gestione'],
     blocks: [
       { t: 'p', text: 'In una **rete piatta** ogni dispositivo può parlare con ogni altro: il PC dell\'accettazione con il server dei referti, la telecamera del parcheggio con l\'ecografo, il portatile di un visitatore con la stampante delle ricette. Se uno di loro viene compromesso, l\'attaccante si muove liberamente (**movimento laterale**) e un ransomware cifra tutto ciò che raggiunge.' },

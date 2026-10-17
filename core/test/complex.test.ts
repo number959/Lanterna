@@ -189,7 +189,8 @@ describe('reti aziendali', () => {
     const f = find(s, 'lan.subnet');
     expect(f?.value).toBe('/16 · 65.534 indirizzi');
     expect(f?.severity).toBe('info');
-    expect(f?.actions).toEqual(['segment-network']);
+    expect(f?.actions).toEqual(['plan-segmentation']);
+    expect(f?.verdict).toContain('Se ospita insieme PC');
   });
 
   it('stesso MAC per più indirizzi: avviso se è quello del router', () => {

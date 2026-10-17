@@ -38,10 +38,10 @@ export const ASSESS_AREAS: AssessArea[] = [
 
 export const ASSESS_QUESTIONS: AssessQuestion[] = [
   // Segmentazione
-  { id: 'seg-ospiti', area: 'segmentazione', weight: 3, action: 'segment-network', short: 'rete ospiti separata', text: 'La rete ospiti è separata da quella interna e non raggiunge PC, server e dispositivi?' },
+  { id: 'seg-ospiti', area: 'segmentazione', weight: 3, action: 'plan-segmentation', short: 'rete ospiti separata', text: 'La rete ospiti è separata da quella interna e non raggiunge PC, server e dispositivi?' },
   { id: 'seg-medicali', area: 'segmentazione', weight: 3, action: 'medical-devices', short: 'zona dedicata ai dispositivi medicali', text: 'I dispositivi medicali sono in una zona dedicata, con regole che consentono solo i flussi necessari?' },
   { id: 'seg-iot', area: 'segmentazione', weight: 2, action: 'separate-iot', short: 'stampanti, telecamere e impianti separati', text: 'Stampanti, telecamere, impianti e domotica sono separati dalle postazioni di lavoro?' },
-  { id: 'seg-gestione', area: 'segmentazione', weight: 2, action: 'segment-network', short: 'gestione degli apparati isolata', text: 'Le interfacce di gestione di firewall, switch e access point sono raggiungibili solo da una rete o da postazioni dedicate?' },
+  { id: 'seg-gestione', area: 'segmentazione', weight: 2, action: 'plan-segmentation', short: 'gestione degli apparati isolata', text: 'Le interfacce di gestione di firewall, switch e access point sono raggiungibili solo da una rete o da postazioni dedicate?' },
   { id: 'seg-verifica', area: 'segmentazione', weight: 2, action: 'segment-network', short: 'regole documentate e verificate', text: 'Le regole tra le zone sono documentate e verificate dopo ogni modifica, per esempio con il test di segmentazione?' },
   // Dispositivi medicali
   { id: 'med-inventario', area: 'medicali', weight: 3, action: 'medical-devices', short: 'inventario condiviso con l\'ingegneria clinica', text: 'Esiste un inventario dei dispositivi medicali in rete, condiviso tra servizi informatici e ingegneria clinica?' },

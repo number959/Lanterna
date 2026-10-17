@@ -719,8 +719,8 @@ function analyzeLan(scan: Scan, c: Collector, primary?: Adapter, corp?: Corporat
       value: `/${prefix} · ${thousands(size)} indirizzi`,
       numeric: prefix,
       severity: 'info',
-      verdict: `La sottorete del PC può contenere fino a ${thousands(size)} dispositivi nello stesso dominio di broadcast: è probabilmente una rete piatta. Con molti dispositivi conviene dividerla in zone (VLAN) per funzione, così guasti e infezioni restano circoscritti.`,
-      actions: ['segment-network'],
+      verdict: `La sottorete del PC può contenere fino a ${thousands(size)} dispositivi nello stesso dominio di broadcast. Se ospita insieme PC, ospiti, stampanti e dispositivi è una rete piatta: dividerla in zone (VLAN) per funzione circoscrive guasti e infezioni.`,
+      actions: ['plan-segmentation'],
     });
   }
   if (!gwIp) {

@@ -365,10 +365,10 @@ const list: Metric[] = [
     what: 'Quanti indirizzi contiene la sottorete del PC, indicata dal prefisso: /24 = 254 indirizzi utilizzabili, /22 = 1.022, /16 = 65.534.',
     scale: [
       { range: 'da /21 a /30', severity: 'ok', meaning: 'Dimensioni comuni.' },
-      { range: '/20 o più ampia', severity: 'info', meaning: 'Rete probabilmente piatta: molti dispositivi nello stesso dominio di broadcast.' },
+      { range: '/20 o più ampia', severity: 'info', meaning: 'Molti dispositivi nello stesso dominio di broadcast: una rete piatta, se PC, ospiti e dispositivi stanno insieme.' },
     ],
     why: 'Una sottorete molto ampia è spesso il segno di una rete "piatta", in cui PC, ospiti, stampanti e dispositivi medicali stanno insieme: un guasto o un\'infezione può raggiungere tutto, e il traffico di broadcast cresce con il numero di dispositivi.',
-    limits: 'L\'ampiezza non dice se esistono filtri tra i dispositivi: la separazione si verifica con il test di segmentazione della sezione Infrastruttura.',
+    limits: 'L\'ampiezza non dice se esistono filtri tra i dispositivi: la separazione si verifica con il test di segmentazione della sezione Infrastruttura. Nelle reti cloud e nei data center sottoreti ampie sono comuni e non indicano da sole un problema.',
   },
   {
     id: 'lan.domain',

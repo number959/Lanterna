@@ -10,7 +10,7 @@ export const complesse: Guide[] = [
     summary: 'Una visione d\'insieme: sistemi, zone, flussi, servizi critici e ciò che rende una rete sanitaria diversa da quella di un ufficio.',
     level: 'intermedio',
     metrics: ['infra.seg', 'lan.subnet', 'lan.domain'],
-    actions: ['segment-network', 'medical-devices'],
+    actions: ['plan-segmentation', 'segment-network', 'medical-devices'],
     tags: ['clinica', 'ospedale', 'poliambulatorio', 'casa di cura', 'rete sanitaria', 'his', 'cartella clinica', 'ris', 'pacs', 'lis', 'architettura', 'zone', 'reparto', 'fascicolo sanitario'],
     blocks: [
       { t: 'p', text: 'Una clinica, anche piccola, fa convivere sulla stessa infrastruttura sistemi molto diversi: cartella clinica e gestionale, diagnostica per immagini, laboratorio, monitor dei pazienti, telefonia e chiamata infermieri, videosorveglianza, Wi-Fi per i pazienti. Ognuno ha esigenze diverse di disponibilità, sicurezza e prestazioni, e spesso un fornitore diverso.' },
