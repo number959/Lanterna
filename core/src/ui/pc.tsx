@@ -16,13 +16,14 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useState } from 'react';
-import { BUGCHECKS, dateIt } from '../engine';
-import type { CpuBench, DiskBench, EventGroup, EventKind, Finding, PcData, PhysicalDisk, Scan, Severity, StartupItem, Volume } from '../engine';
+import { BUGCHECKS, STATUS_LABEL, attrState, bytesText, dateIt, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from '../engine';
+import type { AttrState, CpuBench, DiskBench, EventGroup, EventKind, Finding, NVMeHealth, PcData, PhysicalDisk, Scan, Severity, StartupItem, Volume } from '../engine';
 import { simulatedCpuBench, simulatedDiskBench } from '../demo/simulate';
 import { guideById } from '../guides';
 import { benchStatus, runBench, stopBench } from './api';
 import type { BenchRequest } from './api';
 import { FindingList, SevIcon, Stat, TableWrap, fmtNum, sevColor, useOpenGuide, useToast } from './components';
+import { useWidth } from './hooks';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -53,7 +54,6 @@ export const shortCpu = (name: string) =>
 const isFlash = (d: PhysicalDisk) => d.media === 'ssd' || d.media === 'scm';
 const isUsbDisk = (d?: PhysicalDisk) => !!d && /usb/i.test(d.bus ?? '');
 const MEDIA: Record<PhysicalDisk['media'], string> = { ssd: 'SSD', hdd: 'Disco meccanico (HDD)', scm: 'Memoria persistente', unknown: 'Tipo non dichiarato' };
-const HEALTH: Record<string, string> = { healthy: 'Integro', warning: 'Guasto previsto', unhealthy: 'Guasto', unknown: 'Stato non riportato' };
 
 export function PcView(props: ViewProps) {
   const { scan, analysis: a, go } = props;
@@ -246,13 +246,15 @@ function DisksGrid({ pc, findings, elevated }: { pc: PcData; findings: Finding[]
 function DiskCard({ d, finding, vols, volFinding, elevated }: { d: PhysicalDisk; finding?: Finding; vols: Volume[]; volFinding: (v: Volume) => Finding | undefined; elevated?: boolean }) {
   const sev: Severity = finding?.severity ?? 'unknown';
   const r = d.reliability;
-  const flash = isFlash(d);
-  const temp = r?.temperatureC;
+  const nv = d.nvme;
+  const st = diskStatus(d);
+  const flash = isFlashDisk(d);
+  const temp = st.temperatureC;
   const tempSev: Severity = temp === undefined ? 'unknown' : flash ? (temp >= 80 ? 'crit' : temp >= 70 ? 'warn' : 'ok') : temp >= 60 ? 'crit' : temp >= 55 ? 'warn' : 'ok';
-  const wear = flash ? r?.wearPct : undefined;
+  const wear = st.wearPct;
   const wearSev: Severity = wear === undefined ? 'unknown' : wear >= 90 ? 'crit' : wear >= 70 ? 'warn' : 'ok';
   const uncorrected = r && (r.readUncorrected !== undefined || r.writeUncorrected !== undefined) ? (r.readUncorrected ?? 0) + (r.writeUncorrected ?? 0) : undefined;
-  const failing = d.health === 'unhealthy' || d.health === 'warning' || (d.operational ?? []).some((o) => /predictive failure/i.test(o));
+  const hasData = !!r || !!nv || (d.smart ?? []).length > 0;
   const Icon = isUsbDisk(d) ? Usb : HardDrive;
   return (
     <m.section variants={rise} className="card disk-card" style={{ ['--disk-tint' as string]: sevColor(sev) }}>
@@ -261,9 +263,10 @@ function DiskCard({ d, finding, vols, volFinding, elevated }: { d: PhysicalDisk;
           <Icon size={19} aria-hidden /> <span>{d.name}</span>
         </h2>
         <span className="spacer" />
-        <span className={`sev ${sev}`}>
+        <span className={`sev ${sev}`} title="Stato secondo Windows e i dati SMART, come in CrystalDiskInfo">
           <SevIcon sev={sev} size={14} />
-          {failing && d.health !== 'unhealthy' ? HEALTH.warning : HEALTH[d.health ?? 'unknown']}
+          {STATUS_LABEL[sev]}
+          {st.lifePct !== undefined && <span className="mono">{fmtNum(st.lifePct)} %</span>}
         </span>
       </div>
       <div className="chips-row">
@@ -273,7 +276,7 @@ function DiskCard({ d, finding, vols, volFinding, elevated }: { d: PhysicalDisk;
         {d.spindleRpm ? <span className="tag">{thousands(d.spindleRpm)} giri/min</span> : null}
         {d.system && <span className="tag">Windows</span>}
       </div>
-      {r ? (
+      {hasData ? (
         <>
           {(temp !== undefined || wear !== undefined) && (
             <div className="dgauges">
@@ -284,18 +287,41 @@ function DiskCard({ d, finding, vols, volFinding, elevated }: { d: PhysicalDisk;
                   frac={temp / (flash ? 90 : 70)}
                   marks={flash ? [70 / 90, 80 / 90] : [55 / 70, 60 / 70]}
                   sev={tempSev}
-                  sub={r.temperatureMaxC ? `Massima registrata ${fmtNum(r.temperatureMaxC)} °C` : undefined}
+                  sub={r?.temperatureMaxC ? `Massima registrata ${fmtNum(r.temperatureMaxC)} °C` : undefined}
                 />
               )}
-              {wear !== undefined && <Gauge label="Usura" value={`${fmtNum(wear)} %`} frac={wear / 100} marks={[0.7, 0.9]} sev={wearSev} sub="Della durata di scrittura dichiarata" />}
+              {wear !== undefined && (
+                <Gauge
+                  label="Usura"
+                  value={`${fmtNum(wear)} %`}
+                  frac={Math.min(wear, 100) / 100}
+                  marks={[0.7, 0.9]}
+                  sev={wearSev}
+                  sub={`Vita residua stimata ${fmtNum(st.lifePct ?? 0)} %`}
+                />
+              )}
             </div>
           )}
           <dl className="kv disk-kv">
-            {r.powerOnHours !== undefined && (
+            {st.powerOnHours !== undefined && (
               <>
                 <dt>Ore di accensione</dt>
                 <dd>
-                  {thousands(r.powerOnHours)} ({fmtNum(r.powerOnHours / 8760, 1)} anni continuativi)
+                  {thousands(st.powerOnHours)} ({fmtNum(st.powerOnHours / 8760, 1)} anni continuativi)
+                </dd>
+              </>
+            )}
+            {st.powerCycles !== undefined && (
+              <>
+                <dt>Accensioni</dt>
+                <dd>{thousands(st.powerCycles)}</dd>
+              </>
+            )}
+            {nv && (
+              <>
+                <dt>Dati scritti / letti</dt>
+                <dd>
+                  {bytesText(nv.dataWrittenGB)} / {bytesText(nv.dataReadGB)}
                 </dd>
               </>
             )}
@@ -305,19 +331,19 @@ function DiskCard({ d, finding, vols, volFinding, elevated }: { d: PhysicalDisk;
                 <dd className={uncorrected ? 'c-warn' : undefined}>{uncorrected}</dd>
               </>
             )}
-            {r.readErrors !== undefined && (
+            {r?.readErrors !== undefined && (
               <>
                 <dt>Errori di lettura registrati</dt>
                 <dd>{thousands(r.readErrors)}</dd>
               </>
             )}
-            {r.startStopCycles !== undefined && (
+            {r?.startStopCycles !== undefined && (
               <>
                 <dt>Avvii del motore</dt>
                 <dd>{thousands(r.startStopCycles)}</dd>
               </>
             )}
-            {r.loadUnloadCycles !== undefined && (
+            {r?.loadUnloadCycles !== undefined && (
               <>
                 <dt>Parcheggi della testina</dt>
                 <dd>{thousands(r.loadUnloadCycles)}</dd>
@@ -330,12 +356,14 @@ function DiskCard({ d, finding, vols, volFinding, elevated }: { d: PhysicalDisk;
               </>
             )}
           </dl>
+          {nv && <NVMeLog nv={nv} />}
+          {(d.smart ?? []).length > 0 && <SmartTable d={d} />}
         </>
       ) : (
         <p className="faint disk-hint">
           {elevated === false
             ? 'Temperatura, usura ed errori (dati SMART) compaiono avviando Polaris come amministratore: clic destro su Polaris.exe > Esegui come amministratore.'
-            : 'Il disco non espone a Windows i contatori di affidabilità (succede con molti box USB e controller RAID).'}
+            : 'Il disco non espone i dati SMART (succede con molti box USB e controller RAID).'}
         </p>
       )}
       {vols.length > 0 && (
@@ -346,6 +374,138 @@ function DiskCard({ d, finding, vols, volFinding, elevated }: { d: PhysicalDisk;
         </div>
       )}
     </m.section>
+  );
+}
+
+const ATTR_CLASS: Record<AttrState, string> = { fail: 'c-crit', past: 'c-info', caution: 'c-warn', ok: '' };
+const ATTR_LABEL: Record<AttrState, string> = { fail: 'alla soglia di guasto o sotto', past: 'in passato alla soglia di guasto', caution: 'conteggio da tenere d\'occhio', ok: '' };
+
+const stateSev = (s: AttrState): Severity => (s === 'fail' ? 'crit' : s === 'caution' ? 'warn' : 'info');
+
+/**
+ * Attributi SMART con le stesse colonne di CrystalDiskInfo. Nelle schede
+ * strette (telefono) la tabella diventa un elenco: sei colonne non ci stanno
+ * e lo scorrimento laterale nasconderebbe proprio soglia e dato grezzo.
+ */
+function SmartTable({ d }: { d: PhysicalDisk }) {
+  const attrs = d.smart ?? [];
+  const flash = isFlashDisk(d);
+  const flagged = attrs.filter((a) => attrState(a) !== 'ok').length;
+  const [ref, width] = useWidth<HTMLDetailsElement>();
+  const narrow = width > 0 && width < 460;
+  return (
+    <details ref={ref} className="smart-box" open={flagged > 0 || undefined}>
+      <summary>
+        <ScrollText size={15} aria-hidden /> Attributi SMART ({attrs.length})
+        {flagged > 0 && <span className="tag smart-flag">{flagged} da guardare</span>}
+      </summary>
+      {narrow ? (
+        <ul className="smart-list" aria-label={`Attributi SMART di ${d.name}`}>
+          {attrs.map((a) => {
+            const state = attrState(a);
+            return (
+              <li key={a.id} className={state !== 'ok' ? `smart-${state}` : undefined}>
+                <div className={`smart-li-head ${ATTR_CLASS[state]}`}>
+                  <span className="mono">{smartId(a.id)}</span>
+                  <span>
+                    {state !== 'ok' && <SevIcon sev={stateSev(state)} size={13} />} {smartName(a.id, flash)}
+                    {state !== 'ok' && <span className="sr-only"> ({ATTR_LABEL[state]})</span>}
+                  </span>
+                </div>
+                <div className="smart-li-vals mono">
+                  <span>attuale {a.current}</span>
+                  <span>peggiore {a.worst}</span>
+                  <span>soglia {a.threshold ?? '-'}</span>
+                  <span>grezzo {smartRaw(a)}</span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <TableWrap label={`Attributi SMART di ${d.name}`}>
+          <table className="smart-table">
+            <thead>
+              <tr>
+                <th scope="col">ID</th>
+                <th scope="col">Attributo</th>
+                <th scope="col" className="num">
+                  Attuale
+                </th>
+                <th scope="col" className="num">
+                  Peggiore
+                </th>
+                <th scope="col" className="num">
+                  Soglia
+                </th>
+                <th scope="col">Dato grezzo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {attrs.map((a) => {
+                const state = attrState(a);
+                return (
+                  <tr key={a.id} className={state !== 'ok' ? `smart-${state}` : undefined}>
+                    <td className="mono">{smartId(a.id)}</td>
+                    <td className={`name ${ATTR_CLASS[state]}`}>
+                      {state !== 'ok' && <SevIcon sev={stateSev(state)} size={13} />} {smartName(a.id, flash)}
+                      {state !== 'ok' && <span className="sr-only"> ({ATTR_LABEL[state]})</span>}
+                    </td>
+                    <td className="mono num">{a.current}</td>
+                    <td className="mono num">{a.worst}</td>
+                    <td className="mono num">{a.threshold ?? '-'}</td>
+                    <td className="mono">{smartRaw(a)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableWrap>
+      )}
+      <p className="faint smart-note">
+        Attuale e peggiore sono valori normalizzati dal produttore (di solito partono da 100 o 200 e scendono con il degrado): l&apos;attributo è guasto quando scende alla soglia.
+        Il dato grezzo è in esadecimale quando il suo formato dipende dal produttore.
+      </p>
+    </details>
+  );
+}
+
+const NVME_WARN = ['riserva sotto soglia', 'temperatura fuori limite', 'affidabilità degradata', 'sola lettura', 'backup della memoria volatile guasto', 'memoria persistente in sola lettura'];
+
+/** Registro di salute NVMe completo, come la scheda di CrystalDiskInfo per i dischi NVMe. */
+function NVMeLog({ nv }: { nv: NVMeHealth }) {
+  const warns = NVME_WARN.filter((_, i) => nv.criticalWarning & (1 << i));
+  const rows: [string, string, Severity?][] = [
+    ['Avviso critico', warns.length ? warns.join(', ') : 'nessuno', warns.length ? 'crit' : undefined],
+    ['Riserva disponibile', `${nv.availableSparePct} % (soglia ${nv.spareThresholdPct} %)`, nv.spareThresholdPct > 0 && nv.availableSparePct < nv.spareThresholdPct ? 'crit' : undefined],
+    ['Durata consumata', `${nv.percentageUsed} %`, nv.percentageUsed >= 90 ? 'crit' : nv.percentageUsed >= 70 ? 'warn' : undefined],
+    ['Dati scritti', bytesText(nv.dataWrittenGB)],
+    ['Dati letti', bytesText(nv.dataReadGB)],
+    ['Accensioni', thousands(nv.powerCycles)],
+    ['Ore di accensione', thousands(nv.powerOnHours)],
+    ['Spegnimenti non sicuri', thousands(nv.unsafeShutdowns)],
+    ['Errori di integrità dei dati', thousands(nv.mediaErrors), nv.mediaErrors > 0 ? 'warn' : undefined],
+    ['Voci nel registro errori', thousands(nv.errorLogEntries)],
+    ['Minuti oltre la temperatura di avviso', thousands(nv.warningTempMinutes)],
+    ['Minuti oltre la temperatura critica', thousands(nv.criticalTempMinutes), nv.criticalTempMinutes > 0 ? 'info' : undefined],
+  ];
+  return (
+    <details className="smart-box" open={warns.length > 0 || nv.mediaErrors > 0 || undefined}>
+      <summary>
+        <ScrollText size={15} aria-hidden /> Registro di salute NVMe
+      </summary>
+      <dl className="kv disk-kv smart-kv">
+        {rows.map(([k, v, s]) => (
+          <Fragment key={k}>
+            <dt>{k}</dt>
+            <dd className={s ? `c-${s}` : undefined}>{v}</dd>
+          </Fragment>
+        ))}
+      </dl>
+      <p className="faint smart-note">
+        Le voci nel registro errori contano anche eventi innocui (comandi non supportati inviati dal sistema): da sole non indicano un guasto.
+      </p>
+    </details>
   );
 }
 

@@ -1,4 +1,4 @@
-import type { PcData, StartupItem } from '../engine/types';
+import type { PcData, SmartAttr, StartupItem } from '../engine/types';
 
 // Dati dimostrativi del computer, plausibili ma inventati. Il portatile di
 // casa ha i problemi tipici di un PC trascurato (versione di Windows scaduta,
@@ -6,6 +6,7 @@ import type { PcData, StartupItem } from '../engine/types';
 // dell'ambulatorio è in ordine ma ha un disco dati che prevede un guasto.
 
 const run = (name: string, command: string, location: StartupItem['location'], enabled = true): StartupItem => ({ name, command, location, enabled });
+const attr = (id: number, flags: number, current: number, worst: number, threshold: number, raw: number): SmartAttr => ({ id, flags, current, worst, threshold, raw });
 
 export const homePc: PcData = {
   os: {
@@ -35,6 +36,22 @@ export const homePc: PcData = {
       firmware: '21106000',
       system: true,
       reliability: { temperatureC: 41, temperatureMaxC: 74, wearPct: 18, powerOnHours: 6120, readErrors: 0, writeErrors: 0 },
+      nvme: {
+        criticalWarning: 0,
+        temperatureC: 41,
+        availableSparePct: 100,
+        spareThresholdPct: 10,
+        percentageUsed: 18,
+        dataReadGB: 21480.4,
+        dataWrittenGB: 18730.2,
+        powerCycles: 2140,
+        powerOnHours: 6120,
+        unsafeShutdowns: 96,
+        mediaErrors: 0,
+        errorLogEntries: 3,
+        warningTempMinutes: 12,
+        criticalTempMinutes: 0,
+      },
     },
     { id: '1', name: 'Kingston DataTraveler 3.0', media: 'unknown', bus: 'USB', sizeGB: 30.9, health: 'healthy', operational: ['OK'] },
   ],
@@ -114,6 +131,22 @@ export const clinicPc: PcData = {
       firmware: 'GXA7801Q',
       system: true,
       reliability: { temperatureC: 47, temperatureMaxC: 76, wearPct: 9, powerOnHours: 14880, readErrors: 0, writeErrors: 0 },
+      nvme: {
+        criticalWarning: 0,
+        temperatureC: 47,
+        availableSparePct: 100,
+        spareThresholdPct: 10,
+        percentageUsed: 9,
+        dataReadGB: 41210.7,
+        dataWrittenGB: 33874.5,
+        powerCycles: 1188,
+        powerOnHours: 14880,
+        unsafeShutdowns: 41,
+        mediaErrors: 0,
+        errorLogEntries: 0,
+        warningTempMinutes: 0,
+        criticalTempMinutes: 0,
+      },
     },
     {
       id: '1',
@@ -126,6 +159,31 @@ export const clinicPc: PcData = {
       firmware: 'CC46',
       spindleRpm: 7200,
       reliability: { temperatureC: 44, temperatureMaxC: 53, powerOnHours: 38120, readErrors: 1843, readUncorrected: 36, startStopCycles: 2210, loadUnloadCycles: 61022 },
+      // Attributi tipici di un Seagate con settori riallocati oltre la soglia.
+      smart: [
+        attr(0x01, 0x000f, 72, 64, 6, 0x0d4c77b2),
+        attr(0x03, 0x0003, 97, 97, 0, 0),
+        attr(0x04, 0x0032, 98, 98, 20, 2210),
+        attr(0x05, 0x0033, 8, 8, 10, 3824),
+        attr(0x07, 0x000f, 85, 60, 45, 0x01702f0d),
+        attr(0x09, 0x0032, 57, 57, 0, 38120),
+        attr(0x0a, 0x0013, 100, 100, 97, 0),
+        attr(0x0c, 0x0032, 98, 98, 20, 2216),
+        attr(0xb7, 0x0032, 100, 100, 0, 0),
+        attr(0xb8, 0x0032, 100, 100, 99, 0),
+        attr(0xbb, 0x0032, 64, 64, 0, 36),
+        attr(0xbc, 0x0032, 100, 99, 0, 0x000200000002),
+        attr(0xbd, 0x003a, 100, 100, 0, 0),
+        attr(0xbe, 0x0022, 56, 47, 40, 0x2c11002c),
+        attr(0xc1, 0x0032, 70, 70, 0, 61022),
+        attr(0xc2, 0x0022, 44, 53, 0, 0x00110000002c),
+        attr(0xc5, 0x0012, 100, 100, 0, 48),
+        attr(0xc6, 0x0010, 100, 100, 0, 48),
+        attr(0xc7, 0x003e, 200, 200, 0, 0),
+        attr(0xf0, 0x0000, 100, 253, 0, 35662),
+        attr(0xf1, 0x0000, 100, 253, 0, 48512339120),
+        attr(0xf2, 0x0000, 100, 253, 0, 112398123456),
+      ],
     },
   ],
   volumes: [

@@ -938,6 +938,31 @@ select.field { cursor: pointer; }
 .dgauge-sub { font-size: 12px; color: var(--text-3); }
 .disk-kv { font-size: 13.5px; grid-template-columns: minmax(150px, auto) 1fr; }
 .disk-hint { font-size: 13px; margin: 0 0 4px; }
+/* Dati SMART: tabella degli attributi e registro NVMe, richiudibili */
+.smart-box { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface-2); }
+.smart-box > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 13.5px; font-weight: 650; border-radius: var(--radius-s); }
+.smart-box > summary::-webkit-details-marker { display: none; }
+.smart-box > summary::after { content: ''; margin-left: auto; width: 7px; height: 7px; border-right: 2px solid var(--text-3); border-bottom: 2px solid var(--text-3); transform: rotate(45deg); transition: transform 0.2s var(--ease-out); }
+.smart-box[open] > summary::after { transform: rotate(-135deg); }
+.smart-box > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.smart-box .table-wrap { margin: 0; box-shadow: none; border-radius: 0; border-left: 0; border-right: 0; }
+.smart-flag { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
+.smart-table th, .smart-table td { padding: 6px 8px; font-size: 12.5px; }
+.smart-table th { font-size: 10.5px; letter-spacing: 0.05em; }
+.smart-table td.name { white-space: normal; min-width: 8.5em; line-height: 1.35; }
+.smart-table .num { text-align: right; }
+.smart-table td .sev-icon, .smart-table td svg { vertical-align: -2px; }
+.smart-table tr.smart-fail td { background: color-mix(in srgb, var(--crit) 8%, transparent); }
+.smart-table tr.smart-caution td { background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.smart-kv { padding: 4px 12px 2px; }
+.smart-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.smart-list li { display: grid; gap: 3px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.smart-list li.smart-fail { background: color-mix(in srgb, var(--crit) 8%, transparent); }
+.smart-list li.smart-caution { background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.smart-li-head { display: grid; grid-template-columns: 2.2em 1fr; gap: 6px; font-weight: 600; }
+.smart-li-head svg { vertical-align: -2px; }
+.smart-li-vals { display: flex; flex-wrap: wrap; gap: 2px 12px; padding-left: calc(2.2em + 6px); font-size: 12px; color: var(--text-2); }
+.smart-note { font-size: 12px; margin: 8px 12px 10px; }
 .vols { display: grid; gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .vol { display: grid; gap: 6px; min-width: 0; }
 .vol + .vol { margin-top: 12px; }

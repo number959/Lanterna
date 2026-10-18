@@ -41,11 +41,16 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	pc := &scan.PcData{}
 	var ps *psOut
 	var psErr error
+	var smart map[string]diskSmart
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		ps, psErr = runPS(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		smart = readSmart(ctx)
 	}()
 
 	pc.OS = osInfo()
@@ -67,6 +72,7 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 		pc.Notes = append(pc.Notes, "Dischi fisici, eventi di sistema, antivirus e aggiornamenti non sono stati letti: PowerShell non ha risposto ("+psErr.Error()+").")
 	} else {
 		merge(pc, ps, sysDrive)
+		smartOf(pc, smart)
 		if ps.Errors["events"] != "" {
 			pc.Notes = append(pc.Notes, "Il registro eventi di sistema non è leggibile da questo account.")
 		}
@@ -74,7 +80,7 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	if len(pc.Disks) > 0 {
 		has := false
 		for _, d := range pc.Disks {
-			if d.Reliability != nil {
+			if d.Reliability != nil || len(d.Smart) > 0 || d.NVMe != nil {
 				has = true
 			}
 		}

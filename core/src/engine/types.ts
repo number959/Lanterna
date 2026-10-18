@@ -426,6 +426,46 @@ export interface PhysicalDisk {
   /** Contiene la partizione di Windows. */
   system?: boolean;
   reliability?: DiskReliability;
+  /** Attributi SMART dei dischi ATA (SATA), letti dal disco come amministratore. */
+  smart?: SmartAttr[];
+  /** Registro di salute dei dischi NVMe (pagina 02h della specifica). */
+  nvme?: NVMeHealth;
+}
+
+/**
+ * Attributo SMART ATA: valore normalizzato attuale e peggiore (di solito da
+ * 100 o 200 a scendere), soglia del produttore e dato grezzo a 48 bit.
+ */
+export interface SmartAttr {
+  id: number;
+  /** Bit 0: attributo di pre-guasto (il suo superamento della soglia indica un guasto imminente). */
+  flags: number;
+  current: number;
+  worst: number;
+  /** Assente se il disco non ha restituito le soglie. */
+  threshold?: number;
+  raw: number;
+}
+
+/** Pagina di registro "SMART / Health Information" della specifica NVMe. */
+export interface NVMeHealth {
+  /** Bit 0 riserva sotto soglia, 1 temperatura, 2 affidabilità degradata, 3 sola lettura, 4 backup della memoria volatile guasto, 5 memoria persistente in sola lettura. */
+  criticalWarning: number;
+  temperatureC?: number;
+  availableSparePct: number;
+  spareThresholdPct: number;
+  /** Stima del produttore della durata consumata; può superare 100. */
+  percentageUsed: number;
+  /** Miliardi di byte. */
+  dataReadGB: number;
+  dataWrittenGB: number;
+  powerCycles: number;
+  powerOnHours: number;
+  unsafeShutdowns: number;
+  mediaErrors: number;
+  errorLogEntries: number;
+  warningTempMinutes: number;
+  criticalTempMinutes: number;
 }
 
 /** Contatori di affidabilità (derivati da SMART), leggibili solo come amministratore. */

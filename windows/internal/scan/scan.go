@@ -381,6 +381,50 @@ type PhysicalDisk struct {
 	SpindleRPM  int              `json:"spindleRpm,omitempty"`
 	System      bool             `json:"system,omitempty"`
 	Reliability *DiskReliability `json:"reliability,omitempty"`
+	// Smart elenca gli attributi SMART dei dischi ATA (SATA), NVMe il registro
+	// di salute dei dischi NVMe: si leggono dal disco, come fanno
+	// CrystalDiskInfo e smartctl, solo da amministratore.
+	Smart []SmartAttr `json:"smart,omitempty"`
+	NVMe  *NVMeHealth `json:"nvme,omitempty"`
+}
+
+// SmartAttr è un attributo SMART di un disco ATA: valore normalizzato attuale
+// e peggiore (di solito da 100 o 200 a scendere), soglia sotto la quale il
+// produttore considera il disco guasto e dato grezzo a 48 bit, il cui
+// significato dipende dall'attributo e dal produttore.
+type SmartAttr struct {
+	ID      int `json:"id"`
+	Flags   int `json:"flags"` // bit 0: attributo di pre-guasto
+	Current int `json:"current"`
+	Worst   int `json:"worst"`
+	// Threshold è nil se il disco non ha restituito le soglie.
+	Threshold *int  `json:"threshold,omitempty"`
+	Raw       int64 `json:"raw"`
+}
+
+// NVMeHealth è la pagina di registro 02h ("SMART / Health Information")
+// della specifica NVMe, uguale per tutti i produttori.
+type NVMeHealth struct {
+	// CriticalWarning: bit 0 riserva sotto soglia, 1 temperatura, 2
+	// affidabilità degradata, 3 sola lettura, 4 memoria di backup guasta, 5
+	// memoria persistente in sola lettura.
+	CriticalWarning   int  `json:"criticalWarning"`
+	TemperatureC      *int `json:"temperatureC,omitempty"`
+	AvailableSparePct int  `json:"availableSparePct"`
+	SpareThresholdPct int  `json:"spareThresholdPct"`
+	// PercentageUsed è la stima del produttore della durata consumata: può
+	// superare 100.
+	PercentageUsed int `json:"percentageUsed"`
+	// DataReadGB e DataWrittenGB sono in miliardi di byte.
+	DataReadGB          float64 `json:"dataReadGB"`
+	DataWrittenGB       float64 `json:"dataWrittenGB"`
+	PowerCycles         int64   `json:"powerCycles"`
+	PowerOnHours        int64   `json:"powerOnHours"`
+	UnsafeShutdowns     int64   `json:"unsafeShutdowns"`
+	MediaErrors         int64   `json:"mediaErrors"`
+	ErrorLogEntries     int64   `json:"errorLogEntries"`
+	WarningTempMinutes  int64   `json:"warningTempMinutes"`
+	CriticalTempMinutes int64   `json:"criticalTempMinutes"`
 }
 
 // DiskReliability riporta i contatori di affidabilità (derivati da SMART)

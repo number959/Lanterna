@@ -1,4 +1,5 @@
 import { fmt, more, num, thousands } from './fmt';
+import { bytesText, diskStatus, isFlashDisk } from './smart';
 import type { DiskBench, EventGroup, EventKind, Finding, PcData, PhysicalDisk, PlanKind, Scan, Severity } from './types';
 
 // Analisi del computer: sistema e supporto di Windows, memoria, dischi e loro
@@ -259,7 +260,7 @@ function analyzeMemory(pc: PcData, add: Add) {
 // ---------------------------------------------------------------- Dischi
 
 const MEDIA_LABEL: Record<PhysicalDisk['media'], string> = { hdd: 'disco meccanico', ssd: 'SSD', scm: 'memoria persistente (SCM)', unknown: '' };
-const isFlash = (d: PhysicalDisk) => d.media === 'ssd' || d.media === 'scm';
+const isFlash = isFlashDisk;
 const isUsb = (d?: PhysicalDisk) => !!d && /usb/i.test(d.bus ?? '');
 
 function diskTitle(d: PhysicalDisk): string {
@@ -271,60 +272,54 @@ function analyzeDisks(scan: Scan, pc: PcData, add: Add) {
   const disks = (pc.disks ?? []).filter((d) => d.sizeGB > 0);
   disks.forEach((d, i) => {
     const r = d.reliability;
-    const flash = isFlash(d);
-    const failing = d.health === 'unhealthy' || d.health === 'warning' || (d.operational ?? []).some((o) => /predictive failure/i.test(o));
-    const uncorrected = (r?.readUncorrected ?? 0) + (r?.writeUncorrected ?? 0);
-    const wear = flash ? r?.wearPct : undefined;
-    const temp = r?.temperatureC;
-    const tempSev: Severity =
-      temp === undefined ? 'ok' : flash ? (temp >= 80 ? 'crit' : temp >= 70 ? 'warn' : 'ok') : temp >= 60 ? 'crit' : temp >= 55 ? 'warn' : 'ok';
-    const wearSev: Severity = wear === undefined ? 'ok' : wear >= 90 ? 'crit' : wear >= 70 ? 'warn' : 'ok';
-    const base: Severity = failing ? 'crit' : d.health === 'healthy' || r ? 'ok' : 'unknown';
-    const sev = worst(base, uncorrected > 0 ? 'warn' : 'ok', tempSev, wearSev);
+    const st = diskStatus(d);
+    const flash = isFlashDisk(d);
+    const hasSmart = !!r || !!d.nvme || (d.smart ?? []).length > 0;
 
-    const health = d.health === 'unhealthy' ? 'guasto' : failing ? 'guasto previsto' : d.health === 'healthy' ? 'integro' : 'stato non riportato';
-    const parts = [`${d.name}: ${health}`];
-    if (temp !== undefined) parts.push(`${fmt(temp)} °C`);
-    if (wear !== undefined) parts.push(`usura ${fmt(wear)} %`);
-    if (r?.powerOnHours !== undefined) parts.push(`${thousands(r.powerOnHours)} ore`);
+    const parts = [`${d.name}: ${st.label}${st.lifePct !== undefined ? ` ${fmt(st.lifePct)} %` : ''}`];
+    if (st.temperatureC !== undefined) parts.push(`${fmt(st.temperatureC)} °C`);
+    if (st.powerOnHours !== undefined) parts.push(`${thousands(st.powerOnHours)} ore`);
 
     const what = [MEDIA_LABEL[d.media], d.bus, `da ${gbText(d.sizeGB)}`].filter(Boolean).join(' ');
     const v: string[] = [];
-    if (failing) {
-      v.push(
-        d.health === 'unhealthy'
-          ? `Windows segnala il disco come guasto (${what}): copia subito altrove i dati importanti, potrebbe smettere di funzionare in qualsiasi momento.`
-          : `Il disco prevede un guasto (${what}): i suoi controlli interni (SMART) hanno superato le soglie. Copia subito i dati e programma la sostituzione.`,
-      );
-    } else if (base === 'ok') v.push(`Windows considera il disco integro (${what}).`);
+    if (d.health === 'unhealthy')
+      v.push(`Windows segnala il disco come guasto (${what}): copia subito altrove i dati importanti, potrebbe smettere di funzionare in qualsiasi momento.`);
+    else if (st.signals.some((x) => x.windows))
+      v.push(`Il disco prevede un guasto (${what}): i suoi controlli interni (SMART) hanno superato le soglie. Copia subito i dati e programma la sostituzione.`);
+    else if (d.health === 'healthy') v.push(`Windows considera il disco integro (${what}).`);
+    else if (hasSmart) v.push(`Windows non riporta lo stato del disco (${what}), ma i dati SMART sono leggibili.`);
     else v.push(`Windows non riporta lo stato del disco (${what}).`);
-    if (uncorrected > 0)
-      v.push(`Ha registrato ${num(uncorrected, 'errore di lettura o scrittura non correggibile', 'errori di lettura o scrittura non correggibili')}: settori illeggibili, primo segnale di degrado.`);
-    if (wearSev !== 'ok') v.push(`Ha consumato il ${fmt(wear!)} % della durata di scrittura dichiarata dal produttore.`);
-    else if (wear !== undefined) v.push(`Usura ${fmt(wear)} % della durata dichiarata.`);
-    if (tempSev !== 'ok') v.push(`Temperatura alta (${fmt(temp!)} °C): ${flash ? 'oltre i 70 °C molti SSD rallentano per proteggersi' : 'oltre i 55 °C i dischi meccanici si consumano più in fretta'}.`);
-    if (!flash && (r?.powerOnHours ?? 0) > 40000) v.push(`Con ${thousands(r!.powerOnHours!)} ore di funzionamento (oltre 4 anni continuativi) è un disco anziano: tieni aggiornato il backup.`);
-    if (!r && !failing)
+    for (const x of st.signals) if (!x.windows) v.push(x.text);
+    if (st.wearPct !== undefined && st.wearPct < 70) v.push(`Usura ${fmt(st.wearPct)} % della durata dichiarata.`);
+    if (d.nvme) {
+      const nv = d.nvme;
+      const extra = [`${bytesText(nv.dataWrittenGB)} scritti in totale`];
+      if (nv.unsafeShutdowns > 0) extra.push(num(nv.unsafeShutdowns, 'spegnimento non sicuro', 'spegnimenti non sicuri'));
+      v.push(`Registro NVMe: ${extra.join(', ')}.`);
+    }
+    const crc = (d.smart ?? []).find((a) => a.id === 199);
+    if (crc && crc.raw % 4294967296 > 0)
+      v.push(`L'interfaccia ha registrato ${num(crc.raw % 4294967296, 'errore', 'errori')} di trasmissione (CRC): di solito dipendono dal cavo SATA o dal connettore, non dal disco; se il numero cresce, sostituisci il cavo.`);
+    if (!flash && (st.powerOnHours ?? 0) > 40000) v.push(`Con ${thousands(st.powerOnHours!)} ore di funzionamento (oltre 4 anni continuativi) è un disco anziano: tieni aggiornato il backup.`);
+    if (!hasSmart && st.severity !== 'crit')
       v.push(
         scan.agent.elevated === false
           ? 'Temperatura, usura ed errori (dati SMART) si leggono avviando Polaris come amministratore.'
-          : 'Il disco non espone a Windows i contatori di affidabilità (succede con molti box USB e controller RAID).',
+          : 'Il disco non espone i dati SMART (succede con molti box USB e controller RAID).',
       );
 
     const actions: string[] = [];
-    if (failing || wearSev !== 'ok') actions.push('backup-replace-disk');
-    if (uncorrected > 0) actions.push('check-disk-errors', 'backup-replace-disk');
-    if (tempSev !== 'ok') actions.push('cool-disk');
+    for (const x of st.signals) for (const a of x.actions) if (actions.indexOf(a) < 0) actions.push(a);
     add({
       id: `pc.disk.${d.id ?? i}`,
       metric: 'pc.disk.health',
       category: 'pc',
       title: diskTitle(d),
       value: parts.join(' · '),
-      numeric: wear,
-      severity: sev,
+      numeric: st.wearPct,
+      severity: st.severity,
       verdict: v.join(' '),
-      actions: actions.filter((a, j) => actions.indexOf(a) === j),
+      actions,
     });
   });
 

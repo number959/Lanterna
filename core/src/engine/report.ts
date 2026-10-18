@@ -2,6 +2,7 @@ import { ACTIONS } from './kb/actions';
 import { scoreAssessment } from './kb/assessment';
 import { METRICS } from './kb/metrics';
 import { dateIt } from './pc';
+import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import type { Analysis, EventKind, Finding, ReachResult, Scan, Severity } from './types';
 
 // Rapporto testuale, usato dalla riga di comando e dall'esportazione .txt.
@@ -134,8 +135,8 @@ function pcDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
     out.push('');
     out.push(' Dischi');
     for (const d of pc.disks) {
-      const r = d.reliability;
-      const extra = [r?.temperatureC !== undefined ? `${Math.round(r.temperatureC)} °C` : '', r?.wearPct !== undefined && d.media !== 'hdd' ? `usura ${Math.round(r.wearPct)} %` : '', r?.powerOnHours !== undefined ? `${r.powerOnHours} ore` : '']
+      const st = diskStatus(d);
+      const extra = [st.temperatureC !== undefined ? `${Math.round(st.temperatureC)} °C` : '', st.wearPct !== undefined ? `usura ${Math.round(st.wearPct)} %` : '', st.powerOnHours !== undefined ? `${st.powerOnHours} ore` : '']
         .filter(Boolean)
         .join(', ');
       out.push(
@@ -146,6 +147,22 @@ function pcDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
           '      ',
         ),
       );
+      // Riga SMART come il riquadro di CrystalDiskInfo: stato, poi gli attributi da guardare o il registro NVMe.
+      const attrs = d.smart ?? [];
+      if (attrs.length || d.nvme) {
+        const flash = isFlashDisk(d);
+        const facts: string[] = [];
+        for (const a of attrs) {
+          const state = attrState(a);
+          if (state === 'fail' || state === 'caution') facts.push(`${smartId(a.id)} ${smartName(a.id, flash)} ${state === 'fail' ? `${a.current} (soglia ${a.threshold})` : smartRaw(a)}`);
+        }
+        const nv = d.nvme;
+        if (nv) {
+          facts.push(`riserva ${nv.availableSparePct} %`, `scritti ${bytesText(nv.dataWrittenGB)}`, `${nv.unsafeShutdowns} spegnimenti non sicuri`, `${nv.mediaErrors} errori di integrità`);
+          if (nv.criticalWarning) facts.push(`avviso critico 0x${nv.criticalWarning.toString(16)}`);
+        }
+        out.push(hang(`SMART: ${st.label}${st.lifePct !== undefined ? ` (vita ${Math.round(st.lifePct)} %)` : ''}${facts.length ? `; ${facts.join(', ')}` : ''}`, W, '      ', '        '));
+      }
     }
   }
   if (pc.volumes?.length) {

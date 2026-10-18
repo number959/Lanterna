@@ -8,3 +8,5 @@ export type { AreaScore, AssessArea, AssessAreaId, AssessQuestion } from './kb/a
 export { adviseChannels, apCount, bandOf, freqToChannel, channelToFreq, ownRadios, secFamily, spectrum, phyLabel } from './wifi';
 export { renderText } from './report';
 export { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';
+export { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw, STATUS_LABEL } from './smart';
+export type { AttrState, DiskSignal, DiskStatus } from './smart';

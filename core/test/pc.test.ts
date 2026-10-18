@@ -4,6 +4,8 @@ import { demoScan } from '../src/demo/sample';
 import { analyze, renderText } from '../src/engine';
 import type { PcData, Scan } from '../src/engine';
 import { on } from '../src/engine/pc';
+import { attrState, diskStatus, smartName, smartRaw } from '../src/engine/smart';
+import type { NVMeHealth, SmartAttr } from '../src/engine/types';
 import { base } from './fixtures';
 
 // Scansione sana con un computer in ordine: ogni test cambia solo ciò che verifica.
@@ -191,6 +193,15 @@ describe('computer: dischi', () => {
     const f = analyze(s).findings.find((x) => x.id === 'pc.disk.0');
     expect(f?.severity).toBe('ok');
     expect(f?.verdict).toContain('amministratore');
+  });
+
+  it('dati SMART presenti: niente invito ad avviare come amministratore', () => {
+    const p = edit((x) => (x.disks![0].nvme = nvme()));
+    const s = scanWith(p);
+    s.agent.elevated = false;
+    const f = analyze(s).findings.find((x) => x.id === 'pc.disk.0');
+    expect(f?.verdict).not.toContain('amministratore');
+    expect(f?.value).toContain('Buono 97 %');
   });
 
   it('Windows su un disco meccanico: avviso con il passaggio a SSD', () => {
@@ -396,5 +407,136 @@ describe('computer: sintesi e rapporto', () => {
     expect(t).toContain('ST1000DM010-2EP102');
     expect(t).toContain('guasto previsto');
     expect(t).toContain('FirmaDigitale');
+  });
+});
+
+const nvme = (o: Partial<NVMeHealth> = {}): NVMeHealth => ({
+  criticalWarning: 0,
+  temperatureC: 38,
+  availableSparePct: 100,
+  spareThresholdPct: 10,
+  percentageUsed: 3,
+  dataReadGB: 6321,
+  dataWrittenGB: 5056.8,
+  powerCycles: 1234,
+  powerOnHours: 5120,
+  unsafeShutdowns: 37,
+  mediaErrors: 0,
+  errorLogEntries: 12,
+  warningTempMinutes: 0,
+  criticalTempMinutes: 0,
+  ...o,
+});
+const at = (id: number, current: number, worst: number, threshold: number | undefined, raw: number, flags = 0x32): SmartAttr => ({ id, flags, current, worst, threshold, raw });
+
+describe('computer: dati SMART (stile CrystalDiskInfo)', () => {
+  // Disco SATA meccanico non di sistema, senza contatori di Windows: conta solo SMART.
+  const sata = (attrs: SmartAttr[]) =>
+    find(
+      edit((x) => {
+        x.disks![0] = { id: '0', name: 'Disco SATA', media: 'hdd', bus: 'SATA', sizeGB: 1000, health: 'healthy', smart: attrs };
+      }),
+      'pc.disk.0',
+    );
+
+  it('attributo di pre-guasto alla soglia o sotto: critico, come smartctl', () => {
+    const f = sata([at(0x05, 10, 10, 10, 1500, 0x33), at(0x09, 80, 80, 0, 20000)]);
+    expect(f?.severity).toBe('crit');
+    expect(f?.actions[0]).toBe('backup-replace-disk');
+    expect(f?.verdict).toContain('05 Settori riallocati');
+    expect(f?.value).toContain('Critico');
+    expect(f?.value).toContain('20.000 ore');
+  });
+
+  it('attributo di invecchiamento sotto soglia: solo avviso', () => {
+    expect(sata([at(0xc1, 30, 30, 40, 600000, 0x32)])?.severity).toBe('warn');
+  });
+
+  it('settori riallocati, in attesa e non correggibili: attenzione con controllo e backup', () => {
+    const f = sata([at(0x05, 100, 100, 10, 8, 0x33), at(0xc5, 100, 100, 0, 2), at(0xc6, 100, 100, 0, 0)]);
+    expect(f?.severity).toBe('warn');
+    expect(f?.verdict).toContain('8 settori riallocati, 2 settori in attesa di riallocazione');
+    expect(f?.actions).toEqual(['check-disk-errors', 'backup-replace-disk']);
+    expect(f?.value).toContain('Attenzione');
+  });
+
+  it('soglie zero, segnaposto e soglie non reali non danno falsi allarmi', () => {
+    const f = sata([at(0x05, 100, 100, 0, 0xffffffff, 0x33), at(0x01, 1, 1, 0, 0), at(0x03, 90, 90, 255, 0, 0x03), at(0xc6, 100, 100, undefined, 0)]);
+    expect(f?.severity).toBe('ok');
+    expect(f?.value).toContain('Buono');
+  });
+
+  it('valore peggiore sotto soglia in passato: nota senza cambiare lo stato', () => {
+    const f = sata([at(0x07, 60, 40, 45, 0, 0x0f)]);
+    expect(f?.severity).toBe('ok');
+    expect(f?.verdict).toContain('in passato');
+  });
+
+  it('errori CRC: spiegati come problema di cavo, non del disco', () => {
+    const f = sata([at(0xc7, 200, 200, 0, 31, 0x3e)]);
+    expect(f?.severity).toBe('ok');
+    expect(f?.verdict).toContain('cavo SATA');
+  });
+
+  const nv = (o: Partial<NVMeHealth>) =>
+    find(
+      edit((x) => {
+        x.disks![0].nvme = nvme(o);
+      }),
+      'pc.disk.0',
+    );
+
+  it('NVMe: bit di avviso critico, riserva, errori, usura e temperatura', () => {
+    expect(nv({})?.severity).toBe('ok');
+    expect(nv({ criticalWarning: 0x01 })?.severity).toBe('crit');
+    expect(nv({ criticalWarning: 0x08 })?.verdict).toContain('sola lettura');
+    const hot = nv({ criticalWarning: 0x02 });
+    expect(hot?.severity).toBe('warn');
+    expect(hot?.actions).toContain('cool-disk');
+    expect(nv({ availableSparePct: 5, spareThresholdPct: 10 })?.severity).toBe('crit');
+    expect(nv({ mediaErrors: 3 })?.verdict).toContain('3 errori di integrità');
+    expect(nv({ percentageUsed: 95 })?.severity).toBe('crit');
+    expect(nv({ percentageUsed: 140 })?.value).toContain('Critico 0 %');
+    expect(nv({ temperatureC: 74 })?.severity).toBe('warn');
+    expect(nv({ unsafeShutdowns: 37 })?.verdict).toContain('37 spegnimenti non sicuri');
+    expect(nv({ dataWrittenGB: 18730.2 })?.verdict).toContain('18,7 TB scritti');
+  });
+
+  it('stato complessivo: etichette, vita residua e fonti dei valori', () => {
+    const base = { id: '0', name: 'D', media: 'ssd' as const, sizeGB: 500 };
+    expect(diskStatus({ ...base }).label).toBe('Sconosciuto');
+    const ok = diskStatus({ ...base, nvme: nvme() });
+    expect([ok.label, ok.lifePct, ok.temperatureC, ok.powerOnHours, ok.powerCycles, ok.writtenGB]).toEqual(['Buono', 97, 38, 5120, 1234, 5056.8]);
+    // I contatori di Windows hanno la precedenza; la temperatura ATA viene dal byte basso.
+    const sataSsd = diskStatus({ ...base, reliability: { wearPct: 12 }, smart: [at(0xc2, 35, 50, 0, 0x110000001f), at(0x09, 99, 99, 0, 0x100000000 + 700)] });
+    expect([sataSsd.lifePct, sataSsd.temperatureC, sataSsd.powerOnHours]).toEqual([88, 31, 700]);
+    expect(diskStatus({ ...base, media: 'hdd', smart: [at(0x05, 5, 5, 10, 1, 0x33)] }).label).toBe('Critico');
+    expect(diskStatus({ ...base, media: 'hdd', smart: [at(0xc5, 100, 100, 0, 1)] }).label).toBe('Attenzione');
+  });
+
+  it('nomi e dati grezzi leggibili', () => {
+    expect(smartName(0x05, false)).toBe('Settori riallocati');
+    expect(smartName(0xe7, true)).toBe('Vita residua');
+    expect(smartName(0xe7, false)).toBe('Temperatura');
+    expect(smartName(0x99, false)).toBe('Specifico del produttore');
+    expect(smartRaw(at(0xc2, 44, 53, 0, 0x110000002c))).toBe('44 °C');
+    expect(smartRaw(at(0x09, 57, 57, 0, 38120))).toBe('38.120 ore');
+    expect(smartRaw(at(0x05, 8, 8, 10, 3824))).toBe('3.824');
+    expect(smartRaw(at(0x01, 72, 64, 6, 0x0d4c77b2))).toBe('00000D4C77B2');
+    expect(attrState(at(0x05, 10, 10, 10, 0))).toBe('fail');
+    expect(attrState(at(0x05, 11, 10, 10, 0))).toBe('past');
+    expect(attrState(at(0xc5, 100, 100, 0, 3))).toBe('caution');
+  });
+
+  it('demo: il disco dati dell\'ambulatorio è critico per SMART, il portatile ha il registro NVMe', () => {
+    const clinic = analyze(clinicScan).findings;
+    const d1 = clinic.find((f) => f.id === 'pc.disk.1');
+    expect(d1?.verdict).toContain('05 Settori riallocati');
+    expect(d1?.verdict).toContain('48 settori in attesa');
+    // Gli errori non correggibili di Windows non si ripetono dopo quelli SMART.
+    expect(d1?.verdict).not.toContain('errori di lettura o scrittura non correggibili');
+    const home = analyze(demoScan).findings.find((f) => f.id === 'pc.disk.0');
+    expect(home?.value).toContain('Buono 82 %');
+    expect(home?.verdict).toContain('96 spegnimenti non sicuri');
   });
 });
