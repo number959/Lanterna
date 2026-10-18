@@ -11,7 +11,7 @@
           "name": "STARNET.Polaris",
           "version": ""
         },
-        "description": "STARNET Polaris - diagnostica della rete locale",
+        "description": "STARNET Polaris - diagnostica di PC e rete",
         "minimum-os": "win10",
         "execution-level": "as invoker",
         "ui-access": false,
@@ -33,19 +33,19 @@
     "#1": {
       "0000": {
         "fixed": {
-          "file_version": "0.4.0.0",
-          "product_version": "0.4.0.0"
+          "file_version": "0.5.0.0",
+          "product_version": "0.5.0.0"
         },
         "info": {
           "0410": {
             "Comments": "La stella polare della tua rete: misura, spiega e suggerisce come migliorare.",
             "CompanyName": "STARNET",
             "FileDescription": "STARNET Polaris",
-            "FileVersion": "0.4.0",
+            "FileVersion": "0.5.0",
             "InternalName": "polaris",
             "OriginalFilename": "Polaris.exe",
             "ProductName": "STARNET Polaris",
-            "ProductVersion": "0.4.0"
+            "ProductVersion": "0.5.0"
           }
         }
       }

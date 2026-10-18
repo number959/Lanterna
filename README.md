@@ -7,14 +7,18 @@
 
 # STARNET Polaris
 
-**La stella polare della tua rete.** Diagnostica di rete che **spiega ogni valore**: per ciascuna misura dice cos'è, come si
-legge, quanto è grave nella tua rete e cosa fare per migliorarla. Le azioni correttive confluiscono in un piano unico, ordinato
-per gravità, impatto e facilità.
+**La stella polare del tuo PC e della tua rete.** Diagnostica di computer e rete, in un unico programma, che **spiega ogni
+valore**: per ciascuna misura dice cos'è, come si legge, quanto è grave e cosa fare per migliorarla. Le azioni correttive
+confluiscono in un piano unico, ordinato per gravità, impatto e facilità.
+
+Del **computer** controlla versione e supporto di Windows, memoria, **salute dei dischi HDD e SSD** (SMART, usura, temperatura,
+errori), spazio, programmi all'avvio, processi, spegnimenti imprevisti, schermate blu, antivirus, aggiornamenti e batteria, e
+offre **test di velocità** del processore e dei dischi su richiesta. Della **rete** misura Wi-Fi, router, Internet e DNS.
 
 Funziona in casa come in uno studio, in un'azienda o in una **struttura sanitaria**: riconosce le reti con più access point e
 con dominio, censisce la sottorete, verifica la separazione tra le zone e i servizi critici e guida un'autovalutazione delle
-misure organizzative. Una biblioteca di **48 guide** in italiano spiega tutto ciò che riguarda la rete, dalle basi alle reti
-cliniche.
+misure organizzative. Una biblioteca di **64 guide** in italiano spiega come usare il programma, il computer e la rete, dalle
+basi alle reti cliniche.
 
 Il nome nasce dal marchio STARNET: Polaris è la stella polare, quella che indica la direzione. Qui indica cosa sistemare per primo.
 
@@ -40,7 +44,7 @@ Il movimento riprende il marchio:
 
 Se in Windows le animazioni sono disattivate restano solo brevi dissolvenze: niente spostamenti, rotazioni o scorrimenti.
 
-- **Tastiera**: `1`…`9` per le sezioni, `/` per cercare nella guida, frecce nei selettori e nelle risposte dell'autovalutazione;
+- **Tastiera**: `1`…`9` e `0` per le sezioni, `/` per cercare nella guida, frecce nei selettori e nelle risposte dell'autovalutazione;
   ogni comando è raggiungibile con Tab.
 - **Grafica leggera**: senza accelerazione grafica (macchine virtuali, desktop remoto) Polaris se ne accorge dai fotogrammi lenti e
   toglie sfocature e trasparenze; si può anche attivare a mano in fondo alla barra laterale.
@@ -50,10 +54,42 @@ Se in Windows le animazioni sono disattivate restano solo brevi dissolvenze: nie
 | --- | --- | --- |
 | ![Wi-Fi](docs/img/wifi.webp) | ![Piano d'azione](docs/img/piano.webp) | ![Mobile](docs/img/mobile.webp) |
 
+## Il computer
+
+![Computer](docs/img/computer.webp)
+
+La sezione **Computer** descrive il PC da cui parte l'analisi, letto in **sola lettura** con le funzioni di Windows e un unico
+script PowerShell nascosto: nessuna impostazione viene modificata.
+
+- **Dischi**: tipo (SSD NVMe, SSD SATA, HDD, USB), stato di salute dichiarato dal disco, e da amministratore i contatori di
+  affidabilità derivati da SMART (temperatura con la massima registrata, usura degli SSD, ore di accensione, errori non
+  correggibili); errori di disco e file system dal registro eventi, collegati al disco coinvolto; spazio di ogni volume.
+- **Sistema**: versione di Windows con le date di fine supporto (Windows 11 per versione ed edizione, Windows 10 ed ESU),
+  memoria installata e in uso, carico del processore con i processi più pesanti, programmi all'avvio, tempo dall'ultimo
+  riavvio (con l'effetto dell'avvio rapido) e riavvii in sospeso.
+- **Stabilità e sicurezza**: spegnimenti imprevisti, schermate blu con il codice di arresto spiegato, errori hardware WHEA
+  degli ultimi 30 giorni; antivirus dal Centro sicurezza; data dell'ultimo aggiornamento.
+- **Alimentazione**: salute della batteria, piano di alimentazione, driver della scheda video.
+- **Test di velocità** (solo su richiesta): il processore comprime dati con un thread e con tutti per circa 25 secondi e rivela
+  il calo dovuto a calore o limiti di potenza; il disco scrive e rilegge un file temporaneo fino a 1 GB senza cache di Windows,
+  in sequenza e a blocchi casuali da 4 KB, e lo cancella alla fine anche se il test si interrompe (`FILE_FLAG_DELETE_ON_CLOSE`).
+  I risultati si confrontano con quelli tipici del tipo di disco ed entrano nel rapporto; le prove precedenti restano sul PC per
+  il confronto "prima e dopo".
+
+Il punteggio della panoramica descrive PC e rete insieme; un disco che sta per guastarsi diventa il problema più urgente e la
+prima azione del piano (copiare i dati). Nei rapporti la cartella dell'utente diventa `%USERPROFILE%` e non compaiono numeri di
+serie.
+
+| Test di velocità | Dischi e salute |
+| --- | --- |
+| ![Test di velocità](docs/img/test-velocita.webp) | ![Dischi](docs/img/dischi.webp) |
+
 ## Cosa misura
 
 | Area | Misure |
 | --- | --- |
+| Computer | versione e supporto di Windows, RAM installata e in uso, carico del processore e processi, salute dei dischi (stato, SMART, usura, temperatura, errori), tipo del disco di sistema, spazio per volume, programmi all'avvio, riavvio e riavvii in sospeso, spegnimenti imprevisti, schermate blu, errori hardware e di disco nel registro, antivirus, ultimo aggiornamento, batteria, piano di alimentazione, driver video |
+| Test di velocità (su richiesta) | processore con un thread e con tutti, punta e velocità mantenuta; disco in sequenza e a blocchi casuali da 4 KB, in MB/s e IOPS |
 | Wi-Fi | potenza in dBm, qualità, velocità radio, banda, standard (Wi-Fi 4…7), larghezza di canale, reti sullo stesso canale, canali 2,4 GHz sovrapposti, carico dichiarato dall'access point (BSS Load), sicurezza (WPA2/WPA3 Personal ed Enterprise, TKIP, PMF, WPS), canale consigliato per 2,4 e 5 GHz |
 | Reti con più access point | AP della rete con canali, segnale, carico e roaming assistito (802.11k, 802.11v, 802.11r e Mobility Domain), AP propri sullo stesso canale, PC agganciato a un AP lontano (sticky client), stessa rete annunciata con protezioni diverse (possibile AP gemello) |
 | Rete locale | indirizzo, DHCP e server DHCP (APIPA), gateway, latenza/perdite/jitter verso il router, velocità della porta Ethernet, IPv6, sottoreti molto ampie, dominio e DNS aziendali, stesso MAC per più indirizzi, MAC del router cambiato rispetto all'analisi precedente, dispositivi visti di recente |
@@ -90,12 +126,15 @@ Senza agente, le due reti dimostrative (*Casa* e *Clinica*) mostrano tutte le fu
 | --- | --- | --- |
 | ![AP della rete](docs/img/ap-rete.webp) | ![Verifiche](docs/img/verifiche.webp) | ![Autovalutazione](docs/img/autovalutazione.webp) |
 
-## Guide di rete
+## Guide
 
 ![Guide](docs/img/guide.webp)
 
-48 guide in sette capitoli (fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti complesse e sanità, diagnosi), un glossario
-di 152 voci e la ricerca unificata su guide, glossario, misure e azioni. Ogni valore misurato e ogni azione del piano rimandano
+64 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
+complesse e sanità, diagnosi), un glossario di 185 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
+d'uso parte dai primi passi e arriva alla riga di comando; il capitolo sul computer spiega componenti, dischi HDD e SSD, SMART,
+test di velocità, memoria, avvio, aggiornamenti, registro eventi, batteria e il metodo per un PC lento. Le date di supporto di
+Windows citate sono quelle note a metà 2026 e vanno verificate sul sito Microsoft. Ogni valore misurato e ogni azione del piano rimandano
 alla guida che li spiega; sette diagrammi animati illustrano livelli, sottoreti, DHCP, canali, roaming, VLAN e zone di una rete
 sanitaria. I riferimenti normativi citati (GDPR, NIS2, dispositivi medicali) sono una sintesi da verificare sui testi ufficiali,
 non una consulenza legale.
@@ -114,7 +153,7 @@ piattaforma producono solo dati grezzi in un formato comune; l'interpretazione �
 
 ## Uso su Windows
 
-Scarica `STARNET-Polaris-windows-amd64.zip`, estrai la cartella e fai doppio clic su `Polaris.exe`. L'analisi parte da sola e dura circa 20 secondi.
+Scarica `STARNET-Polaris-windows-amd64.zip`, estrai la cartella e fai doppio clic su `Polaris.exe`. L'analisi parte da sola e dura circa 25 secondi.
 
 ```text
 polaris-cli report                  rapporto a schermo
@@ -122,10 +161,13 @@ polaris-cli report --verbose        con spiegazioni e passi da seguire
 polaris-cli report --out r.txt      salva il rapporto (UTF-8, si apre col Blocco note)
 polaris-cli report --json           dati grezzi, riapribili nell'interfaccia con "Importa"
 polaris-cli serve --open            interfaccia nel browser su http://127.0.0.1:8737
+polaris-cli bench cpu               test di velocità del processore (circa 25 secondi)
+polaris-cli bench disk --drive D:   test di un'unità (file temporaneo cancellato alla fine)
 ```
 
 Su Windows 11 24H2 e successivi la lettura delle reti Wi-Fi richiede il permesso di posizione per le app desktop: Polaris lo
-rileva e spiega come attivarlo. Non servono privilegi di amministratore.
+rileva e spiega come attivarlo. Non servono privilegi di amministratore; avviando Polaris come amministratore compaiono anche
+temperatura, usura ed errori dei dischi.
 
 ## Sviluppo
 
@@ -159,6 +201,10 @@ PC con scheda Wi-Fi: [docs/VERIFICHE.md](docs/VERIFICHE.md).
   dall'utente. Le API locali rifiutano richieste senza conferma, con destinazioni non valide o pubbliche.
 - Per le misure vengono contattati: il router, i resolver pubblici 1.1.1.1, 8.8.8.8 e 9.9.9.9, `www.google.com/generate_204` e
   `cp.cloudflare.com/generate_204`.
+- I dati del computer si leggono senza modificare nulla; i test di velocità partono solo su richiesta, quello del disco con una
+  conferma esplicita, lasciando almeno 2 GB liberi e cancellando il file di prova. Nei rapporti la cartella dell'utente è
+  sostituita da `%USERPROFILE%`, i numeri di serie dei dischi non vengono letti e degli eventi si conservano solo origine,
+  codice, numero e data (il dettaglio solo per schermate blu, dischi e file system).
 
 ## Licenze
 

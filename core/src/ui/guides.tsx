@@ -5,8 +5,10 @@ import {
   CircleCheckBig,
   Clock,
   Copy,
+  Gauge,
   Lightbulb,
   ListTree,
+  Network,
   ScanSearch,
   Search,
   Stethoscope,
@@ -279,14 +281,20 @@ function LibraryHome({ read, last, onOpen }: { read: string[]; last?: string; on
     <m.div {...panel}>
       <section className="card lib-hero">
         <div>
-          <h2 className="lib-title">Biblioteca di rete</h2>
+          <h2 className="lib-title">Biblioteca di PC e rete</h2>
           <p className="muted lib-sub">
-            {GUIDES.length} guide in {CHAPTERS.length} capitoli, dalle basi fino alle reti delle strutture sanitarie, e {GLOSSARY.length} voci di glossario.
-            Tutto è incluso nel programma e si consulta anche senza connessione.
+            {GUIDES.length} guide in {CHAPTERS.length} capitoli, dall'uso del programma al computer, dalle basi della rete fino alle strutture sanitarie, e{' '}
+            {GLOSSARY.length} voci di glossario. Tutto è incluso nel programma e si consulta anche senza connessione.
           </p>
           <div className="lib-paths">
-            <button className="btn primary" onClick={() => onOpen(resume?.id ?? 'come-funziona-una-rete')}>
-              <BookOpenText size={17} aria-hidden /> {resume ? `Continua: ${resume.title}` : 'Inizia dalle basi'}
+            <button className="btn primary" onClick={() => onOpen(resume?.id ?? 'primi-passi')}>
+              <BookOpenText size={17} aria-hidden /> {resume ? `Continua: ${resume.title}` : 'Come si usa'}
+            </button>
+            <button className="btn" onClick={() => onOpen('pc-lento-metodo')}>
+              <Gauge size={17} aria-hidden /> PC lento
+            </button>
+            <button className="btn" onClick={() => onOpen('come-funziona-una-rete')}>
+              <Network size={17} aria-hidden /> Basi della rete
             </button>
             <button className="btn" onClick={() => onOpen('rete-clinica-architettura')}>
               <Stethoscope size={17} aria-hidden /> Percorso per cliniche

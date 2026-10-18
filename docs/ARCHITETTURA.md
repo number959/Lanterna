@@ -11,11 +11,12 @@ nome, che non compare più all'utente.
             │    kb/actions.ts  catalogo azioni correttive condiviso                      │
             │    kb/assessment.ts  autovalutazione: aree, domande, punteggi               │
             │    analyze.ts     diagnosi, punteggi, piano d'azione                        │
+            │    pc.ts          computer: Windows e supporto, dischi, eventi, test        │
             │    wifi.ts        canali, spettro, interferenza, AP della rete              │
             │    report.ts      rapporto testuale                                         │
-            │  guides/   48 guide come dati tipizzati, glossario, ricerca                 │
-            │  demo/     reti dimostrative Casa e Clinica, simulazioni                    │
-            │  ui/       interfaccia React (animazioni, grafici SVG, 9 viste)             │
+            │  guides/   64 guide come dati tipizzati, glossario, ricerca                 │
+            │  demo/     PC e reti dimostrative Casa e Clinica, simulazioni               │
+            │  ui/       interfaccia React (animazioni, grafici SVG, 10 viste)            │
             └───────────────▲───────────────────────────────▲────────────────────────────┘
                             │ stesso bundle                  │ engine.js (IIFE ES2015)
              interfaccia    │                                │
@@ -29,6 +30,8 @@ nome, che non compare più all'utente.
    │   wlan/ ie/ netsh/  interpretazione byte per byte, collaudata ovunque   │
    │   probe/   DNS, UPnP/SSDP, porte e pannello del router, HTTPS          │
    │   infra/   inventario e verifiche su richiesta, ritmo prudente          │
+   │   pcinfo/  dati del computer: API native + uno script PowerShell        │
+   │   bench/   test di velocità di processore e dischi, su richiesta        │
    │   collect/ orchestrazione parallela con avanzamento reale               │
    │   server/  API locale + interfaccia incorporata                         │
    └──────────────────────────────────────────────────────────────────────────┘
@@ -73,6 +76,15 @@ motore lo mostra come "non misurato" invece di inventare un giudizio.
 - **Infrastruttura.** Inventario, verifiche e autovalutazione entrano nello `Scan` (`infra`) e diventano giudizi di una categoria
   propria, che conta nel punteggio solo quando ci sono dati: segmentazione violata e servizi critici irraggiungibili sono critici;
   ogni area dell'autovalutazione ha un punteggio pesato e porta nel piano le azioni mancanti.
+- **Computer** (`pc.ts`). La categoria `pc` pesa nel punteggio quanto il Wi-Fi, così il punteggio descrive PC e rete insieme;
+  antivirus e aggiornamenti sono giudizi della categoria `security` ma si mostrano nella sezione Computer. Il supporto di Windows
+  si valuta sulla data dell'analisi con un calendario per versione ed edizione (Windows 11 Home/Pro 24 mesi, Enterprise/Education
+  36; Windows 10 con ESU; LTSC e Server da verificare), condiviso con la guida che lo riporta. Kernel-Power 41 ed EventLog 6008
+  descrivono lo stesso spegnimento e non si sommano; gli errori di disco si collegano al disco del dettaglio (`HarddiskN`) e su
+  unità USB valgono come semplice informazione. I test di velocità si confrontano con le soglie del tipo di unità (NVMe, SATA,
+  HDD, USB). Un disco con guasto previsto diventa il problema più urgente del titolo e l'azione *copia i dati* sale in cima al
+  piano (`URGENT_ACTIONS`). Date in italiano con la preposizione giusta ("dall'11 novembre"), senza `Intl` perché il motore gira
+  anche in goja.
 
 ## Interfaccia
 
@@ -141,8 +153,14 @@ rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFIC
 | Dominio e DHCP | `GetComputerNameExW(ComputerNameDnsDomain)`; suffisso DNS e `Dhcpv4Server` da `GetAdaptersAddresses` | il server DHCP solo se la struttura restituita lo contiene |
 | Inventario (su richiesta) | `IcmpSendEcho` a ogni indirizzo della sottorete (circa 30 al secondo, 8 in parallelo), poi `GetIpNetTable`, DNS inverso e richiesta NetBIOS *node status* (UDP 137) ai soli dispositivi trovati | solo reti private; oltre /22 solo il blocco /24 del PC; interruzione dopo 4 minuti |
 | Verifiche (su richiesta) | connessione TCP alla porta indicata (aperta, chiusa con rifiuto, filtrata) o due ping; nomi risolti prima, preferendo IPv4 | solo destinazioni private, al massimo 64, 4 alla volta |
+| Computer: sistema | `RtlGetVersion`, registro (`CurrentVersion`, `CentralProcessor`, `HiberbootEnabled`, chiavi dei riavvii in sospeso), `GetTickCount64`, `GlobalMemoryStatusEx`, `GetSystemPowerStatus`, `PowerGetActiveScheme` | Windows 11 riconosciuto dalla build (il registro dice ancora "Windows 10") |
+| Computer: volumi | `GetLogicalDriveStrings`, `GetDriveType`, `GetDiskFreeSpaceEx`, `GetVolumeInformation` | solo dischi locali e rimovibili: niente unità di rete o CD |
+| Computer: avvio e processi | chiavi `Run` (utente, computer, 32 bit), cartelle di esecuzione automatica, `StartupApproved`; Toolhelp32 + `GetProcessTimes` + `K32GetProcessMemoryInfo` su 1,5 s a fine analisi | cartella dell'utente sostituita da `%USERPROFILE%`; processi raggruppati per nome |
+| Computer: dischi, eventi, sicurezza | un solo script PowerShell nascosto con uscita JSON: `Get-PhysicalDisk`, `Get-Partition`, `Get-StorageReliabilityCounter` (da amministratore), classi batteria di `root/wmi`, `Get-WinEvent` (livelli 1-3, 30 giorni, 14 codici), `root/SecurityCenter2` con riserva `Get-MpComputerStatus`, `Get-HotFix`, `Win32_Processor`, `Win32_VideoController` | ogni sezione protetta da `try`; timeout di 40 s; niente numeri di serie |
+| Test del processore (su richiesta) | `compress/flate` su un testo sintetico deterministico: 3 s con un thread, 20 s con tutti, campioni al secondo | punta = migliore media su 3 s nella prima metà; finale = media dell'ultimo quarto |
+| Test del disco (su richiesta) | `CreateFile` con `FILE_FLAG_NO_BUFFERING` e `FILE_FLAG_DELETE_ON_CLOSE`, `ReadFile`/`WriteFile` posizionati con `OVERLAPPED` su handle sincrono, `FlushFileBuffers` nel tempo; 1 MiB in sequenza, 4 KiB casuali QD1 | file fino a 1 GiB, almeno 2 GiB lasciati liberi, durata massima per fase, buffer allineati a 4 KiB e dati non comprimibili |
 
-Modalità del programma: `Polaris.exe` (finestra), `report`, `serve`. La finestra usa WebView2; se il runtime manca (o non
+Modalità del programma: `Polaris.exe` (finestra), `report`, `serve`, `bench cpu` e `bench disk`. La finestra usa WebView2; se il runtime manca (o non
 funziona) STARNET Polaris lo dice con un messaggio e apre l'interfaccia nel browser predefinito. `Polaris.exe` è compilato come
 applicazione grafica e si aggancia alla console del prompt quando riceve un comando; `polaris-cli.exe` è la stessa cosa compilata
 per la console, comoda negli script.
@@ -160,10 +178,14 @@ per la console, comoda negli script.
 | `GET /api/inventory` | avanzamento (`ping`, poi `nomi`), eventuale errore e ultimo inventario |
 | `POST /api/reach` | corpo `{"targets": [{"label", "host", "port", "expect": "reachable"\|"isolated"}]}`: esiti delle verifiche (sincrono, al massimo 2 minuti); `400` se le destinazioni non sono valide, `409` se ne è già in corso una |
 | `GET /api/reach` | ultime verifiche, oppure `204` |
+| `POST /api/bench` | corpo `{"kind": "cpu"}` oppure `{"kind": "disk", "drive": "C:", "confirm": true}`: `202` avvia il test; `400` senza conferma o con unità non valida, `422` se l'unità non è un disco locale o rimovibile, `409` se c'è un test o un'analisi in corso |
+| `GET /api/bench` | test in corso con fase e avanzamento (campioni al secondo per il processore), eventuale errore e ultimi risultati |
+| `DELETE /api/bench` | interrompe il test in corso; il file temporaneo del test del disco viene cancellato |
 
 Sicurezza: ascolto solo su `127.0.0.1`; richieste con `Host` diverso da localhost rifiutate (DNS rebinding); `POST` con `Origin`
 estranea o `Sec-Fetch-Site: cross-site` rifiutate (CSRF); i `POST` di inventario e verifiche accettano solo corpi
-`application/json` fino a 64 kB, che una pagina di un altro sito non può inviare senza un preflight CORS; CSP restrittiva
+`application/json` fino a 64 kB, che una pagina di un altro sito non può inviare senza un preflight CORS (lo stesso vale per i
+test di velocità, e `DELETE` richiede comunque un preflight); CSP restrittiva
 sull'interfaccia; nessuna intestazione CORS. ESP32 ed
 eventuali altri agenti esporranno la stessa API, quindi l'interfaccia non cambia.
 

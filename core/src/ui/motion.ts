@@ -35,6 +35,12 @@ export const cascade = (step = 0.045, delay = 0): Variants => ({
 });
 
 /**
+ * Passo della cascata per elenchi lunghi: l'ultimo elemento parte entro
+ * `total` secondi, così trenta voci non impiegano due secondi ad apparire.
+ */
+export const stagger = (count: number, step = 0.045, total = 0.6) => Math.min(step, total / Math.max(1, count));
+
+/**
  * Cambio di pagina: l'uscita è rapida e sale appena; l'entrata è una
  * dissolvenza breve mentre le sezioni arrivano in cascata (ciascuna con "rise").
  */

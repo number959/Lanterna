@@ -1,5 +1,7 @@
+import { fmt, more, num, thousands } from './fmt';
 import { ACTIONS } from './kb/actions';
 import { scoreAssessment } from './kb/assessment';
+import { analyzePc } from './pc';
 import type {
   Adapter,
   Analysis,
@@ -32,12 +34,13 @@ import {
   STRONG_NEIGHBOUR_DBM,
 } from './wifi';
 
-export const ENGINE_VERSION = '1.1.0';
+export const ENGINE_VERSION = '1.2.0';
 
 const SEV_RANK: Record<Severity, number> = { unknown: 0, ok: 1, info: 2, warn: 3, crit: 4 };
 const SEV_POINTS: Record<Severity, number | null> = { ok: 100, info: 95, warn: 55, crit: 10, unknown: null };
 
 export const CATEGORY_LABELS: Record<Category, string> = {
+  pc: 'Computer',
   wifi: 'Wi-Fi',
   lan: 'Rete locale',
   internet: 'Internet',
@@ -49,7 +52,8 @@ export const CATEGORY_LABELS: Record<Category, string> = {
 
 // L'infrastruttura conta solo quando l'utente ha eseguito inventario,
 // verifiche o autovalutazione: senza dati la categoria non ha punteggio ed
-// è esclusa dalla media.
+// è esclusa dalla media. Il computer pesa quanto il Wi-Fi: il punteggio
+// descrive PC e rete insieme.
 const CATEGORY_WEIGHT: Record<Category, number> = {
   wifi: 0.25,
   lan: 0.2,
@@ -58,25 +62,18 @@ const CATEGORY_WEIGHT: Record<Category, number> = {
   router: 0.1,
   security: 0.1,
   infra: 0.15,
+  pc: 0.25,
 };
 
 export function worse(a: Severity, b: Severity): Severity {
   return SEV_RANK[a] >= SEV_RANK[b] ? a : b;
 }
 
-// Formattazione numerica senza Intl: il motore gira anche in goja (exe
-// Windows), dove toLocaleString ignorerebbe le opzioni.
-const fmt = (n: number, d = 0) => n.toFixed(d).replace('.', ',');
 const ms = (n: number) => (n < 1 ? '<1 ms' : `${fmt(n, n < 10 ? 1 : 0)} ms`);
 const lostText = (lost: number, sent: number) =>
   lost === 1 ? `si è perso 1 pacchetto su ${sent}` : `si sono persi ${lost} pacchetti su ${sent}`;
 const pct = (n: number) => `${fmt(n, n > 0 && n < 10 ? 1 : 0)} %`;
-const thousands = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 const unique = <T>(xs: T[]) => xs.filter((x, i) => xs.indexOf(x) === i);
-/** Coda per gli elenchi troncati: " (e altri 3)". */
-const more = (total: number, shown: number) => (total > shown ? ` (e altri ${total - shown})` : '');
-/** Numero seguito dal verbo concordato: "1 risponde", "3 rispondono". */
-const num = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const bandLabel = (b: Band) => `${b.replace('.', ',')} GHz`;
 
 function isApipa(cidr: string) {
@@ -1482,6 +1479,9 @@ function scoreCategories(findings: Finding[]): CategoryScore[] {
   });
 }
 
+/** Azioni che proteggono i dati: a parità di gravità passano davanti alle altre. */
+const URGENT_ACTIONS: Record<string, number> = { 'backup-replace-disk': 50 };
+
 function buildPlan(findings: Finding[]): PlanItem[] {
   const map = new Map<string, PlanItem>();
   for (const f of findings) {
@@ -1497,23 +1497,36 @@ function buildPlan(findings: Finding[]): PlanItem[] {
   const effort = { facile: 0, media: 1, avanzata: 2 };
   for (const it of map.values()) {
     it.priority =
-      SEV_RANK[it.severity] * 100 + impact[it.action.impact] * 10 + Math.min(it.findings.length, 5) * 3 - effort[it.action.effort] * 4;
+      SEV_RANK[it.severity] * 100 +
+      impact[it.action.impact] * 10 +
+      Math.min(it.findings.length, 5) * 3 -
+      effort[it.action.effort] * 4 +
+      (URGENT_ACTIONS[it.action.id] ?? 0);
   }
   // Un'azione che compare solo per un problema "info" è un consiglio, non un'urgenza:
   // resta in fondo al piano.
   return [...map.values()].sort((a, b) => b.priority - a.priority);
 }
 
-function headline(score: number, findings: Finding[], cats: CategoryScore[], failed: number): string {
+function headline(score: number, findings: Finding[], cats: CategoryScore[], failed: number, withPc: boolean): string {
   const crit = findings.filter((f) => f.severity === 'crit');
   const warn = findings.filter((f) => f.severity === 'warn');
   const note = failed ? ` ${failed === 1 ? 'Una misura non è riuscita' : `${failed} misure non sono riuscite`}: quelle aree non sono valutate.` : '';
   if (!crit.length && !warn.length) return `Nessun problema rilevato nelle misure eseguite.${note}`;
-  const top = crit[0] ?? warn[0];
+  // Un disco che sta per guastarsi viene prima di tutto: si rischia di perdere i dati.
+  const top = crit.find((f) => f.metric === 'pc.disk.health') ?? crit[0] ?? warn[0];
   const parts: string[] = [];
   if (crit.length) parts.push(`${crit.length} ${crit.length === 1 ? 'problema critico' : 'problemi critici'}`);
   if (warn.length) parts.push(`${warn.length} ${warn.length === 1 ? 'avviso' : 'avvisi'}`);
-  const lead = crit.length ? 'Attenzione' : score >= 70 ? 'Rete in buona salute, ma migliorabile' : 'Rete migliorabile';
+  const lead = crit.length
+    ? 'Attenzione'
+    : withPc
+      ? score >= 70
+        ? 'PC e rete in buona salute, ma migliorabili'
+        : 'PC e rete migliorabili'
+      : score >= 70
+        ? 'Rete in buona salute, ma migliorabile'
+        : 'Rete migliorabile';
   const worstCat = cats.find((c) => c.category === top.category)?.label ?? '';
   return `${lead}: ${parts.join(' e ')}. Il più urgente (${worstCat}): ${top.title.toLowerCase()}, ${top.value}.${note}`;
 }
@@ -1529,6 +1542,7 @@ export function analyze(scan: Scan): Analysis {
   analyzeRouter(scan, c);
   analyzeFirewall(scan, c);
   analyzeInfra(scan, c);
+  analyzePc(scan, (f) => c.add(f));
 
   const findings = c.findings.sort((a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity]);
   const categories = scoreCategories(findings);
@@ -1547,7 +1561,7 @@ export function analyze(scan: Scan): Analysis {
     engineVersion: ENGINE_VERSION,
     score,
     grade,
-    headline: headline(score, findings, categories, scan.errors.length),
+    headline: headline(score, findings, categories, scan.errors.length, !!scan.pc),
     categories,
     findings,
     plan: buildPlan(findings),

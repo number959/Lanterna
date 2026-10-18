@@ -16,7 +16,7 @@ import type { KeyboardEvent, PointerEvent, ReactNode } from 'react';
 import { ACTIONS, METRICS } from '../engine';
 import type { Finding, Severity } from '../engine';
 import { guidesForMetric } from '../guides';
-import { ease, rise, spring } from './motion';
+import { ease, rise, spring, stagger } from './motion';
 
 /** Apre una guida da qualunque punto dell'interfaccia (lo fornisce la shell). */
 export const GuideLinkContext = createContext<((id: string) => void) | null>(null);
@@ -187,7 +187,7 @@ export function FindingCard({ f, onAction }: { f: Finding; onAction?: (id: strin
 export function FindingList({ findings, onAction, empty }: { findings: Finding[]; onAction?: (id: string) => void; empty?: string }) {
   if (!findings.length) return <div className="empty">{empty ?? 'Nessun dato per questa sezione.'}</div>;
   return (
-    <m.div className="findings" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.04 } } }}>
+    <m.div className="findings" variants={{ hidden: {}, show: { transition: { staggerChildren: stagger(findings.length, 0.04) } } }}>
       {findings.map((f) => (
         <FindingCard key={f.id} f={f} onAction={onAction} />
       ))}

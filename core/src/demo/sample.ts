@@ -1,4 +1,5 @@
 import type { Bss, Scan } from '../engine/types';
+import { homePc } from './pc';
 import { pingSamples, stats } from './util';
 
 // Scansione dimostrativa: appartamento in condominio, PC portatile collegato
@@ -104,5 +105,6 @@ export const demoScan: Scan = {
       { name: 'public', enabled: true },
     ],
   },
+  pc: homePc,
   errors: [],
 };

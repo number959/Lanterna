@@ -44,6 +44,7 @@ type fakePlatform struct {
 	n        *fakeNet
 	adapters []scan.Adapter
 	wifiErr  error
+	pcErr    error
 	mu       sync.Mutex
 	pingers  int
 }
@@ -75,6 +76,15 @@ func (f *fakePlatform) Firewall(context.Context) (*scan.FirewallData, error) {
 func (f *fakePlatform) OS() string     { return "test" }
 func (f *fakePlatform) Elevated() bool { return false }
 func (f *fakePlatform) Domain() string { return "" }
+func (f *fakePlatform) PC(context.Context) (*scan.PcData, error) {
+	if f.pcErr != nil {
+		return nil, f.pcErr
+	}
+	return &scan.PcData{OS: &scan.PcOS{Name: "Windows 11 Pro", Build: 26100}, CPU: &scan.PcCPU{Name: "CPU di prova", Threads: 8}}, nil
+}
+func (f *fakePlatform) SampleLoad(context.Context, time.Duration) (*float64, []scan.ProcessInfo) {
+	return scan.Ptr(12.5), []scan.ProcessInfo{{Name: "prova.exe", Count: 2, CPUPct: scan.Ptr(4.0), MemoryMB: 300}}
+}
 
 func fakeNetwork(tcpOK bool) Network {
 	return Network{
@@ -145,9 +155,30 @@ func TestRunHealthyNetwork(t *testing.T) {
 	if !s.Gateway.Upnp.IGD || s.Firewall == nil || len(s.LAN.Neighbors) != 2 || s.Wifi.Connected.SSID != "Casa" {
 		t.Fatalf("scan incompleto: %+v", s)
 	}
+	if s.PC == nil || s.PC.OS.Name != "Windows 11 Pro" || s.PC.CPU.LoadPct == nil || *s.PC.CPU.LoadPct != 12.5 || len(s.PC.Processes) != 1 {
+		t.Fatalf("dati del computer: %+v", s.PC)
+	}
 	last := updates[len(updates)-1]
 	for _, st := range last {
 		if st.State != "done" {
+			t.Fatalf("fase %s in stato %s", st.ID, st.State)
+		}
+	}
+}
+
+// Se i dati del computer non si leggono, la misura del carico non parte e
+// l'errore compare una volta sola.
+func TestRunWithoutPC(t *testing.T) {
+	n := &fakeNet{hops: 3, mtu: 1500, silent: map[string]bool{}, rtt: func(string) time.Duration { return time.Millisecond }}
+	c := &Collector{Platform: &fakePlatform{n: n, adapters: homeAdapters, pcErr: errors.New("misura disponibile solo su Windows")}, Net: fakeNetwork(false), Opt: fastOpts()}
+	var last []Step
+	var mu sync.Mutex
+	s := c.Run(context.Background(), func(st []Step) { mu.Lock(); last = st; mu.Unlock() })
+	if s.PC != nil || len(s.Errors) != 1 || s.Errors[0].Probe != "Computer: sistema, dischi ed eventi" {
+		t.Fatalf("errori: %+v", s.Errors)
+	}
+	for _, st := range last {
+		if (st.ID == "pc" || st.ID == "load") != (st.State == "error") {
 			t.Fatalf("fase %s in stato %s", st.ID, st.State)
 		}
 	}

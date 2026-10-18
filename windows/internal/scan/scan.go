@@ -18,7 +18,10 @@ type Scan struct {
 	// Infra contiene inventario e verifiche di raggiungibilità: non li produce
 	// l'analisi automatica ma l'interfaccia, su richiesta esplicita, e li
 	// unisce al rapporto perché finiscano nell'esportazione.
-	Infra  *InfraData   `json:"infra,omitempty"`
+	Infra *InfraData `json:"infra,omitempty"`
+	// PC descrive il computer: sistema, memoria, dischi, avvio, eventi. I test
+	// di velocità (Bench) si eseguono su richiesta e li unisce l'interfaccia.
+	PC     *PcData      `json:"pc,omitempty"`
 	Errors []ProbeError `json:"errors"`
 }
 
@@ -301,6 +304,193 @@ type InfraData struct {
 	Inventory  *Inventory  `json:"inventory,omitempty"`
 	Reach      *ReachData  `json:"reach,omitempty"`
 	Assessment *Assessment `json:"assessment,omitempty"`
+}
+
+// ---------- PC ----------
+
+type PcData struct {
+	OS        *PcOS          `json:"os,omitempty"`
+	CPU       *PcCPU         `json:"cpu,omitempty"`
+	Memory    *PcMemory      `json:"memory,omitempty"`
+	GPUs      []PcGPU        `json:"gpus,omitempty"`
+	Disks     []PhysicalDisk `json:"disks,omitempty"`
+	Volumes   []Volume       `json:"volumes,omitempty"`
+	Battery   *Battery       `json:"battery,omitempty"`
+	Power     *PowerInfo     `json:"power,omitempty"`
+	Startup   []StartupItem  `json:"startup,omitempty"`
+	Processes []ProcessInfo  `json:"processes,omitempty"`
+	// Events raggruppa gli eventi rilevanti del registro di sistema degli
+	// ultimi EventsDays giorni. EventsDays vale zero se il registro non è
+	// stato letto: così un elenco vuoto (omesso) significa "nessun evento".
+	Events     []EventGroup `json:"events,omitempty"`
+	EventsDays int          `json:"eventsDays,omitempty"`
+	// Antivirus è null se il Centro sicurezza non è leggibile, [] se non
+	// risulta alcun prodotto registrato.
+	Antivirus []AvProduct `json:"antivirus"`
+	Updates   *UpdateInfo `json:"updates,omitempty"`
+	Bench     *BenchData  `json:"bench,omitempty"`
+	// Notes spiega i limiti della raccolta (dati SMART solo da amministratore...).
+	Notes []string `json:"notes,omitempty"`
+}
+
+type PcOS struct {
+	Name        string `json:"name"`
+	Version     string `json:"version,omitempty"` // es. "24H2"
+	Build       int    `json:"build,omitempty"`
+	UBR         int    `json:"ubr,omitempty"`
+	Edition     string `json:"edition,omitempty"` // EditionID, es. "Professional"
+	Arch        string `json:"arch,omitempty"`
+	InstallDate string `json:"installDate,omitempty"`
+	BootTime    string `json:"bootTime,omitempty"`
+	UptimeSec   int64  `json:"uptimeSec,omitempty"`
+	Server      bool   `json:"server,omitempty"`
+	FastStartup *bool  `json:"fastStartup,omitempty"`
+}
+
+type PcCPU struct {
+	Name    string `json:"name"`
+	Cores   int    `json:"cores,omitempty"`
+	Threads int    `json:"threads,omitempty"`
+	MaxMHz  int    `json:"maxMhz,omitempty"`
+	// LoadPct è il carico medio misurato per circa un secondo durante l'analisi.
+	LoadPct *float64 `json:"loadPct,omitempty"`
+}
+
+type PcMemory struct {
+	TotalMB       int64 `json:"totalMB"`
+	AvailableMB   int64 `json:"availableMB"`
+	CommitMB      int64 `json:"commitMB,omitempty"`
+	CommitLimitMB int64 `json:"commitLimitMB,omitempty"`
+}
+
+type PcGPU struct {
+	Name          string `json:"name"`
+	DriverVersion string `json:"driverVersion,omitempty"`
+	DriverDate    string `json:"driverDate,omitempty"` // AAAA-MM-GG
+}
+
+type PhysicalDisk struct {
+	ID          string           `json:"id,omitempty"` // numero del disco per Windows
+	Name        string           `json:"name"`
+	Media       string           `json:"media"` // hdd | ssd | scm | unknown
+	Bus         string           `json:"bus,omitempty"`
+	SizeGB      float64          `json:"sizeGB"`
+	Health      string           `json:"health,omitempty"` // healthy | warning | unhealthy | unknown
+	Operational []string         `json:"operational,omitempty"`
+	Firmware    string           `json:"firmware,omitempty"`
+	SpindleRPM  int              `json:"spindleRpm,omitempty"`
+	System      bool             `json:"system,omitempty"`
+	Reliability *DiskReliability `json:"reliability,omitempty"`
+}
+
+// DiskReliability riporta i contatori di affidabilità (derivati da SMART)
+// che Windows espone solo ai programmi avviati come amministratore.
+type DiskReliability struct {
+	TemperatureC     *float64 `json:"temperatureC,omitempty"`
+	TemperatureMaxC  *float64 `json:"temperatureMaxC,omitempty"`
+	WearPct          *float64 `json:"wearPct,omitempty"`
+	PowerOnHours     *int64   `json:"powerOnHours,omitempty"`
+	ReadErrors       *int64   `json:"readErrors,omitempty"`
+	ReadUncorrected  *int64   `json:"readUncorrected,omitempty"`
+	WriteErrors      *int64   `json:"writeErrors,omitempty"`
+	WriteUncorrected *int64   `json:"writeUncorrected,omitempty"`
+	StartStopCycles  *int64   `json:"startStopCycles,omitempty"`
+	LoadUnloadCycles *int64   `json:"loadUnloadCycles,omitempty"`
+}
+
+type Volume struct {
+	Letter string  `json:"letter"` // "C:"
+	Label  string  `json:"label,omitempty"`
+	FS     string  `json:"fs,omitempty"`
+	Kind   string  `json:"kind"` // fixed | removable
+	SizeGB float64 `json:"sizeGB"`
+	FreeGB float64 `json:"freeGB"`
+	System bool    `json:"system,omitempty"`
+	Disk   string  `json:"disk,omitempty"` // ID del disco fisico
+}
+
+type Battery struct {
+	DesignMWh *int64 `json:"designMWh,omitempty"`
+	FullMWh   *int64 `json:"fullMWh,omitempty"`
+	Cycles    *int64 `json:"cycles,omitempty"`
+	ChargePct *int   `json:"chargePct,omitempty"`
+}
+
+type PowerInfo struct {
+	Plan         string `json:"plan,omitempty"`
+	PlanKind     string `json:"planKind,omitempty"` // balanced | high | saver | ultimate | custom
+	OnAC         *bool  `json:"onAC,omitempty"`
+	HasBattery   bool   `json:"hasBattery,omitempty"`
+	BatterySaver bool   `json:"batterySaver,omitempty"`
+}
+
+type StartupItem struct {
+	Name     string `json:"name"`
+	Command  string `json:"command,omitempty"`
+	Location string `json:"location"` // user | machine | machine32 | user-folder | common-folder
+	Enabled  bool   `json:"enabled"`
+}
+
+type ProcessInfo struct {
+	Name     string   `json:"name"`
+	Count    int      `json:"count"`
+	CPUPct   *float64 `json:"cpuPct,omitempty"`
+	MemoryMB float64  `json:"memoryMB"`
+}
+
+type EventGroup struct {
+	Kind   string `json:"kind"`
+	Source string `json:"source"`
+	ID     int    `json:"id"`
+	Count  int    `json:"count"`
+	Last   string `json:"last"`
+	Detail string `json:"detail,omitempty"`
+}
+
+type AvProduct struct {
+	Name     string `json:"name"`
+	Enabled  bool   `json:"enabled"`
+	UpToDate *bool  `json:"upToDate,omitempty"`
+	Source   string `json:"source,omitempty"` // securitycenter | defender
+}
+
+type UpdateInfo struct {
+	LastInstalled string   `json:"lastInstalled,omitempty"` // AAAA-MM-GG
+	LastKB        string   `json:"lastKB,omitempty"`
+	PendingReboot bool     `json:"pendingReboot"`
+	RebootReasons []string `json:"rebootReasons,omitempty"`
+}
+
+type BenchData struct {
+	CPU  *CPUBench   `json:"cpu,omitempty"`
+	Disk []DiskBench `json:"disk,omitempty"`
+}
+
+type CPUBench struct {
+	StartedAt    string    `json:"startedAt"`
+	Threads      int       `json:"threads"`
+	SingleMBs    float64   `json:"singleMBs"`
+	MultiMBs     float64   `json:"multiMBs"`
+	SustainedMBs float64   `json:"sustainedMBs"`
+	Samples      []float64 `json:"samples,omitempty"`
+	OnAC         *bool     `json:"onAC,omitempty"`
+	// LoadBeforePct è il carico della CPU misurato subito prima del test.
+	LoadBeforePct *float64 `json:"loadBeforePct,omitempty"`
+	DurationMs    int64    `json:"durationMs"`
+}
+
+type DiskBench struct {
+	StartedAt    string  `json:"startedAt"`
+	Drive        string  `json:"drive"`
+	FileMB       int     `json:"fileMB"`
+	SeqReadMBs   float64 `json:"seqReadMBs"`
+	SeqWriteMBs  float64 `json:"seqWriteMBs"`
+	RndReadMBs   float64 `json:"rndReadMBs"`
+	RndReadIOPS  float64 `json:"rndReadIops"`
+	RndWriteMBs  float64 `json:"rndWriteMBs"`
+	RndWriteIOPS float64 `json:"rndWriteIops"`
+	DurationMs   int64   `json:"durationMs"`
+	Note         string  `json:"note,omitempty"`
 }
 
 // Ptr è una scorciatoia per i campi opzionali.

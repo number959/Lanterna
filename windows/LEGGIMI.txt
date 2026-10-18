@@ -1,12 +1,18 @@
-STARNET Polaris - la stella polare della tua rete
-=================================================
+STARNET Polaris - la stella polare del tuo PC e della tua rete
+=============================================================
 
-Diagnostica di rete per la casa, lo studio, l'azienda e le strutture
-sanitarie. Programma portatile: non va installato.
+Diagnostica di computer e rete per la casa, lo studio, l'azienda e le
+strutture sanitarie. Programma portatile: non va installato.
 Copia la cartella dove vuoi (anche su una chiavetta) e fai doppio clic su
 Polaris.exe.
 
 COSA FA
+  Analizza il computer: versione e supporto di Windows, memoria, carico del
+  processore e processi, salute dei dischi HDD e SSD (stato, e da
+  amministratore temperatura, usura ed errori), spazio, programmi all'avvio,
+  riavvii, spegnimenti imprevisti, schermate blu, errori hardware, antivirus,
+  aggiornamenti, batteria e piano di alimentazione. Su richiesta esegue test
+  di velocita' del processore e dei dischi.
   Misura Wi-Fi (segnale in dBm, canale, larghezza, carico dell'access point,
   reti vicine), rete locale (router, perdite, stabilita'), Internet (latenza,
   percorso, MTU), DNS, servizi esposti dal router, UPnP e firewall di Windows.
@@ -15,8 +21,8 @@ COSA FA
   (802.11k/v/r), gli AP sullo stesso canale e il PC agganciato a un AP lontano;
   riconosce le reti con dominio. La sezione Infrastruttura censisce la
   sottorete, verifica la separazione tra le zone e i servizi critici e guida
-  un'autovalutazione delle misure organizzative. 48 guide spiegano la rete,
-  dalle basi alle reti cliniche.
+  un'autovalutazione delle misure organizzative. 64 guide spiegano come si
+  usa il programma, il computer e la rete, dalle basi alle reti cliniche.
 
 REQUISITI
   - Windows 10 o 11, 64 bit.
@@ -25,10 +31,13 @@ REQUISITI
   - Windows 11 24H2 e successivi: per leggere le reti Wi-Fi serve il permesso di
     posizione. Impostazioni > Privacy e sicurezza > Posizione: attiva "Servizi di
     localizzazione" e "Consenti alle app desktop di accedere alla posizione".
-  - Non servono privilegi di amministratore.
+  - Non servono privilegi di amministratore. Avviando Polaris come
+    amministratore (clic destro > Esegui come amministratore) compaiono anche
+    temperatura, usura ed errori dei dischi.
 
 INTERFACCIA
-  Tasti 1-9: sezioni; tasto /: cerca nella guida. Il tema (automatico, scuro,
+  Tasti 1-9 e 0: sezioni; tasto /: cerca nella guida. Prima volta? Nella
+  barra laterale c'e' "Come si usa". Il tema (automatico, scuro,
   chiaro) si cambia con il pulsante in alto a destra.
   Su macchine virtuali o in desktop remoto, se le animazioni risultano lente,
   Polaris passa da solo alla "grafica leggera" (si puo' anche scegliere in
@@ -41,6 +50,9 @@ RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
   polaris-cli report --out r.txt      salva il rapporto in un file
   polaris-cli report --json           dati grezzi, riapribili con "Importa"
   polaris-cli serve --open            interfaccia nel browser (http://127.0.0.1:8737)
+  polaris-cli bench cpu               test di velocita' del processore (25 s)
+  polaris-cli bench disk --drive D:   test di un'unita' (scrive un file
+                                      temporaneo, cancellato alla fine)
 
 PRIVACY
   Tutto resta su questo PC: Polaris non invia dati a nessun servizio esterno.
@@ -53,6 +65,9 @@ PRIVACY
   richiesta, solo verso indirizzi privati, con un ritmo prudente e senza
   scansioni di porte. Avviali solo su reti che sei autorizzato ad analizzare
   e, dove ci sono dispositivi medicali, d'accordo con l'ingegneria clinica.
+  I dati del computer si leggono senza modificare nulla. I test di velocita'
+  partono solo su richiesta; quello del disco chiede conferma, lascia almeno
+  2 GB liberi e cancella il file di prova anche se viene interrotto.
 
 Licenze dei componenti inclusi: THIRD_PARTY_NOTICES.md
 Il marchio STARNET appartiene al suo titolare.

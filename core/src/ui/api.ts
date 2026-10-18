@@ -1,4 +1,4 @@
-import type { Inventory, ReachData, ReachTarget, Scan } from '../engine';
+import type { CpuBench, DiskBench, Inventory, ReachData, ReachTarget, Scan } from '../engine';
 
 // Comunicazione con l'agente locale (Polaris.exe serve / finestra).
 // L'interfaccia è servita dallo stesso agente, quindi i percorsi sono relativi.
@@ -120,6 +120,56 @@ export async function runInventory(onProgress: (p: InventoryProgress) => void, o
 }
 
 export const runReach = (targets: ReachTarget[]) => postJson<ReachData>('api/reach', { targets });
+
+// ---- Test di velocità: partono solo su richiesta esplicita dell'utente.
+
+export interface BenchProgress {
+  phase: string;
+  done: number;
+  /** Velocità misurata finora nella fase in corso (MB/s). */
+  value?: number;
+  /** MB/s secondo per secondo della fase multi-thread del processore. */
+  samples?: number[];
+}
+
+export interface BenchState {
+  running: boolean;
+  kind?: 'cpu' | 'disk';
+  drive?: string;
+  progress?: BenchProgress;
+  error?: string;
+  cpu?: CpuBench;
+  disk?: DiskBench;
+}
+
+export type BenchRequest = { kind: 'cpu' } | { kind: 'disk'; drive: string; confirm: true };
+
+export const benchStatus = () => getJson<BenchState>('api/bench');
+
+/** Interrompe il test in corso (il file temporaneo del test dei dischi viene cancellato). */
+export async function stopBench(): Promise<void> {
+  const r = await fetch('api/bench', { method: 'DELETE', cache: 'no-store' });
+  if (!r.ok) throw await errorOf(r);
+}
+
+/**
+ * Avvia un test di velocità e ne attende la fine riportando l'avanzamento
+ * reale; `resume` segue un test già avviato (per esempio da un'altra finestra).
+ */
+export async function runBench(req: BenchRequest, onProgress: (st: BenchState) => void, opts: { resume?: boolean } = {}): Promise<CpuBench | DiskBench> {
+  if (!opts.resume) await postJson<{ started: boolean }>('api/bench', req);
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 300));
+    const st = await benchStatus();
+    onProgress(st);
+    if (!st.running) {
+      if (st.error) throw new Error(st.error);
+      const res = req.kind === 'cpu' ? st.cpu : st.disk;
+      if (!res) throw new Error('Test terminato senza risultato');
+      return res;
+    }
+  }
+}
 
 export function download(name: string, content: string, type: string) {
   const blob = new Blob([content], { type });

@@ -412,10 +412,13 @@ kbd {
 /* Sette aree: una riga da quattro e una da tre; su mobile righe da due con l'ultima a tutta larghezza. Mai una scheda orfana. */
 .tiles { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; }
 .tiles > * { grid-column: span 3; }
-.tiles > :nth-child(n + 5) { grid-column: span 4; }
+@media (max-width: 1080px) {
+  .tiles > * { grid-column: span 4; }
+  .tiles > :nth-child(n + 7) { grid-column: span 6; }
+}
 @media (max-width: 560px) {
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tiles > *, .tiles > :nth-child(n + 5) { grid-column: span 1; }
+  .tiles > *, .tiles > :nth-child(n + 7) { grid-column: span 1; }
   .tiles > :last-child:nth-child(odd) { grid-column: span 2; }
 }
 .tile {
@@ -916,7 +919,67 @@ select.field { cursor: pointer; }
   .assess-head .chev { grid-row: 1; grid-column: 2; }
   .infra-intro { grid-template-columns: 1fr; }
   .events li { grid-template-columns: 72px 64px minmax(0, 1fr); }
+  .welcome { grid-template-columns: 1fr; padding-right: 22px; }
+  .bench-hist li { grid-template-columns: 1fr; gap: 0; }
 }
+
+/* ---------- Computer ---------- */
+.disk-title { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.disk-title > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disk-card { position: relative; overflow: hidden; }
+.disk-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--disk-tint, var(--line)); opacity: 0.85; }
+.disk-card .chips-row { margin-bottom: 14px; }
+.dgauges { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 12px 18px; margin-bottom: 14px; }
+.dgauge { display: grid; gap: 6px; min-width: 0; }
+.dgauge-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text-2); }
+.dgauge-head b { font-size: 15px; }
+.dgauge-meter { position: relative; height: 8px; }
+.dgauge-meter .mark { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--surface); opacity: 0.9; }
+.dgauge-sub { font-size: 12px; color: var(--text-3); }
+.disk-kv { font-size: 13.5px; grid-template-columns: minmax(150px, auto) 1fr; }
+.disk-hint { font-size: 13px; margin: 0 0 4px; }
+.vols { display: grid; gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.vol { display: grid; gap: 6px; min-width: 0; }
+.vol + .vol { margin-top: 12px; }
+.vols .vol + .vol { margin-top: 0; }
+.vol-head { display: flex; align-items: baseline; gap: 10px; font-size: 13.5px; min-width: 0; }
+.vol-name { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.vol-free { margin-left: auto; font-size: 12.5px; white-space: nowrap; }
+.vol-free.c-unknown { color: var(--text-3); }
+.vol-meter { height: 8px; }
+.bench-panel { display: flex; flex-direction: column; }
+.bench-desc { font-size: 13.5px; margin: 0 0 14px; }
+.bench-drive { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 13.5px; color: var(--text-2); }
+.bench-drive .field { flex: 1 1 auto; min-width: 0; }
+.bench-live { display: grid; gap: 10px; padding-top: 16px; }
+.bench-live-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.bench-result { margin-top: 16px; display: grid; gap: 10px; }
+.bench-axis { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 12px; margin: 0; }
+.samples { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; height: 64px; align-items: end; padding: 6px 8px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }
+.samples .s-col { display: flex; align-items: flex-end; height: 100%; }
+.samples i { display: block; width: 100%; height: 100%; border-radius: 3px 3px 1px 1px; transform-origin: bottom; }
+.bench-hist { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
+.bench-hist-head { display: flex; align-items: center; gap: 7px; color: var(--text-3); margin-bottom: 8px; }
+.bench-hist-head .spacer { flex: 1; }
+.bench-hist ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.bench-hist li { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; }
+.bench-hist li .mono { font-size: 12.5px; overflow-wrap: anywhere; }
+.pc-table td { vertical-align: top; }
+.pc-table tr.off td { color: var(--text-3); }
+.pc-table td.cmd { white-space: normal; min-width: 180px; max-width: 360px; }
+.pc-table td.cmd b { display: block; }
+.pc-table td.cmd .mono { display: block; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-table .ev-src { display: block; font-size: 11.5px; margin-top: 2px; }
+.bar-cell { min-width: 96px; }
+.bar-cell .mono { display: block; font-size: 13px; }
+.minibar { display: block; height: 4px; margin-top: 5px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
+.minibar i { display: block; height: 100%; border-radius: 4px; transform-origin: left; background: linear-gradient(90deg, var(--primary-b), var(--primary-a)); }
+.card-foot { font-size: 12.5px; margin: 12px 0 0; }
+.welcome { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: start; margin-bottom: 26px; padding-right: 56px; }
+.welcome p { margin: 8px 0 0; }
+.welcome-close { position: absolute; top: 12px; right: 12px; }
+.how-to { font-size: 12.5px; }
+.mobile-only { display: none; }
 
 /* ---------- Transizione del tema ---------- */
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
@@ -937,7 +1000,10 @@ select.field { cursor: pointer; }
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); border-right: 0; border-top: 1px solid var(--line);
   }
   .brand, .sidebar-foot { display: none; }
-  /* Barra in basso: nove voci di pari larghezza con etichette brevi (quella completa resta per i lettori di schermo). */
+  /* La Guida passa nella barra in alto: in basso restano nove voci. */
+  .nav-guide { display: none; }
+  .mobile-only { display: inline-flex; }
+  /* Barra in basso: voci di pari larghezza con etichette brevi (quella completa resta per i lettori di schermo). */
   .nav { flex-direction: row; width: 100%; gap: 2px; }
   .nav-item { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 3px; padding: 7px 2px 6px; font-size: 10.5px; line-height: 1.2; }
   .nav-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

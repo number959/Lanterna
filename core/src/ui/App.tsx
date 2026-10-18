@@ -8,6 +8,7 @@ import {
   Info,
   LayoutDashboard,
   ListChecks,
+  Monitor,
   Moon,
   Network,
   OctagonX,
@@ -23,7 +24,7 @@ import { AnimatePresence, LazyMotion, MotionConfig, domMax, m, useReducedMotion,
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { analyze, ENGINE_VERSION, primaryAdapter, renderText } from '../engine';
-import type { AnswerValue, InfraData, Scan, Severity } from '../engine';
+import type { AnswerValue, CpuBench, DiskBench, Finding, InfraData, Scan, Severity } from '../engine';
 import { clinicScan } from '../demo/clinic';
 import { demoScan } from '../demo/sample';
 import { agentInfo, download, isScan, lastScan, runScan } from './api';
@@ -33,6 +34,7 @@ import { GuideLinkContext, Segmented, ToastProvider, useToast } from './componen
 import { setFxPref, useFx } from './fx';
 import { useLocalState } from './hooks';
 import { InfraView } from './infra';
+import { PcView } from './pc';
 import { useMonitor } from './monitor';
 import { ease, page, spring } from './motion';
 import { ScanOrbit } from './scan';
@@ -46,17 +48,23 @@ type Source = 'agent' | 'demo' | 'file';
 type DemoKind = 'home' | 'clinic';
 const DEMOS: Record<DemoKind, Scan> = { home: demoScan, clinic: clinicScan };
 
-const NAV: { id: View; label: string; short: string; icon: LucideIcon; cats?: string[] }[] = [
+// I giudizi del computer stanno nella sezione Computer anche quando sono di
+// sicurezza (antivirus, aggiornamenti): il pallino segue la stessa regola.
+const isPc = (f: Finding) => f.id.startsWith('pc.');
+const NAV: { id: View; label: string; short: string; icon: LucideIcon; match?: (f: Finding) => boolean }[] = [
   { id: 'overview', label: 'Panoramica', short: 'Sintesi', icon: LayoutDashboard },
-  { id: 'wifi', label: 'Wi-Fi', short: 'Wi-Fi', icon: Wifi, cats: ['wifi'] },
-  { id: 'lan', label: 'Rete locale', short: 'LAN', icon: Network, cats: ['lan'] },
-  { id: 'internet', label: 'Internet e DNS', short: 'Internet', icon: Globe, cats: ['internet', 'dns'] },
-  { id: 'router', label: 'Router e sicurezza', short: 'Router', icon: Router, cats: ['router', 'security'] },
-  { id: 'infra', label: 'Infrastruttura', short: 'Infra', icon: Building2, cats: ['infra'] },
+  { id: 'pc', label: 'Computer', short: 'PC', icon: Monitor, match: isPc },
+  { id: 'wifi', label: 'Wi-Fi', short: 'Wi-Fi', icon: Wifi, match: (f) => f.category === 'wifi' },
+  { id: 'lan', label: 'Rete locale', short: 'LAN', icon: Network, match: (f) => f.category === 'lan' },
+  { id: 'internet', label: 'Internet e DNS', short: 'Internet', icon: Globe, match: (f) => f.category === 'internet' || f.category === 'dns' },
+  { id: 'router', label: 'Router e sicurezza', short: 'Router', icon: Router, match: (f) => (f.category === 'router' || f.category === 'security') && !isPc(f) },
+  { id: 'infra', label: 'Infrastruttura', short: 'Infra', icon: Building2, match: (f) => f.category === 'infra' },
   { id: 'plan', label: "Piano d'azione", short: 'Piano', icon: ListChecks },
   { id: 'monitor', label: 'Monitor', short: 'Monitor', icon: Activity },
   { id: 'guide', label: 'Guida', short: 'Guida', icon: BookOpen },
 ];
+/** Tasto della sezione: 1-9, poi 0 per la decima. */
+const keyOf = (i: number) => (i < 9 ? String(i + 1) : '0');
 
 const RANK: Record<Severity, number> = { unknown: 0, ok: 1, info: 2, warn: 3, crit: 4 };
 
@@ -166,8 +174,14 @@ function Shell() {
     setProgress(null);
     try {
       const s = await runScan(setProgress);
-      // Inventario e verifiche della stessa rete restano validi: si conservano (con la loro data).
-      setScan((prev) => (prev && !s.infra && prev.infra && prev.gateway?.ip === s.gateway?.ip && prev.agent.platform === s.agent.platform ? { ...s, infra: { ...prev.infra, assessment: undefined } } : s));
+      setScan((prev) => {
+        let next = s;
+        // Inventario e verifiche della stessa rete restano validi: si conservano (con la loro data).
+        if (prev && !s.infra && prev.infra && prev.gateway?.ip === s.gateway?.ip && prev.agent.platform === s.agent.platform) next = { ...next, infra: { ...prev.infra, assessment: undefined } };
+        // Anche i test di velocità dello stesso PC, finché non se ne esegue uno nuovo.
+        if (prev?.pc?.bench && s.pc && !s.pc.bench && prev.agent.host === s.agent.host) next = { ...next, pc: { ...next.pc, bench: prev.pc.bench } };
+        return next;
+      });
       setSource('agent');
       viewRef.current = 'overview';
       focusRef.current = undefined;
@@ -235,6 +249,17 @@ function Shell() {
     return { ...scan, infra };
   }, [scan, answers, fileAssessment]);
   const setInfra = useCallback((patch: Partial<InfraData>) => setScan((s) => (s ? { ...s, infra: { ...s.infra, ...patch } } : s)), []);
+  // Il risultato più recente per il processore e per ogni unità.
+  const addBench = useCallback(
+    (r: { cpu?: CpuBench; disk?: DiskBench }) =>
+      setScan((s) => {
+        if (!s) return s;
+        const b = s.pc?.bench ?? {};
+        const disk = r.disk ? [r.disk, ...(b.disk ?? []).filter((x) => x.drive.toUpperCase() !== r.disk!.drive.toUpperCase())] : b.disk;
+        return { ...s, pc: { ...s.pc, bench: { ...b, ...(r.cpu ? { cpu: r.cpu } : {}), ...(disk ? { disk } : {}) } } };
+      }),
+    [],
+  );
 
   const analysis = useMemo(() => (effective ? analyze(effective) : null), [effective]);
   const live = source === 'agent' && !!agent;
@@ -260,9 +285,9 @@ function Shell() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return;
-      if (e.key >= '1' && e.key <= '9') {
+      if (e.key >= '0' && e.key <= '9') {
         e.preventDefault();
-        go(NAV[Number(e.key) - 1].id);
+        go(NAV[e.key === '0' ? 9 : Number(e.key) - 1].id);
       } else if (e.key === '/') {
         e.preventDefault();
         go('guide');
@@ -306,15 +331,15 @@ function Shell() {
     const r = e.currentTarget.getBoundingClientRect();
     setTheme(THEME_NEXT[theme], { x: r.left + r.width / 2, y: r.top + r.height / 2 });
   };
-  const navDot = (cats?: string[]) => {
-    if (!cats || !analysis) return undefined;
+  const navDot = (match?: (f: Finding) => boolean) => {
+    if (!match || !analysis) return undefined;
     let worst: Severity = 'ok';
-    for (const c of analysis.categories) if (cats.includes(c.category) && RANK[c.worst] > RANK[worst]) worst = c.worst;
+    for (const f of analysis.findings) if (match(f) && RANK[f.severity] > RANK[worst]) worst = f.severity;
     return worst === 'crit' || worst === 'warn' ? worst : undefined;
   };
   const scanning = busy || (agent === undefined && slow);
   const props: ViewProps | null =
-    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, assessment, monitor, gwMacChange } : null;
+    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, assessment, monitor, gwMacChange } : null;
   const pickDemo = (k: DemoKind) => {
     setDemoKind(k);
     setScan(DEMOS[k]);
@@ -345,11 +370,17 @@ function Shell() {
           </div>
           <nav className="nav" aria-label="Sezioni">
             {NAV.map((n, i) => {
-              const dot = navDot(n.cats);
+              const dot = navDot(n.match);
               const on = view === n.id;
               const I = n.icon;
               return (
-                <button key={n.id} className="nav-item" aria-current={on ? 'page' : undefined} onClick={() => go(n.id)} title={`${n.label} (tasto ${i + 1})`}>
+                <button
+                  key={n.id}
+                  className={`nav-item${n.id === 'guide' ? ' nav-guide' : ''}`}
+                  aria-current={on ? 'page' : undefined}
+                  onClick={() => go(n.id)}
+                  title={`${n.label} (tasto ${keyOf(i)})`}
+                >
                   {on && <m.span layoutId="nav-pill" className="nav-pill" transition={spring.snappy} />}
                   <I size={18} strokeWidth={on ? 2.2 : 1.9} aria-hidden />
                   <span className="nav-label">{n.label}</span>
@@ -363,8 +394,11 @@ function Shell() {
           <div className="sidebar-foot">
             <span>{agent ? `Agente ${agent.platform} v${agent.version}` : 'Nessun agente collegato'}</span>
             <span>Motore v{ENGINE_VERSION}</span>
+            <button className="link-btn how-to" onClick={() => openGuide('primi-passi')}>
+              <BookOpen size={14} aria-hidden /> Come si usa
+            </button>
             <span className="keys">
-              <kbd>1</kbd>–<kbd>9</kbd> sezioni · <kbd>/</kbd> cerca
+              <kbd>1</kbd>–<kbd>0</kbd> sezioni · <kbd>/</kbd> cerca
             </span>
             <button
               className="fx-toggle"
@@ -435,6 +469,10 @@ function Shell() {
                   </button>
                 </>
               )}
+              {/* Su mobile la Guida esce dalla barra in basso e diventa un'icona qui. */}
+              <button className="btn icon mobile-only" onClick={() => go('guide')} aria-label="Guida" aria-current={view === 'guide' ? 'page' : undefined}>
+                <BookOpen size={17} aria-hidden />
+              </button>
               <button className="btn" onClick={() => fileRef.current?.click()} title="Apri un rapporto JSON salvato (anche da Android o ESP32)" aria-label="Importa rapporto JSON">
                 <Upload size={16} aria-hidden /> <span className="btn-label">Importa</span>
               </button>
@@ -517,6 +555,7 @@ function Shell() {
             ) : props ? (
               <m.div key={`${view}|${source}|${props.scan.agent.startedAt}`} variants={page} initial="hidden" animate="show" exit="exit">
                 {view === 'overview' && <Overview {...props} />}
+                {view === 'pc' && <PcView {...props} />}
                 {view === 'wifi' && <WifiView {...props} />}
                 {view === 'lan' && <LanView {...props} />}
                 {view === 'internet' && <InternetView {...props} />}

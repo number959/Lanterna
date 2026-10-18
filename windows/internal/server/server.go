@@ -9,6 +9,10 @@
 //	GET  /api/inventory avanzamento e ultimo inventario
 //	POST /api/reach     verifiche di raggiungibilità ({"targets": [...]})
 //	GET  /api/reach     ultime verifiche (204 se nessuna)
+//	POST /api/bench     avvia un test di velocità ({"kind": "cpu"} oppure
+//	                    {"kind": "disk", "drive": "C:", "confirm": true})
+//	GET  /api/bench     avanzamento e ultimi risultati dei test di velocità
+//	DELETE /api/bench   interrompe il test in corso
 //
 // Ascolta solo su 127.0.0.1 e rifiuta richieste con Host diverso (difesa dal
 // DNS rebinding) e POST provenienti da altre origini (difesa dal CSRF). Le
@@ -31,6 +35,7 @@ import (
 	"sync"
 	"time"
 
+	"lanterna/internal/bench"
 	"lanterna/internal/collect"
 	"lanterna/internal/infra"
 	"lanterna/internal/scan"
@@ -67,6 +72,24 @@ type Server struct {
 	reachBusy  bool
 	reachLast  *scan.ReachData
 
+	// Test di velocità (nil = non disponibili). Non partono durante
+	// un'analisi e viceversa: si falserebbero a vicenda.
+	BenchCPU  func(ctx context.Context, report bench.Report) (*scan.CPUBench, error)
+	BenchDisk func(ctx context.Context, drive string, report bench.Report) (*scan.DiskBench, error)
+	// BenchDrive verifica subito che l'unità si possa provare (nil = nessun controllo).
+	BenchDrive func(drive string) error
+
+	benchMu      sync.Mutex
+	benchRunning bool
+	benchKind    string
+	benchDrive   string
+	benchProg    *bench.Progress
+	benchErr     string
+	benchCancel  context.CancelFunc
+	benchCPU     *scan.CPUBench
+	benchDisk    *scan.DiskBench
+	benchFinish  chan struct{}
+
 	mu       sync.Mutex
 	last     []byte
 	gateway  string
@@ -89,12 +112,27 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// Start avvia un'analisi in background; false se ce n'è già una in corso.
-func (s *Server) Start() bool {
+var (
+	errScanRunning  = errors.New("analisi già in corso")
+	errBenchRunning = errors.New("test di velocità in corso: attendi che finisca o interrompilo")
+)
+
+// Start avvia un'analisi in background; false se ce n'è già una in corso o
+// se un test di velocità sta girando.
+func (s *Server) Start() bool { return s.startScan() == nil }
+
+func (s *Server) startScan() error {
 	s.mu.Lock()
 	if s.running {
 		s.mu.Unlock()
-		return false
+		return errScanRunning
+	}
+	s.benchMu.Lock()
+	busy := s.benchRunning
+	s.benchMu.Unlock()
+	if busy {
+		s.mu.Unlock()
+		return errBenchRunning
 	}
 	s.running, s.runErr, s.steps = true, "", nil
 	s.scanDone = make(chan struct{})
@@ -140,7 +178,7 @@ func (s *Server) Start() bool {
 			}
 		}
 	}()
-	return true
+	return nil
 }
 
 // Wait attende la fine dell'analisi in corso (usato dai test).
@@ -251,6 +289,89 @@ func (s *Server) startInventory(req infra.InventoryRequest) bool {
 	return true
 }
 
+type benchState struct {
+	Running  bool            `json:"running"`
+	Kind     string          `json:"kind,omitempty"`
+	Drive    string          `json:"drive,omitempty"`
+	Progress *bench.Progress `json:"progress,omitempty"`
+	Error    string          `json:"error,omitempty"`
+	CPU      *scan.CPUBench  `json:"cpu,omitempty"`
+	Disk     *scan.DiskBench `json:"disk,omitempty"`
+}
+
+// startBench avvia un test in background. L'ordine dei lock (prima mu, poi
+// benchMu) è lo stesso di startScan.
+func (s *Server) startBench(kind, drive string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.running {
+		return errors.New("analisi in corso: il test di velocità ne falserebbe le misure")
+	}
+	s.benchMu.Lock()
+	defer s.benchMu.Unlock()
+	if s.benchRunning {
+		return errors.New("test di velocità già in corso")
+	}
+	timeout := 2 * time.Minute
+	if kind == "disk" {
+		timeout = 3 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	s.benchRunning, s.benchKind, s.benchDrive, s.benchErr, s.benchProg, s.benchCancel = true, kind, drive, "", nil, cancel
+	s.benchFinish = make(chan struct{})
+	finish := s.benchFinish
+	go func() {
+		defer close(finish)
+		defer cancel()
+		report := func(p bench.Progress) {
+			s.benchMu.Lock()
+			s.benchProg = &p
+			s.benchMu.Unlock()
+		}
+		var cpu *scan.CPUBench
+		var disk *scan.DiskBench
+		var err error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = errors.New("errore interno durante il test")
+				}
+			}()
+			if kind == "cpu" {
+				cpu, err = s.BenchCPU(ctx, report)
+			} else {
+				disk, err = s.BenchDisk(ctx, drive, report)
+			}
+		}()
+		s.benchMu.Lock()
+		defer s.benchMu.Unlock()
+		s.benchRunning, s.benchCancel = false, nil
+		switch {
+		case errors.Is(err, context.Canceled):
+			s.benchErr = "test interrotto"
+		case errors.Is(err, context.DeadlineExceeded):
+			s.benchErr = "test interrotto: tempo massimo superato"
+		case err != nil:
+			s.benchErr = err.Error()
+		case cpu != nil:
+			s.benchCPU = cpu
+		case disk != nil:
+			s.benchDisk = disk
+		}
+	}()
+	return nil
+}
+
+// WaitBench attende la fine del test in corso (usato dai test).
+func (s *Server) WaitBench() {
+	s.benchMu.Lock()
+	ch := s.benchFinish
+	s.benchMu.Unlock()
+	if ch != nil {
+		<-ch
+	}
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/info", func(w http.ResponseWriter, r *http.Request) {
@@ -269,8 +390,8 @@ func (s *Server) Handler() http.Handler {
 		_, _ = w.Write(last)
 	})
 	mux.HandleFunc("POST /api/scan", func(w http.ResponseWriter, r *http.Request) {
-		if !s.Start() {
-			writeJSON(w, 409, map[string]string{"error": "analisi già in corso"})
+		if err := s.startScan(); err != nil {
+			writeJSON(w, 409, map[string]string{"error": err.Error()})
 			return
 		}
 		writeJSON(w, 202, map[string]bool{"started": true})
@@ -391,6 +512,69 @@ func (s *Server) Handler() http.Handler {
 		s.reachLast = res
 		s.reachMu.Unlock()
 		writeJSON(w, 200, res)
+	})
+	mux.HandleFunc("POST /api/bench", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Kind    string `json:"kind"`
+			Drive   string `json:"drive"`
+			Confirm bool   `json:"confirm"`
+		}
+		if code, err := readJSON(w, r, &body); err != nil {
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		drive := ""
+		switch body.Kind {
+		case "cpu":
+			if s.BenchCPU == nil {
+				writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "test del processore non disponibile"})
+				return
+			}
+		case "disk":
+			if s.BenchDisk == nil {
+				writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "test dei dischi non disponibile"})
+				return
+			}
+			if !body.Confirm {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "serve la conferma: il test scrive sull'unità un file temporaneo, cancellato alla fine"})
+				return
+			}
+			d, err := bench.NormalizeDrive(body.Drive)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			if s.BenchDrive != nil {
+				if err := s.BenchDrive(d); err != nil {
+					writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+					return
+				}
+			}
+			drive = d
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind deve essere cpu o disk"})
+			return
+		}
+		if err := s.startBench(body.Kind, drive); err != nil {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"started": true, "kind": body.Kind, "drive": drive})
+	})
+	mux.HandleFunc("GET /api/bench", func(w http.ResponseWriter, r *http.Request) {
+		s.benchMu.Lock()
+		st := benchState{Running: s.benchRunning, Kind: s.benchKind, Drive: s.benchDrive, Progress: s.benchProg, Error: s.benchErr, CPU: s.benchCPU, Disk: s.benchDisk}
+		s.benchMu.Unlock()
+		writeJSON(w, 200, st)
+	})
+	mux.HandleFunc("DELETE /api/bench", func(w http.ResponseWriter, r *http.Request) {
+		s.benchMu.Lock()
+		cancel := s.benchCancel
+		s.benchMu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		writeJSON(w, 200, map[string]bool{"stopping": cancel != nil})
 	})
 	mux.HandleFunc("GET /api/reach", func(w http.ResponseWriter, r *http.Request) {
 		s.reachMu.Lock()

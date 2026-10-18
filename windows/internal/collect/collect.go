@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"lanterna/internal/pcinfo"
 	"lanterna/internal/probe"
 	"lanterna/internal/scan"
 	"lanterna/internal/winapi"
@@ -28,6 +29,11 @@ type Platform interface {
 	OS() string
 	Elevated() bool
 	Domain() string
+	// PC legge i dati del computer (sistema, dischi, avvio, eventi...).
+	PC(ctx context.Context) (*scan.PcData, error)
+	// SampleLoad misura carico della CPU e processi più pesanti per la
+	// durata indicata.
+	SampleLoad(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo)
 }
 
 // Native è la piattaforma reale (Windows; altrove ogni misura fallisce con
@@ -42,6 +48,10 @@ func (Native) Firewall(ctx context.Context) (*scan.FirewallData, error) { return
 func (Native) OS() string                                               { return winapi.OSDescription() }
 func (Native) Elevated() bool                                           { return winapi.Elevated() }
 func (Native) Domain() string                                           { return winapi.Domain() }
+func (Native) PC(ctx context.Context) (*scan.PcData, error)             { return pcinfo.Collect(ctx) }
+func (Native) SampleLoad(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo) {
+	return pcinfo.SampleLoad(ctx, d)
+}
 
 // Network raccoglie le dipendenze di rete sostituibili nei test.
 type Network struct {
@@ -85,9 +95,12 @@ type Options struct {
 	// TCPInterval distanzia i tentativi della riserva TCP: connessioni troppo
 	// ravvicinate verso lo stesso server possono essere rifiutate.
 	TCPInterval time.Duration
+	// LoadSample è la durata della misura del carico della CPU, eseguita a
+	// misure di rete concluse.
+	LoadSample time.Duration
 }
 
-var DefaultOptions = Options{PingCount: 20, PingInterval: 250 * time.Millisecond, PingTimeout: time.Second, Rescan: true, UpnpWait: 2500 * time.Millisecond, MaxHops: 20, TraceStagger: 40 * time.Millisecond, TCPInterval: 500 * time.Millisecond}
+var DefaultOptions = Options{PingCount: 20, PingInterval: 250 * time.Millisecond, PingTimeout: time.Second, Rescan: true, UpnpWait: 2500 * time.Millisecond, MaxHops: 20, TraceStagger: 40 * time.Millisecond, TCPInterval: 500 * time.Millisecond, LoadSample: 1500 * time.Millisecond}
 
 // Destinazioni pubbliche: resolver anycast, vicini a quasi tutti gli utenti.
 var InternetTargets = []struct{ IP, Label string }{{"1.1.1.1", "Cloudflare"}, {"8.8.8.8", "Google"}, {"9.9.9.9", "Quad9"}}
@@ -113,6 +126,8 @@ var stepDefs = []Step{
 	{ID: "upnp", Label: "UPnP"},
 	{ID: "firewall", Label: "Firewall di Windows"},
 	{ID: "lan", Label: "Dispositivi in rete"},
+	{ID: "pc", Label: "Computer: sistema, dischi ed eventi"},
+	{ID: "load", Label: "Computer: carico e processi"},
 }
 
 // Progress viene notificato a ogni cambio di stato.
@@ -388,6 +403,17 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 		mu.Unlock()
 		return nil
 	})
+
+	run("pc", func() error {
+		pc, err := c.Platform.PC(ctx)
+		if err != nil {
+			return err
+		}
+		mu.Lock()
+		s.PC = pc
+		mu.Unlock()
+		return nil
+	})
 	wg.Wait()
 
 	// 3. Tabella dei vicini per ultima: dopo ping e UPnP è più completa.
@@ -406,6 +432,24 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 		}
 		return nil
 	})
+
+	// 4. Carico della CPU a misure concluse, per non contare l'analisi stessa.
+	if s.PC == nil {
+		tr.set("load", "error") // il motivo è già nell'errore della fase "pc"
+	} else {
+		step("load", func() error {
+			load, procs := c.Platform.SampleLoad(ctx, c.Opt.LoadSample)
+			if load == nil && len(procs) == 0 {
+				return fmt.Errorf("carico della CPU non misurabile")
+			}
+			if s.PC.CPU == nil {
+				s.PC.CPU = &scan.PcCPU{}
+			}
+			s.PC.CPU.LoadPct = load
+			s.PC.Processes = procs
+			return nil
+		})
+	}
 
 	s.Errors = errs.list
 	if s.Errors == nil {

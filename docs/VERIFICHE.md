@@ -312,3 +312,60 @@ e sotto Wine, non ancora su una rete aziendale vera (sezione 5).
 | AP della rete | Esiti delle verifiche | Autovalutazione |
 | --- | --- | --- |
 | ![AP della rete](img/ap-rete.webp) | ![Verifiche](img/verifiche.webp) | ![Autovalutazione](img/autovalutazione.webp) |
+
+## 9. Versione 0.5.0: il computer, test di velocità e guida all'uso
+
+**Cosa è nuovo.** Nell'agente i pacchetti `pcinfo` (dati del computer: API native più un unico script PowerShell con uscita JSON)
+e `bench` (test di velocità di processore e dischi), due nuove fasi dell'analisi ("Computer: sistema, dischi ed eventi" e
+"Computer: carico e processi"), le API `/api/bench` e il comando `polaris-cli bench`. Nel motore 1.2.0 la categoria Computer con
+21 metriche e 20 azioni, il calendario di supporto di Windows e il punteggio di PC e rete insieme. Nell'interfaccia la sezione
+Computer (10 sezioni, tasti `1`…`0`), l'invito alla guida d'uso e la Guida come icona in alto su telefono. Nella biblioteca due
+capitoli nuovi, "Usare STARNET Polaris" (6 guide) e "Il computer" (10 guide), e 33 voci di glossario.
+
+**Test automatici.**
+
+| Insieme | Esito |
+| --- | --- |
+| Motore e guide (vitest) | 141 test superati, 62 dei quali sul computer: supporto di Windows per versione, edizione e data (12 casi), soglie di RAM, carico, dischi, temperature, usura, spazio, avvio, eventi, antivirus, aggiornamenti, batteria, alimentazione, driver video e test di velocità; demo, rapporto testuale, urgenza del disco nel titolo e nel piano |
+| Agente (Go, anche con `-race`) | 92 test superati: interpretazione dell'uscita di PowerShell (con BOM e righe di avviso), tipo di disco, salute, eventi, valori di avvio, pulizia dei percorsi, nomi di Windows, piani di alimentazione, raggruppamento dei processi, test del processore e del disco (con interruzione e file cancellato), spazio insufficiente, API dei test e loro esclusione reciproca con l'analisi |
+| Motore in goja | rapporto con dati del computer: date in italiano ("dall'11 novembre 2025", "l'8 ottobre 2026"), codice di arresto spiegato, disco guasto come prima azione |
+| `GOOS=windows go vet` | nessun problema |
+
+**Interfaccia**, Chromium 141 sulla build di produzione:
+- axe-core, WCAG 2.1 A/AA e buone pratiche, 10 sezioni × 2 temi × desktop e telefono, reti Casa e Clinica: 0 violazioni dopo le
+  correzioni sotto;
+- test di velocità simulati: avanzamento con fase e velocità, grafico secondo per secondo, risultati, giudizi nella
+  valutazione, cronologia;
+- barra in basso su telefono con nove voci e la Guida nella barra in alto.
+
+**Exe 0.5.0 sotto Wine 9.0:**
+- **rapporto**: tutte le fasi, compresa quella del computer, con sistema (Wine si presenta come Windows 10 Pro), processore,
+  memoria, volumi, alimentazione e processi letti dalle API native; PowerShell in Wine non risponde e la nota lo dice;
+- **test da riga di comando**: processore e disco `C:` completati, nessun file `polaris-test-*` rimasto (i valori del disco
+  sotto Wine non sono indicativi: Wine passa comunque dalla cache del sistema ospite);
+- **API**: `400` senza conferma, `400` con un'unità non valida, `422` con un'unità inesistente, `202` per il processore, `409`
+  per un'analisi durante il test, avanzamento, `DELETE` con "test interrotto";
+- **interfaccia servita dall'exe**: analisi, sezione Computer con la nota su PowerShell, test del processore (25 s reali) e del
+  disco con i risultati e i giudizi, interruzione, JSON esportato con i test, test conservati dopo una nuova analisi, nessun
+  errore della pagina.
+
+**Difetti trovati e corretti durante il lavoro:**
+1. Il registro eventi a livello informativo contiene Ntfs 98 "volume integro" a ogni avvio: ora si leggono solo i livelli
+   critico, errore e avviso.
+2. Kernel-Power 41 ed EventLog 6008 dello stesso spegnimento venivano sommati.
+3. Senza privilegi alcune versioni di Windows restituiscono i contatori di affidabilità vuoti invece di un errore: non contano
+   più come dati SMART presenti (e la nota sull'amministratore compare).
+4. Un elenco antivirus vuoto e un Centro sicurezza illeggibile erano indistinguibili: ora `[]` e `null`.
+5. I valori PowerShell interi (velocità di rotazione `0xFFFFFFFF`, stato dell'antivirus) potevano traboccare: letti come `long`.
+6. Il taglio del dettaglio degli eventi poteva spezzare un carattere accentato.
+7. La classe `.gauge` del nuovo indicatore dei dischi coincideva con quella dell'esagono del punteggio.
+8. Titoli con i due punti doppi ("Spazio libero su D::"), "Errori di lettura corretti" per un contatore che li comprende tutti,
+   "quasi libero" anche con il processore al 43 %.
+9. axe-core: un `span` dentro un elenco di definizioni; la cascata di 29 azioni del piano durava quasi due secondi (ora ogni
+   elenco lungo compare entro 0,6 s).
+10. Un'unità inesistente veniva accettata dall'API e falliva solo dopo: ora è rifiutata subito con `422`.
+
+**Avvertenze.** Le date di supporto di Windows (Windows 11 per versione ed edizione, Windows 10 ed ESU), i codici di arresto e le
+soglie indicative dei test sono stati scritti senza consultare le fonti durante questo lavoro: vanno verificati sul sito
+Microsoft e sono riportati come tali nelle guide. Dischi, eventi, antivirus e aggiornamenti dipendono da PowerShell, che sotto
+Wine non è disponibile: su Windows reale li verifica la CI (sotto). La temperatura del processore non viene letta.

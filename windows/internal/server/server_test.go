@@ -12,6 +12,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"lanterna/internal/bench"
 	"lanterna/internal/collect"
 	"lanterna/internal/infra"
 	"lanterna/internal/scan"
@@ -34,6 +35,12 @@ func (stubPlatform) Firewall(context.Context) (*scan.FirewallData, error) {
 func (stubPlatform) OS() string     { return "test" }
 func (stubPlatform) Elevated() bool { return false }
 func (stubPlatform) Domain() string { return "" }
+func (stubPlatform) PC(context.Context) (*scan.PcData, error) {
+	return nil, errors.New("misura disponibile solo su Windows")
+}
+func (stubPlatform) SampleLoad(context.Context, time.Duration) (*float64, []scan.ProcessInfo) {
+	return nil, nil
+}
 
 type stubPinger struct{}
 
@@ -275,5 +282,126 @@ func TestReachEndpoint(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != 403 {
 		t.Fatalf("POST da altra origine: %d", rec.Code)
+	}
+}
+
+func TestBenchEndpoint(t *testing.T) {
+	s := newServer()
+	release := make(chan struct{})
+	s.BenchCPU = func(ctx context.Context, report bench.Report) (*scan.CPUBench, error) {
+		report(bench.Progress{Phase: "multi", Done: 0.5, Samples: []float64{100}})
+		select {
+		case <-release:
+			return &scan.CPUBench{Threads: 8, SingleMBs: 40, MultiMBs: 250, SustainedMBs: 240}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	var gotDrive string
+	s.BenchDisk = func(_ context.Context, drive string, _ bench.Report) (*scan.DiskBench, error) {
+		gotDrive = drive
+		return &scan.DiskBench{Drive: drive, FileMB: 1024, SeqReadMBs: 3000}, nil
+	}
+	h := s.Handler()
+	post := func(body string) *httptest.ResponseRecorder {
+		return doBody(t, h, "POST", "/api/bench", "application/json", body)
+	}
+	if r := doBody(t, h, "POST", "/api/bench", "text/plain", `{"kind":"cpu"}`); r.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("corpo non JSON: %d", r.Code)
+	}
+	for body, code := range map[string]int{
+		`{"kind":"gpu"}`:                                http.StatusBadRequest,
+		`{"kind":"disk","drive":"C:"}`:                  http.StatusBadRequest, // manca la conferma
+		`{"kind":"disk","drive":"rete","confirm":true}`: http.StatusBadRequest,
+	} {
+		if r := post(body); r.Code != code {
+			t.Fatalf("%s: %d %s", body, r.Code, r.Body)
+		}
+	}
+
+	// Test del processore: un secondo avvio e un'analisi vengono rifiutati.
+	if r := post(`{"kind":"cpu"}`); r.Code != http.StatusAccepted {
+		t.Fatalf("avvio: %d %s", r.Code, r.Body)
+	}
+	if r := post(`{"kind":"cpu"}`); r.Code != http.StatusConflict {
+		t.Fatalf("doppio avvio: %d", r.Code)
+	}
+	if r := do(t, h, "POST", "/api/scan", nil); r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "test di velocità") {
+		t.Fatalf("analisi durante il test: %d %s", r.Code, r.Body)
+	}
+	var st benchState
+	for i := 0; i < 100 && st.Progress == nil; i++ {
+		_ = json.Unmarshal(do(t, h, "GET", "/api/bench", nil).Body.Bytes(), &st)
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !st.Running || st.Kind != "cpu" || st.Progress == nil || st.Progress.Phase != "multi" {
+		t.Fatalf("avanzamento: %+v", st)
+	}
+	close(release)
+	s.WaitBench()
+	st = benchState{}
+	_ = json.Unmarshal(do(t, h, "GET", "/api/bench", nil).Body.Bytes(), &st)
+	if st.Running || st.CPU == nil || st.CPU.MultiMBs != 250 || st.Error != "" {
+		t.Fatalf("risultato: %+v", st)
+	}
+
+	// Test del disco: lettera normalizzata, risultato conservato accanto a
+	// quello del processore.
+	if r := post(`{"kind":"disk","drive":"d","confirm":true}`); r.Code != http.StatusAccepted {
+		t.Fatalf("disco: %d %s", r.Code, r.Body)
+	}
+	s.WaitBench()
+	st = benchState{}
+	_ = json.Unmarshal(do(t, h, "GET", "/api/bench", nil).Body.Bytes(), &st)
+	if gotDrive != "D:" || st.Disk == nil || st.Disk.Drive != "D:" || st.CPU == nil {
+		t.Fatalf("disco: %q %+v", gotDrive, st)
+	}
+}
+
+func TestBenchStopAndScanExclusion(t *testing.T) {
+	s := newServer()
+	s.BenchCPU = func(ctx context.Context, _ bench.Report) (*scan.CPUBench, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	h := s.Handler()
+	if r := doBody(t, h, "POST", "/api/bench", "application/json", `{"kind":"cpu"}`); r.Code != http.StatusAccepted {
+		t.Fatal(r.Code)
+	}
+	if r := do(t, h, "DELETE", "/api/bench", nil); r.Code != 200 || !strings.Contains(r.Body.String(), "true") {
+		t.Fatalf("interruzione: %d %s", r.Code, r.Body)
+	}
+	s.WaitBench()
+	var st benchState
+	_ = json.Unmarshal(do(t, h, "GET", "/api/bench", nil).Body.Bytes(), &st)
+	if st.Running || st.Error != "test interrotto" || st.CPU != nil {
+		t.Fatalf("dopo l'interruzione: %+v", st)
+	}
+	if r := do(t, h, "DELETE", "/api/bench", map[string]string{"Origin": "https://evil.example"}); r.Code != http.StatusForbidden {
+		t.Fatalf("DELETE da altra origine: %d", r.Code)
+	}
+	// Durante un'analisi il test non parte.
+	s.mu.Lock()
+	s.running = true
+	s.mu.Unlock()
+	if r := doBody(t, h, "POST", "/api/bench", "application/json", `{"kind":"cpu"}`); r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "analisi in corso") {
+		t.Fatalf("test durante l'analisi: %d %s", r.Code, r.Body)
+	}
+	s.mu.Lock()
+	s.running = false
+	s.mu.Unlock()
+	// Unità non adatta: rifiutata subito, senza avviare nulla.
+	s.BenchDisk = func(context.Context, string, bench.Report) (*scan.DiskBench, error) {
+		t.Fatal("test avviato")
+		return nil, nil
+	}
+	s.BenchDrive = func(d string) error { return errors.New(d + " non è un disco locale o rimovibile") }
+	if r := doBody(t, h, "POST", "/api/bench", "application/json", `{"kind":"disk","drive":"Q:","confirm":true}`); r.Code != http.StatusUnprocessableEntity || !strings.Contains(r.Body.String(), "Q:") {
+		t.Fatalf("unità non adatta: %d %s", r.Code, r.Body)
+	}
+	// Senza funzioni di test configurate: non disponibile.
+	s.BenchCPU = nil
+	if r := doBody(t, h, "POST", "/api/bench", "application/json", `{"kind":"cpu"}`); r.Code != http.StatusNotImplemented {
+		t.Fatalf("non disponibile: %d", r.Code)
 	}
 }

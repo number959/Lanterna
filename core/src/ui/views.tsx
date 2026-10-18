@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   BookOpen,
+  Compass,
   BookOpenText,
   Building2,
   ExternalLink,
@@ -11,17 +12,19 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Monitor,
   Router,
   Shield,
   TriangleAlert,
   Wifi,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apCount, ownRadios, phyLabel, primaryAdapter, secFamily } from '../engine';
-import type { Analysis, AnswerValue, Band, Bss, Category, InfraData, Scan, Severity } from '../engine';
+import type { Analysis, AnswerValue, Band, Bss, Category, CpuBench, DiskBench, InfraData, Scan, Severity } from '../engine';
 import { download } from './api';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
 import { HexGauge } from './brand';
@@ -31,9 +34,9 @@ import { useFx } from './fx';
 import { useLocalState } from './hooks';
 import { monitorCsv, summarize } from './monitor';
 import type { MonitorEvent, MonitorSession } from './monitor';
-import { cascade, ease, rise, spring } from './motion';
+import { cascade, ease, rise, spring, stagger } from './motion';
 
-export type View = 'overview' | 'wifi' | 'lan' | 'internet' | 'router' | 'infra' | 'plan' | 'monitor' | 'guide';
+export type View = 'overview' | 'pc' | 'wifi' | 'lan' | 'internet' | 'router' | 'infra' | 'plan' | 'monitor' | 'guide';
 
 /** Risposte dell'autovalutazione: restano sul PC, l'App le unisce al rapporto. */
 export interface AssessmentState {
@@ -61,14 +64,16 @@ export interface ViewProps {
   source: 'agent' | 'demo' | 'file';
   /** Unisce al rapporto i risultati di inventario e verifiche. */
   setInfra: (patch: Partial<InfraData>) => void;
+  /** Unisce al rapporto il risultato di un test di velocità. */
+  addBench: (r: { cpu?: CpuBench; disk?: DiskBench }) => void;
   assessment: AssessmentState;
   monitor: MonitorSession;
   gwMacChange?: GatewayMacChange;
 }
 
 const byCat = (a: Analysis, ...cats: Category[]) => a.findings.filter((f) => cats.includes(f.category));
-const CAT_VIEW: Record<Category, View> = { wifi: 'wifi', lan: 'lan', internet: 'internet', dns: 'internet', router: 'router', security: 'router', infra: 'infra' };
-const CAT_ICON: Record<Category, LucideIcon> = { wifi: Wifi, lan: Network, internet: Globe, dns: Globe, router: Router, security: Shield, infra: Building2 };
+const CAT_VIEW: Record<Category, View> = { pc: 'pc', wifi: 'wifi', lan: 'lan', internet: 'internet', dns: 'internet', router: 'router', security: 'router', infra: 'infra' };
+const CAT_ICON: Record<Category, LucideIcon> = { pc: Monitor, wifi: Wifi, lan: Network, internet: Globe, dns: Globe, router: Router, security: Shield, infra: Building2 };
 const fmtMs = (v?: number) => (v === undefined ? '—' : v < 1 ? '<1 ms' : `${fmtNum(v, v < 10 ? 1 : 0)} ms`);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -113,6 +118,38 @@ function Headline({ text }: { text: string }) {
 
 const scoreSev = (s: number): Severity => (s >= 85 ? 'ok' : s >= 70 ? 'info' : s >= 50 ? 'warn' : 'crit');
 
+/** Prima visita: invito alla guida d'uso, finché l'utente non lo chiude. */
+function Welcome() {
+  const openGuide = useOpenGuide();
+  const [closed, setClosed] = useLocalState<boolean>('polaris.welcome.closed', false);
+  if (closed || !openGuide) return null;
+  return (
+    <m.section variants={rise} className="card welcome">
+      <span className="infra-mark" aria-hidden>
+        <Compass size={24} />
+      </span>
+      <div style={{ minWidth: 0 }}>
+        <h2>Prima volta con STARNET Polaris?</h2>
+        <p className="muted">
+          In cinque minuti la guida spiega come leggere il punteggio, le sezioni del computer e della rete, il piano d'azione, i test di velocità e come
+          esportare un rapporto.
+        </p>
+        <div className="hero-actions" style={{ marginTop: 12 }}>
+          <button className="btn primary" onClick={() => openGuide('primi-passi')}>
+            <BookOpen size={16} aria-hidden /> Come si usa
+          </button>
+          <button className="btn" onClick={() => setClosed(true)}>
+            Ho capito
+          </button>
+        </div>
+      </div>
+      <button className="btn icon welcome-close" onClick={() => setClosed(true)} aria-label="Chiudi l'invito alla guida">
+        <X size={16} aria-hidden />
+      </button>
+    </m.section>
+  );
+}
+
 export function Overview({ scan, analysis: a, go }: ViewProps) {
   const reduce = useReducedMotion();
   const top = a.findings.filter((f) => f.severity === 'crit' || f.severity === 'warn').slice(0, 5);
@@ -124,7 +161,7 @@ export function Overview({ scan, analysis: a, go }: ViewProps) {
         <HexGauge score={a.score} />
         <div>
           <div className={`grade c-${sev}`}>
-            <SevIcon sev={sev} size={15} /> Salute della rete: {a.grade}
+            <SevIcon sev={sev} size={15} /> Salute {scan.pc ? 'di PC e rete' : 'della rete'}: {a.grade}
           </div>
           <Headline text={a.headline} />
           <div className="hero-counts">
@@ -144,6 +181,8 @@ export function Overview({ scan, analysis: a, go }: ViewProps) {
           </div>
         </div>
       </m.section>
+
+      <Welcome />
 
       <Section title="Aree analizzate">
         <m.div className="tiles" variants={cascade(0.05)}>
@@ -764,7 +803,7 @@ export function RouterView({ scan, analysis: a, go, gwMacChange }: ViewProps) {
       </m.div>
 
       <Section title="Valutazione">
-        <FindingList findings={byCat(a, 'router', 'security')} onAction={(id) => go('plan', id)} />
+        <FindingList findings={byCat(a, 'router', 'security').filter((f) => !f.id.startsWith('pc.'))} onAction={(id) => go('plan', id)} />
       </Section>
 
       {g?.upnp && g.upnp.devices.length > 0 && (
@@ -855,7 +894,7 @@ export function PlanView({ analysis: a, focus, scan }: ViewProps) {
           <m.i initial={false} animate={{ scaleX: completed / a.plan.length }} transition={spring.gentle} />
         </span>
       </m.section>
-      <m.div className="stack" style={{ marginTop: 16 }} variants={cascade(0.05)}>
+      <m.div className="stack" style={{ marginTop: 16 }} variants={cascade(stagger(a.plan.length, 0.05))}>
         {a.plan.map((p, i) => {
           const isDone = done.includes(p.action.id);
           const focused = focus === p.action.id;

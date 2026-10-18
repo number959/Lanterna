@@ -1,5 +1,6 @@
 import type { Bss, InventoryHost, Roaming, Scan, WifiSecurity } from '../engine/types';
 import { pingSamples, stats } from './util';
+import { clinicPc } from './pc';
 
 // Seconda rete dimostrativa: un poliambulatorio con dominio, rete Wi-Fi
 // aziendale 802.1X su più access point e reti separate per ospiti,
@@ -178,5 +179,6 @@ export const clinicScan: Scan = {
       ],
     },
   },
+  pc: clinicPc,
   errors: [],
 };

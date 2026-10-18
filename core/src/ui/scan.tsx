@@ -1,6 +1,8 @@
 import {
   Cable,
   Check,
+  Cpu,
+  Gauge,
   Globe,
   Lock,
   Network,
@@ -38,6 +40,8 @@ const ICONS: Record<string, LucideIcon> = {
   web: Lock,
   upnp: Cable,
   firewall: Shield,
+  pc: Cpu,
+  load: Gauge,
   lan: Users,
 };
 
@@ -213,7 +217,7 @@ export function ScanOrbit({ progress, connecting }: { progress: Progress | null;
         </svg>
       </div>
 
-      <h2 className="scan-title">{connecting ? 'Collegamento all’agente…' : 'Analisi della rete in corso'}</h2>
+      <h2 className="scan-title">{connecting ? 'Collegamento all’agente…' : 'Analisi di PC e rete in corso'}</h2>
       <div className="scan-current">
         <AnimatePresence mode="wait" initial={false}>
           <m.span

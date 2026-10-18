@@ -7,10 +7,14 @@ import { sicurezza } from './sicurezza';
 import { complesse } from './complesse';
 import { diagnosi } from './diagnosi';
 import { glossario } from './glossario';
+import { pc } from './pc';
+import { uso } from './uso';
 
 export type * from './types';
 
 export const CHAPTERS: Chapter[] = [
+  { id: 'uso', title: 'Usare STARNET Polaris', summary: 'Primi passi, le sezioni del programma, piano d\'azione ed esportazioni, strumenti avanzati, riga di comando e domande frequenti.' },
+  { id: 'pc', title: 'Il computer', summary: 'Come funziona un PC, dischi HDD e SSD e la loro salute, test di velocità, memoria, avvio, aggiornamenti, registro eventi, batteria e il metodo per un PC lento.' },
   { id: 'fondamenti', title: 'Fondamenti', summary: 'Come funziona una rete: livelli, indirizzi, DHCP, DNS, instradamento, porte, IPv6 e le misure di qualità.' },
   { id: 'wifi', title: 'Wi-Fi', summary: 'Segnale, bande e canali, standard, sicurezza, progettazione, roaming, più access point e interferenze.' },
   { id: 'cablata', title: 'Rete cablata', summary: 'Cavi e fibra, switch e VLAN, anelli e ridondanza, PoE, architettura di una rete aziendale.' },
@@ -20,7 +24,7 @@ export const CHAPTERS: Chapter[] = [
   { id: 'diagnosi', title: 'Diagnosi', summary: 'Il metodo, gli strumenti di Windows e i problemi tipici con le loro cause.' },
 ];
 
-export const GUIDES: Guide[] = [...fondamenti, ...wifi, ...cablata, ...servizi, ...sicurezza, ...complesse, ...diagnosi];
+export const GUIDES: Guide[] = [...uso, ...pc, ...fondamenti, ...wifi, ...cablata, ...servizi, ...sicurezza, ...complesse, ...diagnosi];
 
 const collator = new Intl.Collator('it', { sensitivity: 'base', numeric: true });
 export const GLOSSARY: GlossaryTerm[] = [...glossario].sort((a, b) => collator.compare(a.term, b.term));

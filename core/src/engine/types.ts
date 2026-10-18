@@ -25,6 +25,12 @@ export interface Scan {
    * Infrastruttura; l'interfaccia li unisce al rapporto.
    */
   infra?: InfraData;
+  /**
+   * Il computer da cui parte l'analisi: sistema, memoria, dischi, avvio,
+   * eventi, sicurezza. I test di velocità (bench) si eseguono su richiesta e
+   * li unisce l'interfaccia.
+   */
+  pc?: PcData;
   /** Sonde fallite: non bloccano l'analisi, vengono mostrate all'utente. */
   errors: ProbeError[];
 }
@@ -333,10 +339,231 @@ export interface InfraData {
   assessment?: AssessmentData;
 }
 
+// ---------- Computer ----------
+
+export interface PcData {
+  os?: PcOs;
+  cpu?: PcCpu;
+  memory?: PcMemory;
+  gpus?: PcGpu[];
+  disks?: PhysicalDisk[];
+  volumes?: Volume[];
+  battery?: Battery;
+  power?: PowerInfo;
+  startup?: StartupItem[];
+  processes?: ProcessInfo[];
+  /**
+   * Eventi rilevanti del registro di sistema degli ultimi `eventsDays` giorni.
+   * `eventsDays` assente = registro non letto; presente senza eventi = nessun
+   * evento nel periodo.
+   */
+  events?: EventGroup[];
+  eventsDays?: number;
+  /** null = Centro sicurezza non leggibile; [] = nessun prodotto registrato. */
+  antivirus?: AvProduct[] | null;
+  updates?: UpdateInfo;
+  bench?: BenchData;
+  /** Limiti della raccolta (dati SMART solo da amministratore, PowerShell assente...). */
+  notes?: string[];
+}
+
+export interface PcOs {
+  name: string;
+  /** Versione commerciale, es. "24H2". */
+  version?: string;
+  build?: number;
+  /** Revisione della build (Update Build Revision): cresce con gli aggiornamenti mensili. */
+  ubr?: number;
+  /** EditionID del registro, es. "Professional", "Core" (Home), "EnterpriseS" (LTSC). */
+  edition?: string;
+  arch?: string;
+  installDate?: string;
+  bootTime?: string;
+  uptimeSec?: number;
+  server?: boolean;
+  /** Avvio rapido attivo: "Arresta il sistema" non azzera il tempo di accensione. */
+  fastStartup?: boolean;
+}
+
+export interface PcCpu {
+  name: string;
+  cores?: number;
+  threads?: number;
+  maxMhz?: number;
+  /** Carico medio misurato per circa un secondo e mezzo a fine analisi. */
+  loadPct?: number;
+}
+
+export interface PcMemory {
+  totalMB: number;
+  availableMB: number;
+  /** Memoria impegnata (RAM + file di paging) e suo limite. */
+  commitMB?: number;
+  commitLimitMB?: number;
+}
+
+export interface PcGpu {
+  name: string;
+  driverVersion?: string;
+  driverDate?: string; // AAAA-MM-GG
+}
+
+export type DiskMedia = 'hdd' | 'ssd' | 'scm' | 'unknown';
+export type DiskHealth = 'healthy' | 'warning' | 'unhealthy' | 'unknown';
+
+export interface PhysicalDisk {
+  /** Numero del disco per Windows ("0", "1"...). */
+  id?: string;
+  name: string;
+  media: DiskMedia;
+  /** Interfaccia: "NVMe", "SATA", "USB", "RAID"... */
+  bus?: string;
+  sizeGB: number;
+  health?: DiskHealth;
+  operational?: string[];
+  firmware?: string;
+  spindleRpm?: number;
+  /** Contiene la partizione di Windows. */
+  system?: boolean;
+  reliability?: DiskReliability;
+}
+
+/** Contatori di affidabilità (derivati da SMART), leggibili solo come amministratore. */
+export interface DiskReliability {
+  temperatureC?: number;
+  temperatureMaxC?: number;
+  /** Percentuale della durata nominale consumata (SSD): 0 = nuovo, 100 = durata dichiarata raggiunta. */
+  wearPct?: number;
+  powerOnHours?: number;
+  readErrors?: number;
+  readUncorrected?: number;
+  writeErrors?: number;
+  writeUncorrected?: number;
+  startStopCycles?: number;
+  loadUnloadCycles?: number;
+}
+
+export interface Volume {
+  letter: string; // "C:"
+  label?: string;
+  fs?: string;
+  kind: 'fixed' | 'removable';
+  sizeGB: number;
+  freeGB: number;
+  system?: boolean;
+  /** Disco fisico che contiene il volume (id di PhysicalDisk). */
+  disk?: string;
+}
+
+export interface Battery {
+  designMWh?: number;
+  fullMWh?: number;
+  cycles?: number;
+  chargePct?: number;
+}
+
+export type PlanKind = 'balanced' | 'high' | 'saver' | 'ultimate' | 'custom';
+
+export interface PowerInfo {
+  plan?: string;
+  planKind?: PlanKind;
+  onAC?: boolean;
+  hasBattery?: boolean;
+  batterySaver?: boolean;
+}
+
+export type StartupLocation = 'user' | 'machine' | 'machine32' | 'user-folder' | 'common-folder';
+
+export interface StartupItem {
+  name: string;
+  /** Comando, con la cartella dell'utente sostituita da %USERPROFILE%. */
+  command?: string;
+  location: StartupLocation;
+  enabled: boolean;
+}
+
+export interface ProcessInfo {
+  /** Nome dell'eseguibile; i processi con lo stesso nome sono sommati. */
+  name: string;
+  count: number;
+  cpuPct?: number;
+  memoryMB: number;
+}
+
+export type EventKind =
+  | 'unexpected-shutdown'
+  | 'bugcheck'
+  | 'disk-error'
+  | 'disk-retry'
+  | 'filesystem'
+  | 'storage-reset'
+  | 'whea-fatal'
+  | 'whea-corrected';
+
+export interface EventGroup {
+  kind: EventKind;
+  source: string;
+  id: number;
+  count: number;
+  /** Ultima occorrenza, ISO 8601. */
+  last: string;
+  /** Primo parametro dell'evento: codice di arresto, disco coinvolto. */
+  detail?: string;
+}
+
+export interface AvProduct {
+  name: string;
+  enabled: boolean;
+  upToDate?: boolean;
+  source?: 'securitycenter' | 'defender';
+}
+
+export interface UpdateInfo {
+  /** Data dell'ultimo aggiornamento installato (AAAA-MM-GG). */
+  lastInstalled?: string;
+  lastKB?: string;
+  pendingReboot: boolean;
+  rebootReasons?: string[];
+}
+
+export interface BenchData {
+  cpu?: CpuBench;
+  /** Ultimo test per ogni unità. */
+  disk?: DiskBench[];
+}
+
+export interface CpuBench {
+  startedAt: string;
+  threads: number;
+  /** MB/s compressi con un thread e con tutti (punta e media finale). */
+  singleMBs: number;
+  multiMBs: number;
+  sustainedMBs: number;
+  /** MB/s secondo per secondo della fase con tutti i thread. */
+  samples?: number[];
+  onAC?: boolean;
+  loadBeforePct?: number;
+  durationMs: number;
+}
+
+export interface DiskBench {
+  startedAt: string;
+  drive: string;
+  fileMB: number;
+  seqReadMBs: number;
+  seqWriteMBs: number;
+  rndReadMBs: number;
+  rndReadIops: number;
+  rndWriteMBs: number;
+  rndWriteIops: number;
+  durationMs: number;
+  note?: string;
+}
+
 // ---------- Risultato dell'analisi ----------
 
 export type Severity = 'ok' | 'info' | 'warn' | 'crit' | 'unknown';
-export type Category = 'wifi' | 'lan' | 'internet' | 'dns' | 'router' | 'security' | 'infra';
+export type Category = 'wifi' | 'lan' | 'internet' | 'dns' | 'router' | 'security' | 'infra' | 'pc';
 
 export interface Finding {
   /** Identificativo stabile, es. "wifi.rssi" o "router.port.23". */

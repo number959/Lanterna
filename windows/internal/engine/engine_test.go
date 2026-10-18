@@ -75,3 +75,37 @@ func TestBadScript(t *testing.T) {
 		t.Fatal("script senza PolarisEngine accettato")
 	}
 }
+
+// I dati del computer (date, eventi, dischi) passano dal motore in goja come
+// nel browser: giudizi, date in italiano e dettagli nel rapporto.
+func TestPcInGoja(t *testing.T) {
+	e := load(t)
+	scan := `{"schema":1,"agent":{"name":"STARNET Polaris","version":"t","platform":"windows","host":"PC","startedAt":"2026-10-14T09:00:00Z","durationMs":9000,"elevated":true},
+"adapters":[],"errors":[],
+"pc":{"os":{"name":"Windows 11 Home","version":"23H2","build":22631,"ubr":4460,"edition":"Core","uptimeSec":1800000,"fastStartup":true},
+ "memory":{"totalMB":7962,"availableMB":600},
+ "disks":[{"id":"0","name":"Samsung SSD 980","media":"ssd","bus":"NVMe","sizeGB":1000.2,"health":"warning","operational":["Predictive Failure"],"system":true,
+   "reliability":{"temperatureC":38,"wearPct":91,"powerOnHours":5120}}],
+ "volumes":[{"letter":"C:","kind":"fixed","sizeGB":999,"freeGB":4,"system":true,"disk":"0"}],
+ "events":[{"kind":"bugcheck","source":"Microsoft-Windows-WER-SystemErrorReporting","id":1001,"count":2,"last":"2026-10-08T21:40:00Z","detail":"0x0000009f (0x3)"}],
+ "eventsDays":30,"antivirus":[],"updates":{"lastInstalled":"2025-11-11","pendingReboot":false},
+ "bench":{"cpu":{"startedAt":"2026-10-14T09:05:00Z","threads":8,"singleMBs":30,"multiMBs":120,"sustainedMBs":80,"durationMs":23000}}}}`
+	txt, err := e.Report([]byte(scan), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"rapporto di diagnostica di PC e rete",
+		"[CRIT] Salute del disco di sistema: Samsung SSD 980: guasto previsto",
+		"dall'11 novembre 2025",
+		"l'ultima l'8 ottobre 2026",
+		"DRIVER_POWER_STATE_FAILURE",
+		"[CRIT] Antivirus: nessuno",
+		"COMPUTER: DETTAGLI",
+		"Copia subito i dati e sostituisci il disco",
+	} {
+		if !strings.Contains(txt, want) {
+			t.Errorf("manca %q nel rapporto:\n%s", want, txt)
+		}
+	}
+}

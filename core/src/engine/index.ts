@@ -7,3 +7,4 @@ export { ASSESS_AREAS, ASSESS_QUESTIONS, scoreAssessment } from './kb/assessment
 export type { AreaScore, AssessArea, AssessAreaId, AssessQuestion } from './kb/assessment';
 export { adviseChannels, apCount, bandOf, freqToChannel, channelToFreq, ownRadios, secFamily, spectrum, phyLabel } from './wifi';
 export { renderText } from './report';
+export { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';

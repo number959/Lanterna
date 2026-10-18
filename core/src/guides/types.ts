@@ -5,7 +5,7 @@
 // impagina a modo suo. Nel testo dei blocchi è ammesso un markup minimo:
 //   **grassetto**   `codice`   [[id-guida]] o [[id-guida|testo del collegamento]]
 
-export type ChapterId = 'fondamenti' | 'wifi' | 'cablata' | 'servizi' | 'sicurezza' | 'complesse' | 'diagnosi';
+export type ChapterId = 'uso' | 'pc' | 'fondamenti' | 'wifi' | 'cablata' | 'servizi' | 'sicurezza' | 'complesse' | 'diagnosi';
 
 export type DiagramId = 'osi' | 'subnet' | 'dhcp' | 'channels24' | 'roaming' | 'vlan' | 'clinic';
 

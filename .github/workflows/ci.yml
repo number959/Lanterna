@@ -81,6 +81,35 @@ jobs:
           if (-not $s.gateway.ip) { throw "gateway non individuato" }
           if ($s.firewall.profiles.Count -ne 3) { throw "profili del firewall non letti" }
           if (-not $s.internet.http.Where({ $_.ok })) { throw "verifica HTTPS fallita" }
+          # Computer: dati letti in sola lettura da API native e PowerShell.
+          $pc = $s.pc
+          "Computer: $($pc.os.name) $($pc.os.version) build $($pc.os.build).$($pc.os.ubr) [$($pc.os.edition)]; acceso da $([math]::Round($pc.os.uptimeSec/3600,1)) h; avvio rapido: $($pc.os.fastStartup)"
+          "Processore: $($pc.cpu.name) - $($pc.cpu.cores) core / $($pc.cpu.threads) thread; carico $($pc.cpu.loadPct) %"
+          "Memoria: $($pc.memory.totalMB) MB, liberi $($pc.memory.availableMB) MB"
+          "Dischi: " + (($pc.disks | ForEach-Object { "$($_.id) $($_.name) [$($_.media) $($_.bus)] $($_.sizeGB) GB $($_.health) sistema=$($_.system) smart=$(if ($_.reliability) { $_.reliability | ConvertTo-Json -Compress } else { 'no' })" }) -join ' | ')
+          "Volumi: " + (($pc.volumes | ForEach-Object { "$($_.letter) $($_.fs) $($_.freeGB)/$($_.sizeGB) GB disco=$($_.disk)" }) -join ' | ')
+          "Eventi in $($pc.eventsDays) giorni: " + (($pc.events | ForEach-Object { "$($_.source) $($_.id) x$($_.count)" }) -join ' | ')
+          "Antivirus: " + (($pc.antivirus | ForEach-Object { "$($_.name) attivo=$($_.enabled) aggiornato=$($_.upToDate) ($($_.source))" }) -join ' | ')
+          "Aggiornamenti: ultimo $($pc.updates.lastInstalled) $($pc.updates.lastKB); riavvio in sospeso: $($pc.updates.pendingReboot) $($pc.updates.rebootReasons -join ',')"
+          "Avvio: $($pc.startup.Count) voci; processi: " + (($pc.processes | Select-Object -First 5 | ForEach-Object { "$($_.name) x$($_.count) $($_.cpuPct)% $($_.memoryMB) MB" }) -join ' | ')
+          "Alimentazione: $($pc.power.plan) [$($pc.power.planKind)] AC=$($pc.power.onAC); note: $($pc.notes -join ' / ')"
+          if ($pc.os.name -notmatch '^Windows') { throw "sistema del computer non letto" }
+          if ($pc.volumes.Count -lt 1) { throw "volumi non letti" }
+          if ($pc.disks.Count -lt 1) { throw "dischi fisici non letti (PowerShell)" }
+          if (-not $pc.eventsDays) { throw "registro eventi non letto" }
+          if ($null -eq $pc.memory.totalMB -or $pc.memory.totalMB -lt 1024) { throw "memoria non letta" }
+      - name: Test di velocità da riga di comando
+        run: |
+          $c = ./polaris-cli.exe bench cpu --quick --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "bench cpu fallito" }
+          "Processore: $($c.threads) thread; un thread $($c.singleMBs) MB/s; tutti $($c.multiMBs) MB/s; alla fine $($c.sustainedMBs) MB/s; AC=$($c.onAC)"
+          if ($c.singleMBs -le 0 -or $c.multiMBs -le 0) { throw "risultato del processore non valido" }
+          $d = ./polaris-cli.exe bench disk --quick --json --drive $env:SystemDrive | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "bench disk fallito" }
+          "Disco $($d.drive) (file $($d.fileMB) MB): sequenziale $($d.seqReadMBs)/$($d.seqWriteMBs) MB/s; 4K $($d.rndReadMBs) MB/s ($($d.rndReadIops) IOPS) / $($d.rndWriteMBs) MB/s ($($d.rndWriteIops) IOPS) $($d.note)"
+          if ($d.seqReadMBs -le 0 -or $d.rndReadIops -le 0) { throw "risultato del disco non valido" }
+          $left = Get-ChildItem -Path $env:TEMP -Filter 'polaris-test-*' -ErrorAction SilentlyContinue
+          if ($left) { throw "file di prova non cancellati: $($left.Name -join ', ')" }
       - name: Server locale e API
         run: |
           $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8737' -PassThru -NoNewWindow
@@ -110,6 +139,20 @@ jobs:
             $reach = Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $body http://127.0.0.1:8737/api/reach
             "Verifica verso il gateway da $($reach.from): $($reach.results[0].status)"
             if (-not $reach.results[0].status) { throw "verifica senza esito" }
+            # Test di velocità via API: conferma obbligatoria per il disco, unità inesistente rifiutata subito.
+            foreach ($case in @(@{ body = '{"kind":"disk","drive":"C:"}'; code = 400 }, @{ body = '{"kind":"disk","drive":"Q:","confirm":true}'; code = 422 })) {
+              try {
+                Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $case.body http://127.0.0.1:8737/api/bench | Out-Null
+                throw "accettato: $($case.body)"
+              } catch {
+                if ($_.Exception.Response.StatusCode.value__ -ne $case.code) { throw "atteso $($case.code) per $($case.body): $($_.Exception.Message)" }
+              }
+            }
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"kind":"cpu"}' http://127.0.0.1:8737/api/bench | Out-Null
+            $t = 0
+            do { Start-Sleep 1; $t++; $b = Invoke-RestMethod http://127.0.0.1:8737/api/bench } while ($b.running -and $t -lt 90)
+            "Test del processore via API: $($b.cpu.singleMBs) / $($b.cpu.multiMBs) / $($b.cpu.sustainedMBs) MB/s in $($b.cpu.durationMs) ms; campioni: $($b.cpu.samples -join ' ')"
+            if ($b.error -or -not $b.cpu.multiMBs) { throw "test del processore via API non riuscito: $($b.error)" }
             $html = Invoke-WebRequest http://127.0.0.1:8737/ -UseBasicParsing
             if ($html.Content -notmatch '<title>STARNET Polaris</title>') { throw "interfaccia non servita" }
             if (-not $html.Headers['Content-Security-Policy']) { throw "CSP mancante" }
