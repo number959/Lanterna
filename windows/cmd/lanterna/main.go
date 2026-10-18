@@ -35,6 +35,7 @@ import (
 	"lanterna/internal/probe"
 	"lanterna/internal/scan"
 	"lanterna/internal/server"
+	"lanterna/internal/tools"
 	"lanterna/internal/winapi"
 )
 
@@ -221,6 +222,8 @@ func startServer(port int) (*server.Server, string, error) {
 		},
 		DefenderRun:   defender.Run,
 		DefenderReady: defender.Available,
+		Tools:         tools.InstalledPrograms,
+		OpenTool:      tools.Open,
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = httpSrv.Serve(ln) }()

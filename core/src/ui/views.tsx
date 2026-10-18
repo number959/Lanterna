@@ -1,4 +1,5 @@
 import {
+  AppWindow,
   ArrowRight,
   BookOpen,
   Compass,
@@ -25,7 +26,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apCount, ownRadios, phyLabel, primaryAdapter, secFamily } from '../engine';
 import type { Analysis, AnswerValue, Band, Bss, Category, CpuBench, DiskBench, InfraData, PcData, Scan, Severity } from '../engine';
-import { download } from './api';
+import { download, openTool } from './api';
+import { ACTION_TOOLS, WINDOWS_TOOLS } from '../tools';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
 import { HexGauge } from './brand';
 import { guidesForAction } from '../guides';
@@ -864,8 +866,13 @@ function Check({ checked, onChange, label }: { checked: boolean; onChange: () =>
   );
 }
 
-export function PlanView({ analysis: a, focus, scan }: ViewProps) {
+export function PlanView({ analysis: a, focus, scan, live }: ViewProps) {
   const openGuide = useOpenGuide();
+  const toast = useToast();
+  const launch = (id: string, name: string) =>
+    openTool(id, 'app')
+      .then(() => toast(`${name} aperto`))
+      .catch((e) => toast(e instanceof Error ? e.message : String(e), 'error'));
   const key = `polaris.done.${scan.agent.host ?? 'demo'}`;
   const [done, setDone] = useLocalState<string[]>(key, []);
   const titles = useMemo(() => new Map(a.findings.map((f) => [f.id, f])), [a]);
@@ -937,6 +944,20 @@ export function PlanView({ analysis: a, focus, scan }: ViewProps) {
                       <ol className="steps">
                         {p.action.steps.map((s, j) => <li key={j}>{s}</li>)}
                       </ol>
+                      {live && (ACTION_TOOLS[p.action.id] ?? []).length > 0 && (
+                        <p className="plan-tools">
+                          <AppWindow size={14} aria-hidden />
+                          <span>Apri:</span>
+                          {ACTION_TOOLS[p.action.id].map((id) => {
+                            const w = WINDOWS_TOOLS.find((x) => x.id === id);
+                            return w ? (
+                              <button key={id} className="btn small" onClick={() => launch(id, w.name)}>
+                                {w.name}
+                              </button>
+                            ) : null;
+                          })}
+                        </p>
+                      )}
                       {openGuide && guidesForAction(p.action.id).length > 0 && (
                         <p className="plan-guides">
                           <BookOpenText size={14} aria-hidden />

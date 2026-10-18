@@ -17,6 +17,9 @@
 //	                    ({"action": "quick" | "full" | "update"})
 //	GET  /api/defender  stato ed esito dell'ultima operazione
 //	DELETE /api/defender interrompe la scansione in corso
+//	GET  /api/tools     programmi della cassetta degli attrezzi già installati
+//	POST /api/open      apre uno strumento di Windows, un programma installato
+//	                    o il sito ufficiale ({"tool": "cpu-z", "target": "site"})
 //
 // Ascolta solo su 127.0.0.1 e rifiuta richieste con Host diverso (difesa dal
 // DNS rebinding) e POST provenienti da altre origini (difesa dal CSRF). Le
@@ -44,6 +47,7 @@ import (
 	"lanterna/internal/defender"
 	"lanterna/internal/infra"
 	"lanterna/internal/scan"
+	"lanterna/internal/tools"
 )
 
 // I font dell'interfaccia (woff2) e il favicon (ico) hanno il tipo dichiarato qui:
@@ -100,6 +104,11 @@ type Server struct {
 	DefenderRun func(ctx context.Context, action string) (*defender.Result, error)
 	// DefenderReady verifica subito che Defender sia presente (nil = nessun controllo).
 	DefenderReady func() error
+
+	// Cassetta degli attrezzi (nil = non disponibile): elenco dei programmi
+	// installati e apertura per identificativo, solo dalla lista bianca.
+	Tools    func() map[string]tools.Installed
+	OpenTool func(id, target string) error
 
 	defMu      sync.Mutex
 	defRunning bool
@@ -709,6 +718,45 @@ func (s *Server) Handler() http.Handler {
 			cancel()
 		}
 		writeJSON(w, 200, map[string]bool{"stopping": cancel != nil})
+	})
+	mux.HandleFunc("GET /api/tools", func(w http.ResponseWriter, r *http.Request) {
+		installed := map[string]tools.Installed{}
+		if s.Tools != nil {
+			installed = s.Tools()
+		}
+		writeJSON(w, 200, map[string]any{"installed": installed})
+	})
+	mux.HandleFunc("POST /api/open", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Tool   string `json:"tool"`
+			Target string `json:"target"`
+		}
+		if code, err := readJSON(w, r, &body); err != nil {
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		if s.OpenTool == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "apertura degli strumenti non disponibile"})
+			return
+		}
+		// La lista bianca si controlla prima di qualunque azione.
+		if _, err := tools.Resolve(body.Tool, body.Target, map[string]tools.Installed{body.Tool: {Path: "-"}}); err != nil {
+			code := http.StatusBadRequest
+			if errors.Is(err, tools.ErrUnknown) {
+				code = http.StatusNotFound
+			}
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := s.OpenTool(body.Tool, body.Target); err != nil {
+			code := http.StatusInternalServerError
+			if errors.Is(err, tools.ErrNotInstalled) {
+				code = http.StatusUnprocessableEntity
+			}
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"opened": true})
 	})
 	mux.HandleFunc("GET /api/reach", func(w http.ResponseWriter, r *http.Request) {
 		s.reachMu.Lock()

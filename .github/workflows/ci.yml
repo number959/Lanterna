@@ -105,7 +105,7 @@ jobs:
           "Cache: " + (($hw.cpu.caches | ForEach-Object { "L$($_.level) $($_.kind) $($_.count)x$($_.sizeKB) KB" }) -join ' | ') + "; istruzioni: $($hw.cpu.features -join ' ')"
           "Memoria: slot $($hw.memory.slots), max $($hw.memory.maxGB) GB; " + (($hw.memory.modules | ForEach-Object { "$($_.slot) $($_.sizeGB) GB $($_.type) $($_.form) $($_.speedMTs)/$($_.configuredMTs) MT/s" }) -join ' | ')
           "Video: " + (($pc.gpus | ForEach-Object { "$($_.name) $($_.vramMB) MB $($_.width)x$($_.height)@$($_.refreshHz)" }) -join ' | ')
-          "SMART: " + (($pc.disks | ForEach-Object { "disco $($_.id): attributi $(@($_.smart).Count), NVMe $(if ($_.nvme) { $_.nvme | ConvertTo-Json -Compress } else { 'no' })" }) -join ' | ')
+          "SMART: " + (($pc.disks | ForEach-Object { "disco $($_.id): attributi $(if ($_.smart) { @($_.smart).Count } else { 0 }), NVMe $(if ($_.nvme) { $_.nvme | ConvertTo-Json -Compress } else { 'no' })" }) -join ' | ')
           if (-not $hw.cpu.cores -or -not $hw.cpu.caches) { throw "processore della scheda tecnica non letto" }
           if (-not $hw.firmware) { throw "tipo di firmware non letto" }
           if ($null -eq $hw.tpm) { throw "dispositivi di sicurezza non letti (PowerShell)" }

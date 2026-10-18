@@ -220,6 +220,17 @@ export async function runDefender(action: DefenderAction, onProgress: (st: Defen
   }
 }
 
+// ---- Cassetta degli attrezzi: l'agente apre solo voci della sua lista bianca.
+
+export interface ToolsState {
+  installed: Record<string, { version?: string }>;
+}
+
+export const toolsStatus = () => getJson<ToolsState>('api/tools');
+
+/** Apre uno strumento di Windows, un programma installato (app) o il suo sito ufficiale (site). */
+export const openTool = (tool: string, target: 'app' | 'site') => postJson<{ opened: boolean }>('api/open', { tool, target });
+
 export function download(name: string, content: string, type: string) {
   const blob = new Blob([content], { type });
   const a = document.createElement('a');

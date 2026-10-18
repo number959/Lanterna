@@ -50,6 +50,7 @@ import { benchStatus, defenderStatus, runBench, runDefender, stopBench, stopDefe
 import type { BenchRequest, DefenderAction, DefenderResult } from './api';
 import { FindingList, Segmented, SevIcon, Stat, TableWrap, fmtNum, sevColor, useOpenGuide, useToast } from './components';
 import { useWidth } from './hooks';
+import { Toolbox } from './toolbox';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -156,6 +157,10 @@ export function PcView(props: ViewProps) {
           <SystemDetails pc={pc} />
         </Section>
       )}
+
+      <Section title="Cassetta degli attrezzi">
+        <Toolbox live={props.live} source={props.source} />
+      </Section>
     </>
   );
 }
