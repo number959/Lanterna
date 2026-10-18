@@ -4,8 +4,9 @@ import { demoScan } from '../src/demo/sample';
 import { analyze, renderText } from '../src/engine';
 import type { PcData, Scan } from '../src/engine';
 import { on } from '../src/engine/pc';
+import { cacheText, channelMode, coreLayout, memVendor } from '../src/engine/hardware';
 import { attrState, diskStatus, smartName, smartRaw } from '../src/engine/smart';
-import type { NVMeHealth, SmartAttr } from '../src/engine/types';
+import type { Hardware, HwModule, NVMeHealth, SmartAttr } from '../src/engine/types';
 import { base } from './fixtures';
 
 // Scansione sana con un computer in ordine: ogni test cambia solo ciò che verifica.
@@ -583,5 +584,92 @@ describe('computer: dati SMART (stile CrystalDiskInfo)', () => {
     const home = analyze(demoScan).findings.find((f) => f.id === 'pc.disk.0');
     expect(home?.value).toContain('Buono 82 %');
     expect(home?.verdict).toContain('96 spegnimenti non sicuri');
+  });
+});
+
+const mod = (slot: string, o: Partial<HwModule> = {}): HwModule => ({ slot, sizeGB: 8, type: 'DDR4', form: 'SODIMM', speedMTs: 3200, configuredMTs: 3200, part: 'X', ...o });
+
+describe('computer: scheda tecnica (stile CPU-Z)', () => {
+  const hwPc = (hw: Hardware, os?: Partial<PcData['os']>) =>
+    edit((x) => {
+      x.hardware = hw;
+      if (os) x.os = { ...x.os!, ...os };
+    });
+
+  it('canali della memoria: un modulo, slot sbagliati, dual channel, memoria saldata', () => {
+    const single = find(hwPc({ memory: { slots: 2, modules: [mod('ChannelA-DIMM0')] } }), 'pc.ram.channel');
+    expect(single?.severity).toBe('info');
+    expect(single?.actions).toEqual(['dual-channel']);
+    expect(single?.verdict).toContain('slot libero');
+    expect(sevOf(hwPc({ memory: { slots: 1, modules: [mod('DIMM 0')] } }), 'pc.ram.channel')).toBe('ok');
+    const same = find(hwPc({ memory: { slots: 4, modules: [mod('DIMM_A1', { form: 'DIMM' }), mod('DIMM_A2', { form: 'DIMM' })] } }), 'pc.ram.channel');
+    expect(same?.severity).toBe('warn');
+    expect(same?.verdict).toContain('DIMM_A1, DIMM_A2');
+    expect(sevOf(hwPc({ memory: { modules: [mod('ChannelA-DIMM0'), mod('ChannelB-DIMM0')] } }), 'pc.ram.channel')).toBe('ok');
+    // Canale nell'etichetta del banco (schede AMD) e "DIMM A/B" (portatili).
+    expect(channelMode({ modules: [mod('DIMM 0', { bank: 'P0 CHANNEL A' }), mod('DIMM 1', { bank: 'P0 CHANNEL B' })] })).toBe('multi');
+    expect(channelMode({ modules: [mod('DIMM A'), mod('DIMM B')] })).toBe('multi');
+    // Senza etichette utili o con memoria saldata: nessun giudizio.
+    expect(find(hwPc({ memory: { modules: [mod('Bottom-Slot 1(left)'), mod('Bottom-Slot 2(right)')] } }), 'pc.ram.channel')).toBeUndefined();
+    expect(find(hwPc({ memory: { modules: [mod('Controller0-ChannelA', { type: 'LPDDR5', form: undefined })] } }), 'pc.ram.channel')).toBeUndefined();
+  });
+
+  it('velocità della memoria e moduli diversi', () => {
+    const slow = find(hwPc({ memory: { modules: [mod('ChannelA-DIMM0', { configuredMTs: 2666 }), mod('ChannelB-DIMM0', { configuredMTs: 2666 })] } }), 'pc.ram.speed');
+    expect(slow?.severity).toBe('info');
+    expect(slow?.value).toBe('2.666 MT/s su 3.200');
+    expect(sevOf(hwPc({ memory: { modules: [mod('ChannelA-DIMM0'), mod('ChannelB-DIMM0')] } }), 'pc.ram.speed')).toBe('ok');
+    const mixed = find(hwPc({ memory: { modules: [mod('ChannelA-DIMM0'), mod('ChannelB-DIMM0', { sizeGB: 4, part: 'Y' })] } }), 'pc.ram.speed');
+    expect(mixed?.severity).toBe('info');
+    expect(mixed?.verdict).toContain('diversi tra loro');
+  });
+
+  it('Secure Boot e TPM', () => {
+    const off = find(hwPc({ firmware: 'uefi', secureBoot: false }), 'pc.secureboot');
+    expect([off?.severity, off?.category, off?.actions[0]]).toEqual(['warn', 'security', 'firmware-security']);
+    expect(sevOf(hwPc({ firmware: 'uefi', secureBoot: true }), 'pc.secureboot')).toBe('ok');
+    expect(find(hwPc({ firmware: 'bios' }), 'pc.secureboot')?.verdict).toContain('MBR2GPT');
+    expect(find(hwPc({ firmware: 'uefi' }), 'pc.secureboot')).toBeUndefined();
+    expect(sevOf(hwPc({ tpm: '2.0' }), 'pc.tpm')).toBe('ok');
+    expect(find(hwPc({ tpm: '' }), 'pc.tpm')?.verdict).toContain('Intel PTT');
+    expect(find(hwPc({ tpm: '1.2' }), 'pc.tpm')?.value).toBe('TPM 1.2');
+    expect(find(hwPc({}), 'pc.tpm')).toBeUndefined();
+  });
+
+  it('requisiti di Windows 11 solo sui PC con Windows 10', () => {
+    const win10 = { name: 'Windows 10 Pro', version: '22H2', build: 19045 };
+    const good: Hardware = { firmware: 'uefi', secureBoot: true, tpm: '2.0', cpu: { features: ['SSE4.2', 'POPCNT'] } };
+    const ok = find(hwPc(good, win10), 'pc.win11');
+    expect(ok?.severity).toBe('info');
+    expect(ok?.verdict).toContain('Controllo integrità PC');
+    const bad = find(hwPc({ firmware: 'bios', tpm: '', cpu: { features: ['SSE2'] } }, win10), 'pc.win11');
+    expect(bad?.severity).toBe('warn');
+    expect(bad?.verdict).toContain('TPM 2.0; avvio UEFI');
+    expect(bad?.verdict).toContain('POPCNT');
+    expect(bad?.actions).toEqual(['firmware-security', 'upgrade-windows']);
+    expect(find(hwPc(good), 'pc.win11')).toBeUndefined(); // Windows 11
+  });
+
+  it('formattazione: core P/E, cache, produttori JEDEC', () => {
+    expect(coreLayout({ coreClasses: [8, 16] })).toBe('8 P + 16 E');
+    expect(coreLayout({ coreClasses: [4, 8, 2] })).toBe('4 P + 8 E + 2 LP-E');
+    expect(coreLayout({ coreClasses: [6], cores: 6 })).toBe('6 core');
+    expect(cacheText({ level: 1, kind: 'data', sizeKB: 48, count: 8, ways: 12 })).toBe('L1 dati: 8 × 48 KB, 12 vie');
+    expect(cacheText({ level: 3, kind: 'unified', sizeKB: 18432, count: 1, ways: 12 })).toBe('L3: 18 MB, 12 vie');
+    expect(cacheText({ level: 2, kind: 'unified', sizeKB: 1280, count: 6 })).toBe('L2: 6 × 1,25 MB');
+    expect(cacheText({ level: 2, kind: 'unified', sizeKB: 1536, count: 1 })).toBe('L2: 1,5 MB');
+    expect(memVendor('80AD000080AD')).toBe('SK hynix');
+    expect(memVendor('Kingston')).toBe('Kingston');
+    expect(memVendor('00000000')).toBe('');
+  });
+
+  it('demo: portatile in canale singolo, ambulatorio con Secure Boot spento', () => {
+    const home = analyze(demoScan).findings;
+    expect(home.find((f) => f.id === 'pc.ram.channel')?.severity).toBe('info');
+    expect(home.find((f) => f.id === 'pc.win11')).toBeUndefined();
+    const clinic = analyze(clinicScan).findings;
+    expect(clinic.find((f) => f.id === 'pc.secureboot')?.severity).toBe('warn');
+    expect(clinic.find((f) => f.id === 'pc.win11')?.severity).toBe('info');
+    expect(clinic.find((f) => f.id === 'pc.ram.channel')?.severity).toBe('ok');
   });
 });

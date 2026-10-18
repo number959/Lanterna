@@ -94,6 +94,11 @@ func TestPcInGoja(t *testing.T) {
  "volumes":[{"letter":"C:","kind":"fixed","sizeGB":999,"freeGB":4,"system":true,"disk":"0"}],
  "events":[{"kind":"bugcheck","source":"Microsoft-Windows-WER-SystemErrorReporting","id":1001,"count":2,"last":"2026-10-08T21:40:00Z","detail":"0x0000009f (0x3)"}],
  "eventsDays":30,"antivirus":[],"updates":{"lastInstalled":"2025-11-11","pendingReboot":false},
+ "hardware":{"vendor":"ASUSTeK","model":"PC","chassis":"desktop","firmware":"uefi","secureBoot":false,"tpm":"",
+   "cpu":{"vendor":"AuthenticAMD","family":25,"model":33,"stepping":2,"cores":6,"threads":12,"coreClasses":[6],
+     "caches":[{"level":1,"kind":"data","sizeKB":32,"count":6,"ways":8},{"level":3,"kind":"unified","sizeKB":32768,"count":1,"ways":16}],"features":["SSE4.2","POPCNT","AVX2"]},
+   "memory":{"slots":4,"modules":[{"slot":"DIMM_A1","sizeGB":8,"type":"DDR4","form":"DIMM","speedMTs":3200,"configuredMTs":2133,"vendor":"04CD","part":"F4-3200C16-8GVKB"},
+     {"slot":"DIMM_A2","sizeGB":8,"type":"DDR4","form":"DIMM","speedMTs":3200,"configuredMTs":2133,"vendor":"04CD","part":"F4-3200C16-8GVKB"}]}},
  "bench":{"cpu":{"startedAt":"2026-10-14T09:05:00Z","threads":8,"singleMBs":30,"multiMBs":120,"sustainedMBs":80,"durationMs":23000}}}}`
 	txt, err := e.Report([]byte(scan), false)
 	if err != nil {
@@ -112,6 +117,10 @@ func TestPcInGoja(t *testing.T) {
 		"[CRIT] Antivirus: nessuno",
 		"COMPUTER: DETTAGLI",
 		"Copia subito i dati e sostituisci il disco",
+		"[ !! ] Canali della memoria: canale singolo",
+		"[ !! ] Avvio protetto (Secure Boot): disattivato",
+		"Processore: AMD famiglia 25 modello 33 stepping 2; 6 core, 12 thread",
+		"DIMM_A1: 8 GB DDR4 DIMM, 3200 MT/s (lavora a 2133), G.Skill",
 	} {
 		if !strings.Contains(txt, want) {
 			t.Errorf("manca %q nel rapporto:\n%s", want, txt)

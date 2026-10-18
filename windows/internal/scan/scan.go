@@ -328,7 +328,9 @@ type PcData struct {
 	// risulta alcun prodotto registrato.
 	Antivirus []AvProduct `json:"antivirus"`
 	Updates   *UpdateInfo `json:"updates,omitempty"`
-	Bench     *BenchData  `json:"bench,omitempty"`
+	// Hardware è la scheda tecnica, come in CPU-Z.
+	Hardware *Hardware  `json:"hardware,omitempty"`
+	Bench    *BenchData `json:"bench,omitempty"`
 	// Notes spiega i limiti della raccolta (dati SMART solo da amministratore...).
 	Notes []string `json:"notes,omitempty"`
 }
@@ -367,6 +369,87 @@ type PcGPU struct {
 	Name          string `json:"name"`
 	DriverVersion string `json:"driverVersion,omitempty"`
 	DriverDate    string `json:"driverDate,omitempty"` // AAAA-MM-GG
+	VRAMMB        int    `json:"vramMB,omitempty"`
+	// Width, Height e RefreshHz descrivono lo schermo collegato in questo momento.
+	Width     int `json:"width,omitempty"`
+	Height    int `json:"height,omitempty"`
+	RefreshHz int `json:"refreshHz,omitempty"`
+}
+
+// Hardware è la scheda tecnica del computer. Nessun numero di serie: i
+// rapporti esportati non devono identificare la macchina.
+type Hardware struct {
+	Vendor string `json:"vendor,omitempty"` // produttore del computer
+	Model  string `json:"model,omitempty"`
+	// Chassis: desktop | laptop | workstation | server | tablet | other.
+	Chassis string    `json:"chassis,omitempty"`
+	Board   *HwBoard  `json:"board,omitempty"`
+	CPU     *HwCPU    `json:"cpu,omitempty"`
+	Memory  *HwMemory `json:"memory,omitempty"`
+	// Firmware: uefi | bios (avvio legacy).
+	Firmware   string `json:"firmware,omitempty"`
+	SecureBoot *bool  `json:"secureBoot,omitempty"`
+	// TPM è la versione del chip di sicurezza ("2.0", "1.2"); "" se non
+	// risulta alcun TPM; nil se non è stato possibile verificarlo.
+	TPM        *string `json:"tpm,omitempty"`
+	Hypervisor bool    `json:"hypervisor,omitempty"`
+}
+
+type HwBoard struct {
+	Vendor      string `json:"vendor,omitempty"`
+	Product     string `json:"product,omitempty"`
+	Version     string `json:"version,omitempty"`
+	BiosVendor  string `json:"biosVendor,omitempty"`
+	BiosVersion string `json:"biosVersion,omitempty"`
+	BiosDate    string `json:"biosDate,omitempty"` // AAAA-MM-GG
+}
+
+type HwCPU struct {
+	Vendor   string `json:"vendor,omitempty"` // GenuineIntel, AuthenticAMD...
+	Family   int    `json:"family,omitempty"`
+	Model    int    `json:"model,omitempty"`
+	Stepping int    `json:"stepping,omitempty"`
+	Socket   string `json:"socket,omitempty"`
+	Packages int    `json:"packages,omitempty"`
+	Cores    int    `json:"cores,omitempty"`
+	Threads  int    `json:"threads,omitempty"`
+	// CoreClasses conta i core per classe di efficienza, dalla più potente:
+	// [8, 16] = 8 core P e 16 core E; un solo valore = processore non ibrido.
+	CoreClasses []int     `json:"coreClasses,omitempty"`
+	Caches      []HwCache `json:"caches,omitempty"`
+	// Features elenca le estensioni del set di istruzioni ("SSE4.2", "AVX2").
+	Features []string `json:"features,omitempty"`
+	// Virtualization dice se le estensioni di virtualizzazione sono attive nel
+	// firmware (nil se Windows non lo riporta, per esempio con Hyper-V attivo).
+	Virtualization *bool `json:"virtualization,omitempty"`
+}
+
+type HwCache struct {
+	Level  int    `json:"level"`
+	Kind   string `json:"kind"` // data | instruction | unified
+	SizeKB int    `json:"sizeKB"`
+	Count  int    `json:"count"` // quante ce ne sono (una per core, o condivise)
+	Ways   int    `json:"ways,omitempty"`
+}
+
+type HwMemory struct {
+	Slots   int        `json:"slots,omitempty"`
+	MaxGB   float64    `json:"maxGB,omitempty"`
+	Modules []HwModule `json:"modules,omitempty"`
+}
+
+type HwModule struct {
+	Slot   string  `json:"slot,omitempty"`
+	Bank   string  `json:"bank,omitempty"`
+	SizeGB float64 `json:"sizeGB"`
+	Type   string  `json:"type,omitempty"` // DDR4, DDR5, LPDDR5...
+	Form   string  `json:"form,omitempty"` // DIMM | SODIMM
+	// SpeedMTs è la velocità dichiarata dal modulo, ConfiguredMTs quella a cui lavora.
+	SpeedMTs      int    `json:"speedMTs,omitempty"`
+	ConfiguredMTs int    `json:"configuredMTs,omitempty"`
+	Vendor        string `json:"vendor,omitempty"`
+	Part          string `json:"part,omitempty"`
+	VoltageMV     int    `json:"voltageMV,omitempty"`
 }
 
 type PhysicalDisk struct {

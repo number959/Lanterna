@@ -62,6 +62,8 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	pc.Updates = &scan.UpdateInfo{}
 	pc.Updates.RebootReasons = pendingReboot()
 	pc.Updates.PendingReboot = len(pc.Updates.RebootReasons) > 0
+	pc.Hardware = hardwareNative()
+	vram := gpuVRAM()
 	wg.Wait()
 
 	sysDrive := os.Getenv("SystemDrive")
@@ -73,6 +75,9 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	} else {
 		merge(pc, ps, sysDrive)
 		smartOf(pc, smart)
+		for i := range pc.GPUs {
+			pc.GPUs[i].VRAMMB = vram[strings.ToLower(pc.GPUs[i].Name)]
+		}
 		if ps.Errors["events"] != "" {
 			pc.Notes = append(pc.Notes, "Il registro eventi di sistema non è leggibile da questo account.")
 		}

@@ -2,6 +2,7 @@ import { ACTIONS } from './kb/actions';
 import { scoreAssessment } from './kb/assessment';
 import { METRICS } from './kb/metrics';
 import { dateIt } from './pc';
+import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import type { Analysis, EventKind, Finding, ReachResult, Scan, Severity } from './types';
 
@@ -98,6 +99,7 @@ function infraDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
 }
 
 const n1 = (v: number) => v.toFixed(v < 10 ? 1 : 0).replace('.', ',');
+const CHASSIS_TEXT: Record<string, string> = { desktop: 'computer fisso', laptop: 'portatile', workstation: 'workstation', server: 'server', tablet: 'tablet', other: 'altro' };
 const MEDIA: Record<string, string> = { hdd: 'HDD', ssd: 'SSD', scm: 'SCM', unknown: '?' };
 const HEALTH: Record<string, string> = { healthy: 'integro', warning: 'guasto previsto', unhealthy: 'guasto', unknown: 'stato ignoto' };
 const EVENT_TEXT: Record<EventKind, string> = {
@@ -130,7 +132,50 @@ function pcDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
     out.push(wrap(`Processore: ${pc.cpu.name}${cores ? `, ${cores}` : ''}${pc.cpu.loadPct !== undefined ? `, carico ${Math.round(pc.cpu.loadPct)} %` : ''}`, W - 2, ' '));
   }
   if (pc.memory) out.push(` Memoria: ${n1(pc.memory.totalMB / 1024)} GB, liberi ${n1(pc.memory.availableMB / 1024)} GB`);
-  for (const g of pc.gpus ?? []) out.push(wrap(`Video: ${g.name}${g.driverVersion ? `, driver ${g.driverVersion}` : ''}${g.driverDate ? ` del ${dateIt(g.driverDate)}` : ''}`, W - 2, ' '));
+  for (const g of pc.gpus ?? [])
+    out.push(
+      wrap(
+        `Video: ${g.name}${g.vramMB ? `, ${g.vramMB >= 1024 ? `${n1(g.vramMB / 1024)} GB` : `${g.vramMB} MB`}` : ''}${g.width && g.height ? `, schermo ${g.width}x${g.height}${g.refreshHz ? ` a ${g.refreshHz} Hz` : ''}` : ''}${g.driverVersion ? `, driver ${g.driverVersion}` : ''}${g.driverDate ? ` del ${dateIt(g.driverDate)}` : ''}`,
+        W - 2,
+        ' ',
+      ),
+    );
+  const hw = pc.hardware;
+  if (hw) {
+    // Scheda tecnica come CPU-Z, senza numeri di serie.
+    out.push('');
+    out.push(' Scheda tecnica');
+    const line = (k: string, v: string) => v && out.push(hang(`${k}: ${v}`, W, '   ', '     '));
+    line('Computer', [[hw.vendor, hw.model].filter(Boolean).join(' '), hw.chassis ? CHASSIS_TEXT[hw.chassis] : ''].filter(Boolean).join(', '));
+    const b = hw.board;
+    if (b) line('Scheda madre', [[b.vendor, b.product, b.version].filter(Boolean).join(' '), b.biosVersion ? `BIOS ${[b.biosVendor, b.biosVersion].filter(Boolean).join(' ')}${b.biosDate ? ` del ${dateIt(b.biosDate)}` : ''}` : ''].filter(Boolean).join('; '));
+    line(
+      'Firmware',
+      [
+        hw.firmware === 'uefi' ? 'UEFI' : hw.firmware === 'bios' ? 'BIOS legacy' : '',
+        hw.secureBoot === undefined ? '' : `Secure Boot ${hw.secureBoot ? 'attivo' : 'disattivato'}`,
+        hw.tpm === undefined ? '' : hw.tpm ? `TPM ${hw.tpm}` : 'nessun TPM',
+        hw.hypervisor ? 'hypervisor attivo' : '',
+      ]
+        .filter(Boolean)
+        .join(', '),
+    );
+    const c = hw.cpu;
+    if (c) {
+      line('Processore', [c.family ? `${cpuVendor(c.vendor)} famiglia ${c.family} modello ${c.model} stepping ${c.stepping}`.trim() : '', c.socket ? `zoccolo ${c.socket}` : '', [coreLayout(c), c.threads ? `${c.threads} thread` : ''].filter(Boolean).join(', ')].filter(Boolean).join('; '));
+      line('Cache', (c.caches ?? []).map((x) => cacheText(x).replace(': ', ' ')).join('; '));
+      line('Istruzioni', (c.features ?? []).join(' '));
+    }
+    const mods = hw.memory?.modules ?? [];
+    if (mods.length) {
+      const mode = channelMode(hw.memory);
+      line(
+        'Memoria',
+        `${mods.length} ${mods.length === 1 ? 'modulo' : 'moduli'}${hw.memory?.slots ? ` su ${hw.memory.slots} slot` : ''}${mode === 'single' || mode === 'same-channel' ? ' (canale singolo)' : mode === 'multi' ? ' (dual channel)' : ''}`,
+      );
+      for (const m of mods) out.push(hang(`${m.slot || m.bank || '-'}: ${moduleText(m)}${memVendor(m.vendor) || m.part ? `, ${[memVendor(m.vendor), m.part].filter(Boolean).join(' ')}` : ''}`, W, '     ', '       '));
+    }
+  }
   if (pc.disks?.length) {
     out.push('');
     out.push(' Dischi');

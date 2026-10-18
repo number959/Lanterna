@@ -1,4 +1,5 @@
 import { fmt, more, num, thousands } from './fmt';
+import { analyzeHardware } from './hardware';
 import { bytesText, diskStatus, isFlashDisk } from './smart';
 import type { DiskBench, EventGroup, EventKind, Finding, PcData, PhysicalDisk, PlanKind, Scan, Severity } from './types';
 
@@ -787,6 +788,7 @@ export function analyzePc(scan: Scan, add: Add) {
   analyzeUptime(pc, add);
   analyzeMemory(pc, add);
   analyzeDisks(scan, pc, add);
+  analyzeHardware(pc, add);
   analyzeStartup(pc, add);
   analyzeEvents(pc, add);
   analyzeSecurity(pc, now, add);

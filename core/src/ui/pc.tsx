@@ -16,13 +16,31 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useState } from 'react';
-import { BUGCHECKS, STATUS_LABEL, attrState, bytesText, dateIt, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from '../engine';
-import type { AttrState, CpuBench, DiskBench, EventGroup, EventKind, Finding, NVMeHealth, PcData, PhysicalDisk, Scan, Severity, StartupItem, Volume } from '../engine';
+import type { ReactNode } from 'react';
+import {
+  BUGCHECKS,
+  STATUS_LABEL,
+  attrState,
+  bytesText,
+  cacheText,
+  channelMode,
+  coreLayout,
+  cpuVendor,
+  dateIt,
+  diskStatus,
+  isFlashDisk,
+  memVendor,
+  moduleText,
+  smartId,
+  smartName,
+  smartRaw,
+} from '../engine';
+import type { AttrState, ChannelMode, CpuBench, DiskBench, EventGroup, EventKind, Finding, NVMeHealth, PcData, PhysicalDisk, Scan, Severity, StartupItem, Volume } from '../engine';
 import { simulatedCpuBench, simulatedDiskBench } from '../demo/simulate';
 import { guideById } from '../guides';
 import { benchStatus, runBench, stopBench } from './api';
 import type { BenchRequest } from './api';
-import { FindingList, SevIcon, Stat, TableWrap, fmtNum, sevColor, useOpenGuide, useToast } from './components';
+import { FindingList, Segmented, SevIcon, Stat, TableWrap, fmtNum, sevColor, useOpenGuide, useToast } from './components';
 import { useWidth } from './hooks';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
@@ -32,7 +50,7 @@ import type { ViewProps } from './views';
 // vede è letto in sola lettura durante l'analisi; i test di velocità partono
 // solo su richiesta e, senza agente, sono simulati e dichiarati come tali.
 
-const PC_GUIDES = ['pc-come-funziona', 'dischi-hdd-ssd', 'salute-dischi-smart', 'test-velocita', 'pc-lento-metodo'];
+const PC_GUIDES = ['pc-come-funziona', 'dischi-hdd-ssd', 'salute-dischi-smart', 'test-velocita', 'scheda-tecnica', 'pc-lento-metodo'];
 
 const gb = (v: number) => `${fmtNum(v, v < 10 ? 1 : 0)} GB`;
 const mbs = (v: number) => `${fmtNum(v, v < 10 ? 1 : 0)} MB/s`;
@@ -112,6 +130,12 @@ export function PcView(props: ViewProps) {
           <EventsCard pc={pc} />
         </Section>
       ) : null}
+
+      {pc?.hardware && (
+        <Section title="Scheda tecnica">
+          <HardwareCard pc={pc} />
+        </Section>
+      )}
 
       {pc && (
         <Section title="Dettagli del sistema">
@@ -1248,6 +1272,181 @@ function EventsCard({ pc }: { pc: PcData }) {
 // ---------------------------------------------------------------- Dettagli
 
 const PLAN: Record<string, string> = { balanced: 'Bilanciato', high: 'Prestazioni elevate', saver: 'Risparmio energia', ultimate: 'Prestazioni ottimali', custom: 'Personalizzato' };
+
+// ---------------------------------------------------------------- Scheda tecnica
+
+type HwTab = 'cpu' | 'mem' | 'board' | 'gpu';
+const CHASSIS: Record<string, string> = { desktop: 'computer fisso', laptop: 'portatile', workstation: 'workstation', server: 'server', tablet: 'tablet', other: 'altro' };
+const CHANNEL_TEXT: Record<ChannelMode, string> = {
+  single: 'canale singolo',
+  'same-channel': 'canale singolo (moduli sullo stesso canale)',
+  multi: 'dual channel o superiore',
+  soldered: 'memoria saldata',
+  unknown: 'non indicati dal firmware',
+};
+
+/** Coppie etichetta-valore; le voci senza valore non si mostrano. */
+function Kv({ rows }: { rows: [string, ReactNode | undefined, Severity?][] }) {
+  return (
+    <dl className="kv hw-kv">
+      {rows
+        .filter(([, v]) => v !== undefined && v !== '' && v !== null)
+        .map(([k, v, sev]) => (
+          <Fragment key={k}>
+            <dt>{k}</dt>
+            <dd className={sev ? `c-${sev}` : undefined}>{v}</dd>
+          </Fragment>
+        ))}
+    </dl>
+  );
+}
+
+/**
+ * Scheda tecnica come CPU-Z: processore, memoria, scheda madre e firmware,
+ * video. Solo dati letti da Windows; nessun numero di serie.
+ */
+function HardwareCard({ pc }: { pc: PcData }) {
+  const hw = pc.hardware!;
+  const [tab, setTab] = useState<HwTab>('cpu');
+  const c = hw.cpu;
+  const mem = hw.memory;
+  const mods = mem?.modules ?? [];
+  const free = mem?.slots && mem.slots > mods.length ? mem.slots - mods.length : 0;
+  const tabs: { id: HwTab; label: string }[] = [
+    { id: 'cpu', label: 'Processore' },
+    { id: 'mem', label: 'Memoria' },
+    { id: 'board', label: 'Scheda madre' },
+    { id: 'gpu', label: 'Video' },
+  ];
+  const virt =
+    c?.virtualization === true ? 'attiva nel firmware' : c?.virtualization === false ? (hw.hypervisor ? 'in uso da Hyper-V' : 'disattivata nel firmware') : hw.hypervisor ? 'in uso da Hyper-V' : undefined;
+  return (
+    <m.section variants={rise} className="card hw-card">
+      <div className="card-head hw-head">
+        <h2 className="disk-title">
+          <Cpu size={19} aria-hidden /> <span>{[hw.vendor, hw.model].filter(Boolean).join(' ') || 'Questo computer'}</span>
+        </h2>
+        {hw.chassis && <span className="tag">{CHASSIS[hw.chassis]}</span>}
+      </div>
+      <div className="hw-tabs">
+        <Segmented<HwTab> label="Parti del computer" value={tab} onChange={setTab} options={tabs} />
+      </div>
+      <div role="tabpanel" aria-label={tabs.find((t) => t.id === tab)!.label} className="hw-panel">
+        {tab === 'cpu' && (
+          <>
+            <Kv
+              rows={[
+                ['Processore', pc.cpu?.name],
+                ['Produttore', cpuVendor(c?.vendor) || undefined],
+                ['Famiglia, modello, stepping', c?.family ? `${c.family} · ${c.model ?? '?'} (0x${(c.model ?? 0).toString(16).toUpperCase()}) · ${c.stepping ?? '?'}` : undefined],
+                ['Zoccolo', c?.socket],
+                ['Core', c ? [coreLayout(c), c.threads ? `${c.threads} thread` : ''].filter(Boolean).join(', ') : undefined],
+                ['Processori fisici', c?.packages && c.packages > 1 ? String(c.packages) : undefined],
+                ['Frequenza di base', pc.cpu?.maxMhz ? `${fmtNum(pc.cpu.maxMhz / 1000, 2)} GHz` : undefined],
+                ['Virtualizzazione', virt],
+              ]}
+            />
+            {(c?.caches ?? []).length > 0 && (
+              <div className="hw-block">
+                <h3>Cache</h3>
+                <ul className="hw-list">
+                  {c!.caches!.map((x, i) => (
+                    <li key={i} className="mono">
+                      {cacheText(x)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(c?.features ?? []).length > 0 && (
+              <div className="hw-block">
+                <h3>Istruzioni</h3>
+                <div className="chips-row">
+                  {c!.features!.map((f) => (
+                    <span key={f} className="tag">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        {tab === 'mem' && (
+          <>
+            <Kv
+              rows={[
+                [
+                  'Totale',
+                  mods.length
+                    ? `${gb(mods.reduce((t, x) => t + x.sizeGB, 0))} installati${pc.memory ? `, ${gb(pc.memory.totalMB / 1024)} utilizzabili` : ''}`
+                    : pc.memory
+                      ? gb(pc.memory.totalMB / 1024)
+                      : undefined,
+                ],
+                ['Slot', mem?.slots ? `${mods.length} usati su ${mem.slots}` : undefined],
+                ['Massimo supportato', mem?.maxGB ? gb(mem.maxGB) : undefined],
+                ['Canali', mods.length ? CHANNEL_TEXT[channelMode(mem)] : undefined, channelMode(mem) === 'same-channel' ? 'warn' : undefined],
+              ]}
+            />
+            {(mods.length > 0 || free > 0) && (
+              <ul className="hw-mods">
+                {mods.map((x, i) => (
+                  <li key={i} className="hw-mod">
+                    <span className="hw-mod-slot">{x.slot || x.bank || `Modulo ${i + 1}`}</span>
+                    <b>{moduleText(x)}</b>
+                    {(memVendor(x.vendor) || x.part) && (
+                      <span className="faint">
+                        {[memVendor(x.vendor), x.part].filter(Boolean).join(' · ')}
+                        {x.voltageMV ? ` · ${fmtNum(x.voltageMV / 1000, 2)} V` : ''}
+                      </span>
+                    )}
+                  </li>
+                ))}
+                {Array.from({ length: free }, (_, i) => (
+                  <li key={`free${i}`} className="hw-mod free">
+                    <span className="hw-mod-slot">Slot libero</span>
+                    <span className="faint">Qui si può aggiungere un modulo</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+        {tab === 'board' && (
+          <Kv
+            rows={[
+              ['Computer', [hw.vendor, hw.model].filter(Boolean).join(' ') || undefined],
+              ['Scheda madre', hw.board ? [hw.board.vendor, hw.board.product, hw.board.version].filter(Boolean).join(' ') || undefined : undefined],
+              ['BIOS', hw.board?.biosVersion ? `${[hw.board.biosVendor, hw.board.biosVersion].filter(Boolean).join(' ')}${hw.board.biosDate ? ` del ${dateIt(hw.board.biosDate)}` : ''}` : undefined],
+              ['Firmware', hw.firmware === 'uefi' ? 'UEFI' : hw.firmware === 'bios' ? 'BIOS legacy' : undefined, hw.firmware === 'bios' ? 'info' : undefined],
+              ['Secure Boot', hw.secureBoot === undefined ? undefined : hw.secureBoot ? 'attivo' : 'disattivato', hw.secureBoot === false ? 'warn' : undefined],
+              ['TPM', hw.tpm === undefined ? undefined : hw.tpm ? `TPM ${hw.tpm === '?' ? '' : hw.tpm}`.trim() : 'non trovato', hw.tpm !== undefined && hw.tpm !== '2.0' ? 'info' : undefined],
+              ['Hypervisor', hw.hypervisor ? 'attivo (Hyper-V o sicurezza basata sulla virtualizzazione)' : undefined],
+            ]}
+          />
+        )}
+        {tab === 'gpu' &&
+          ((pc.gpus ?? []).length ? (
+            (pc.gpus ?? []).map((g, i) => (
+              <div key={i} className="hw-block">
+                <h3>{g.name}</h3>
+                <Kv
+                  rows={[
+                    ['Memoria video', g.vramMB ? (g.vramMB >= 1024 ? gb(g.vramMB / 1024) : `${g.vramMB} MB${g.vramMB <= 512 ? ' (usa la RAM di sistema)' : ''}`) : undefined],
+                    ['Schermo', g.width && g.height ? `${g.width} × ${g.height}${g.refreshHz ? ` a ${g.refreshHz} Hz` : ''}` : undefined],
+                    ['Driver', g.driverVersion ? `${g.driverVersion}${g.driverDate ? ` del ${dateIt(g.driverDate)}` : ''}` : undefined],
+                  ]}
+                />
+              </div>
+            ))
+          ) : (
+            <p className="muted">Nessuna scheda video riportata.</p>
+          ))}
+      </div>
+    </m.section>
+  );
+}
 
 function SystemDetails({ pc }: { pc: PcData }) {
   const os = pc.os;

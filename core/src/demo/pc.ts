@@ -23,7 +23,40 @@ export const homePc: PcData = {
   },
   cpu: { name: '11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz', cores: 4, threads: 8, maxMhz: 2419, loadPct: 23 },
   memory: { totalMB: 7962, availableMB: 1150, commitMB: 11820, commitLimitMB: 12900 },
-  gpus: [{ name: 'Intel(R) Iris(R) Xe Graphics', driverVersion: '30.0.100.9864', driverDate: '2021-08-10' }],
+  gpus: [{ name: 'Intel(R) Iris(R) Xe Graphics', driverVersion: '30.0.100.9864', driverDate: '2021-08-10', vramMB: 128, width: 1920, height: 1080, refreshHz: 60 }],
+  // Portatile con un solo modulo SODIMM e uno slot libero: canale singolo.
+  hardware: {
+    vendor: 'Acer',
+    model: 'Aspire A515-56',
+    chassis: 'laptop',
+    board: { vendor: 'Acer', product: 'Aspire A515-56', biosVendor: 'Insyde Corp.', biosVersion: 'V1.08', biosDate: '2021-01-21' },
+    cpu: {
+      vendor: 'GenuineIntel',
+      family: 6,
+      model: 140,
+      stepping: 1,
+      packages: 1,
+      cores: 4,
+      threads: 8,
+      coreClasses: [4],
+      caches: [
+        { level: 1, kind: 'data', sizeKB: 48, count: 4, ways: 12 },
+        { level: 1, kind: 'instruction', sizeKB: 32, count: 4, ways: 8 },
+        { level: 2, kind: 'unified', sizeKB: 1280, count: 4, ways: 20 },
+        { level: 3, kind: 'unified', sizeKB: 8192, count: 1, ways: 8 },
+      ],
+      features: ['SSE2', 'SSE3', 'SSSE3', 'SSE4.1', 'SSE4.2', 'POPCNT', 'AES', 'AVX', 'AVX2', 'FMA3', 'AVX-512', 'BMI2', 'RDRAND'],
+      virtualization: true,
+    },
+    memory: {
+      slots: 2,
+      maxGB: 32,
+      modules: [{ slot: 'ChannelA-DIMM0', bank: 'BANK 0', sizeGB: 8, type: 'DDR4', form: 'SODIMM', speedMTs: 3200, configuredMTs: 3200, vendor: '80AD000080AD', part: 'HMA81GS6DJR8N-XN', voltageMV: 1200 }],
+    },
+    firmware: 'uefi',
+    secureBoot: true,
+    tpm: '2.0',
+  },
   disks: [
     {
       id: '0',
@@ -118,7 +151,44 @@ export const clinicPc: PcData = {
   },
   cpu: { name: '12th Gen Intel(R) Core(TM) i5-12500T', cores: 6, threads: 12, maxMhz: 2000, loadPct: 18 },
   memory: { totalMB: 16123, availableMB: 8920, commitMB: 9870, commitLimitMB: 18555 },
-  gpus: [{ name: 'Intel(R) UHD Graphics 770', driverVersion: '31.0.101.5186', driverDate: '2024-01-10' }],
+  gpus: [{ name: 'Intel(R) UHD Graphics 770', driverVersion: '31.0.101.5186', driverDate: '2024-01-10', vramMB: 128, width: 1920, height: 1080, refreshHz: 60 }],
+  // Mini PC con Windows 10: requisiti di Windows 11 rispettati, ma Secure Boot spento.
+  hardware: {
+    vendor: 'Lenovo',
+    model: 'ThinkCentre M70q Gen 3',
+    chassis: 'desktop',
+    board: { vendor: 'LENOVO', product: '3156', biosVendor: 'LENOVO', biosVersion: 'M4KKT2AA', biosDate: '2023-06-12' },
+    cpu: {
+      vendor: 'GenuineIntel',
+      family: 6,
+      model: 151,
+      stepping: 5,
+      socket: 'LGA1700',
+      packages: 1,
+      cores: 6,
+      threads: 12,
+      coreClasses: [6],
+      caches: [
+        { level: 1, kind: 'data', sizeKB: 48, count: 6, ways: 12 },
+        { level: 1, kind: 'instruction', sizeKB: 32, count: 6, ways: 8 },
+        { level: 2, kind: 'unified', sizeKB: 1280, count: 6, ways: 10 },
+        { level: 3, kind: 'unified', sizeKB: 18432, count: 1, ways: 12 },
+      ],
+      features: ['SSE2', 'SSE3', 'SSSE3', 'SSE4.1', 'SSE4.2', 'POPCNT', 'AES', 'AVX', 'AVX2', 'FMA3', 'AVX-VNNI', 'BMI2', 'RDRAND'],
+      virtualization: true,
+    },
+    memory: {
+      slots: 2,
+      maxGB: 64,
+      modules: [
+        { slot: 'ChannelA-DIMM0', bank: 'BANK 0', sizeGB: 8, type: 'DDR4', form: 'SODIMM', speedMTs: 3200, configuredMTs: 3200, vendor: 'Samsung', part: 'M471A1K43DB1-CWE', voltageMV: 1200 },
+        { slot: 'ChannelB-DIMM0', bank: 'BANK 2', sizeGB: 8, type: 'DDR4', form: 'SODIMM', speedMTs: 3200, configuredMTs: 3200, vendor: 'Samsung', part: 'M471A1K43DB1-CWE', voltageMV: 1200 },
+      ],
+    },
+    firmware: 'uefi',
+    secureBoot: false,
+    tpm: '2.0',
+  },
   disks: [
     {
       id: '0',

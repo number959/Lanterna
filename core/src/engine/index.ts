@@ -10,3 +10,5 @@ export { renderText } from './report';
 export { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';
 export { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw, STATUS_LABEL } from './smart';
 export type { AttrState, DiskSignal, DiskStatus } from './smart';
+export { cacheText, channelMode, channelOf, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
+export type { ChannelMode } from './hardware';

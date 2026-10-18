@@ -362,6 +362,8 @@ export interface PcData {
   /** null = Centro sicurezza non leggibile; [] = nessun prodotto registrato. */
   antivirus?: AvProduct[] | null;
   updates?: UpdateInfo;
+  /** Scheda tecnica (processore, scheda madre, memoria, firmware), come in CPU-Z. */
+  hardware?: Hardware;
   bench?: BenchData;
   /** Limiti della raccolta (dati SMART solo da amministratore, PowerShell assente...). */
   notes?: string[];
@@ -406,6 +408,82 @@ export interface PcGpu {
   name: string;
   driverVersion?: string;
   driverDate?: string; // AAAA-MM-GG
+  vramMB?: number;
+  /** Risoluzione e frequenza dello schermo collegato durante l'analisi. */
+  width?: number;
+  height?: number;
+  refreshHz?: number;
+}
+
+/** Scheda tecnica del computer, come in CPU-Z. Nessun numero di serie. */
+export interface Hardware {
+  vendor?: string;
+  model?: string;
+  chassis?: 'desktop' | 'laptop' | 'workstation' | 'server' | 'tablet' | 'other';
+  board?: HwBoard;
+  cpu?: HwCpu;
+  memory?: HwMemory;
+  /** uefi oppure bios (avvio legacy). */
+  firmware?: 'uefi' | 'bios';
+  secureBoot?: boolean;
+  /** Versione del TPM ("2.0", "1.2"); "" = nessun TPM; assente = non verificato. */
+  tpm?: string;
+  hypervisor?: boolean;
+}
+
+export interface HwBoard {
+  vendor?: string;
+  product?: string;
+  version?: string;
+  biosVendor?: string;
+  biosVersion?: string;
+  biosDate?: string; // AAAA-MM-GG
+}
+
+export interface HwCpu {
+  vendor?: string;
+  family?: number;
+  model?: number;
+  stepping?: number;
+  socket?: string;
+  packages?: number;
+  cores?: number;
+  threads?: number;
+  /** Core per classe di efficienza, dalla più potente: [8, 16] = 8 P e 16 E. */
+  coreClasses?: number[];
+  caches?: HwCache[];
+  /** Estensioni del set di istruzioni ("SSE4.2", "AVX2"...). */
+  features?: string[];
+  /** Virtualizzazione attiva nel firmware; assente se Windows non la riporta (per esempio con Hyper-V attivo). */
+  virtualization?: boolean;
+}
+
+export interface HwCache {
+  level: number;
+  kind: 'data' | 'instruction' | 'unified';
+  sizeKB: number;
+  count: number;
+  ways?: number;
+}
+
+export interface HwMemory {
+  slots?: number;
+  maxGB?: number;
+  modules?: HwModule[];
+}
+
+export interface HwModule {
+  slot?: string;
+  bank?: string;
+  sizeGB: number;
+  type?: string;
+  form?: 'DIMM' | 'SODIMM';
+  /** Velocità dichiarata dal modulo e velocità a cui lavora, in MT/s. */
+  speedMTs?: number;
+  configuredMTs?: number;
+  vendor?: string;
+  part?: string;
+  voltageMV?: number;
 }
 
 export type DiskMedia = 'hdd' | 'ssd' | 'scm' | 'unknown';

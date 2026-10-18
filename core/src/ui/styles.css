@@ -955,6 +955,23 @@ select.field { cursor: pointer; }
 .smart-table tr.smart-fail td { background: color-mix(in srgb, var(--crit) 8%, transparent); }
 .smart-table tr.smart-caution td { background: color-mix(in srgb, var(--warn) 8%, transparent); }
 .smart-kv { padding: 4px 12px 2px; }
+/* Scheda tecnica, come CPU-Z */
+.hw-head { flex-wrap: wrap; }
+.hw-tabs { margin: 2px 0 16px; }
+.hw-kv { grid-template-columns: minmax(150px, auto) 1fr; font-size: 13.5px; }
+.hw-block { margin-top: 16px; }
+.hw-block h3 { font-size: 13px; font-weight: 650; color: var(--text-2); margin: 0 0 8px; }
+.hw-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.hw-mods { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 10px; }
+.hw-mod { display: grid; gap: 3px; padding: 10px 12px; border-radius: var(--radius-s); background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
+.hw-mod b { font-weight: 650; }
+.hw-mod.free { background: none; border-style: dashed; }
+.hw-mod-slot { font: 600 11.5px/1.3 var(--mono); color: var(--text-3); }
+@media (max-width: 560px) {
+  .hw-tabs .seg { display: grid; grid-template-columns: 1fr 1fr; }
+  .hw-kv { grid-template-columns: 1fr; gap: 1px 0; }
+  .hw-kv dd { margin-bottom: 9px; }
+}
 /* Griglia del test del disco, come la finestra di CrystalDiskMark */
 .disk-grid { border-collapse: separate; border-spacing: 6px; margin: -6px; width: calc(100% + 12px); table-layout: fixed; }
 .disk-grid th, .disk-grid td { border: 0; padding: 0; white-space: normal; background: none; position: static; }

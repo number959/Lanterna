@@ -34,7 +34,15 @@ const EventsDays = 30
 // sostituisce comunque i byte non validi senza rendere il JSON illeggibile.
 const PSScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncoding=[Text.Encoding]::UTF8}catch{};$r=[ordered]@{};$e=[ordered]@{};` +
 	`try{$p=Get-CimInstance Win32_Processor|Select-Object -First 1;$r.cpu=@{name="$($p.Name)".Trim();cores=[int]$p.NumberOfCores;threads=[int]$p.NumberOfLogicalProcessors;maxMhz=[int]$p.MaxClockSpeed}}catch{$e.cpu="$_"};` +
-	`try{$r.gpus=@(Get-CimInstance Win32_VideoController|ForEach-Object{$d='';if($_.DriverDate){$d=$_.DriverDate.ToString('yyyy-MM-dd')};@{name="$($_.Name)".Trim();driverVersion="$($_.DriverVersion)";driverDate=$d}})}catch{$e.gpus="$_"};` +
+	`try{$r.gpus=@(Get-CimInstance Win32_VideoController|ForEach-Object{$d='';if($_.DriverDate){$d=$_.DriverDate.ToString('yyyy-MM-dd')};@{name="$($_.Name)".Trim();driverVersion="$($_.DriverVersion)";driverDate=$d;w=[int]$_.CurrentHorizontalResolution;h=[int]$_.CurrentVerticalResolution;hz=[int]$_.CurrentRefreshRate}})}catch{$e.gpus="$_"};` +
+	// Scheda tecnica: sistema, scheda madre, BIOS, zoccolo, moduli di memoria
+	// (senza numeri di serie) e dispositivi di sicurezza (il TPM).
+	`try{$cs=Get-CimInstance Win32_ComputerSystem;$bb=Get-CimInstance Win32_BaseBoard|Select-Object -First 1;$bi=Get-CimInstance Win32_BIOS|Select-Object -First 1;$pr=Get-CimInstance Win32_Processor|Select-Object -First 1;` +
+	`$ma=Get-CimInstance Win32_PhysicalMemoryArray|Where-Object{$_.Use -eq 3}|Select-Object -First 1;$mx=[long]$ma.MaxCapacityEx;if(-not $mx){$mx=[long]$ma.MaxCapacity};$bd='';if($bi.ReleaseDate){$bd=$bi.ReleaseDate.ToString('yyyy-MM-dd')};` +
+	`$r.hw=@{vendor="$($cs.Manufacturer)".Trim();model="$($cs.Model)".Trim();type=[int]$cs.PCSystemType;hypervisor=[bool]$cs.HypervisorPresent;boardVendor="$($bb.Manufacturer)".Trim();board="$($bb.Product)".Trim();boardVersion="$($bb.Version)".Trim();` +
+	`biosVendor="$($bi.Manufacturer)".Trim();bios="$($bi.SMBIOSBIOSVersion)".Trim();biosDate=$bd;socket="$($pr.SocketDesignation)".Trim();virt=$pr.VirtualizationFirmwareEnabled;slots=[int]$ma.MemoryDevices;maxKB=$mx;` +
+	`mem=@(Get-CimInstance Win32_PhysicalMemory|ForEach-Object{@{size=[long]$_.Capacity;speed=[int]$_.Speed;conf=[int]$_.ConfiguredClockSpeed;vendor="$($_.Manufacturer)".Trim();part="$($_.PartNumber)".Trim();slot="$($_.DeviceLocator)".Trim();bank="$($_.BankLabel)".Trim();type=[int]$_.SMBIOSMemoryType;form=[int]$_.FormFactor;mv=[int]$_.ConfiguredVoltage}});` +
+	`tpm=@(Get-CimInstance Win32_PnPEntity -Filter "PNPClass='SecurityDevices'"|ForEach-Object{"$($_.Name)"})}}catch{$e.hw="$_"};` +
 	`try{$r.parts=@(Get-Partition|Where-Object{$_.DriveLetter}|ForEach-Object{@{letter="$($_.DriveLetter)";disk="$($_.DiskNumber)"}})}catch{$e.parts="$_"};` +
 	`try{$r.disks=@(Get-PhysicalDisk|ForEach-Object{$d=$_;$rel=$null;` +
 	`try{$c=$d|Get-StorageReliabilityCounter;$rel=@{temperature=$c.Temperature;temperatureMax=$c.TemperatureMax;wear=$c.Wear;powerOnHours=$c.PowerOnHours;readErrors=$c.ReadErrorsTotal;readUncorrected=$c.ReadErrorsUncorrected;writeErrors=$c.WriteErrorsTotal;writeUncorrected=$c.WriteErrorsUncorrected;startStop=$c.StartStopCycleCount;loadUnload=$c.LoadUnloadCycleCount}}catch{$e.reliability="$_"};` +
@@ -60,7 +68,11 @@ type psOut struct {
 		Name          string `json:"name"`
 		DriverVersion string `json:"driverVersion"`
 		DriverDate    string `json:"driverDate"`
+		W             int    `json:"w"`
+		H             int    `json:"h"`
+		Hz            int    `json:"hz"`
 	} `json:"gpus"`
+	HW    *psHW `json:"hw"`
 	Parts []struct {
 		Letter string `json:"letter"`
 		Disk   string `json:"disk"`
@@ -365,7 +377,21 @@ func merge(pc *scan.PcData, ps *psOut, systemDrive string) {
 		if g.Name == "" {
 			continue
 		}
-		pc.GPUs = append(pc.GPUs, scan.PcGPU{Name: g.Name, DriverVersion: g.DriverVersion, DriverDate: g.DriverDate})
+		gpu := scan.PcGPU{Name: g.Name, DriverVersion: g.DriverVersion, DriverDate: g.DriverDate}
+		// Le schede senza schermo collegato (o i driver di base) non riportano la risoluzione.
+		if g.W > 0 && g.H > 0 {
+			gpu.Width, gpu.Height = g.W, g.H
+			if g.Hz > 1 {
+				gpu.RefreshHz = g.Hz
+			}
+		}
+		pc.GPUs = append(pc.GPUs, gpu)
+	}
+	if ps.HW != nil {
+		if pc.Hardware == nil {
+			pc.Hardware = &scan.Hardware{}
+		}
+		mergeHW(pc.Hardware, ps.HW)
 	}
 	letterDisk := map[string]string{}
 	for _, p := range ps.Parts {

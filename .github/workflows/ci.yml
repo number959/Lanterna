@@ -98,6 +98,17 @@ jobs:
           if ($pc.disks.Count -lt 1) { throw "dischi fisici non letti (PowerShell)" }
           if (-not $pc.eventsDays) { throw "registro eventi non letto" }
           if ($null -eq $pc.memory.totalMB -or $pc.memory.totalMB -lt 1024) { throw "memoria non letta" }
+          # Scheda tecnica (come CPU-Z) e dati SMART letti dal disco.
+          $hw = $pc.hardware
+          "Scheda tecnica: $($hw.vendor) $($hw.model) [$($hw.chassis)]; scheda madre $($hw.board.vendor) $($hw.board.product); BIOS $($hw.board.biosVersion) $($hw.board.biosDate); firmware $($hw.firmware); Secure Boot $($hw.secureBoot); TPM '$($hw.tpm)'; hypervisor $($hw.hypervisor)"
+          "Processore: $($hw.cpu.vendor) famiglia $($hw.cpu.family) modello $($hw.cpu.model) stepping $($hw.cpu.stepping); zoccolo $($hw.cpu.socket); core $($hw.cpu.cores) thread $($hw.cpu.threads) classi $($hw.cpu.coreClasses -join '+'); virtualizzazione $($hw.cpu.virtualization)"
+          "Cache: " + (($hw.cpu.caches | ForEach-Object { "L$($_.level) $($_.kind) $($_.count)x$($_.sizeKB) KB" }) -join ' | ') + "; istruzioni: $($hw.cpu.features -join ' ')"
+          "Memoria: slot $($hw.memory.slots), max $($hw.memory.maxGB) GB; " + (($hw.memory.modules | ForEach-Object { "$($_.slot) $($_.sizeGB) GB $($_.type) $($_.form) $($_.speedMTs)/$($_.configuredMTs) MT/s" }) -join ' | ')
+          "Video: " + (($pc.gpus | ForEach-Object { "$($_.name) $($_.vramMB) MB $($_.width)x$($_.height)@$($_.refreshHz)" }) -join ' | ')
+          "SMART: " + (($pc.disks | ForEach-Object { "disco $($_.id): attributi $(@($_.smart).Count), NVMe $(if ($_.nvme) { $_.nvme | ConvertTo-Json -Compress } else { 'no' })" }) -join ' | ')
+          if (-not $hw.cpu.cores -or -not $hw.cpu.caches) { throw "processore della scheda tecnica non letto" }
+          if (-not $hw.firmware) { throw "tipo di firmware non letto" }
+          if ($null -eq $hw.tpm) { throw "dispositivi di sicurezza non letti (PowerShell)" }
       - name: Test di velocità da riga di comando
         run: |
           $c = ./polaris-cli.exe bench cpu --quick --json | ConvertFrom-Json

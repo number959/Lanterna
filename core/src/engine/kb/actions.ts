@@ -684,6 +684,33 @@ const list: Action[] = [
     impact: 'alto',
   },
   {
+    id: 'dual-channel',
+    title: 'Fai lavorare la memoria in dual channel',
+    why: 'Con due moduli su canali diversi la banda della RAM raddoppia: la grafica integrata e i programmi più esigenti ne beneficiano subito.',
+    steps: [
+      'Nella scheda tecnica di Polaris (sezione Computer) guarda quanti moduli ci sono e in quali slot.',
+      'Con un solo modulo: aggiungine uno identico (stessa capacità, tipo e velocità), controllando sul sito del produttore il tipo supportato e che la memoria non sia saldata.',
+      'Con due moduli sullo stesso canale: spegni il PC, scollega l\'alimentazione e sposta un modulo negli slot indicati dal manuale della scheda madre (di solito A2 e B2).',
+      'Ripeti l\'analisi di Polaris: la memoria deve risultare su più canali.',
+    ],
+    effort: 'media',
+    impact: 'medio',
+  },
+  {
+    id: 'firmware-security',
+    title: 'Attiva TPM e Secure Boot nel firmware',
+    why: 'Il TPM custodisce le chiavi di cifratura e Secure Boot blocca i malware che si avviano prima di Windows; entrambi sono richiesti da Windows 11 e spesso sono solo disattivati.',
+    steps: [
+      'Prima di tutto, se usi BitLocker, salva la chiave di ripristino (account Microsoft o stampa): modificare il firmware può richiederla.',
+      'Entra nelle impostazioni del firmware: Impostazioni > Sistema > Ripristino > Avvio avanzato > Riavvia ora, poi Risoluzione dei problemi > Opzioni avanzate > Impostazioni firmware UEFI.',
+      'Attiva il TPM: si chiama Intel PTT o Platform Trust Technology sui processori Intel, AMD fTPM su quelli AMD, oppure TPM Device.',
+      'Attiva Secure Boot (di solito nella sezione Boot o Security). Se Windows si avvia in modalità BIOS legacy, serve prima convertire il disco con MBR2GPT: fallo con un backup completo o affidalo a un tecnico.',
+      'Salva e riavvia, poi ripeti l\'analisi di Polaris. Sui PC aziendali chiedi all\'amministratore.',
+    ],
+    effort: 'avanzata',
+    impact: 'alto',
+  },
+  {
     id: 'close-heavy-apps',
     title: 'Individua i programmi che consumano risorse',
     why: 'Un solo programma bloccato o troppo esigente (browser con decine di schede, sincronizzazioni, antivirus in scansione) può occupare processore e memoria e rallentare tutto.',
