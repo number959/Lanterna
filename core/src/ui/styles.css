@@ -854,6 +854,10 @@ mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: in
 .infra-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding-top: 16px; font-size: 13px; }
 .progress { height: 8px; border-radius: 8px; background: var(--surface-3); overflow: hidden; }
 .progress i { display: block; height: 100%; transform-origin: left; background: linear-gradient(90deg, var(--primary-b), var(--primary-a)); border-radius: inherit; }
+/* Durata ignota (scansioni di Defender): una barra che scorre */
+.progress.indeterminate i { width: 35%; animation: indeterminate 1.6s var(--ease-out) infinite; }
+@keyframes indeterminate { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+@media (prefers-reduced-motion: reduce) { .progress.indeterminate i { width: 100%; animation: none; opacity: 0.55; } }
 .field {
   font: inherit; font-size: 14px; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-s);
   padding: 8px 11px; min-width: 0; outline: none; transition: border-color 0.2s, box-shadow 0.25s;
@@ -955,6 +959,21 @@ select.field { cursor: pointer; }
 .smart-table tr.smart-fail td { background: color-mix(in srgb, var(--crit) 8%, transparent); }
 .smart-table tr.smart-caution td { background: color-mix(in srgb, var(--warn) 8%, transparent); }
 .smart-kv { padding: 4px 12px 2px; }
+/* Microsoft Defender */
+.defender-note { font-size: 13px; margin: 0 0 12px; }
+.hw-block .defender-note { margin: 12px 0 0; }
+.defender-actions { display: grid; gap: 12px; margin-top: 16px; }
+.defender-confirm { align-items: center; flex-wrap: wrap; }
+.defender-confirm > span:not(.chip-actions) { flex: 1 1 260px; }
+.defender-live { padding-top: 0; }
+.hw-block h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.hw-block h3 .sev { text-transform: none; letter-spacing: 0; }
+.threat-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.threat-list li { display: grid; gap: 2px; padding: 9px 12px; border-radius: var(--radius-s); background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
+.threat-list li.bad { border-color: var(--crit-line); background: var(--crit-bg); }
+.threat-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.threat-head b { overflow-wrap: anywhere; font-size: 12.5px; }
+.threat-list li > .faint { padding-left: 21px; }
 /* Scheda tecnica, come CPU-Z */
 .hw-head { flex-wrap: wrap; }
 .hw-tabs { margin: 2px 0 16px; }

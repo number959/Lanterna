@@ -2,6 +2,7 @@ import { ACTIONS } from './kb/actions';
 import { scoreAssessment } from './kb/assessment';
 import { METRICS } from './kb/metrics';
 import { dateIt } from './pc';
+import { THREAT_SEVERITY, THREAT_STATUS } from './defender';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import type { Analysis, EventKind, Finding, ReachResult, Scan, Severity } from './types';
@@ -232,6 +233,23 @@ function pcDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
     out.push(` Eventi rilevanti negli ultimi ${pc.eventsDays} giorni: ${pc.events?.length ? '' : 'nessuno'}`.trimEnd());
     for (const e of pc.events ?? [])
       out.push(wrap(`${dateIt(e.last)}  ${e.source} ${e.id}  x${e.count}  ${EVENT_TEXT[e.kind]}${e.detail ? `: ${e.detail}` : ''}`, W - 4, '   '));
+  }
+  const d = pc.defender;
+  if (d || pc.threats) {
+    out.push('');
+    out.push(' Microsoft Defender');
+    if (d) {
+      const mode = d.mode === 'passive' ? 'modalità passiva (antivirus principale diverso)' : d.realTime ? 'attivo, protezione in tempo reale' : 'protezione in tempo reale disattivata';
+      out.push(hang(`${mode}${d.tamperProtected === undefined ? '' : `, manomissioni ${d.tamperProtected ? 'bloccate' : 'non bloccate'}`}; firme ${d.signatureVersion ?? '?'}${d.signatureUpdated ? ` del ${dateIt(d.signatureUpdated)}` : ''}`, W, '   ', '     '));
+      const scanAt = (end?: string) => (end ? dateIt(end) : 'mai');
+      out.push(`   Ultima scansione rapida: ${scanAt(d.quickScanEnd)}; completa: ${scanAt(d.fullScanEnd)}`);
+    }
+    if (pc.threats === null) out.push('   Cronologia delle minacce non leggibile');
+    else if (pc.threats) {
+      out.push(`   Minacce nella cronologia: ${pc.threats.length ? pc.threats.length : 'nessuna'}`);
+      for (const t of pc.threats.slice(0, 10))
+        out.push(hang(`${t.detected ? dateIt(t.detected) : '-'}  ${t.name} (gravità ${THREAT_SEVERITY[t.severity]}): ${THREAT_STATUS[t.status]}${t.active ? ', ancora attiva' : ''}`, W, '     ', '       '));
+    }
   }
   const b = pc.bench;
   if (b?.cpu || b?.disk?.length) {

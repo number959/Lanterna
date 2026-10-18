@@ -25,3 +25,8 @@ func CPULoad(ctx context.Context, d time.Duration) *float64 { return nil }
 
 // OnAC è disponibile solo su Windows.
 func OnAC() *bool { return nil }
+
+// DefenderStatus è disponibile solo su Windows.
+func DefenderStatus(ctx context.Context) (*scan.DefenderInfo, []scan.Threat, error) {
+	return nil, nil, errors.New("Microsoft Defender esiste solo su Windows")
+}

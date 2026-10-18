@@ -133,6 +133,21 @@ export const homePc: PcData = {
   ],
   eventsDays: 30,
   antivirus: [{ name: 'Windows Defender', enabled: true, upToDate: true, source: 'securitycenter' }],
+  defender: {
+    mode: 'normal',
+    enabled: true,
+    realTime: true,
+    tamperProtected: true,
+    signatureVersion: '1.419.98.0',
+    signatureAgeDays: 0,
+    signatureUpdated: '2026-10-12T06:10:00Z',
+    quickScanAgeDays: 9,
+    quickScanEnd: '2026-10-03T13:05:00Z',
+    engineVersion: '1.1.24090.11',
+    productVersion: '4.18.24090.11',
+  },
+  // Un programma con pubblicità bloccato da un installatore scaricato.
+  threats: [{ name: 'PUA:Win32/Presenoker', severity: 'low', status: 'quarantined', detected: '2026-10-04T16:22:10Z', changed: '2026-10-04T16:22:14Z' }],
   updates: { lastInstalled: '2025-11-11', lastKB: 'KB5068865', pendingReboot: true, rebootReasons: ['Windows Update'] },
 };
 
@@ -286,5 +301,18 @@ export const clinicPc: PcData = {
     { name: 'Endpoint Security (aziendale)', enabled: true, upToDate: true, source: 'securitycenter' },
     { name: 'Windows Defender', enabled: false, upToDate: true, source: 'securitycenter' },
   ],
+  // Defender in modalità passiva: l'antivirus principale è quello aziendale.
+  defender: {
+    mode: 'passive',
+    enabled: true,
+    realTime: false,
+    tamperProtected: true,
+    signatureVersion: '1.419.95.0',
+    signatureAgeDays: 1,
+    signatureUpdated: '2026-10-13T05:40:00Z',
+    engineVersion: '1.1.24090.11',
+    productVersion: '4.18.24090.11',
+  },
+  threats: [],
   updates: { lastInstalled: '2026-09-09', lastKB: 'KB5065429', pendingReboot: false },
 };

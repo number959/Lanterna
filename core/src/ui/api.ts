@@ -1,4 +1,4 @@
-import type { CpuBench, DiskBench, Inventory, ReachData, ReachTarget, Scan } from '../engine';
+import type { CpuBench, DefenderInfo, DiskBench, Inventory, ReachData, ReachTarget, Scan, Threat } from '../engine';
 
 // Comunicazione con l'agente locale (Polaris.exe serve / finestra).
 // L'interfaccia è servita dallo stesso agente, quindi i percorsi sono relativi.
@@ -167,6 +167,55 @@ export async function runBench(req: BenchRequest, onProgress: (st: BenchState) =
       const res = req.kind === 'cpu' ? st.cpu : st.disk;
       if (!res) throw new Error('Test terminato senza risultato');
       return res;
+    }
+  }
+}
+
+// ---- Microsoft Defender: scansioni e aggiornamento delle firme su richiesta.
+
+export type DefenderAction = 'quick' | 'full' | 'update';
+
+export interface DefenderResult {
+  action: DefenderAction;
+  startedAt: string;
+  durationMs: number;
+  message: string;
+  newThreats: number;
+  defender?: DefenderInfo;
+  threats: Threat[] | null;
+}
+
+export interface DefenderState {
+  running: boolean;
+  action?: DefenderAction;
+  startedAt?: string;
+  error?: string;
+  result?: DefenderResult;
+}
+
+export const defenderStatus = () => getJson<DefenderState>('api/defender');
+
+/** Interrompe la scansione in corso. */
+export async function stopDefender(): Promise<void> {
+  const r = await fetch('api/defender', { method: 'DELETE', cache: 'no-store' });
+  if (!r.ok) throw await errorOf(r);
+}
+
+/**
+ * Avvia un'operazione di Defender e ne attende la fine (una scansione
+ * completa può durare ore: lo stato si controlla ogni secondo); `resume`
+ * segue un'operazione già avviata.
+ */
+export async function runDefender(action: DefenderAction, onProgress: (st: DefenderState) => void, opts: { resume?: boolean } = {}): Promise<DefenderResult> {
+  if (!opts.resume) await postJson<{ started: boolean }>('api/defender', { action });
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const st = await defenderStatus();
+    onProgress(st);
+    if (!st.running) {
+      if (st.error) throw new Error(st.error);
+      if (!st.result) throw new Error('Operazione terminata senza esito');
+      return st.result;
     }
   }
 }

@@ -109,6 +109,8 @@ jobs:
           if (-not $hw.cpu.cores -or -not $hw.cpu.caches) { throw "processore della scheda tecnica non letto" }
           if (-not $hw.firmware) { throw "tipo di firmware non letto" }
           if ($null -eq $hw.tpm) { throw "dispositivi di sicurezza non letti (PowerShell)" }
+          "Defender: $($pc.defender | ConvertTo-Json -Compress)"
+          "Minacce: $(if ($null -eq $pc.threats) { 'non lette' } else { "$(@($pc.threats).Count)" })"
       - name: Test di velocità da riga di comando
         run: |
           $c = ./polaris-cli.exe bench cpu --quick --json | ConvertFrom-Json
@@ -160,6 +162,36 @@ jobs:
                 if ($_.Exception.Response.StatusCode.value__ -ne $case.code) { throw "atteso $($case.code) per $($case.body): $($_.Exception.Message)" }
               }
             }
+            # Microsoft Defender: azione arbitraria rifiutata; una scansione rapida parte,
+            # blocca i test di velocità e si interrompe (la scansione intera è nel passo dopo).
+            try {
+              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"action":"format"}' http://127.0.0.1:8737/api/defender | Out-Null
+              throw "azione arbitraria accettata"
+            } catch {
+              if ($_.Exception.Response.StatusCode.value__ -ne 400) { throw "atteso 400 per un'azione non valida: $($_.Exception.Message)" }
+            }
+            $started = $true
+            try { Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"action":"quick"}' http://127.0.0.1:8737/api/defender | Out-Null }
+            catch {
+              if ($_.Exception.Response.StatusCode.value__ -ne 422) { throw "avvio della scansione: $($_.Exception.Message)" }
+              "Defender non disponibile su questo runner: $($_.ErrorDetails.Message)"; $started = $false
+            }
+            if ($started) {
+              try {
+                Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"kind":"cpu"}' http://127.0.0.1:8737/api/bench | Out-Null
+                # Accettato: lecito solo se la scansione era già finita; si attende la fine del test.
+                $busy = Invoke-RestMethod http://127.0.0.1:8737/api/defender
+                if ($busy.running) { throw "test di velocità accettato durante la scansione" }
+                do { Start-Sleep 1; $b0 = Invoke-RestMethod http://127.0.0.1:8737/api/bench } while ($b0.running)
+              } catch {
+                if ($_.Exception.Response.StatusCode.value__ -ne 409) { throw "atteso 409 durante la scansione: $($_.Exception.Message)" }
+              }
+              Invoke-RestMethod -Method Delete http://127.0.0.1:8737/api/defender | Out-Null
+              $t = 0
+              do { Start-Sleep 1; $t++; $df = Invoke-RestMethod http://127.0.0.1:8737/api/defender } while ($df.running -and $t -lt 60)
+              "Scansione interrotta via API: running=$($df.running) errore='$($df.error)' esito='$($df.result.message)'"
+              if ($df.running) { throw "la scansione non si è fermata" }
+            }
             Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"kind":"cpu"}' http://127.0.0.1:8737/api/bench | Out-Null
             $t = 0
             do { Start-Sleep 1; $t++; $b = Invoke-RestMethod http://127.0.0.1:8737/api/bench } while ($b.running -and $t -lt 90)
@@ -169,6 +201,14 @@ jobs:
             if ($html.Content -notmatch '<title>STARNET Polaris</title>') { throw "interfaccia non servita" }
             if (-not $html.Headers['Content-Security-Policy']) { throw "CSP mancante" }
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+      - name: Microsoft Defender da riga di comando (prova non bloccante)
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          ./polaris-cli.exe defender status
+          $r = ./polaris-cli.exe defender quick --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "scansione rapida non riuscita" }
+          "Esito: $($r.message) in $([math]::Round($r.durationMs/1000)) s; minacce nuove: $($r.newThreats)"
       - name: Finestra grafica con WebView2 (prova non bloccante)
         continue-on-error: true
         run: |

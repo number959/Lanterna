@@ -13,6 +13,10 @@
 //	                    {"kind": "disk", "drive": "C:", "confirm": true})
 //	GET  /api/bench     avanzamento e ultimi risultati dei test di velocità
 //	DELETE /api/bench   interrompe il test in corso
+//	POST /api/defender  avvia un'operazione di Microsoft Defender
+//	                    ({"action": "quick" | "full" | "update"})
+//	GET  /api/defender  stato ed esito dell'ultima operazione
+//	DELETE /api/defender interrompe la scansione in corso
 //
 // Ascolta solo su 127.0.0.1 e rifiuta richieste con Host diverso (difesa dal
 // DNS rebinding) e POST provenienti da altre origini (difesa dal CSRF). Le
@@ -37,6 +41,7 @@ import (
 
 	"lanterna/internal/bench"
 	"lanterna/internal/collect"
+	"lanterna/internal/defender"
 	"lanterna/internal/infra"
 	"lanterna/internal/scan"
 )
@@ -89,6 +94,21 @@ type Server struct {
 	benchCPU     *scan.CPUBench
 	benchDisk    *scan.DiskBench
 	benchFinish  chan struct{}
+
+	// Microsoft Defender (nil = non disponibile): scansioni e aggiornamento
+	// delle firme su richiesta. Non si sovrappongono ai test di velocità.
+	DefenderRun func(ctx context.Context, action string) (*defender.Result, error)
+	// DefenderReady verifica subito che Defender sia presente (nil = nessun controllo).
+	DefenderReady func() error
+
+	defMu      sync.Mutex
+	defRunning bool
+	defAction  string
+	defStarted string
+	defErr     string
+	defResult  *defender.Result
+	defCancel  context.CancelFunc
+	defFinish  chan struct{}
 
 	mu       sync.Mutex
 	last     []byte
@@ -312,6 +332,12 @@ func (s *Server) startBench(kind, drive string) error {
 	if s.benchRunning {
 		return errors.New("test di velocità già in corso")
 	}
+	s.defMu.Lock()
+	defBusy := s.defRunning
+	s.defMu.Unlock()
+	if defBusy {
+		return errors.New("operazione di Microsoft Defender in corso: il test di velocità ne sarebbe falsato")
+	}
 	timeout := 2 * time.Minute
 	if kind == "disk" {
 		timeout = 3 * time.Minute
@@ -360,6 +386,71 @@ func (s *Server) startBench(kind, drive string) error {
 		}
 	}()
 	return nil
+}
+
+type defenderState struct {
+	Running   bool             `json:"running"`
+	Action    string           `json:"action,omitempty"`
+	StartedAt string           `json:"startedAt,omitempty"`
+	Error     string           `json:"error,omitempty"`
+	Result    *defender.Result `json:"result,omitempty"`
+}
+
+// startDefender avvia un'operazione di Defender in background. Ordine dei
+// lock: benchMu prima di defMu, come in startBench.
+func (s *Server) startDefender(action string) error {
+	s.benchMu.Lock()
+	defer s.benchMu.Unlock()
+	if s.benchRunning {
+		return errors.New("test di velocità in corso: la scansione ne falserebbe le misure")
+	}
+	s.defMu.Lock()
+	defer s.defMu.Unlock()
+	if s.defRunning {
+		return errors.New("operazione di Microsoft Defender già in corso")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), defender.Timeouts[action])
+	s.defRunning, s.defAction, s.defStarted, s.defErr, s.defCancel = true, action, time.Now().UTC().Format(time.RFC3339), "", cancel
+	s.defFinish = make(chan struct{})
+	finish := s.defFinish
+	go func() {
+		defer close(finish)
+		defer cancel()
+		var res *defender.Result
+		var err error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = errors.New("errore interno durante l'operazione")
+				}
+			}()
+			res, err = s.DefenderRun(ctx, action)
+		}()
+		s.defMu.Lock()
+		defer s.defMu.Unlock()
+		s.defRunning, s.defCancel = false, nil
+		switch {
+		case errors.Is(err, context.Canceled):
+			s.defErr = "operazione interrotta"
+		case errors.Is(err, context.DeadlineExceeded):
+			s.defErr = "operazione interrotta: tempo massimo superato"
+		case err != nil:
+			s.defErr = err.Error()
+		default:
+			s.defResult = res
+		}
+	}()
+	return nil
+}
+
+// WaitDefender attende la fine dell'operazione in corso (usato dai test).
+func (s *Server) WaitDefender() {
+	s.defMu.Lock()
+	ch := s.defFinish
+	s.defMu.Unlock()
+	if ch != nil {
+		<-ch
+	}
 }
 
 // WaitBench attende la fine del test in corso (usato dai test).
@@ -571,6 +662,49 @@ func (s *Server) Handler() http.Handler {
 		s.benchMu.Lock()
 		cancel := s.benchCancel
 		s.benchMu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		writeJSON(w, 200, map[string]bool{"stopping": cancel != nil})
+	})
+	mux.HandleFunc("POST /api/defender", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Action string `json:"action"`
+		}
+		if code, err := readJSON(w, r, &body); err != nil {
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		if _, err := defender.Args(body.Action); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if s.DefenderRun == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": defender.ErrUnavailable.Error()})
+			return
+		}
+		if s.DefenderReady != nil {
+			if err := s.DefenderReady(); err != nil {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+		if err := s.startDefender(body.Action); err != nil {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"started": true, "action": body.Action})
+	})
+	mux.HandleFunc("GET /api/defender", func(w http.ResponseWriter, r *http.Request) {
+		s.defMu.Lock()
+		st := defenderState{Running: s.defRunning, Action: s.defAction, StartedAt: s.defStarted, Error: s.defErr, Result: s.defResult}
+		s.defMu.Unlock()
+		writeJSON(w, 200, st)
+	})
+	mux.HandleFunc("DELETE /api/defender", func(w http.ResponseWriter, r *http.Request) {
+		s.defMu.Lock()
+		cancel := s.defCancel
+		s.defMu.Unlock()
 		if cancel != nil {
 			cancel()
 		}

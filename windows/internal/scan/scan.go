@@ -327,7 +327,11 @@ type PcData struct {
 	// Antivirus è null se il Centro sicurezza non è leggibile, [] se non
 	// risulta alcun prodotto registrato.
 	Antivirus []AvProduct `json:"antivirus"`
-	Updates   *UpdateInfo `json:"updates,omitempty"`
+	// Defender è lo stato di Microsoft Defender (assente se non leggibile);
+	// Threats le minacce della sua cronologia: null se non lette, [] se nessuna.
+	Defender *DefenderInfo `json:"defender,omitempty"`
+	Threats  []Threat      `json:"threats"`
+	Updates  *UpdateInfo   `json:"updates,omitempty"`
 	// Hardware è la scheda tecnica, come in CPU-Z.
 	Hardware *Hardware  `json:"hardware,omitempty"`
 	Bench    *BenchData `json:"bench,omitempty"`
@@ -579,6 +583,40 @@ type AvProduct struct {
 	Enabled  bool   `json:"enabled"`
 	UpToDate *bool  `json:"upToDate,omitempty"`
 	Source   string `json:"source,omitempty"` // securitycenter | defender
+}
+
+// DefenderInfo riassume Get-MpComputerStatus.
+type DefenderInfo struct {
+	// Mode: normal | passive (un altro antivirus è il principale) | edr | altro.
+	Mode     string `json:"mode,omitempty"`
+	Enabled  bool   `json:"enabled"`
+	RealTime bool   `json:"realTime"`
+	// TamperProtected: protezione da manomissioni (nil se Windows non la riporta).
+	TamperProtected  *bool  `json:"tamperProtected,omitempty"`
+	SignatureVersion string `json:"signatureVersion,omitempty"`
+	SignatureAgeDays *int   `json:"signatureAgeDays,omitempty"`
+	SignatureUpdated string `json:"signatureUpdated,omitempty"` // RFC 3339
+	// QuickScanAgeDays e FullScanAgeDays sono nil se la scansione non è mai stata eseguita.
+	QuickScanAgeDays *int   `json:"quickScanAgeDays,omitempty"`
+	FullScanAgeDays  *int   `json:"fullScanAgeDays,omitempty"`
+	QuickScanEnd     string `json:"quickScanEnd,omitempty"`
+	FullScanEnd      string `json:"fullScanEnd,omitempty"`
+	EngineVersion    string `json:"engineVersion,omitempty"`
+	ProductVersion   string `json:"productVersion,omitempty"`
+}
+
+// Threat è una minaccia della cronologia di Defender: nome e stato, senza
+// percorsi dei file né nomi utente.
+type Threat struct {
+	Name string `json:"name"`
+	// Severity: low | moderate | high | severe | unknown.
+	Severity string `json:"severity"`
+	// Status: detected | cleaned | quarantined | removed | allowed | blocked |
+	// failed | unknown.
+	Status   string `json:"status"`
+	Active   bool   `json:"active,omitempty"`
+	Detected string `json:"detected,omitempty"` // RFC 3339
+	Changed  string `json:"changed,omitempty"`
 }
 
 type UpdateInfo struct {

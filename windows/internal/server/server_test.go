@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
 
 	"lanterna/internal/bench"
 	"lanterna/internal/collect"
+	"lanterna/internal/defender"
 	"lanterna/internal/infra"
 	"lanterna/internal/scan"
 	"lanterna/internal/winapi"
@@ -403,5 +405,92 @@ func TestBenchStopAndScanExclusion(t *testing.T) {
 	s.BenchCPU = nil
 	if r := doBody(t, h, "POST", "/api/bench", "application/json", `{"kind":"cpu"}`); r.Code != http.StatusNotImplemented {
 		t.Fatalf("non disponibile: %d", r.Code)
+	}
+}
+
+func TestDefenderEndpoint(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	// Senza Defender configurato: non disponibile; azioni arbitrarie rifiutate.
+	if r := doBody(t, h, "POST", "/api/defender", "application/json", `{"action":"quick"}`); r.Code != http.StatusNotImplemented {
+		t.Fatalf("non disponibile: %d", r.Code)
+	}
+	release := make(chan struct{})
+	var got []string
+	var mu sync.Mutex
+	s.DefenderRun = func(ctx context.Context, action string) (*defender.Result, error) {
+		mu.Lock()
+		got = append(got, action)
+		mu.Unlock()
+		select {
+		case <-release:
+			return &defender.Result{Action: action, Message: "Scansione rapida completata: nessuna nuova minaccia rilevata.", Threats: []scan.Threat{}}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	for body, code := range map[string]int{`{"action":"format"}`: 400, `{}`: 400} {
+		if r := doBody(t, h, "POST", "/api/defender", "application/json", body); r.Code != code {
+			t.Fatalf("%s: %d", body, r.Code)
+		}
+	}
+	if r := doBody(t, h, "POST", "/api/defender", "text/plain", `{"action":"quick"}`); r.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("senza JSON: %d", r.Code)
+	}
+	if r := doBody(t, h, "POST", "/api/defender", "application/json", `{"action":"quick"}`); r.Code != http.StatusAccepted {
+		t.Fatalf("avvio: %d %s", r.Code, r.Body)
+	}
+	// Una sola operazione alla volta, e niente test di velocità nel frattempo.
+	if r := doBody(t, h, "POST", "/api/defender", "application/json", `{"action":"update"}`); r.Code != http.StatusConflict {
+		t.Fatalf("seconda operazione: %d", r.Code)
+	}
+	s.BenchCPU = func(context.Context, bench.Report) (*scan.CPUBench, error) { t.Fatal("test avviato"); return nil, nil }
+	if r := doBody(t, h, "POST", "/api/bench", "application/json", `{"kind":"cpu"}`); r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "Defender") {
+		t.Fatalf("test durante la scansione: %d %s", r.Code, r.Body)
+	}
+	var st defenderState
+	_ = json.Unmarshal(do(t, h, "GET", "/api/defender", nil).Body.Bytes(), &st)
+	if !st.Running || st.Action != "quick" || st.StartedAt == "" {
+		t.Fatalf("in corso: %+v", st)
+	}
+	close(release)
+	s.WaitDefender()
+	_ = json.Unmarshal(do(t, h, "GET", "/api/defender", nil).Body.Bytes(), &st)
+	if st.Running || st.Error != "" || st.Result == nil || !strings.Contains(st.Result.Message, "nessuna nuova minaccia") {
+		t.Fatalf("esito: %+v", st)
+	}
+
+	// Interruzione di una scansione completa (che altrimenti non finirebbe).
+	release = make(chan struct{})
+	if r := doBody(t, h, "POST", "/api/defender", "application/json", `{"action":"full"}`); r.Code != http.StatusAccepted {
+		t.Fatalf("scansione completa: %d", r.Code)
+	}
+	if r := do(t, h, "DELETE", "/api/defender", nil); r.Code != 200 || !strings.Contains(r.Body.String(), "true") {
+		t.Fatalf("interruzione: %d %s", r.Code, r.Body)
+	}
+	s.WaitDefender()
+	_ = json.Unmarshal(do(t, h, "GET", "/api/defender", nil).Body.Bytes(), &st)
+	if st.Running || st.Error != "operazione interrotta" {
+		t.Fatalf("dopo l'interruzione: %+v", st)
+	}
+	// Durante un test di velocità la scansione non parte.
+	s.benchMu.Lock()
+	s.benchRunning = true
+	s.benchMu.Unlock()
+	if r := doBody(t, h, "POST", "/api/defender", "application/json", `{"action":"quick"}`); r.Code != http.StatusConflict {
+		t.Fatalf("scansione durante il test: %d", r.Code)
+	}
+	s.benchMu.Lock()
+	s.benchRunning = false
+	s.benchMu.Unlock()
+	// Defender assente: rifiutato subito.
+	s.DefenderReady = func() error { return defender.ErrUnavailable }
+	if r := doBody(t, h, "POST", "/api/defender", "application/json", `{"action":"quick"}`); r.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("Defender assente: %d", r.Code)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Join(got, ",") != "quick,full" {
+		t.Fatalf("azioni eseguite: %v", got)
 	}
 }

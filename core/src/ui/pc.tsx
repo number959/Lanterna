@@ -9,7 +9,12 @@ import {
   Lock,
   Monitor,
   Play,
+  RefreshCw,
+  ScanSearch,
   ScrollText,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
   Trash2,
   TriangleAlert,
   Usb,
@@ -34,12 +39,15 @@ import {
   smartId,
   smartName,
   smartRaw,
+  THREAT_SEVERITY,
+  THREAT_STATUS,
+  unresolvedThreat,
 } from '../engine';
 import type { AttrState, ChannelMode, CpuBench, DiskBench, EventGroup, EventKind, Finding, NVMeHealth, PcData, PhysicalDisk, Scan, Severity, StartupItem, Volume } from '../engine';
 import { simulatedCpuBench, simulatedDiskBench } from '../demo/simulate';
 import { guideById } from '../guides';
-import { benchStatus, runBench, stopBench } from './api';
-import type { BenchRequest } from './api';
+import { benchStatus, defenderStatus, runBench, runDefender, stopBench, stopDefender } from './api';
+import type { BenchRequest, DefenderAction, DefenderResult } from './api';
 import { FindingList, Segmented, SevIcon, Stat, TableWrap, fmtNum, sevColor, useOpenGuide, useToast } from './components';
 import { useWidth } from './hooks';
 import { cascade, ease, rise, spring } from './motion';
@@ -115,6 +123,12 @@ export function PcView(props: ViewProps) {
       <Section title="Test di velocità">
         <BenchCard {...props} />
       </Section>
+
+      {pc && (pc.defender || pc.threats || pc.antivirus) && (
+        <Section title="Antivirus">
+          <DefenderCard {...props} />
+        </Section>
+      )}
 
       {pc && (pc.startup || pc.processes) && (
         <Section title="Avvio e processi">
@@ -870,7 +884,9 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
   const vol = vols.find((v) => v.letter === drive);
   const volDisk = scan.pc?.disks?.find((d) => d.id !== undefined && d.id === vol?.disk);
   const lowSpace = vol ? vol.freeGB < 2.2 : false;
-  const busy = !!run;
+  // Un'operazione di Defender in corso falserebbe le misure: il server rifiuterebbe il test.
+  const defRun = useDefenderRun();
+  const busy = !!run || !!defRun;
   const cpuHist = hist.cpu.filter((h) => h.startedAt !== cpu?.startedAt).slice(0, 4);
   const diskHist = hist.disk.filter((h) => h.drive.toUpperCase() === drive.toUpperCase() && h.startedAt !== diskRes?.startedAt).slice(0, 4);
 
@@ -1272,6 +1288,302 @@ function EventsCard({ pc }: { pc: PcData }) {
 // ---------------------------------------------------------------- Dettagli
 
 const PLAN: Record<string, string> = { balanced: 'Bilanciato', high: 'Prestazioni elevate', saver: 'Risparmio energia', ultimate: 'Prestazioni ottimali', custom: 'Personalizzato' };
+
+// ---------------------------------------------------------------- Microsoft Defender
+
+interface DefenderRun {
+  action: DefenderAction;
+  startedAt: number;
+}
+
+const DEF_LABEL: Record<DefenderAction, string> = { quick: 'Scansione rapida', full: 'Scansione completa', update: 'Aggiornamento delle firme' };
+
+// Come per i test di velocità, l'operazione continua anche cambiando pagina.
+let defPromise: Promise<DefenderResult> | null = null;
+let defLast: DefenderRun | null = null;
+let defCancel: (() => void) | null = null;
+const defListeners = new Set<(r: DefenderRun | null) => void>();
+const publishDef = (r: DefenderRun | null) => {
+  defLast = r;
+  defListeners.forEach((f) => f(r));
+};
+
+function useDefenderRun(): DefenderRun | null {
+  const [run, setRun] = useState<DefenderRun | null>(defLast);
+  useEffect(() => {
+    defListeners.add(setRun);
+    return () => {
+      defListeners.delete(setRun);
+    };
+  }, []);
+  return run;
+}
+
+/** Esito simulato per le demo: nessuna nuova minaccia, firme di una versione più avanti. */
+function simulateDefender(scan: Scan, action: DefenderAction): Promise<DefenderResult> {
+  const d = scan.pc?.defender;
+  const ms = action === 'full' ? 9000 : action === 'quick' ? 5000 : 2500;
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      const now = new Date().toISOString();
+      const next = d?.signatureVersion?.replace(/\.(\d+)\.0$/, (_, n) => `.${Number(n) + 1}.0`);
+      const defender = d
+        ? action === 'update'
+          ? { ...d, signatureVersion: next, signatureAgeDays: 0, signatureUpdated: now }
+          : action === 'quick'
+            ? { ...d, quickScanAgeDays: 0, quickScanEnd: now }
+            : { ...d, fullScanAgeDays: 0, fullScanEnd: now }
+        : undefined;
+      resolve({
+        action,
+        startedAt: now,
+        durationMs: ms,
+        newThreats: 0,
+        defender,
+        threats: scan.pc?.threats ?? [],
+        message: action === 'update' ? `Firme aggiornate: versione ${next ?? 'più recente'} (simulazione).` : `${DEF_LABEL[action]} completata: nessuna nuova minaccia rilevata (simulazione).`,
+      });
+    }, ms);
+    defCancel = () => {
+      clearTimeout(timer);
+      reject(new Error('operazione interrotta'));
+    };
+  });
+}
+
+function startDefender(live: boolean, scan: Scan, action: DefenderAction, done: (r: DefenderResult) => void, fail: (e: Error) => void, resume?: { action: DefenderAction; startedAt?: string }) {
+  if (defPromise) return;
+  const t0 = resume?.startedAt ? Date.parse(resume.startedAt) || Date.now() : Date.now();
+  publishDef({ action, startedAt: t0 });
+  defPromise = live ? runDefender(action, () => undefined, { resume: !!resume }) : simulateDefender(scan, action);
+  defPromise
+    .then(done, (e) => fail(e instanceof Error ? e : new Error(String(e))))
+    .finally(() => {
+      defPromise = null;
+      defCancel = null;
+      publishDef(null);
+    });
+}
+
+const ago = (days?: number, end?: string) => (end ? `${dateIt(end)} (${days === undefined ? '' : days === 0 ? 'oggi' : days === 1 ? 'ieri' : `${days} giorni fa`})`.replace(' ()', '') : 'mai');
+const mmss = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+function DefenderCard({ scan, live, source, analysis, patchPc }: ViewProps) {
+  const toast = useToast();
+  const pc = scan.pc!;
+  const d = pc.defender;
+  const run = useDefenderRun();
+  const [now, setNow] = useState(Date.now());
+  const [confirmFull, setConfirmFull] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
+  const readOnly = source === 'file';
+  const [benchRun, setBenchRun] = useState<BenchRun | null>(benchLast);
+  useEffect(() => {
+    benchListeners.add(setBenchRun);
+    return () => {
+      benchListeners.delete(setBenchRun);
+    };
+  }, []);
+  const benchBusy = !!benchRun;
+  const threatsFinding = analysis.findings.find((f) => f.id === 'pc.threats');
+
+  useEffect(() => {
+    if (!run) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [run]);
+
+  const done = (r: DefenderResult) => {
+    const patch: Partial<PcData> = {};
+    if (r.defender) patch.defender = r.defender;
+    if (r.threats) patch.threats = r.threats;
+    patchPc(patch);
+    setMsg({ text: r.message });
+    toast(r.newThreats ? `${DEF_LABEL[r.action]}: trovate minacce` : `${DEF_LABEL[r.action]} completata`, r.newThreats ? 'error' : undefined);
+  };
+  const fail = (e: Error) => {
+    setMsg({ text: /interrott/i.test(e.message) ? 'Operazione interrotta.' : e.message, error: !/interrott/i.test(e.message) });
+    if (!/interrott/i.test(e.message)) toast(`Defender: ${e.message}`, 'error');
+  };
+
+  // Un'operazione avviata prima (anche da un'altra finestra) si riprende.
+  useEffect(() => {
+    if (!live || defPromise) return;
+    let alive = true;
+    defenderStatus()
+      .then((st) => {
+        if (alive && st.running && st.action) startDefender(true, scan, st.action, done, fail, { action: st.action, startedAt: st.startedAt });
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live]);
+
+  const start = (action: DefenderAction) => {
+    setConfirmFull(false);
+    setMsg(null);
+    startDefender(live, scan, action, done, fail);
+  };
+  const stop = () => {
+    if (live) stopDefender().catch((e) => toast(`Interruzione non riuscita: ${e instanceof Error ? e.message : e}`, 'error'));
+    else defCancel?.();
+  };
+
+  const mode = !d ? undefined : d.mode === 'passive' ? 'passive' : d.realTime ? 'on' : 'off';
+  const pill: { sev: Severity; text: string } | undefined =
+    mode === 'on' ? { sev: 'ok', text: 'Attivo' } : mode === 'passive' ? { sev: 'info', text: 'Modalità passiva' } : mode === 'off' ? { sev: 'warn', text: 'Tempo reale spento' } : undefined;
+  const threats = pc.threats;
+  const other = (pc.antivirus ?? []).filter((a) => a.enabled && !/defender/i.test(a.name));
+
+  return (
+    <m.section variants={rise} className="card defender-card">
+      <div className="card-head">
+        <h2 className="disk-title">
+          {mode === 'on' ? <ShieldCheck size={19} aria-hidden /> : <ShieldAlert size={19} aria-hidden />} Microsoft Defender
+        </h2>
+        <span className="spacer" />
+        {pill && (
+          <span className={`sev ${pill.sev}`}>
+            <SevIcon sev={pill.sev} size={14} />
+            {pill.text}
+          </span>
+        )}
+      </div>
+      {!d ? (
+        <p className="muted">
+          Lo stato di Defender non è leggibile{other.length ? `: l'antivirus attivo è ${other.map((a) => a.name).join(', ')}` : ''}. Su Windows Server, o con un antivirus aziendale, Defender può
+          essere rimosso o gestito centralmente.
+        </p>
+      ) : (
+        <>
+          {mode === 'passive' && (
+            <p className="muted defender-note">
+              L&apos;antivirus principale è {other.length ? other.map((a) => a.name).join(', ') : 'un altro prodotto'}: Defender resta disponibile per le scansioni a richiesta, senza controllo
+              in tempo reale.
+            </p>
+          )}
+          <Kv
+            rows={[
+              ['Protezione in tempo reale', d.realTime ? 'attiva' : 'disattivata', d.realTime || mode === 'passive' ? undefined : 'warn'],
+              ['Protezione da manomissioni', d.tamperProtected === undefined ? undefined : d.tamperProtected ? 'attiva' : 'disattivata', d.tamperProtected === false ? 'info' : undefined],
+              ['Firme', d.signatureVersion ? `${d.signatureVersion} · ${ago(d.signatureAgeDays, d.signatureUpdated)}` : undefined, (d.signatureAgeDays ?? 0) > 7 ? 'warn' : undefined],
+              ['Ultima scansione rapida', ago(d.quickScanAgeDays, d.quickScanEnd)],
+              ['Ultima scansione completa', ago(d.fullScanAgeDays, d.fullScanEnd)],
+              ['Motore e piattaforma', d.engineVersion ? `${d.engineVersion}${d.productVersion ? ` · ${d.productVersion}` : ''}` : undefined],
+            ]}
+          />
+          {!readOnly && (
+            <div className="defender-actions">
+              {!live && (
+                <p className="faint" style={{ margin: 0, fontSize: 13 }}>
+                  Senza agente le operazioni sono <b>simulate</b>.
+                </p>
+              )}
+              <div className="chip-actions">
+                <button className="btn primary" disabled={!!run || benchBusy} onClick={() => start('quick')}>
+                  <ScanSearch size={16} aria-hidden /> Scansione rapida
+                </button>
+                <button className="btn" disabled={!!run || benchBusy} onClick={() => setConfirmFull(true)} aria-expanded={confirmFull}>
+                  <Search size={16} aria-hidden /> Scansione completa
+                </button>
+                <button className="btn" disabled={!!run || benchBusy} onClick={() => start('update')}>
+                  <RefreshCw size={16} aria-hidden /> Aggiorna le firme
+                </button>
+              </div>
+              {benchBusy && !run && <span className="faint" style={{ fontSize: 13 }}>Attendi la fine del test di velocità.</span>}
+              <AnimatePresence initial={false}>
+                {confirmFull && !run && (
+                  <m.div key="confirm" className="notice defender-confirm" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                    <TriangleAlert size={18} aria-hidden />
+                    <span>La scansione completa controlla tutti i file: può durare da mezz&apos;ora a qualche ora e rallenta il PC. Puoi continuare a usarlo e interromperla quando vuoi.</span>
+                    <span className="chip-actions">
+                      <button className="btn primary small" onClick={() => start('full')}>
+                        Avvia
+                      </button>
+                      <button className="btn small" onClick={() => setConfirmFull(false)}>
+                        Annulla
+                      </button>
+                    </span>
+                  </m.div>
+                )}
+              </AnimatePresence>
+              {run && (
+                <div className="bench-live defender-live">
+                  <div className="progress indeterminate" role="progressbar" aria-label={`${DEF_LABEL[run.action]} in corso`} aria-valuetext={`in corso da ${mmss(now - run.startedAt)}`}>
+                    <i />
+                  </div>
+                  <div className="bench-live-row">
+                    <span className="faint" aria-live="polite">
+                      {DEF_LABEL[run.action]} in corso · {mmss(now - run.startedAt)}
+                    </span>
+                    {run.action !== 'update' && (
+                      <button className="btn small" onClick={stop}>
+                        <CircleStop size={15} aria-hidden /> Interrompi
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {msg && !run && (
+                <div className={`notice ${msg.error ? 'alert' : ''}`} role="status">
+                  {msg.error ? <TriangleAlert size={18} aria-hidden /> : <ShieldCheck size={18} aria-hidden />}
+                  <span>{msg.text}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+      <div className="hw-block">
+        <h3>
+          Cronologia delle minacce
+          {threatsFinding && threatsFinding.severity !== 'ok' && (
+            <span className={`sev ${threatsFinding.severity}`} style={{ marginLeft: 8 }}>
+              <SevIcon sev={threatsFinding.severity} size={13} />
+              {threatsFinding.value}
+            </span>
+          )}
+        </h3>
+        {threats === undefined || threats === null ? (
+          <p className="faint" style={{ margin: 0, fontSize: 13 }}>
+            Cronologia non leggibile da questo account: si legge avviando Polaris come amministratore.
+          </p>
+        ) : threats.length === 0 ? (
+          <p className="faint" style={{ margin: 0, fontSize: 13 }}>
+            Nessuna minaccia nella cronologia di Defender.
+          </p>
+        ) : (
+          <ul className="threat-list">
+            {threats.map((t, i) => {
+              const bad = unresolvedThreat(t);
+              return (
+                <li key={i} className={bad ? 'bad' : undefined}>
+                  <div className="threat-head">
+                    {bad ? <SevIcon sev="crit" size={14} /> : <ShieldCheck size={14} aria-hidden />}
+                    <b className="mono">{t.name}</b>
+                  </div>
+                  <span className="faint">
+                    gravità {THREAT_SEVERITY[t.severity]} · {THREAT_STATUS[t.status]}
+                    {t.active ? ' · ancora attiva' : ''}
+                    {t.detected ? ` · ${dateIt(t.detected)}` : ''}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="faint defender-note">
+          Per una seconda opinione usa uno scanner a richiesta della Cassetta degli attrezzi: non resta in memoria e non entra in conflitto con Defender.
+        </p>
+      </div>
+    </m.section>
+  );
+}
 
 // ---------------------------------------------------------------- Scheda tecnica
 

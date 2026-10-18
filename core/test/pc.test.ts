@@ -6,7 +6,7 @@ import type { PcData, Scan } from '../src/engine';
 import { on } from '../src/engine/pc';
 import { cacheText, channelMode, coreLayout, memVendor } from '../src/engine/hardware';
 import { attrState, diskStatus, smartName, smartRaw } from '../src/engine/smart';
-import type { Hardware, HwModule, NVMeHealth, SmartAttr } from '../src/engine/types';
+import type { DefenderInfo, Hardware, HwModule, NVMeHealth, SmartAttr, Threat } from '../src/engine/types';
 import { base } from './fixtures';
 
 // Scansione sana con un computer in ordine: ogni test cambia solo ciò che verifica.
@@ -671,5 +671,49 @@ describe('computer: scheda tecnica (stile CPU-Z)', () => {
     expect(clinic.find((f) => f.id === 'pc.secureboot')?.severity).toBe('warn');
     expect(clinic.find((f) => f.id === 'pc.win11')?.severity).toBe('info');
     expect(clinic.find((f) => f.id === 'pc.ram.channel')?.severity).toBe('ok');
+  });
+});
+
+describe('computer: Microsoft Defender', () => {
+  const t = (o: Partial<Threat> = {}): Threat => ({ name: 'Trojan:Win32/Wacatac.B!ml', severity: 'severe', status: 'quarantined', detected: '2026-10-10T09:00:00Z', ...o });
+  const withThreats = (threats: Threat[] | null) => edit((x) => (x.threats = threats));
+
+  it('cronologia delle minacce: attive, consentite, recenti, vecchie, nessuna', () => {
+    const active = find(withThreats([t({ status: 'failed', active: true }), t({ name: 'PUA:Win32/Presenoker', severity: 'low' })]), 'pc.threats');
+    expect([active?.severity, active?.category, active?.actions[0]]).toEqual(['crit', 'security', 'remove-threats']);
+    expect(active?.verdict).toContain('Trojan:Win32/Wacatac.B!ml (grave)');
+    expect(active?.value).toBe('1 da risolvere');
+    expect(sevOf(withThreats([t({ status: 'detected' })]), 'pc.threats')).toBe('crit');
+    expect(sevOf(withThreats([t({ status: 'allowed' })]), 'pc.threats')).toBe('warn');
+    const recent = find(withThreats([t(), t({ name: 'PUA:Win32/Presenoker', severity: 'low', status: 'removed' })]), 'pc.threats');
+    expect(recent?.severity).toBe('info');
+    expect(recent?.value).toBe('2 bloccate in 30 giorni');
+    expect(find(withThreats([t({ detected: '2026-07-01T09:00:00Z' })]), 'pc.threats')?.verdict).toContain('più vecchie di 30 giorni');
+    expect(find(withThreats([]), 'pc.threats')?.severity).toBe('ok');
+    expect(find(withThreats(null), 'pc.threats')).toBeUndefined();
+  });
+
+  it('protezione da manomissioni e ultime scansioni, solo se Defender è l\'antivirus attivo', () => {
+    const def = (o: Partial<DefenderInfo>) => edit((x) => (x.defender = { mode: 'normal', enabled: true, realTime: true, tamperProtected: true, quickScanAgeDays: 2, ...o }));
+    expect(sevOf(def({}), 'pc.defender')).toBe('ok');
+    const tamper = find(def({ tamperProtected: false }), 'pc.defender');
+    expect([tamper?.severity, tamper?.actions[0]]).toEqual(['info', 'defender-protection']);
+    expect(find(def({ quickScanAgeDays: undefined }), 'pc.defender')?.verdict).toContain('Non risulta alcuna scansione');
+    expect(find(def({ quickScanAgeDays: 40, fullScanAgeDays: 20 }), 'pc.defender')?.verdict).toContain('20 giorni fa');
+    // Tempo reale spento: lo segnala già il giudizio sull'antivirus, qui solo se il Centro sicurezza non è leggibile.
+    expect(sevOf(def({ realTime: false }), 'pc.defender')).toBe('ok');
+    const unread = def({ realTime: false });
+    unread.antivirus = null;
+    expect(sevOf(unread, 'pc.defender')).toBe('warn');
+    expect(find(def({ mode: 'passive' }), 'pc.defender')).toBeUndefined();
+  });
+
+  it('demo: il portatile ha una minaccia bloccata, l\'ambulatorio usa un antivirus aziendale', () => {
+    const home = analyze(demoScan).findings;
+    expect(home.find((f) => f.id === 'pc.threats')?.severity).toBe('info');
+    expect(home.find((f) => f.id === 'pc.defender')?.severity).toBe('ok');
+    const clinic = analyze(clinicScan).findings;
+    expect(clinic.find((f) => f.id === 'pc.threats')?.severity).toBe('ok');
+    expect(clinic.find((f) => f.id === 'pc.defender')).toBeUndefined();
   });
 });

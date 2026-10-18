@@ -787,6 +787,33 @@ const list: Metric[] = [
     limits: 'Lo stato è quello dichiarato dal prodotto al Centro sicurezza; Polaris interpreta il campo di stato come gli strumenti di amministrazione più diffusi, ma il formato non è documentato ufficialmente. Su Windows Server il Centro sicurezza non esiste e si legge solo Microsoft Defender.',
   },
   {
+    id: 'pc.threats',
+    label: 'Minacce rilevate da Defender',
+    category: 'security',
+    what: 'Le minacce nella cronologia di Microsoft Defender (fino alle 25 più recenti): nome, gravità e stato (in quarantena, rimossa, consentita, azione non riuscita). Nessun percorso di file finisce nel rapporto.',
+    scale: [
+      { range: 'nessuna, o solo minacce risolte da più di 30 giorni', severity: 'ok', meaning: 'Niente da fare.' },
+      { range: 'minacce bloccate negli ultimi 30 giorni', severity: 'info', meaning: 'La protezione ha funzionato; conviene capire da dove arrivano.' },
+      { range: 'minacce consentite manualmente', severity: 'warn', meaning: 'Un\'eccezione può lasciare attivo un programma dannoso.' },
+      { range: 'minacce attive o azioni non riuscite', severity: 'crit', meaning: 'Il PC potrebbe essere compromesso: va gestito subito.' },
+    ],
+    why: 'Una minaccia non risolta può rubare password e dati o cifrare i file; anche quelle bloccate indicano un comportamento rischioso da correggere.',
+    limits: 'È la cronologia di Defender: se l\'antivirus principale è un altro prodotto, le sue rilevazioni non compaiono qui. La cronologia si può svuotare e Defender la accorcia da solo col tempo.',
+  },
+  {
+    id: 'pc.defender',
+    label: 'Microsoft Defender',
+    category: 'security',
+    what: 'Quando Defender è l\'antivirus attivo: protezione da manomissioni e data dell\'ultima scansione rapida o completa.',
+    scale: [
+      { range: 'protezione da manomissioni attiva e una scansione negli ultimi 14 giorni', severity: 'ok', meaning: 'Configurazione consigliata.' },
+      { range: 'protezione da manomissioni disattivata o nessuna scansione recente', severity: 'info', meaning: 'Da sistemare con calma.' },
+      { range: 'protezione in tempo reale disattivata (se il Centro sicurezza non è leggibile)', severity: 'warn', meaning: 'File e allegati non controllati.' },
+    ],
+    why: 'La protezione da manomissioni impedisce a un malware di spegnere l\'antivirus; le scansioni periodiche trovano ciò che è arrivato prima delle firme aggiornate.',
+    limits: 'Defender esegue le scansioni durante la manutenzione automatica di Windows: un PC sempre spento di notte o subito messo in sospensione può saltarle senza che sia un problema grave.',
+  },
+  {
     id: 'pc.updates',
     label: 'Ultimo aggiornamento di Windows',
     category: 'security',

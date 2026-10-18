@@ -4,6 +4,7 @@
 //	polaris-cli.exe report [opzioni]   analisi e rapporto testuale
 //	polaris-cli.exe serve [opzioni]    interfaccia nel browser (http://127.0.0.1:8737)
 //	polaris-cli.exe bench cpu|disk     test di velocità del processore o di un'unità
+//	polaris-cli.exe defender ...       stato e scansioni di Microsoft Defender
 //	polaris-cli.exe version
 //
 // Polaris.exe è compilato come applicazione grafica, polaris-cli.exe per la
@@ -26,6 +27,7 @@ import (
 	"lanterna/internal/assets"
 	"lanterna/internal/bench"
 	"lanterna/internal/collect"
+	"lanterna/internal/defender"
 	"lanterna/internal/engine"
 	"lanterna/internal/gui"
 	"lanterna/internal/infra"
@@ -59,6 +61,11 @@ Uso:
                                  scrive un file temporaneo, cancellato alla fine
   polaris-cli bench ... --json   stampa il risultato in JSON
   polaris-cli bench ... --quick  versione breve, per le verifiche automatiche
+  polaris-cli defender status    stato di Microsoft Defender e minacce rilevate
+  polaris-cli defender quick     scansione rapida con Microsoft Defender
+  polaris-cli defender full      scansione completa (può durare ore)
+  polaris-cli defender update    aggiornamento delle firme
+  polaris-cli defender ... --json  stampa il risultato in JSON
   polaris-cli version            versione del programma e del motore
 `
 
@@ -90,6 +97,8 @@ func main() {
 		err = runServe(args[1:])
 	case args[0] == "bench":
 		err = runBench(args[1:])
+	case args[0] == "defender":
+		err = runDefender(args[1:])
 	case args[0] == "version" || args[0] == "--version":
 		eng, e := engine.Load(nil)
 		ev := "non incluso"
@@ -210,6 +219,8 @@ func startServer(port int) (*server.Server, string, error) {
 			_, err := bench.DirFor(drive)
 			return err
 		},
+		DefenderRun:   defender.Run,
+		DefenderReady: defender.Available,
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = httpSrv.Serve(ln) }()
@@ -285,7 +296,9 @@ func runBench(args []string) error {
 			return err
 		}
 		out = res
-		row := func(label string, r, w float64) string { return fmt.Sprintf("  %-36s %9.1f MB/s %9.1f MB/s", label, r, w) }
+		row := func(label string, r, w float64) string {
+			return fmt.Sprintf("  %-36s %9.1f MB/s %9.1f MB/s", label, r, w)
+		}
 		text = fmt.Sprintf("%-38s %14s %14s\n", fmt.Sprintf("Unità %s (file di %d MB)", res.Drive, res.FileMB), "lettura", "scrittura") +
 			row("SEQ1M Q8T1  (sequenziale, 8 in coda)", res.SeqQ8ReadMBs, res.SeqQ8WriteMBs) + "\n" +
 			row("SEQ1M Q1T1  (sequenziale)", res.SeqReadMBs, res.SeqWriteMBs) + "\n" +
@@ -302,6 +315,106 @@ func runBench(args []string) error {
 	}
 	fmt.Print(text)
 	return nil
+}
+
+var threatStatusText = map[string]string{
+	"detected": "rilevata, da risolvere", "cleaned": "ripulita", "quarantined": "in quarantena", "removed": "rimossa",
+	"allowed": "consentita", "blocked": "bloccata", "failed": "azione non riuscita", "unknown": "stato sconosciuto",
+}
+
+func printThreats(threats []scan.Threat) {
+	if threats == nil {
+		fmt.Println("Minacce: cronologia non leggibile (serve avviare come amministratore?)")
+		return
+	}
+	if len(threats) == 0 {
+		fmt.Println("Minacce: nessuna nella cronologia di Defender")
+		return
+	}
+	fmt.Println("Minacce nella cronologia di Defender:")
+	for _, t := range threats {
+		day := t.Detected
+		if len(day) >= 10 {
+			day = day[:10]
+		}
+		active := ""
+		if t.Active {
+			active = ", ATTIVA"
+		}
+		fmt.Printf("  %s  %s (gravità %s): %s%s\n", day, t.Name, t.Severity, threatStatusText[t.Status], active)
+	}
+}
+
+func runDefender(args []string) error {
+	if len(args) == 0 {
+		return errors.New("specificare status, quick, full oppure update (polaris-cli defender status)")
+	}
+	action := args[0]
+	fs := flag.NewFlagSet("defender", flag.ContinueOnError)
+	asJSON := fs.Bool("json", false, "")
+	fs.Usage = func() { fmt.Fprintf(os.Stderr, usage, version) }
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	if action == "status" {
+		d, threats, err := pcinfo.DefenderStatus(ctx)
+		if err != nil {
+			return err
+		}
+		if *asJSON {
+			b, _ := json.MarshalIndent(map[string]any{"defender": d, "threats": threats}, "", "  ")
+			fmt.Println(string(b))
+			return nil
+		}
+		age := func(p *int, never string) string {
+			if p == nil {
+				return never
+			}
+			return fmt.Sprintf("%d giorni fa", *p)
+		}
+		fmt.Printf("Microsoft Defender: modalità %s, protezione in tempo reale %v, protezione da manomissioni %v\n", d.Mode, onOff(d.RealTime), onOffPtr(d.TamperProtected))
+		fmt.Printf("Firme: %s (%s); motore %s; piattaforma %s\n", d.SignatureVersion, age(d.SignatureAgeDays, "data sconosciuta"), d.EngineVersion, d.ProductVersion)
+		fmt.Printf("Ultima scansione rapida: %s; completa: %s\n", age(d.QuickScanAgeDays, "mai"), age(d.FullScanAgeDays, "mai"))
+		printThreats(threats)
+		return nil
+	}
+	if _, err := defender.Args(action); err != nil {
+		return err
+	}
+	label := map[string]string{defender.Quick: "Scansione rapida", defender.Full: "Scansione completa", defender.Update: "Aggiornamento delle firme"}[action]
+	fmt.Fprintf(os.Stderr, "%s con Microsoft Defender in corso (Ctrl+C per interrompere)...\n", label)
+	ctx, stop := context.WithTimeout(ctx, defender.Timeouts[action])
+	defer stop()
+	res, err := defender.Run(ctx, action)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		b, _ := json.MarshalIndent(res, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	fmt.Printf("%s (%d s)\n", res.Message, res.DurationMs/1000)
+	if action != defender.Update {
+		printThreats(res.Threats)
+	}
+	return nil
+}
+
+func onOff(b bool) string {
+	if b {
+		return "attiva"
+	}
+	return "disattivata"
+}
+
+func onOffPtr(b *bool) string {
+	if b == nil {
+		return "non riportata"
+	}
+	return onOff(*b)
 }
 
 func benchPhaseLabel(p string) string {

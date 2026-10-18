@@ -794,6 +794,33 @@ const list: Action[] = [
     impact: 'alto',
   },
   {
+    id: 'remove-threats',
+    title: 'Gestisci le minacce rilevate',
+    why: 'Una minaccia attiva o consentita per errore può rubare credenziali, dati dei pazienti o cifrare i file: va rimossa e va capito da dove è arrivata.',
+    steps: [
+      'Apri Sicurezza di Windows > Protezione da virus e minacce > Cronologia protezione e per ogni voce scegli l\'azione consigliata (Rimuovi o Quarantena). Le eccezioni si tolgono da "Gestisci impostazioni > Esclusioni".',
+      'Avvia una scansione completa da Polaris; se la minaccia ritorna o Defender non riesce a rimuoverla, usa "Analisi offline di Microsoft Defender", che riavvia il PC ed esamina il disco prima che Windows parta.',
+      'Per una seconda opinione usa uno scanner indipendente dalla Cassetta degli attrezzi (Microsoft Safety Scanner, ESET Online Scanner, Malwarebytes).',
+      'Se la minaccia ruba password (nomi come PasswordStealer, Spy, Agent Tesla) cambia le password da un altro dispositivo pulito, a partire da posta e banca, e attiva la verifica in due passaggi.',
+      'In uno studio o una clinica avvisa il referente informatico e quello per la privacy: un\'infezione su un PC con dati sanitari può richiedere una valutazione di violazione dei dati.',
+    ],
+    effort: 'media',
+    impact: 'alto',
+  },
+  {
+    id: 'defender-protection',
+    title: 'Completa la protezione di Microsoft Defender',
+    why: 'La protezione da manomissioni impedisce ai malware di spegnere Defender e le scansioni periodiche trovano ciò che è sfuggito al controllo in tempo reale.',
+    steps: [
+      'Apri Sicurezza di Windows > Protezione da virus e minacce > Gestisci impostazioni e attiva "Protezione da manomissioni" (sui PC aziendali la gestisce l\'amministratore).',
+      'Nella stessa pagina verifica che siano attive la protezione in tempo reale e quella basata sul cloud.',
+      'Avvia una scansione rapida dalla sezione Computer di Polaris; una volta al mese, o dopo un\'infezione, una scansione completa.',
+      'Lascia il PC acceso e collegato alla corrente qualche volta durante la pausa pranzo o la sera: Windows esegue la manutenzione automatica, comprese le scansioni, quando è inattivo.',
+    ],
+    effort: 'facile',
+    impact: 'medio',
+  },
+  {
     id: 'update-antivirus',
     title: 'Aggiorna le definizioni dell\'antivirus',
     why: 'Con definizioni vecchie l\'antivirus non riconosce le minacce recenti.',

@@ -105,10 +105,23 @@ func Inventory(ctx context.Context, req InventoryRequest, p Prims, opt Options, 
 	if opt.Workers < 1 {
 		opt.Workers = 1
 	}
+	// Le goroutine incrementano il contatore e poi riferiscono: due di loro
+	// possono riferire in ordine inverso (6 prima di 5). Si inoltra solo un
+	// valore che non torna indietro, così l'ultimo avanzamento è sempre quello
+	// finale.
+	var repMu sync.Mutex
+	last := map[string]int{}
 	report := func(phase string, done, total int) {
-		if progress != nil {
-			progress(phase, done, total)
+		if progress == nil {
+			return
 		}
+		repMu.Lock()
+		defer repMu.Unlock()
+		if prev, ok := last[phase]; ok && done < prev {
+			return
+		}
+		last[phase] = done
+		progress(phase, done, total)
 	}
 
 	var mu sync.Mutex

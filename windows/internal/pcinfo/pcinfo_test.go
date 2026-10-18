@@ -287,3 +287,47 @@ func TestLoadOf(t *testing.T) {
 		t.Errorf("limite inferiore: %v", *v)
 	}
 }
+
+// Uscita di DefenderScript su un PC con una minaccia in quarantena e una
+// ancora attiva; "mai" per la scansione completa (4294967295).
+const defenderFixture = `{"defender":{"mode":"Normal","enabled":true,"realtime":true,"tamper":true,"sigVersion":"1.419.123.0","sigAge":0,` +
+	`"sigUpdated":"2026-10-18T06:12:00.0000000Z","quickAge":1,"fullAge":4294967295,"quickEnd":"2026-10-17T12:30:00.0000000Z","fullEnd":"",` +
+	`"engine":"1.1.24090.11","product":"4.18.24090.11"},` +
+	`"threats":[{"name":"Trojan:Win32/Wacatac.B!ml","severity":5,"status":3,"active":false,"detected":"2026-10-12T09:15:00.0000000Z","changed":"2026-10-12T09:15:05.0000000Z"},` +
+	`{"name":"","severity":0,"status":103,"active":true,"detected":"2026-10-16T18:00:00.0000000Z","changed":""}],"errors":{}}`
+
+func TestParseDefender(t *testing.T) {
+	d, threats, err := ParseDefender(defenderFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Mode != "normal" || !d.Enabled || !d.RealTime || d.TamperProtected == nil || !*d.TamperProtected || d.SignatureVersion != "1.419.123.0" {
+		t.Errorf("stato: %+v", d)
+	}
+	if d.SignatureAgeDays == nil || *d.SignatureAgeDays != 0 || d.QuickScanAgeDays == nil || *d.QuickScanAgeDays != 1 || d.FullScanAgeDays != nil {
+		t.Errorf("età: firme %v, rapida %v, completa %v", d.SignatureAgeDays, d.QuickScanAgeDays, d.FullScanAgeDays)
+	}
+	if len(threats) != 2 {
+		t.Fatalf("minacce: %+v", threats)
+	}
+	if th := threats[0]; th.Name != "Trojan:Win32/Wacatac.B!ml" || th.Severity != "severe" || th.Status != "quarantined" || th.Active {
+		t.Errorf("prima minaccia: %+v", th)
+	}
+	if th := threats[1]; th.Name != "Minaccia senza nome" || th.Severity != "unknown" || th.Status != "failed" || !th.Active {
+		t.Errorf("seconda minaccia: %+v", th)
+	}
+	// Modalità passiva (un altro antivirus è il principale) e servizio fermo.
+	if d := defenderOf(&psDefender{Mode: "SxS Passive Mode"}); d.Mode != "passive" {
+		t.Errorf("modalità: %s", d.Mode)
+	}
+	if _, _, err := ParseDefender(`{"errors":{"defender":"Il servizio non è in esecuzione"}}`); err == nil || !strings.Contains(err.Error(), "servizio") {
+		t.Errorf("errore: %v", err)
+	}
+	// Nessuna minaccia: elenco vuoto, non nullo.
+	ps, _ := parsePS(`{"defender":{"mode":"Normal"},"threats":[],"errors":{}}`)
+	pc := &scan.PcData{}
+	merge(pc, ps, "C:")
+	if pc.Threats == nil || len(pc.Threats) != 0 || pc.Defender == nil {
+		t.Errorf("nessuna minaccia: %+v %+v", pc.Threats, pc.Defender)
+	}
+}

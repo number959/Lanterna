@@ -54,7 +54,22 @@ const PSScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncoding=[T
 	`try{$r.av=@(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct|ForEach-Object{$s=[long]$_.productState;@{name="$($_.displayName)";enabled=(($s -band 0x1000) -ne 0);upToDate=(($s -band 0x10) -eq 0);source='securitycenter'}})}catch{$e.av="$_"};` +
 	`if(-not $r.av){try{$m=Get-MpComputerStatus;$r.av=@(@{name='Microsoft Defender Antivirus';enabled=[bool]($m.AntivirusEnabled -and $m.RealTimeProtectionEnabled);upToDate=([long]$m.AntivirusSignatureAge -le 7);source='defender'})}catch{$e.defender="$_"}};` +
 	`try{$h=Get-HotFix|Where-Object{$_.InstalledOn}|Sort-Object InstalledOn -Descending|Select-Object -First 1;if($h){$r.updates=@{last=$h.InstalledOn.ToString('yyyy-MM-dd');kb="$($h.HotFixID)"}}}catch{$e.updates="$_"};` +
-	`$r.errors=$e;ConvertTo-Json -Compress -Depth 5 -InputObject $r`
+	defenderPS + `$r.errors=$e;ConvertTo-Json -Compress -Depth 5 -InputObject $r`
+
+// defenderPS legge stato e cronologia di Microsoft Defender. Delle minacce
+// si tengono nome, gravità, stato e date: niente percorsi dei file, nomi
+// utente o processi, che finirebbero nei rapporti esportati.
+const defenderPS = `$fd={param($d) if($d -and $d.Year -gt 2000){$d.ToUniversalTime().ToString('o')}else{''}};` +
+	`try{$m=Get-MpComputerStatus;$r.defender=@{mode="$($m.AMRunningMode)";enabled=[bool]$m.AntivirusEnabled;realtime=[bool]$m.RealTimeProtectionEnabled;tamper=$m.IsTamperProtected;` +
+	`sigVersion="$($m.AntivirusSignatureVersion)";sigAge=[long]$m.AntivirusSignatureAge;sigUpdated=(&$fd $m.AntivirusSignatureLastUpdated);quickAge=[long]$m.QuickScanAge;fullAge=[long]$m.FullScanAge;` +
+	`quickEnd=(&$fd $m.QuickScanEndTime);fullEnd=(&$fd $m.FullScanEndTime);engine="$($m.AMEngineVersion)";product="$($m.AMProductVersion)"}}catch{$e.defender="$_"};` +
+	`try{$t=@{};Get-MpThreat|ForEach-Object{$t["$($_.ThreatID)"]=$_};$r.threats=@(Get-MpThreatDetection|Sort-Object InitialDetectionTime -Descending|Select-Object -First 25|` +
+	`ForEach-Object{$x=$t["$($_.ThreatID)"];@{name="$($x.ThreatName)";severity=[int]$x.SeverityID;status=[int]$_.ThreatStatusID;active=[bool]$x.IsActive;detected=(&$fd $_.InitialDetectionTime);changed=(&$fd $_.LastThreatStatusChangeTime)}})}catch{$e.threats="$_"};`
+
+// DefenderScript rilegge solo lo stato di Defender, dopo una scansione o un
+// aggiornamento delle firme.
+const DefenderScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncoding=[Text.Encoding]::UTF8}catch{};$r=[ordered]@{};$e=[ordered]@{};` +
+	defenderPS + `$r.errors=$e;ConvertTo-Json -Compress -Depth 5 -InputObject $r`
 
 // psOut rispecchia l'uscita JSON di PSScript.
 type psOut struct {
@@ -122,7 +137,34 @@ type psOut struct {
 		Last string `json:"last"`
 		KB   string `json:"kb"`
 	} `json:"updates"`
-	Errors map[string]string `json:"errors"`
+	Defender *psDefender       `json:"defender"`
+	Threats  *[]psThreat       `json:"threats"`
+	Errors   map[string]string `json:"errors"`
+}
+
+type psDefender struct {
+	Mode       string `json:"mode"`
+	Enabled    bool   `json:"enabled"`
+	RealTime   bool   `json:"realtime"`
+	Tamper     *bool  `json:"tamper"`
+	SigVersion string `json:"sigVersion"`
+	SigAge     int64  `json:"sigAge"`
+	SigUpdated string `json:"sigUpdated"`
+	QuickAge   int64  `json:"quickAge"`
+	FullAge    int64  `json:"fullAge"`
+	QuickEnd   string `json:"quickEnd"`
+	FullEnd    string `json:"fullEnd"`
+	Engine     string `json:"engine"`
+	Product    string `json:"product"`
+}
+
+type psThreat struct {
+	Name     string `json:"name"`
+	Severity int    `json:"severity"`
+	Status   int    `json:"status"`
+	Active   bool   `json:"active"`
+	Detected string `json:"detected"`
+	Changed  string `json:"changed"`
 }
 
 // parsePS estrae l'oggetto JSON dall'uscita di PowerShell (che può avere
@@ -481,6 +523,10 @@ func merge(pc *scan.PcData, ps *psOut, systemDrive string) {
 			}
 		}
 	}
+	pc.Defender = defenderOf(ps.Defender)
+	if ps.Threats != nil {
+		pc.Threats = threatsOf(*ps.Threats)
+	}
 	if u := ps.Updates; u != nil && u.Last != "" {
 		if pc.Updates == nil {
 			pc.Updates = &scan.UpdateInfo{}
@@ -503,4 +549,106 @@ func trimDetail(s string) string {
 		s = string(r[:120])
 	}
 	return s
+}
+
+// days interpreta un'età in giorni di Defender: 65535 e oltre (fino a
+// 4294967295) significano "mai" o "sconosciuta".
+func days(v int64) *int {
+	if v < 0 || v >= 65535 {
+		return nil
+	}
+	d := int(v)
+	return &d
+}
+
+// defenderOf normalizza lo stato letto da Get-MpComputerStatus.
+func defenderOf(d *psDefender) *scan.DefenderInfo {
+	if d == nil {
+		return nil
+	}
+	mode := strings.ToLower(strings.TrimSpace(d.Mode))
+	switch {
+	case strings.Contains(mode, "passive"):
+		mode = "passive"
+	case strings.Contains(mode, "edr"):
+		mode = "edr"
+	case mode == "normal":
+	case mode == "":
+		mode = ""
+	default:
+		mode = "other"
+	}
+	info := &scan.DefenderInfo{
+		Mode: mode, Enabled: d.Enabled, RealTime: d.RealTime, TamperProtected: d.Tamper,
+		SignatureVersion: strings.TrimSpace(d.SigVersion), SignatureAgeDays: days(d.SigAge), SignatureUpdated: d.SigUpdated,
+		QuickScanAgeDays: days(d.QuickAge), FullScanAgeDays: days(d.FullAge), QuickScanEnd: d.QuickEnd, FullScanEnd: d.FullEnd,
+		EngineVersion: strings.TrimSpace(d.Engine), ProductVersion: strings.TrimSpace(d.Product),
+	}
+	// Una scansione senza data di fine non è mai stata completata.
+	if info.QuickScanEnd == "" {
+		info.QuickScanAgeDays = nil
+	}
+	if info.FullScanEnd == "" {
+		info.FullScanAgeDays = nil
+	}
+	return info
+}
+
+var threatSeverity = map[int]string{1: "low", 2: "moderate", 4: "high", 5: "severe"}
+
+// threatStatus traduce ThreatStatusID; i codici 102-107 sono azioni fallite.
+func threatStatus(id int) string {
+	switch id {
+	case 1:
+		return "detected"
+	case 2:
+		return "cleaned"
+	case 3:
+		return "quarantined"
+	case 4:
+		return "removed"
+	case 5:
+		return "allowed"
+	case 6:
+		return "blocked"
+	case 102, 103, 104, 105, 107:
+		return "failed"
+	}
+	return "unknown"
+}
+
+func threatsOf(list []psThreat) []scan.Threat {
+	out := []scan.Threat{}
+	for _, t := range list {
+		name := strings.TrimSpace(t.Name)
+		if name == "" {
+			name = "Minaccia senza nome"
+		}
+		sev := threatSeverity[t.Severity]
+		if sev == "" {
+			sev = "unknown"
+		}
+		out = append(out, scan.Threat{Name: name, Severity: sev, Status: threatStatus(t.Status), Active: t.Active, Detected: t.Detected, Changed: t.Changed})
+	}
+	return out
+}
+
+// ParseDefender legge l'uscita di DefenderScript.
+func ParseDefender(out string) (*scan.DefenderInfo, []scan.Threat, error) {
+	ps, err := parsePS(out)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ps.Defender == nil {
+		msg := ps.Errors["defender"]
+		if msg == "" {
+			msg = "stato non disponibile"
+		}
+		return nil, nil, errors.New("Microsoft Defender non risponde: " + trimDetail(msg))
+	}
+	var threats []scan.Threat
+	if ps.Threats != nil {
+		threats = threatsOf(*ps.Threats)
+	}
+	return defenderOf(ps.Defender), threats, nil
 }

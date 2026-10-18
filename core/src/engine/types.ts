@@ -361,6 +361,10 @@ export interface PcData {
   eventsDays?: number;
   /** null = Centro sicurezza non leggibile; [] = nessun prodotto registrato. */
   antivirus?: AvProduct[] | null;
+  /** Stato di Microsoft Defender (assente se non leggibile). */
+  defender?: DefenderInfo;
+  /** Cronologia delle minacce di Defender: null = non letta, [] = nessuna. */
+  threats?: Threat[] | null;
   updates?: UpdateInfo;
   /** Scheda tecnica (processore, scheda madre, memoria, firmware), come in CPU-Z. */
   hardware?: Hardware;
@@ -634,6 +638,38 @@ export interface AvProduct {
   enabled: boolean;
   upToDate?: boolean;
   source?: 'securitycenter' | 'defender';
+}
+
+/** Stato di Microsoft Defender (Get-MpComputerStatus). */
+export interface DefenderInfo {
+  /** normal = antivirus principale; passive = un altro antivirus è il principale. */
+  mode?: 'normal' | 'passive' | 'edr' | 'other';
+  enabled: boolean;
+  realTime: boolean;
+  tamperProtected?: boolean;
+  signatureVersion?: string;
+  signatureAgeDays?: number;
+  signatureUpdated?: string;
+  /** Assenti se la scansione non è mai stata completata. */
+  quickScanAgeDays?: number;
+  fullScanAgeDays?: number;
+  quickScanEnd?: string;
+  fullScanEnd?: string;
+  engineVersion?: string;
+  productVersion?: string;
+}
+
+export type ThreatSeverity = 'low' | 'moderate' | 'high' | 'severe' | 'unknown';
+export type ThreatStatus = 'detected' | 'cleaned' | 'quarantined' | 'removed' | 'allowed' | 'blocked' | 'failed' | 'unknown';
+
+/** Minaccia della cronologia di Defender: nome e stato, senza percorsi né nomi utente. */
+export interface Threat {
+  name: string;
+  severity: ThreatSeverity;
+  status: ThreatStatus;
+  active?: boolean;
+  detected?: string;
+  changed?: string;
 }
 
 export interface UpdateInfo {

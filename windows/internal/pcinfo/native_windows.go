@@ -144,6 +144,19 @@ func OnAC() *bool {
 	return &ac
 }
 
+// DefenderStatus rilegge stato e minacce di Microsoft Defender.
+func DefenderStatus(ctx context.Context) (*scan.DefenderInfo, []scan.Threat, error) {
+	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", DefenderScript)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	out, err := cmd.Output()
+	if err != nil && len(out) == 0 {
+		return nil, nil, err
+	}
+	return ParseDefender(string(out))
+}
+
 func runPS(ctx context.Context) (*psOut, error) {
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()

@@ -24,7 +24,7 @@ import { AnimatePresence, LazyMotion, MotionConfig, domMax, m, useReducedMotion,
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { analyze, ENGINE_VERSION, primaryAdapter, renderText } from '../engine';
-import type { AnswerValue, CpuBench, DiskBench, Finding, InfraData, Scan, Severity } from '../engine';
+import type { AnswerValue, CpuBench, DiskBench, Finding, InfraData, PcData, Scan, Severity } from '../engine';
 import { clinicScan } from '../demo/clinic';
 import { demoScan } from '../demo/sample';
 import { agentInfo, download, isScan, lastScan, runScan } from './api';
@@ -261,6 +261,8 @@ function Shell() {
     [],
   );
 
+  const patchPc = useCallback((p: Partial<PcData>) => setScan((s) => (s ? { ...s, pc: { ...s.pc, ...p } } : s)), []);
+
   const analysis = useMemo(() => (effective ? analyze(effective) : null), [effective]);
   const live = source === 'agent' && !!agent;
   // Il monitor misura la rete attuale: reale se l'agente è collegato, anche mentre si guarda un rapporto importato.
@@ -339,7 +341,7 @@ function Shell() {
   };
   const scanning = busy || (agent === undefined && slow);
   const props: ViewProps | null =
-    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, assessment, monitor, gwMacChange } : null;
+    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, patchPc, assessment, monitor, gwMacChange } : null;
   const pickDemo = (k: DemoKind) => {
     setDemoKind(k);
     setScan(DEMOS[k]);
