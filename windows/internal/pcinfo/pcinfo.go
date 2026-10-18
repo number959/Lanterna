@@ -30,7 +30,9 @@ const EventsDays = 30
 // amministratore) finisce in "errors" e non ferma le altre. Degli eventi si
 // leggono solo i livelli critico, errore e avviso: lo stesso codice NTFS 98,
 // a livello informativo, significa "volume integro".
-const PSScript = `$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.Encoding]::UTF8;$r=[ordered]@{};$e=[ordered]@{};` +
+// Impostare l'uscita in UTF-8 è un tentativo: senza console fallirebbe, e Go
+// sostituisce comunque i byte non validi senza rendere il JSON illeggibile.
+const PSScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncoding=[Text.Encoding]::UTF8}catch{};$r=[ordered]@{};$e=[ordered]@{};` +
 	`try{$p=Get-CimInstance Win32_Processor|Select-Object -First 1;$r.cpu=@{name="$($p.Name)".Trim();cores=[int]$p.NumberOfCores;threads=[int]$p.NumberOfLogicalProcessors;maxMhz=[int]$p.MaxClockSpeed}}catch{$e.cpu="$_"};` +
 	`try{$r.gpus=@(Get-CimInstance Win32_VideoController|ForEach-Object{$d='';if($_.DriverDate){$d=$_.DriverDate.ToString('yyyy-MM-dd')};@{name="$($_.Name)".Trim();driverVersion="$($_.DriverVersion)";driverDate=$d}})}catch{$e.gpus="$_"};` +
 	`try{$r.parts=@(Get-Partition|Where-Object{$_.DriveLetter}|ForEach-Object{@{letter="$($_.DriveLetter)";disk="$($_.DiskNumber)"}})}catch{$e.parts="$_"};` +

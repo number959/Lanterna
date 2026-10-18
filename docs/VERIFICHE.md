@@ -336,7 +336,9 @@ capitoli nuovi, "Usare STARNET Polaris" (6 guide) e "Il computer" (10 guide), e 
   correzioni sotto;
 - test di velocità simulati: avanzamento con fase e velocità, grafico secondo per secondo, risultati, giudizi nella
   valutazione, cronologia;
-- barra in basso su telefono con nove voci e la Guida nella barra in alto.
+- barra in basso su telefono con nove voci e la Guida nella barra in alto;
+- fluidità senza GPU: 60 fps mediani entrando nella sezione Computer, da fermi, aprendo una scheda e durante i test simulati
+  (p95 di 33 ms solo durante il test del processore, quando il grafico si aggiorna).
 
 **Exe 0.5.0 sotto Wine 9.0:**
 - **rapporto**: tutte le fasi, compresa quella del computer, con sistema (Wine si presenta come Windows 10 Pro), processore,
@@ -365,7 +367,29 @@ capitoli nuovi, "Usare STARNET Polaris" (6 guide) e "Il computer" (10 guide), e 
    elenco lungo compare entro 0,6 s).
 10. Un'unità inesistente veniva accettata dall'API e falliva solo dopo: ora è rifiutata subito con `422`.
 
+**Windows reale (CI, commit `17e1c5b`)**, tutti i passi verdi su Windows Server 2025 Datacenter 24H2 (build 26100.33438),
+AMD EPYC 7763 con 4 thread e 16 GB, eseguito come amministratore:
+- **dati del computer** letti davvero, compresi quelli che passano da PowerShell: sistema, edizione e build; core e thread;
+  memoria; due dischi virtuali Hyper-V (bus SAS, tipo non dichiarato, integri) collegati ai volumi `C:` e `D:`; registro eventi
+  letto, senza eventi rilevanti negli ultimi 30 giorni; tre programmi all'avvio; 81 processi `svchost.exe` raggruppati in una
+  riga; piano "High performance"; ultimo aggiornamento del 5/9/2026; nessun riavvio in sospeso;
+- l'antivirus arriva dalla riserva `Get-MpComputerStatus`, perché su Windows Server il Centro sicurezza non esiste: Microsoft
+  Defender con la protezione in tempo reale disattivata, come sulle macchine della CI. Il giudizio critico e la prima azione del
+  piano ("Attiva la protezione antivirus") sono corretti per quella macchina;
+- i dischi virtuali non forniscono contatori di affidabilità nemmeno da amministratore: compare la spiegazione invece dei
+  valori, e la scheda video Hyper-V è esclusa dal giudizio sui driver;
+- **test da riga di comando**: processore 16,1 MB/s con un thread e 50 con quattro; disco `C:` in versione breve con 825 MB/s in
+  lettura sequenziale e 3.697 IOPS in lettura casuale 4K, scritture limitate dalla piattaforma; nessun file di prova rimasto;
+- **API**: analisi con le 13 fasi, `400` e `422` per le richieste del disco senza conferma o con unità inesistente, test del
+  processore completato in 24 s con 20 campioni stabili (finale al 101 % della punta);
+- **finestra WebView2** attiva con il titolo "STARNET Polaris" e 6 processi `msedgewebview2`: nella cattura il punteggio di PC e
+  rete, il pallino rosso su Computer, il link "Come si usa" e l'invito alla guida.
+
+![STARNET Polaris 0.5.0 su Windows reale](img/windows-reale.webp)
+
 **Avvertenze.** Le date di supporto di Windows (Windows 11 per versione ed edizione, Windows 10 ed ESU), i codici di arresto e le
 soglie indicative dei test sono stati scritti senza consultare le fonti durante questo lavoro: vanno verificati sul sito
 Microsoft e sono riportati come tali nelle guide. Dischi, eventi, antivirus e aggiornamenti dipendono da PowerShell, che sotto
-Wine non è disponibile: su Windows reale li verifica la CI (sotto). La temperatura del processore non viene letta.
+Wine non è disponibile: su Windows reale li ha verificati la CI, ma su una macchina virtuale, quindi senza contatori SMART né
+batteria. Su un PC fisico con dischi veri, batteria ed eventi reali restano da provare. La temperatura del processore non viene
+letta.

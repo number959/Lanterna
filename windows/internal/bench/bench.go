@@ -374,7 +374,7 @@ func Disk(ctx context.Context, opt DiskOptions, report Report) (*scan.DiskBench,
 	res.FileMB = int(written >> 20)
 	res.SeqWriteMBs = round1(float64(written) / time.Since(t0).Seconds() / mb)
 	if written < size && note == "" {
-		note = fmt.Sprintf("Unità lenta: in %d secondi sono stati scritti %d MB.", int(opt.SeqTime.Seconds()), written>>20)
+		note = fmt.Sprintf("Raggiunto il tempo massimo della scrittura (%d s): file di prova di %d MB.", int(opt.SeqTime.Seconds()), written>>20)
 	}
 
 	// 2. Lettura sequenziale della parte scritta.

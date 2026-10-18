@@ -132,7 +132,7 @@ export function simulatedDiskBench(scan: Scan, drive: string): DiskBench {
   if (usb) {
     v = [32.4, 7.5, 3.1, 0.04];
     fileMB = 75;
-    note = 'Unità lenta: in 10 secondi sono stati scritti 75 MB.';
+    note = 'Raggiunto il tempo massimo della scrittura (10 s): file di prova di 75 MB.';
   } else if (disk?.media === 'hdd') v = failing ? [38.2, 41.5, 0.31, 0.86] : [162, 151, 0.92, 1.7];
   else if (disk?.media === 'ssd') v = /nvme/i.test(disk.bus ?? '') ? (full ? [1640, 590, 41.8, 61.5] : [2870, 1410, 58.6, 152]) : [512, 468, 31.2, 88];
   else v = [120, 96, 8.4, 4.1];
