@@ -13,36 +13,62 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// winFile esegue letture e scritture posizionate direttamente sull'handle:
-// con un handle sincrono e la struttura OVERLAPPED l'operazione parte
-// dall'offset indicato e termina prima del ritorno, senza chiamate extra.
+// winFile è aperto con FILE_FLAG_OVERLAPPED: ogni esecutore ha la sua
+// struttura OVERLAPPED e il suo evento, così più goroutine tengono in corso
+// operazioni contemporanee sullo stesso handle (con un handle sincrono
+// Windows le eseguirebbe una alla volta).
 type winFile struct{ h windows.Handle }
 
-func (f winFile) ReadAt(p []byte, off int64) (int, error) {
-	var n uint32
-	o := windows.Overlapped{Offset: uint32(off), OffsetHigh: uint32(off >> 32)}
-	err := windows.ReadFile(f.h, p, &n, &o)
-	if err == nil && int(n) < len(p) {
-		err = io.ErrUnexpectedEOF
+func (f winFile) worker() (rw, error) {
+	ev, err := windows.CreateEvent(nil, 1, 0, nil)
+	if err != nil {
+		return nil, err
 	}
-	return int(n), err
-}
-
-func (f winFile) WriteAt(p []byte, off int64) (int, error) {
-	var n uint32
-	o := windows.Overlapped{Offset: uint32(off), OffsetHigh: uint32(off >> 32)}
-	err := windows.WriteFile(f.h, p, &n, &o)
-	if err == nil && int(n) < len(p) {
-		err = io.ErrShortWrite
-	}
-	return int(n), err
+	// new alloca sullo heap: la struttura non si sposta mentre il sistema la usa.
+	return &winWorker{h: f.h, ev: ev, ov: new(windows.Overlapped)}, nil
 }
 
 func (f winFile) Sync() error  { return windows.FlushFileBuffers(f.h) }
 func (f winFile) Close() error { return windows.CloseHandle(f.h) }
 
-// createFile crea il file di prova: senza cache di sistema, temporaneo e
-// cancellato da Windows alla chiusura dell'handle (anche in caso di crash).
+type winWorker struct {
+	h, ev windows.Handle
+	ov    *windows.Overlapped
+}
+
+// do avvia l'operazione dall'offset indicato e ne attende la fine: se il
+// sistema la completa subito GetOverlappedResult ritorna immediatamente.
+func (w *winWorker) do(p []byte, off int64, write bool) (int, error) {
+	*w.ov = windows.Overlapped{Offset: uint32(off), OffsetHigh: uint32(off >> 32), HEvent: w.ev}
+	var n uint32
+	var err error
+	if write {
+		err = windows.WriteFile(w.h, p, &n, w.ov)
+	} else {
+		err = windows.ReadFile(w.h, p, &n, w.ov)
+	}
+	if err != nil && err != windows.ERROR_IO_PENDING {
+		return 0, err
+	}
+	if err := windows.GetOverlappedResult(w.h, w.ov, &n, true); err != nil {
+		return int(n), err
+	}
+	if int(n) < len(p) {
+		if write {
+			return int(n), io.ErrShortWrite
+		}
+		return int(n), io.ErrUnexpectedEOF
+	}
+	return int(n), nil
+}
+
+func (w *winWorker) ReadAt(p []byte, off int64) (int, error)  { return w.do(p, off, false) }
+func (w *winWorker) WriteAt(p []byte, off int64) (int, error) { return w.do(p, off, true) }
+func (w *winWorker) Close() error                             { return windows.CloseHandle(w.ev) }
+
+// createFile crea il file di prova: senza cache di sistema, temporaneo,
+// cancellato da Windows alla chiusura dell'handle (anche in caso di crash) e
+// con I/O sovrapposto per le misure con più richieste in coda.
 func createFile(dir string) (file, error) {
 	name := filepath.Join(dir, fmt.Sprintf("polaris-test-%d-%08x.tmp", os.Getpid(), rand.Uint32()))
 	p, err := windows.UTF16PtrFromString(name)
@@ -50,7 +76,7 @@ func createFile(dir string) (file, error) {
 		return nil, err
 	}
 	h, err := windows.CreateFile(p, windows.GENERIC_READ|windows.GENERIC_WRITE, 0, nil, windows.CREATE_NEW,
-		windows.FILE_ATTRIBUTE_TEMPORARY|windows.FILE_FLAG_NO_BUFFERING|windows.FILE_FLAG_DELETE_ON_CLOSE, 0)
+		windows.FILE_ATTRIBUTE_TEMPORARY|windows.FILE_FLAG_NO_BUFFERING|windows.FILE_FLAG_DELETE_ON_CLOSE|windows.FILE_FLAG_OVERLAPPED, 0)
 	if err != nil {
 		return nil, err
 	}

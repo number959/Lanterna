@@ -167,7 +167,7 @@ export const pc: Guide[] = [
     level: 'intermedio',
     metrics: ['pc.cpubench', 'pc.diskbench'],
     actions: ['cool-cpu', 'power-plan'],
-    tags: ['benchmark', 'test di velocità', 'prestazioni', 'throttling', 'limitazione termica', 'turbo', 'limiti di potenza', 'mb/s', 'iops', 'qd1', 'profondità di coda', '4k', 'sequenziale', 'casuale', 'cache slc', 'confronto', 'prima e dopo'],
+    tags: ['benchmark', 'test di velocità', 'prestazioni', 'throttling', 'limitazione termica', 'turbo', 'limiti di potenza', 'mb/s', 'iops', 'qd1', 'profondità di coda', '4k', 'sequenziale', 'casuale', 'cache slc', 'confronto', 'prima e dopo', 'crystaldiskmark', 'seq1m', 'rnd4k', 'q8t1', 'q32t1', 'q1t1', 'ahci', 'pcie'],
     blocks: [
       { t: 'p', text: 'I test di velocità rispondono a domande precise: il processore mantiene le prestazioni o rallenta quando scalda? Il disco va come dovrebbe per il suo tipo? Il PC è migliorato dopo un intervento? Partono solo quando li avvii, dalla sezione Computer o dalla riga di comando.' },
       { t: 'h', text: 'Il test del processore' },
@@ -180,20 +180,22 @@ export const pc: Guide[] = [
       ] },
       { t: 'p', text: 'Molti processori possono superare la loro potenza nominale per qualche decina di secondi e poi scendono a un limite sostenibile; i portatili rallentano anche per il calore. Se alla fine la velocità è sotto l\'80 % della punta, Polaris parla di processore limitato: polvere nelle ventole, superficie morbida sotto il portatile, pasta termica secca, PC a batteria o piano di risparmio energia. Se con quattro o più thread il processore va meno di 1,5 volte più veloce che con uno, qualcosa gli impedisce di usare tutti i core.' },
       { t: 'h', text: 'Il test del disco' },
-      { t: 'p', text: 'Polaris crea un file temporaneo fino a 1 GB e lo scrive e rilegge senza passare dalla cache di Windows: prima in sequenza a blocchi da 1 MB, poi in punti casuali a blocchi da 4 KB, con una richiesta alla volta. Ogni fase ha una durata massima, così una chiavetta lenta non tiene occupato il PC per minuti.' },
-      { t: 'table', head: ['Misura', 'A che cosa corrisponde'], rows: [
-        ['lettura e scrittura sequenziale', 'copia di file grandi, video, archivi'],
-        ['lettura casuale 4K', 'avvio di Windows, apertura dei programmi, ricerche: è il valore che più distingue un PC reattivo da uno lento'],
-        ['scrittura casuale 4K', 'piccoli salvataggi continui di sistema, browser e programmi'],
-        ['IOPS', 'operazioni al secondo: con blocchi da 4 KB, 10.000 IOPS corrispondono a circa 41 MB/s e a 0,1 ms per operazione'],
+      { t: 'p', text: 'Polaris crea un file temporaneo fino a 1 GB senza passare dalla cache di Windows e lo misura con lo stesso profilo di CrystalDiskMark, il programma più usato per confrontare i dischi: quattro misure, ciascuna in lettura e in scrittura, di 4 secondi ciascuna. Su un\'unità lenta il file si ferma a ciò che si riesce a scrivere in 15 secondi, così una chiavetta non tiene occupato il PC per minuti.' },
+      { t: 'table', head: ['Misura', 'Che cosa fa', 'A che cosa corrisponde'], rows: [
+        ['SEQ1M Q8T1', 'blocchi da 1 MB in sequenza, 8 richieste in coda', 'la velocità massima, quella dichiarata sulle confezioni: copia di file grandi, video, archivi'],
+        ['SEQ1M Q1T1', 'blocchi da 1 MB in sequenza, una richiesta alla volta', 'copie fatte da programmi semplici, lettura di un file grande'],
+        ['RND4K Q32T1', 'blocchi da 4 KB in punti casuali, 32 richieste in coda', 'carichi da server o database; mostra la capacità del controller dell\'SSD'],
+        ['RND4K Q1T1', 'blocchi da 4 KB in punti casuali, una richiesta alla volta', 'avvio di Windows, apertura dei programmi, ricerche: è il valore che più distingue un PC reattivo da uno lento'],
       ] },
-      { t: 'p', text: 'I valori sono più bassi di quelli dichiarati dai produttori, che misurano con molte richieste in parallelo (per esempio 32) e su dischi vuoti. Una richiesta alla volta è invece ciò che accade di solito su un PC d\'ufficio. Inoltre 1 GB entra nella cache veloce di quasi tutti gli SSD: la scrittura misurata è quella di picco.' },
+      { t: 'p', text: '**Q** è la profondità di coda, cioè quante richieste il programma tiene in attesa contemporaneamente; **T** il numero di thread che le inviano. Con molte richieste in coda un SSD lavora in parallelo su più chip e arriva al limite dell\'interfaccia; con una sola richiesta conta il tempo di risposta di ciascuna operazione. Sotto i valori casuali Polaris riporta anche gli **IOPS**, le operazioni al secondo: con blocchi da 4 KB, 10.000 IOPS corrispondono a circa 41 MB/s e a 0,1 ms per operazione.' },
+      { t: 'p', text: 'I numeri sono confrontabili con quelli di CrystalDiskMark ma non identici: CrystalDiskMark ripete ogni misura cinque volte e tiene la migliore, Polaris ne fa una sola, più breve. Sugli NVMe molto veloci la misura con 32 richieste può risultare un po\' più bassa. Inoltre 1 GB entra nella cache veloce di quasi tutti gli SSD: la scrittura misurata è quella di picco.' },
       { t: 'table', caption: 'Soglie usate da Polaris in questo test (indicative)', head: ['Unità', 'Lettura sequenziale nella norma', 'Lettura casuale 4K nella norma'], rows: [
         ['SSD NVMe', 'oltre 500 MB/s (di solito oltre 1.000)', 'oltre 10 MB/s (di solito oltre 30)'],
         ['SSD SATA', 'oltre 200 MB/s (di solito 400-550)', 'oltre 10 MB/s (di solito oltre 20)'],
         ['HDD', 'oltre 50 MB/s (di solito 80-250)', 'oltre 0,2 MB/s (di solito 0,5-2)'],
         ['chiavetta o disco USB', 'dipende da modello e porta', 'sotto 10 MB/s in scrittura: unità lenta o porta USB 2.0'],
       ] },
+      { t: 'p', text: 'Le soglie riguardano le misure con una richiesta alla volta (Q1T1). In più, con 8 richieste in coda, Polaris segnala un NVMe sotto i 1.000 MB/s (slot M.2 con meno linee PCIe, disco surriscaldato o modello economico) e un SSD SATA sotto i 300 MB/s: valori vicini a 250-280 MB/s indicano una porta SATA a 3 Gbit/s o il controller in modalità IDE invece di AHCI.' },
       { t: 'h', text: 'Misure confrontabili' },
       { t: 'list', items: [
         'chiudi i programmi pesanti e non usare il PC durante la prova;',

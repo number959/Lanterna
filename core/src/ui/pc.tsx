@@ -519,6 +519,8 @@ interface BenchRun {
   done: number;
   value?: number;
   samples?: number[];
+  /** Ultimo valore visto per ogni fase già misurata: la griglia del disco si riempie man mano. */
+  values?: Record<string, number>;
 }
 
 const PHASE_LABEL: Record<string, string> = {
@@ -526,9 +528,14 @@ const PHASE_LABEL: Record<string, string> = {
   load: 'Carico attuale del processore',
   single: 'Un thread',
   multi: 'Tutti i thread',
-  'seq-write': 'Scrittura sequenziale',
+  prep: 'Preparazione del file di prova',
+  'seq-q8-read': 'Lettura sequenziale, 8 richieste in coda',
   'seq-read': 'Lettura sequenziale',
+  'rnd-q32-read': 'Lettura casuale 4K, 32 richieste in coda',
   'rnd-read': 'Lettura casuale 4K',
+  'seq-q8-write': 'Scrittura sequenziale, 8 richieste in coda',
+  'seq-write': 'Scrittura sequenziale',
+  'rnd-q32-write': 'Scrittura casuale 4K, 32 richieste in coda',
   'rnd-write': 'Scrittura casuale 4K',
   done: 'Fine',
 };
@@ -568,15 +575,17 @@ function simulateBench(scan: Scan, req: BenchRequest): Promise<CpuBench | DiskBe
       } else {
         const d = result as DiskBench;
         const phases: [string, number][] = [
-          ['seq-write', d.seqWriteMBs],
-          ['seq-read', d.seqReadMBs],
-          ['rnd-read', d.rndReadMBs],
-          ['rnd-write', d.rndWriteMBs],
+          ['prep', d.seqWriteMBs],
+          ...DISK_ROWS.flatMap((r) => [[`${r.id}-read`, r.read(d) ?? 0] as [string, number]]),
+          ...DISK_ROWS.flatMap((r) => [[`${r.id}-write`, r.write(d) ?? 0] as [string, number]]),
         ];
-        const i = Math.floor(t / 1200);
+        const step = 650;
+        const i = Math.floor(t / step);
         if (i >= phases.length) return resolve(result);
         const wobble = 1 + Math.sin(t / 90) * 0.03;
-        publishBench({ kind: 'disk', drive, phase: phases[i][0], done: t / 4800, value: phases[i][1] * wobble });
+        const values: Record<string, number> = {};
+        for (let k = 1; k < i; k++) values[phases[k][0]] = phases[k][1];
+        publishBench({ kind: 'disk', drive, phase: phases[i][0], done: t / (step * phases.length), value: phases[i][1] * wobble, values });
       }
       timer = window.setTimeout(step, 80);
     };
@@ -588,11 +597,17 @@ function startBench(live: boolean, scan: Scan, req: BenchRequest, done: (r: CpuB
   if (benchPromise) return;
   const drive = req.kind === 'disk' ? req.drive : undefined;
   publishBench({ kind: req.kind, drive, phase: 'start', done: 0 });
+  const values: Record<string, number> = {};
   benchPromise = live
     ? runBench(
         req,
         (st) => {
-          if (st.progress) publishBench({ kind: req.kind, drive: st.drive ?? drive, phase: st.progress.phase, done: st.progress.done, value: st.progress.value, samples: st.progress.samples });
+          const p = st.progress;
+          if (!p) return;
+          // Il valore di una fase è la media dall'inizio della fase: l'ultimo
+          // ricevuto prima del cambio di fase è il suo risultato (quasi esatto).
+          if (p.value !== undefined && p.value > 0 && p.phase !== 'prep') values[p.phase] = p.value;
+          publishBench({ kind: req.kind, drive: st.drive ?? drive, phase: p.phase, done: p.done, value: p.value, samples: p.samples, values: { ...values } });
         },
         { resume },
       )
@@ -680,6 +695,64 @@ function SamplesChart({ samples, total = 20, label }: { samples: number[]; total
   );
 }
 
+/** Le quattro misure del profilo di CrystalDiskMark, nell'ordine della sua finestra. */
+const DISK_ROWS: { id: string; label: string; hint: string; read: (d: DiskBench) => number | undefined; write: (d: DiskBench) => number | undefined; iops?: (d: DiskBench) => [number | undefined, number | undefined] }[] = [
+  { id: 'seq-q8', label: 'SEQ1M Q8T1', hint: 'sequenziale, 8 in coda', read: (d) => d.seqQ8ReadMBs, write: (d) => d.seqQ8WriteMBs },
+  { id: 'seq', label: 'SEQ1M Q1T1', hint: 'sequenziale', read: (d) => d.seqReadMBs, write: (d) => d.seqWriteMBs },
+  { id: 'rnd-q32', label: 'RND4K Q32T1', hint: 'casuale 4K, 32 in coda', read: (d) => d.rndQ32ReadMBs, write: (d) => d.rndQ32WriteMBs, iops: (d) => [d.rndQ32ReadIops, d.rndQ32WriteIops] },
+  { id: 'rnd', label: 'RND4K Q1T1', hint: 'casuale 4K', read: (d) => d.rndReadMBs, write: (d) => d.rndWriteMBs, iops: (d) => [d.rndReadIops, d.rndWriteIops] },
+];
+/** Nome della fase dell'agente per una cella della griglia ("seq" + lettura = "seq-read"). */
+const phaseOf = (row: string, write: boolean) => `${row}-${write ? 'write' : 'read'}`;
+
+/**
+ * Griglia dei risultati come in CrystalDiskMark: righe per misura, colonne
+ * lettura e scrittura in MB/s. Durante il test si riempie man mano e la cella
+ * in corso è evidenziata; i risultati delle versioni precedenti hanno solo
+ * le righe Q1.
+ */
+function DiskGrid({ res, live }: { res?: DiskBench; live?: BenchRun }) {
+  const rows = res ? DISK_ROWS.filter((r) => r.read(res) !== undefined) : DISK_ROWS;
+  const cell = (r: (typeof DISK_ROWS)[number], write: boolean) => {
+    const phase = phaseOf(r.id, write);
+    const active = live?.phase === phase;
+    const v = res ? (write ? r.write(res) : r.read(res)) : live?.values?.[phase];
+    const io = res && r.iops ? r.iops(res)[write ? 1 : 0] : undefined;
+    return (
+      <td className={`dg-cell ${active ? 'active' : ''} ${v === undefined ? 'empty' : ''}`} aria-current={active ? 'step' : undefined}>
+        <span className="dg-v">{v === undefined ? (active ? '…' : '-') : fmtNum(v, v < 10 ? 2 : v < 100 ? 1 : 0)}</span>
+        {io !== undefined && <span className="dg-io">{thousands(io)} IOPS</span>}
+      </td>
+    );
+  };
+  return (
+    <table className="disk-grid">
+      <caption className="sr-only">Velocità del disco in MB/s, profilo CrystalDiskMark</caption>
+      <thead>
+        <tr>
+          <th scope="col">
+            <span className="sr-only">Misura</span>
+          </th>
+          <th scope="col">Lettura MB/s</th>
+          <th scope="col">Scrittura MB/s</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.id}>
+            <th scope="row">
+              <span className="dg-k">{r.label}</span>
+              <span className="dg-h">{r.hint}</span>
+            </th>
+            {cell(r, false)}
+            {cell(r, true)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function BenchProgress({ run, onStop }: { run: BenchRun; onStop: () => void }) {
   return (
     <m.div
@@ -703,6 +776,7 @@ function BenchProgress({ run, onStop }: { run: BenchRun; onStop: () => void }) {
           </button>
         </div>
         {run.kind === 'cpu' && run.phase === 'multi' && <SamplesChart samples={run.samples ?? []} label="Velocità secondo per secondo con tutti i thread" />}
+        {run.kind === 'disk' && run.phase !== 'start' && <DiskGrid live={run} />}
       </div>
     </m.div>
   );
@@ -852,7 +926,7 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
             <h2 className="disk-title">
               <HardDrive size={19} aria-hidden /> Disco
             </h2>
-            <span className="sub">fino a 35 secondi</span>
+            <span className="sub">fino a 50 secondi</span>
             <span className="spacer" />
             {diskFinding && (
               <span className={`sev ${diskFinding.severity}`}>
@@ -862,8 +936,8 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
             )}
           </div>
           <p className="muted bench-desc">
-            Scrive e rilegge un file temporaneo fino a 1 GB senza cache di Windows, in sequenza e in punti casuali (4 KB), e lo cancella alla fine, anche se il test
-            si interrompe.
+            Scrive un file temporaneo fino a 1 GB senza cache di Windows e misura letture e scritture con il profilo di CrystalDiskMark: in sequenza a blocchi da 1 MB
+            e in punti casuali a blocchi da 4 KB, con molte richieste in coda e con una sola. Il file viene cancellato alla fine, anche se il test si interrompe.
           </p>
           {vols.length > 0 && (
             <label className="bench-drive">
@@ -896,20 +970,9 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
             </div>
           )}
           <AnimatePresence initial={false}>{run?.kind === 'disk' && <BenchProgress run={run} onStop={stop} />}</AnimatePresence>
-          {diskRes && (
+          {diskRes && run?.kind !== 'disk' && (
             <div className="bench-result">
-              <div className="stats">
-                <Stat k="Lettura sequenziale" v={mbs(diskRes.seqReadMBs)} />
-                <Stat k="Scrittura sequenziale" v={mbs(diskRes.seqWriteMBs)} />
-                <Stat k="Lettura casuale 4K">
-                  {mbs(diskRes.rndReadMBs)}
-                  <span className="sub">{thousands(diskRes.rndReadIops)} IOPS</span>
-                </Stat>
-                <Stat k="Scrittura casuale 4K">
-                  {mbs(diskRes.rndWriteMBs)}
-                  <span className="sub">{thousands(diskRes.rndWriteIops)} IOPS</span>
-                </Stat>
-              </div>
+              <DiskGrid res={diskRes} />
               <p className="faint bench-axis">
                 <span>
                   File di {diskRes.fileMB} MB{diskRes.note ? ` · ${diskRes.note}` : ''}
@@ -920,7 +983,10 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
           )}
           {diskHist.length > 0 && (
             <BenchHistoryList
-              rows={diskHist.map((h) => ({ at: h.startedAt, text: `lettura ${mbs(h.seqReadMBs)} · scrittura ${mbs(h.seqWriteMBs)} · 4K ${mbs(h.rndReadMBs)}` }))}
+              rows={diskHist.map((h) => ({
+                at: h.startedAt,
+                text: `${h.seqQ8ReadMBs !== undefined ? `Q8 ${mbs(h.seqQ8ReadMBs)} · ` : ''}lettura ${mbs(h.seqReadMBs)} · scrittura ${mbs(h.seqWriteMBs)} · 4K ${mbs(h.rndReadMBs)}`,
+              }))}
               onClear={() => {
                 const h = readHistory(histKey);
                 writeHistory(histKey, { ...h, disk: h.disk.filter((x) => x.drive.toUpperCase() !== drive.toUpperCase() || x.startedAt === diskRes?.startedAt) });

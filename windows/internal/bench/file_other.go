@@ -9,8 +9,16 @@ import (
 )
 
 // Fuori da Windows il test serve solo alle prove automatiche: file normale,
-// con la cache del sistema (i valori non sono indicativi).
+// con la cache del sistema (i valori non sono indicativi). ReadAt e WriteAt
+// di os.File si possono usare da più goroutine insieme.
 type tempFile struct{ *os.File }
+
+func (f tempFile) worker() (rw, error) { return osWorker{f.File}, nil }
+
+// osWorker condivide il file: chiuderlo non chiude il file.
+type osWorker struct{ *os.File }
+
+func (osWorker) Close() error { return nil }
 
 func (f tempFile) Close() error {
 	err := f.File.Close()

@@ -586,6 +586,12 @@ export interface CpuBench {
   durationMs: number;
 }
 
+/**
+ * Profilo stile CrystalDiskMark. I campi seq e rnd sono le misure con una
+ * sola richiesta in coda (SEQ1M Q1T1, RND4K Q1T1); quelli Q8 e Q32 le misure
+ * con 8 e 32 richieste (SEQ1M Q8T1, RND4K Q32T1), assenti nei risultati delle
+ * versioni precedenti alla 0.6.
+ */
 export interface DiskBench {
   startedAt: string;
   drive: string;
@@ -596,6 +602,12 @@ export interface DiskBench {
   rndReadIops: number;
   rndWriteMBs: number;
   rndWriteIops: number;
+  seqQ8ReadMBs?: number;
+  seqQ8WriteMBs?: number;
+  rndQ32ReadMBs?: number;
+  rndQ32ReadIops?: number;
+  rndQ32WriteMBs?: number;
+  rndQ32WriteIops?: number;
   durationMs: number;
   note?: string;
 }

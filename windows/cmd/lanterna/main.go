@@ -53,7 +53,8 @@ Uso:
       --port N                   porta locale (predefinita 8737)
       --open                     apre il browser automaticamente
   polaris-cli bench cpu          test di velocità del processore (circa 25 secondi)
-  polaris-cli bench disk         test di velocità di un'unità (fino a 35 secondi):
+  polaris-cli bench disk         test di velocità di un'unità (fino a 50 secondi),
+                                 con il profilo di CrystalDiskMark:
       --drive X:                 unità da provare (predefinita quella di sistema)
                                  scrive un file temporaneo, cancellato alla fine
   polaris-cli bench ... --json   stampa il risultato in JSON
@@ -284,8 +285,12 @@ func runBench(args []string) error {
 			return err
 		}
 		out = res
-		text = fmt.Sprintf("Unità %s (file di %d MB)\n  sequenziale:  lettura %.1f MB/s, scrittura %.1f MB/s\n  casuale 4K:   lettura %.1f MB/s (%.0f IOPS), scrittura %.1f MB/s (%.0f IOPS)\n",
-			res.Drive, res.FileMB, res.SeqReadMBs, res.SeqWriteMBs, res.RndReadMBs, res.RndReadIOPS, res.RndWriteMBs, res.RndWriteIOPS)
+		row := func(label string, r, w float64) string { return fmt.Sprintf("  %-36s %9.1f MB/s %9.1f MB/s", label, r, w) }
+		text = fmt.Sprintf("%-38s %14s %14s\n", fmt.Sprintf("Unità %s (file di %d MB)", res.Drive, res.FileMB), "lettura", "scrittura") +
+			row("SEQ1M Q8T1  (sequenziale, 8 in coda)", res.SeqQ8ReadMBs, res.SeqQ8WriteMBs) + "\n" +
+			row("SEQ1M Q1T1  (sequenziale)", res.SeqReadMBs, res.SeqWriteMBs) + "\n" +
+			row("RND4K Q32T1 (casuale 4K, 32 in coda)", res.RndQ32ReadMBs, res.RndQ32WriteMBs) + fmt.Sprintf("  %.0f / %.0f IOPS\n", res.RndQ32ReadIOPS, res.RndQ32WriteIOPS) +
+			row("RND4K Q1T1  (casuale 4K)", res.RndReadMBs, res.RndWriteMBs) + fmt.Sprintf("  %.0f / %.0f IOPS\n", res.RndReadIOPS, res.RndWriteIOPS)
 		if res.Note != "" {
 			text += "  " + res.Note + "\n"
 		}
@@ -307,14 +312,24 @@ func benchPhaseLabel(p string) string {
 		return "un thread"
 	case "multi":
 		return "tutti i thread"
-	case "seq-write":
-		return "scrittura sequenziale"
+	case "prep":
+		return "preparazione del file di prova"
+	case "seq-q8-read":
+		return "lettura sequenziale, 8 richieste in coda (SEQ1M Q8T1)"
 	case "seq-read":
-		return "lettura sequenziale"
+		return "lettura sequenziale (SEQ1M Q1T1)"
+	case "rnd-q32-read":
+		return "lettura casuale 4K, 32 richieste in coda (RND4K Q32T1)"
 	case "rnd-read":
-		return "lettura casuale 4K"
+		return "lettura casuale 4K (RND4K Q1T1)"
+	case "seq-q8-write":
+		return "scrittura sequenziale, 8 richieste in coda (SEQ1M Q8T1)"
+	case "seq-write":
+		return "scrittura sequenziale (SEQ1M Q1T1)"
+	case "rnd-q32-write":
+		return "scrittura casuale 4K, 32 richieste in coda (RND4K Q32T1)"
 	case "rnd-write":
-		return "scrittura casuale 4K"
+		return "scrittura casuale 4K (RND4K Q1T1)"
 	}
 	return p
 }

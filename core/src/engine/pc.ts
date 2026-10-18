@@ -736,6 +736,18 @@ function diskBench(pc: PcData, b: DiskBench, add: Add) {
     expect = nvme
       ? 'In questa prova un SSD NVMe in salute legge in sequenza indicativamente oltre 1.000 MB/s e in modo casuale 4K oltre 30 MB/s.'
       : 'In questa prova un SSD SATA in salute legge in sequenza indicativamente 400-550 MB/s e in modo casuale 4K oltre 20 MB/s.';
+    // Con 8 richieste in coda il limite è l'interfaccia: valori molto bassi
+    // indicano un collegamento più lento di quello che il disco supporta.
+    const q8 = b.seqQ8ReadMBs;
+    if (q8 !== undefined && sev === 'ok') {
+      if (nvme && q8 < 1000) {
+        sev = 'info';
+        expect += ` Con 8 richieste in coda legge solo ${mbs(q8)}: gli NVMe arrivano di solito a 1.500-7.000 MB/s. Può dipendere da uno slot M.2 con meno linee PCIe, da un disco molto caldo o da un modello economico.`;
+      } else if (!nvme && q8 < 300) {
+        sev = 'info';
+        expect += ` Con 8 richieste in coda legge solo ${mbs(q8)}: un SSD SATA arriva a circa 550 MB/s. Valori vicini a 250-280 MB/s indicano una porta SATA a 3 Gbit/s o il controller in modalità IDE invece di AHCI.`;
+      }
+    }
   } else if (disk?.media === 'hdd') {
     if (b.seqReadMBs < 50 || b.rndReadMBs < 0.2) {
       sev = 'warn';
@@ -752,7 +764,10 @@ function diskBench(pc: PcData, b: DiskBench, add: Add) {
     metric: 'pc.diskbench',
     category: 'pc',
     title: `Velocità del disco (${b.drive})`,
-    value: `lettura ${mbs(b.seqReadMBs)}, scrittura ${mbs(b.seqWriteMBs)} · casuale 4K ${mbs(b.rndReadMBs)}`,
+    value:
+      b.seqQ8ReadMBs !== undefined
+        ? `sequenziale ${mbs(b.seqQ8ReadMBs)} · casuale 4K ${mbs(b.rndReadMBs)}`
+        : `lettura ${mbs(b.seqReadMBs)}, scrittura ${mbs(b.seqWriteMBs)} · casuale 4K ${mbs(b.rndReadMBs)}`,
     numeric: b.seqReadMBs,
     severity: sev,
     verdict:

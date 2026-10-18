@@ -194,8 +194,20 @@ function pcDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
     out.push(' Test di velocità');
     if (b.cpu)
       out.push(wrap(`Processore (${dateIt(b.cpu.startedAt)}): un thread ${n1(b.cpu.singleMBs)} MB/s, ${b.cpu.threads} thread ${n1(b.cpu.multiMBs)} MB/s di punta e ${n1(b.cpu.sustainedMBs)} MB/s alla fine`, W - 4, '   '));
-    for (const d of b.disk ?? [])
-      out.push(wrap(`Unità ${d.drive} (${dateIt(d.startedAt)}, file di ${d.fileMB} MB): sequenziale ${n1(d.seqReadMBs)} MB/s in lettura e ${n1(d.seqWriteMBs)} in scrittura; casuale 4K ${n1(d.rndReadMBs)} MB/s (${Math.round(d.rndReadIops)} IOPS) in lettura e ${n1(d.rndWriteMBs)} MB/s in scrittura`, W - 4, '   '));
+    for (const d of b.disk ?? []) {
+      if (d.seqQ8ReadMBs === undefined) {
+        out.push(wrap(`Unità ${d.drive} (${dateIt(d.startedAt)}, file di ${d.fileMB} MB): sequenziale ${n1(d.seqReadMBs)} MB/s in lettura e ${n1(d.seqWriteMBs)} in scrittura; casuale 4K ${n1(d.rndReadMBs)} MB/s (${Math.round(d.rndReadIops)} IOPS) in lettura e ${n1(d.rndWriteMBs)} MB/s in scrittura`, W - 4, '   '));
+        continue;
+      }
+      // Tabella come CrystalDiskMark: MB/s in lettura e in scrittura.
+      out.push(`   Unità ${d.drive} (${dateIt(d.startedAt)}, file di ${d.fileMB} MB)`.padEnd(42) + 'lettura'.padStart(12) + 'scrittura'.padStart(12));
+      const row = (k: string, r?: number, w?: number) => out.push(`     ${k.padEnd(37)}${(r === undefined ? '-' : `${n1(r)} MB/s`).padStart(12)}${(w === undefined ? '-' : `${n1(w)} MB/s`).padStart(12)}`);
+      row('SEQ1M Q8T1 (sequenziale, 8 in coda)', d.seqQ8ReadMBs, d.seqQ8WriteMBs);
+      row('SEQ1M Q1T1 (sequenziale)', d.seqReadMBs, d.seqWriteMBs);
+      row('RND4K Q32T1 (casuale 4K, 32 in coda)', d.rndQ32ReadMBs, d.rndQ32WriteMBs);
+      row('RND4K Q1T1 (casuale 4K)', d.rndReadMBs, d.rndWriteMBs);
+      if (d.note) out.push(wrap(d.note, W - 6, '     '));
+    }
   }
   for (const n of pc.notes ?? []) out.push(wrap(`Nota: ${n}`, W - 2, ' '));
 }

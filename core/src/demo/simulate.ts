@@ -125,29 +125,42 @@ export function simulatedDiskBench(scan: Scan, drive: string): DiskBench {
   const full = vol ? vol.freeGB / vol.sizeGB < 0.1 : false;
   const failing = disk?.health === 'warning' || disk?.health === 'unhealthy';
   const usb = vol?.kind === 'removable' || /usb/i.test(disk?.bus ?? '');
-  // [lettura seq., scrittura seq., lettura 4K, scrittura 4K] in MB/s
-  let v: [number, number, number, number];
+  // MB/s: [SEQ1M Q8T1 lettura, scrittura, SEQ1M Q1T1 lettura, scrittura,
+  //        RND4K Q32T1 lettura, scrittura, RND4K Q1T1 lettura, scrittura]
+  let v: number[];
   let fileMB = 1024;
   let note: string | undefined;
   if (usb) {
-    v = [32.4, 7.5, 3.1, 0.04];
-    fileMB = 75;
-    note = 'Raggiunto il tempo massimo della scrittura (10 s): file di prova di 75 MB.';
-  } else if (disk?.media === 'hdd') v = failing ? [38.2, 41.5, 0.31, 0.86] : [162, 151, 0.92, 1.7];
-  else if (disk?.media === 'ssd') v = /nvme/i.test(disk.bus ?? '') ? (full ? [1640, 590, 41.8, 61.5] : [2870, 1410, 58.6, 152]) : [512, 468, 31.2, 88];
-  else v = [120, 96, 8.4, 4.1];
+    v = [36.8, 8.1, 32.4, 7.5, 3.6, 0.05, 3.1, 0.04];
+    fileMB = 112;
+    note = 'Unità lenta: in 15 secondi il file di prova ha raggiunto 112 MB.';
+  } else if (disk?.media === 'hdd') v = failing ? [45.1, 48.3, 38.2, 41.5, 0.62, 0.95, 0.31, 0.86] : [178, 168, 162, 151, 1.9, 1.8, 0.92, 1.7];
+  else if (disk?.media === 'ssd')
+    v = /nvme/i.test(disk.bus ?? '')
+      ? full
+        ? [2150, 720, 1640, 590, 380, 165, 41.8, 61.5]
+        : [3480, 3050, 2870, 1410, 610, 420, 58.6, 152]
+      : [560, 520, 512, 468, 395, 330, 31.2, 88];
+  else v = [150, 110, 120, 96, 24, 9, 8.4, 4.1];
   const iops = (mbs: number) => Math.round((mbs * 1e6) / 4096);
+  const prepMs = Math.min(15000, (fileMB * 1.048576 * 1000) / v[3]);
   return {
     startedAt: new Date().toISOString(),
     drive: drive.toUpperCase(),
     fileMB,
-    seqReadMBs: v[0],
-    seqWriteMBs: v[1],
-    rndReadMBs: v[2],
-    rndReadIops: iops(v[2]),
-    rndWriteMBs: v[3],
-    rndWriteIops: iops(v[3]),
-    durationMs: usb ? 22000 : 31000,
+    seqQ8ReadMBs: v[0],
+    seqQ8WriteMBs: v[1],
+    seqReadMBs: v[2],
+    seqWriteMBs: v[3],
+    rndQ32ReadMBs: v[4],
+    rndQ32ReadIops: iops(v[4]),
+    rndQ32WriteMBs: v[5],
+    rndQ32WriteIops: iops(v[5]),
+    rndReadMBs: v[6],
+    rndReadIops: iops(v[6]),
+    rndWriteMBs: v[7],
+    rndWriteIops: iops(v[7]),
+    durationMs: Math.round(prepMs + 32000),
     note,
   };
 }

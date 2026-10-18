@@ -523,18 +523,28 @@ type CPUBench struct {
 	DurationMs    int64    `json:"durationMs"`
 }
 
+// DiskBench riporta il profilo stile CrystalDiskMark: i campi Seq e Rnd sono
+// le misure con una sola richiesta in coda (SEQ1M Q1T1 e RND4K Q1T1), i
+// campi Q8 e Q32 quelle con 8 e 32 richieste (SEQ1M Q8T1 e RND4K Q32T1),
+// assenti nei risultati delle versioni precedenti.
 type DiskBench struct {
-	StartedAt    string  `json:"startedAt"`
-	Drive        string  `json:"drive"`
-	FileMB       int     `json:"fileMB"`
-	SeqReadMBs   float64 `json:"seqReadMBs"`
-	SeqWriteMBs  float64 `json:"seqWriteMBs"`
-	RndReadMBs   float64 `json:"rndReadMBs"`
-	RndReadIOPS  float64 `json:"rndReadIops"`
-	RndWriteMBs  float64 `json:"rndWriteMBs"`
-	RndWriteIOPS float64 `json:"rndWriteIops"`
-	DurationMs   int64   `json:"durationMs"`
-	Note         string  `json:"note,omitempty"`
+	StartedAt       string  `json:"startedAt"`
+	Drive           string  `json:"drive"`
+	FileMB          int     `json:"fileMB"`
+	SeqReadMBs      float64 `json:"seqReadMBs"`
+	SeqWriteMBs     float64 `json:"seqWriteMBs"`
+	RndReadMBs      float64 `json:"rndReadMBs"`
+	RndReadIOPS     float64 `json:"rndReadIops"`
+	RndWriteMBs     float64 `json:"rndWriteMBs"`
+	RndWriteIOPS    float64 `json:"rndWriteIops"`
+	SeqQ8ReadMBs    float64 `json:"seqQ8ReadMBs,omitempty"`
+	SeqQ8WriteMBs   float64 `json:"seqQ8WriteMBs,omitempty"`
+	RndQ32ReadMBs   float64 `json:"rndQ32ReadMBs,omitempty"`
+	RndQ32ReadIOPS  float64 `json:"rndQ32ReadIops,omitempty"`
+	RndQ32WriteMBs  float64 `json:"rndQ32WriteMBs,omitempty"`
+	RndQ32WriteIOPS float64 `json:"rndQ32WriteIops,omitempty"`
+	DurationMs      int64   `json:"durationMs"`
+	Note            string  `json:"note,omitempty"`
 }
 
 // Ptr è una scorciatoia per i campi opzionali.

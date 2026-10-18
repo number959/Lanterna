@@ -955,6 +955,25 @@ select.field { cursor: pointer; }
 .smart-table tr.smart-fail td { background: color-mix(in srgb, var(--crit) 8%, transparent); }
 .smart-table tr.smart-caution td { background: color-mix(in srgb, var(--warn) 8%, transparent); }
 .smart-kv { padding: 4px 12px 2px; }
+/* Griglia del test del disco, come la finestra di CrystalDiskMark */
+.disk-grid { border-collapse: separate; border-spacing: 6px; margin: -6px; width: calc(100% + 12px); table-layout: fixed; }
+.disk-grid th, .disk-grid td { border: 0; padding: 0; white-space: normal; background: none; position: static; }
+.disk-grid thead th { font: 650 11px/1.4 var(--font); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; text-align: right; padding: 0 10px 2px; }
+.disk-grid thead th:first-child { width: 38%; }
+.disk-grid tbody th { text-align: left; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); text-transform: none; letter-spacing: 0; }
+.dg-k { display: block; font: 650 13.5px/1.3 var(--mono); color: var(--text); }
+.dg-h { display: block; font-size: 11.5px; color: var(--text-3); font-weight: 500; }
+.disk-grid .dg-cell { text-align: right; padding: 8px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface)); transition: background 0.3s, border-color 0.3s; }
+.disk-grid .dg-cell.empty { background: var(--surface-2); border-color: var(--line); }
+.disk-grid .dg-cell.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.dg-v { display: block; font: 650 20px/1.2 var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+.dg-cell.empty .dg-v { color: var(--text-3); }
+.dg-io { display: block; font: 500 11.5px/1.3 var(--mono); color: var(--text-3); margin-top: 2px; }
+@media (prefers-reduced-motion: no-preference) { .disk-grid .dg-cell.active { animation: dg-pulse 1.4s var(--ease-out) infinite; } }
+@keyframes dg-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); } }
+.bench-live .disk-grid { margin-top: 8px; }
+@media (max-width: 480px) { .dg-v { font-size: 17px; } .disk-grid .dg-cell { padding: 7px 9px; } .disk-grid tbody th { padding: 7px 8px; } }
 .smart-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .smart-list li { display: grid; gap: 3px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
 .smart-list li.smart-fail { background: color-mix(in srgb, var(--crit) 8%, transparent); }

@@ -106,8 +106,9 @@ jobs:
           if ($c.singleMBs -le 0 -or $c.multiMBs -le 0) { throw "risultato del processore non valido" }
           $d = ./polaris-cli.exe bench disk --quick --json --drive $env:SystemDrive | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "bench disk fallito" }
-          "Disco $($d.drive) (file $($d.fileMB) MB): sequenziale $($d.seqReadMBs)/$($d.seqWriteMBs) MB/s; 4K $($d.rndReadMBs) MB/s ($($d.rndReadIops) IOPS) / $($d.rndWriteMBs) MB/s ($($d.rndWriteIops) IOPS) $($d.note)"
+          "Disco $($d.drive) (file $($d.fileMB) MB), lettura/scrittura in MB/s: SEQ1M Q8T1 $($d.seqQ8ReadMBs)/$($d.seqQ8WriteMBs); SEQ1M Q1T1 $($d.seqReadMBs)/$($d.seqWriteMBs); RND4K Q32T1 $($d.rndQ32ReadMBs)/$($d.rndQ32WriteMBs) ($($d.rndQ32ReadIops)/$($d.rndQ32WriteIops) IOPS); RND4K Q1T1 $($d.rndReadMBs)/$($d.rndWriteMBs) ($($d.rndReadIops)/$($d.rndWriteIops) IOPS) $($d.note)"
           if ($d.seqReadMBs -le 0 -or $d.rndReadIops -le 0) { throw "risultato del disco non valido" }
+          if ($d.seqQ8ReadMBs -le 0 -or $d.seqQ8WriteMBs -le 0 -or $d.rndQ32ReadIops -le 0 -or $d.rndQ32WriteIops -le 0) { throw "misure con più richieste in coda non valide" }
           $left = Get-ChildItem -Path $env:TEMP -Filter 'polaris-test-*' -ErrorAction SilentlyContinue
           if ($left) { throw "file di prova non cancellati: $($left.Name -join ', ')" }
       - name: Server locale e API

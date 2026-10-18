@@ -367,6 +367,51 @@ describe('computer: test di velocità', () => {
     expect(disk('hdd', 'SATA', 35, 0.9)?.severity).toBe('warn');
     expect(disk('ssd', 'USB', 30, 2, 'removable', 6)?.severity).toBe('info');
   });
+
+  it('test del disco con il profilo CrystalDiskMark: collegamento lento e valori nel rapporto', () => {
+    const prof = (bus: string, q8: number) =>
+      find(
+        edit((x) => {
+          x.disks = [{ id: '0', name: 'Unità', media: 'ssd', bus, sizeGB: 500, health: 'healthy', system: true }];
+          x.volumes = [{ letter: 'C:', kind: 'fixed', sizeGB: 500, freeGB: 300, system: true, disk: '0' }];
+          x.bench = {
+            disk: [
+              {
+                startedAt: '2026-10-15T10:05:00Z', drive: 'C:', fileMB: 1024, seqReadMBs: 520, seqWriteMBs: 480, rndReadMBs: 35, rndReadIops: 8545, rndWriteMBs: 90, rndWriteIops: 21972,
+                seqQ8ReadMBs: q8, seqQ8WriteMBs: 500, rndQ32ReadMBs: 380, rndQ32ReadIops: 92773, rndQ32WriteMBs: 300, rndQ32WriteIops: 73242, durationMs: 40000,
+              },
+            ],
+          };
+        }),
+        'pc.diskbench.C',
+      );
+    expect(prof('SATA', 560)?.severity).toBe('ok');
+    // SATA vicino ai 280 MB/s: porta a 3 Gbit/s o modalità IDE.
+    const sata2 = prof('SATA', 275);
+    expect(sata2?.severity).toBe('info');
+    expect(sata2?.verdict).toContain('AHCI');
+    expect(prof('NVMe', 3400)?.severity).toBe('ok');
+    expect(prof('NVMe', 850)?.verdict).toContain('linee PCIe');
+    expect(prof('NVMe', 3400)?.value).toBe('sequenziale 3400 MB/s · casuale 4K 35 MB/s');
+  });
+
+  it('rapporto testuale con la tabella del profilo', () => {
+    const s = scanWith(
+      edit((x) => {
+        x.bench = {
+          disk: [
+            {
+              startedAt: '2026-10-15T10:05:00Z', drive: 'C:', fileMB: 1024, seqReadMBs: 2870, seqWriteMBs: 1410, rndReadMBs: 58.6, rndReadIops: 14307, rndWriteMBs: 152, rndWriteIops: 37109,
+              seqQ8ReadMBs: 3480, seqQ8WriteMBs: 3050, rndQ32ReadMBs: 610, rndQ32ReadIops: 148926, rndQ32WriteMBs: 420, rndQ32WriteIops: 102539, durationMs: 33000,
+            },
+          ],
+        };
+      }),
+    );
+    const t = renderText(s, analyze(s));
+    expect(t).toContain('SEQ1M Q8T1 (sequenziale, 8 in coda)');
+    expect(t).toMatch(/RND4K Q32T1 \(casuale 4K, 32 in coda\)\s+610 MB\/s\s+420 MB\/s/);
+  });
 });
 
 describe('computer: sintesi e rapporto', () => {

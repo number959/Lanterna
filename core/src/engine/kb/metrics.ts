@@ -859,14 +859,14 @@ const list: Metric[] = [
     label: 'Velocità del disco (test)',
     category: 'pc',
     unit: 'MB/s',
-    what: 'Test su richiesta: Polaris scrive e rilegge un file temporaneo fino a 1 GB senza passare dalla cache di Windows, a blocchi da 1 MB in sequenza e da 4 KB in punti casuali con una richiesta alla volta (QD1). Il file viene cancellato alla fine, anche se il programma si interrompe.',
+    what: 'Test su richiesta con il profilo di CrystalDiskMark: Polaris scrive un file temporaneo fino a 1 GB senza passare dalla cache di Windows e misura lettura e scrittura in sequenza a blocchi da 1 MB (8 richieste in coda e una sola) e in punti casuali a blocchi da 4 KB (32 richieste in coda e una sola). Il file viene cancellato alla fine, anche se il programma si interrompe.',
     scale: [
-      { range: 'SSD NVMe: sequenziale oltre 500 MB/s e casuale 4K oltre 10 MB/s; SSD SATA: oltre 200 e 10 MB/s; HDD: oltre 50 e 0,2 MB/s', severity: 'ok', meaning: 'Nella norma per il tipo di unità.' },
-      { range: 'unità esterne sotto 10 MB/s in scrittura', severity: 'info', meaning: 'Chiavetta lenta o porta USB 2.0.' },
+      { range: 'con una richiesta alla volta: SSD NVMe sequenziale oltre 500 MB/s e casuale 4K oltre 10 MB/s; SSD SATA oltre 200 e 10 MB/s; HDD oltre 50 e 0,2 MB/s', severity: 'ok', meaning: 'Nella norma per il tipo di unità.' },
+      { range: 'unità esterne sotto 10 MB/s in scrittura; NVMe sotto 1.000 MB/s o SSD SATA sotto 300 MB/s con 8 richieste in coda', severity: 'info', meaning: 'Unità o collegamento lenti: chiavetta economica, porta USB 2.0, slot M.2 con meno linee PCIe, porta SATA a 3 Gbit/s o modalità IDE.' },
       { range: 'sotto le soglie del proprio tipo', severity: 'warn', meaning: 'Unità più lenta del normale.' },
     ],
     why: 'La lettura casuale di piccoli blocchi è ciò che Windows fa di continuo: è il valore che più distingue un PC reattivo da uno lento.',
-    limits: 'Valori indicativi: dipendono da riempimento, temperatura e cache interna dell\'unità. Un file da 1 GB entra nella cache veloce di molti SSD, quindi la scrittura misura la velocità di picco. Con una richiesta alla volta gli SSD NVMe danno valori sequenziali più bassi di quelli dichiarati, misurati con molte richieste in parallelo.',
+    limits: 'Valori indicativi: dipendono da riempimento, temperatura e cache interna dell\'unità. Un file da 1 GB entra nella cache veloce di molti SSD, quindi la scrittura misura la velocità di picco. Ogni misura dura 4 secondi ed è eseguita una volta: CrystalDiskMark ne fa cinque e tiene la migliore, per questo i suoi numeri possono essere un po\' più alti.',
   },
 ];
 

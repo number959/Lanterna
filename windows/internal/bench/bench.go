@@ -7,12 +7,14 @@
 // potenza). Il risultato è in MB/s di dati compressi: confrontabile tra
 // esecuzioni di questo programma, non con i punteggi di altri benchmark.
 //
-// Unità: scrive e rilegge un file temporaneo senza passare dalla cache di
-// Windows (FILE_FLAG_NO_BUFFERING), in sequenza a blocchi da 1 MiB e in punti
-// casuali a blocchi da 4 KiB con una richiesta alla volta. Il file viene
-// creato con FILE_FLAG_DELETE_ON_CLOSE: Windows lo cancella alla chiusura,
-// anche se il programma si interrompe. Ogni fase ha una durata massima,
-// così una chiavetta lenta non tiene occupato il computer per minuti.
+// Unità: scrive un file temporaneo senza passare dalla cache di Windows
+// (FILE_FLAG_NO_BUFFERING) e misura letture e scritture con il profilo di
+// CrystalDiskMark: in sequenza a blocchi da 1 MiB con 8 richieste in coda e
+// con una sola, in punti casuali a blocchi da 4 KiB con 32 richieste e con
+// una sola. Il file viene creato con FILE_FLAG_DELETE_ON_CLOSE: Windows lo
+// cancella alla chiusura, anche se il programma si interrompe. Ogni fase ha
+// una durata massima, così una chiavetta lenta non tiene occupato il
+// computer per minuti.
 package bench
 
 import (
@@ -256,21 +258,25 @@ func round1(v float64) float64 { return math.Round(v*10) / 10 }
 // ---------- Unità di archiviazione ----------
 
 type DiskOptions struct {
-	Drive   string        // lettera dell'unità, per il risultato ("C:")
-	Dir     string        // cartella del file temporaneo
-	FileMB  int           // dimensione massima del file
-	SeqTime time.Duration // durata massima di ogni fase sequenziale
-	RndTime time.Duration // durata di ogni fase casuale
+	Drive string // lettera dell'unità, per il risultato ("C:")
+	Dir   string // cartella del file temporaneo
+	// FileMB è la dimensione massima del file; PrepTime il tempo massimo per
+	// scriverlo la prima volta (le unità lente lavorano su un file più piccolo).
+	FileMB   int
+	PrepTime time.Duration
+	// Measure è la durata di ciascuna delle otto misure.
+	Measure time.Duration
 	// Reserve è lo spazio che deve restare libero dopo aver creato il file.
 	Reserve uint64
 }
 
-// DefaultDisk: file da 1 GiB (come i benchmark più diffusi), al massimo
-// circa 35 secondi in tutto, almeno 2 GiB lasciati liberi.
-var DefaultDisk = DiskOptions{FileMB: 1024, SeqTime: 10 * time.Second, RndTime: 5 * time.Second, Reserve: 2 << 30}
+// DefaultDisk: file da 1 GiB e misure da 4 secondi, come una versione breve
+// del profilo predefinito di CrystalDiskMark; al massimo circa 50 secondi in
+// tutto, almeno 2 GiB lasciati liberi.
+var DefaultDisk = DiskOptions{FileMB: 1024, PrepTime: 15 * time.Second, Measure: 4 * time.Second, Reserve: 2 << 30}
 
 // QuickDisk serve alle verifiche automatiche.
-var QuickDisk = DiskOptions{FileMB: 256, SeqTime: 3 * time.Second, RndTime: time.Second, Reserve: 1 << 30}
+var QuickDisk = DiskOptions{FileMB: 256, PrepTime: 3 * time.Second, Measure: time.Second, Reserve: 1 << 30}
 
 const (
 	minFileMB = 64
@@ -284,9 +290,17 @@ var ErrSpace = errors.New("spazio libero insufficiente")
 
 // file è il file temporaneo del test; Close lo cancella.
 type file interface {
+	// worker restituisce un esecutore di letture e scritture posizionate da
+	// usare in una sola goroutine: più esecutori lavorano in parallelo sullo
+	// stesso file, ed è così che si ottengono più richieste in coda.
+	worker() (rw, error)
+	Sync() error
+	Close() error
+}
+
+type rw interface {
 	ReadAt(p []byte, off int64) (int, error)
 	WriteAt(p []byte, off int64) (int, error)
-	Sync() error
 	Close() error
 }
 
@@ -315,7 +329,31 @@ func fileSize(free uint64, opt DiskOptions) (int64, string, error) {
 	return int64(size), fmt.Sprintf("File di prova ridotto a %d MB per lo spazio libero.", size>>20), nil
 }
 
-// Disk esegue il test dell'unità.
+// job è una delle otto misure del profilo.
+type job struct {
+	phase  string
+	write  bool
+	random bool
+	block  int
+	depth  int
+}
+
+// profile ricalca il profilo predefinito di CrystalDiskMark: prima le
+// letture, poi le scritture. Le misure con una sola richiesta in coda sono
+// quelle che contano di più per la reattività di Windows.
+var profile = []job{
+	{"seq-q8-read", false, false, block, 8},
+	{"seq-read", false, false, block, 1},
+	{"rnd-q32-read", false, true, small, 32},
+	{"rnd-read", false, true, small, 1},
+	{"seq-q8-write", true, false, block, 8},
+	{"seq-write", true, false, block, 1},
+	{"rnd-q32-write", true, true, small, 32},
+	{"rnd-write", true, true, small, 1},
+}
+
+// Disk esegue il test dell'unità: scrive il file di prova, poi misura per
+// ogni voce del profilo i dati letti o scritti in Measure secondi.
 func Disk(ctx context.Context, opt DiskOptions, report Report) (*scan.DiskBench, error) {
 	if report == nil {
 		report = func(Progress) {}
@@ -341,105 +379,184 @@ func Disk(ctx context.Context, opt DiskOptions, report Report) (*scan.DiskBench,
 	defer context.AfterFunc(ctx, func() { stop.Store(true) })()
 	res := &scan.DiskBench{StartedAt: time.Now().UTC().Format(time.RFC3339), Drive: opt.Drive}
 	start := time.Now()
-	buf := alignedBuffer(block)
-	fillRandom(buf)
-	total := 2*opt.SeqTime + 2*opt.RndTime
-	phaseStart := time.Duration(0)
+	total := opt.PrepTime + time.Duration(len(profile))*opt.Measure
+	var mu sync.Mutex
 	var lastReport time.Time
-	progress := func(phase string, el time.Duration, mbs float64) {
+	progress := func(phase string, base, el, span time.Duration, mbs float64) {
+		mu.Lock()
+		defer mu.Unlock()
 		if now := time.Now(); now.Sub(lastReport) >= 200*time.Millisecond {
 			lastReport = now
-			report(Progress{Phase: phase, Done: frac(phaseStart+el, total), Value: round1(mbs)})
+			report(Progress{Phase: phase, Done: frac(base+min(el, span), total), Value: round1(mbs)})
 		}
 	}
 
-	// 1. Scrittura sequenziale, svuotamento della cache dell'unità compreso.
+	// Preparazione: il file si scrive una volta in sequenza. Le scritture che
+	// allungano un file Windows le esegue comunque una alla volta, per questo
+	// le misure di scrittura avvengono dopo, sovrascrivendo il file.
+	w, err := f.worker()
+	if err != nil {
+		return nil, err
+	}
+	buf := alignedBuffer(block)
+	fillRandom(buf)
 	var written int64
 	t0 := time.Now()
-	for seq := uint64(0); written < size && time.Since(t0) < opt.SeqTime; seq++ {
+	for seq := uint64(0); written < size && time.Since(t0) < opt.PrepTime; seq++ {
 		if stop.Load() {
+			w.Close()
 			return nil, ctx.Err()
 		}
 		stamp(buf, seq)
-		if _, err := f.WriteAt(buf, written); err != nil {
+		if _, err := w.WriteAt(buf, written); err != nil {
+			w.Close()
 			return nil, fmt.Errorf("scrittura: %v", err)
 		}
 		written += block
 		el := time.Since(t0)
-		progress("seq-write", el, float64(written)/el.Seconds()/mb)
+		progress("prep", 0, el, opt.PrepTime, float64(written)/el.Seconds()/mb)
 	}
+	w.Close()
 	if err := f.Sync(); err != nil {
 		return nil, fmt.Errorf("scrittura: %v", err)
 	}
 	res.FileMB = int(written >> 20)
-	res.SeqWriteMBs = round1(float64(written) / time.Since(t0).Seconds() / mb)
 	if written < size && note == "" {
-		note = fmt.Sprintf("Raggiunto il tempo massimo della scrittura (%d s): file di prova di %d MB.", int(opt.SeqTime.Seconds()), written>>20)
+		note = fmt.Sprintf("Unità lenta: in %d secondi il file di prova ha raggiunto %d MB.", int(opt.PrepTime.Seconds()), written>>20)
 	}
 
-	// 2. Lettura sequenziale della parte scritta.
-	phaseStart = opt.SeqTime
-	var read int64
-	t0 = time.Now()
-	for read < written && time.Since(t0) < opt.SeqTime {
-		if stop.Load() {
-			return nil, ctx.Err()
+	for i, j := range profile {
+		base := opt.PrepTime + time.Duration(i)*opt.Measure
+		bytes, ops, el, err := runJob(f, j, written, opt.Measure, &stop, func(done int64, el time.Duration) {
+			progress(j.phase, base, el, opt.Measure, float64(done)/el.Seconds()/mb)
+		})
+		if err == nil && stop.Load() {
+			err = ctx.Err()
 		}
-		if _, err := f.ReadAt(buf, read); err != nil {
-			return nil, fmt.Errorf("lettura: %v", err)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
+			return nil, fmt.Errorf("%s: %w", phaseName[j.phase], err)
 		}
-		read += block
-		el := time.Since(t0)
-		progress("seq-read", el, float64(read)/el.Seconds()/mb)
-	}
-	res.SeqReadMBs = round1(float64(read) / time.Since(t0).Seconds() / mb)
-
-	// 3-4. Blocchi da 4 KiB in punti casuali, una richiesta alla volta.
-	blocks := written / small
-	rnd := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0x9e3779b97f4a7c15))
-	io4k := buf[:small]
-	runRandom := func(phase string, write bool) (float64, float64, error) {
-		var n int64
-		t0 := time.Now()
-		for time.Since(t0) < opt.RndTime {
-			if stop.Load() {
-				return 0, 0, ctx.Err()
-			}
-			off := rnd.Int64N(blocks) * small
-			var err error
-			if write {
-				stamp(io4k, uint64(n))
-				_, err = f.WriteAt(io4k, off)
-			} else {
-				_, err = f.ReadAt(io4k, off)
-			}
-			if err != nil {
-				return 0, 0, err
-			}
-			n++
-			el := time.Since(t0)
-			progress(phase, el, float64(n*small)/el.Seconds()/mb)
+		secs := el.Seconds()
+		mbs, iops := round1(float64(bytes)/secs/mb), math.Round(float64(ops)/secs)
+		switch j.phase {
+		case "seq-q8-read":
+			res.SeqQ8ReadMBs = mbs
+		case "seq-read":
+			res.SeqReadMBs = mbs
+		case "rnd-q32-read":
+			res.RndQ32ReadMBs, res.RndQ32ReadIOPS = mbs, iops
+		case "rnd-read":
+			res.RndReadMBs, res.RndReadIOPS = mbs, iops
+		case "seq-q8-write":
+			res.SeqQ8WriteMBs = mbs
+		case "seq-write":
+			res.SeqWriteMBs = mbs
+		case "rnd-q32-write":
+			res.RndQ32WriteMBs, res.RndQ32WriteIOPS = mbs, iops
+		case "rnd-write":
+			res.RndWriteMBs, res.RndWriteIOPS = mbs, iops
 		}
-		if write {
-			if err := f.Sync(); err != nil {
-				return 0, 0, err
-			}
-		}
-		el := time.Since(t0).Seconds()
-		return round1(float64(n*small) / el / mb), math.Round(float64(n) / el), nil
-	}
-	phaseStart = 2 * opt.SeqTime
-	if res.RndReadMBs, res.RndReadIOPS, err = runRandom("rnd-read", false); err != nil {
-		return nil, fmt.Errorf("lettura casuale: %w", err)
-	}
-	phaseStart = 2*opt.SeqTime + opt.RndTime
-	if res.RndWriteMBs, res.RndWriteIOPS, err = runRandom("rnd-write", true); err != nil {
-		return nil, fmt.Errorf("scrittura casuale: %w", err)
 	}
 	report(Progress{Phase: "done", Done: 1})
 	res.Note = note
 	res.DurationMs = time.Since(start).Milliseconds()
 	return res, nil
+}
+
+var phaseName = map[string]string{
+	"seq-q8-read":   "lettura sequenziale Q8",
+	"seq-read":      "lettura sequenziale",
+	"rnd-q32-read":  "lettura casuale Q32",
+	"rnd-read":      "lettura casuale",
+	"seq-q8-write":  "scrittura sequenziale Q8",
+	"seq-write":     "scrittura sequenziale",
+	"rnd-q32-write": "scrittura casuale Q32",
+	"rnd-write":     "scrittura casuale",
+}
+
+// runJob esegue una misura con j.depth goroutine, ciascuna con il proprio
+// esecutore e il proprio buffer, per la durata indicata. Le letture
+// sequenziali si spartiscono i blocchi in ordine, ricominciando dall'inizio
+// a fine file; quelle casuali scelgono blocchi allineati in tutto il file.
+// Per le scritture il tempo comprende lo svuotamento della cache dell'unità.
+// Restituisce byte, operazioni e tempo trascorso fino all'ultima operazione.
+func runJob(f file, j job, limit int64, d time.Duration, stop *atomic.Bool, progress func(done int64, el time.Duration)) (int64, int64, time.Duration, error) {
+	blocks := limit / int64(j.block)
+	if blocks < 1 {
+		return 0, 0, 0, errors.New("file di prova troppo piccolo")
+	}
+	// Esecutori e buffer si preparano prima di far partire il cronometro.
+	workers := make([]rw, 0, j.depth)
+	bufs := make([][]byte, 0, j.depth)
+	for range j.depth {
+		w, err := f.worker()
+		if err != nil {
+			for _, w := range workers {
+				w.Close()
+			}
+			return 0, 0, 0, err
+		}
+		buf := alignedBuffer(j.block)
+		fillRandom(buf)
+		workers, bufs = append(workers, w), append(bufs, buf)
+	}
+	var next, done, ops atomic.Int64
+	var halt atomic.Bool
+	var firstErr error
+	var errOnce sync.Once
+	var wg sync.WaitGroup
+	t0 := time.Now()
+	for g, w := range workers {
+		buf := bufs[g]
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			defer w.Close()
+			rnd := rand.New(rand.NewPCG(uint64(t0.UnixNano())+uint64(g), 0x9e3779b97f4a7c15))
+			for n := uint64(0); !halt.Load() && !stop.Load(); n++ {
+				var off int64
+				if j.random {
+					off = rnd.Int64N(blocks) * int64(j.block)
+				} else {
+					off = (next.Add(1) - 1) % blocks * int64(j.block)
+				}
+				var err error
+				if j.write {
+					stamp(buf, n<<6|uint64(g))
+					_, err = w.WriteAt(buf, off)
+				} else {
+					_, err = w.ReadAt(buf, off)
+				}
+				if err != nil {
+					errOnce.Do(func() { firstErr = err })
+					halt.Store(true)
+					return
+				}
+				ops.Add(1)
+				if g == 0 {
+					progress(done.Add(int64(j.block)), time.Since(t0))
+				} else {
+					done.Add(int64(j.block))
+				}
+				if time.Since(t0) >= d {
+					halt.Store(true)
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return 0, 0, 0, firstErr
+	}
+	if j.write {
+		if err := f.Sync(); err != nil {
+			return 0, 0, 0, err
+		}
+	}
+	return done.Load(), ops.Load(), time.Since(t0), nil
 }
 
 // fillRandom riempie il buffer di dati non comprimibili: alcune unità

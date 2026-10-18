@@ -153,7 +153,7 @@ export const uso: Guide[] = [
         ['`--quick`', 'analisi rapida: meno ping e niente nuova scansione Wi-Fi'],
         ['`polaris-cli serve --port N --open`', 'interfaccia nel browser su http://127.0.0.1:N (predefinita 8737)'],
         ['`polaris-cli bench cpu`', 'test del processore (circa 25 secondi)'],
-        ['`polaris-cli bench disk --drive X:`', 'test di un\'unità (fino a 35 secondi), con file temporaneo cancellato alla fine'],
+        ['`polaris-cli bench disk --drive X:`', 'test di un\'unità con il profilo di CrystalDiskMark (fino a 50 secondi), con file temporaneo cancellato alla fine'],
         ['`--json` e `--quick` con bench', 'risultato in JSON; versione breve del test'],
         ['`polaris-cli version`', 'versione del programma, del motore e di WebView2'],
       ] },
