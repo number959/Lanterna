@@ -3,8 +3,12 @@
 package tools
 
 import (
+	"context"
 	"errors"
 	"os"
+	"os/exec"
+	"syscall"
+	"time"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -59,24 +63,39 @@ func InstalledPrograms() map[string]Installed {
 }
 
 // Open apre lo strumento indicato: per i programmi, la copia inclusa in Polaris
-// se c'è ed è integra, altrimenti quella installata. Se Polaris gira come
+// se c'è ed è integra, poi quella scaricata (con la firma verificata subito
+// prima dell'avvio), infine quella installata. Se Polaris gira come
 // amministratore le pagine web si aprono tramite Esplora risorse, così il
 // browser parte con i permessi normali dell'utente e non con quelli elevati.
-func Open(id, target string) error {
+func Open(id, target string, f *Fetcher) error {
 	bundled := BundledPrograms()
-	t, err := Resolve(id, target, Merge(InstalledPrograms(), bundled))
-	if errors.Is(err, ErrNotInstalled) && bundled[id].Problem != "" {
-		return ErrModified
+	var portable map[string]Downloaded
+	if f != nil {
+		portable = f.Find()
+	}
+	t, err := Resolve(id, target, Merge(Merge(InstalledPrograms(), PortableIncluded(portable)), bundled))
+	if errors.Is(err, ErrNotInstalled) {
+		switch {
+		case bundled[id].Problem != "":
+			return ErrModified
+		case portable[id].Problem != "":
+			return ErrDownloadModified
+		}
 	}
 	if err != nil {
 		return err
+	}
+	if d, ok := portable[id]; ok && d.Path != "" && t.File == d.Path {
+		if err := f.Check(id, d.Path); err != nil {
+			return err
+		}
 	}
 	file, args := t.File, t.Args
 	if t.URL && windows.GetCurrentProcessToken().IsElevated() {
 		file, args = "explorer.exe", `"`+t.File+`"`
 	}
 	verb, _ := windows.UTF16PtrFromString("open")
-	f, err := windows.UTF16PtrFromString(file)
+	fp, err := windows.UTF16PtrFromString(file)
 	if err != nil {
 		return err
 	}
@@ -91,9 +110,34 @@ func Open(id, target string) error {
 			return err
 		}
 	}
-	err = windows.ShellExecute(0, verb, f, a, dir, windows.SW_SHOWNORMAL)
+	err = windows.ShellExecute(0, verb, fp, a, dir, windows.SW_SHOWNORMAL)
 	if errors.Is(err, windows.ERROR_CANCELLED) {
 		return ErrCancelled
 	}
 	return err
+}
+
+const createNoWindow = 0x08000000
+
+// signatureScript chiede a Windows la verifica Authenticode del file indicato
+// in POLARIS_FILE: stato della firma, nome del firmatario e versione.
+const signatureScript = `$ErrorActionPreference = 'Stop'
+$p = $env:POLARIS_FILE
+$s = Get-AuthenticodeSignature -LiteralPath $p
+$cn = ''
+if ($s.SignerCertificate) { $cn = $s.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) }
+$v = (Get-Item -LiteralPath $p).VersionInfo
+[pscustomobject]@{ status = [string]$s.Status; signer = [string]$cn; version = [string]$v.ProductVersion; file = [string]$v.FileVersion } | ConvertTo-Json -Compress`
+
+var defaultVerify = func(path string) (Signature, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", signatureScript)
+	cmd.Env = append(os.Environ(), "POLARIS_FILE="+path)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	out, err := cmd.Output()
+	if err != nil && len(out) == 0 {
+		return Signature{}, err
+	}
+	return ParseSignature(out)
 }

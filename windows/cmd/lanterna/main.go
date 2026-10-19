@@ -18,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -48,6 +49,7 @@ Uso:
   Polaris                        apre la finestra con l'interfaccia completa
   polaris-cli report [opzioni]   esegue l'analisi e stampa il rapporto
       --json                     stampa i dati grezzi (JSON) invece del testo
+      --html                     documento stampabile sullo stato del PC (con --out)
       --verbose                  include spiegazioni e passi di ogni azione
       --out FILE                 scrive su file invece che a schermo
       --input FILE               analizza un rapporto JSON salvato invece di misurare
@@ -130,6 +132,7 @@ func main() {
 func runReport(args []string) error {
 	fs := flag.NewFlagSet("report", flag.ContinueOnError)
 	asJSON := fs.Bool("json", false, "")
+	asHTML := fs.Bool("html", false, "")
 	verbose := fs.Bool("verbose", false, "")
 	out := fs.String("out", "", "")
 	input := fs.String("input", "", "")
@@ -172,9 +175,18 @@ func runReport(args []string) error {
 		data, _ = json.MarshalIndent(s, "", "  ")
 	}
 	var text string
-	if *asJSON {
+	switch {
+	case *asJSON:
 		text = string(data) + "\n"
-	} else {
+	case *asHTML:
+		eng, err := engine.Load(nil)
+		if err != nil {
+			return err
+		}
+		if text, err = eng.Document(data, version, time.Now().Format("02/01/2006 alle 15:04")); err != nil {
+			return fmt.Errorf("motore di analisi: %w", err)
+		}
+	default:
 		eng, err := engine.Load(nil)
 		if err != nil {
 			return err
@@ -186,7 +198,7 @@ func runReport(args []string) error {
 	if *out != "" {
 		// BOM UTF-8: il Blocco note e Excel riconoscono subito le lettere accentate.
 		content := text
-		if !*asJSON {
+		if !*asJSON && !*asHTML {
 			content = "\ufeff" + strings.ReplaceAll(text, "\n", "\r\n")
 		}
 		if err := os.WriteFile(*out, []byte(content), 0o644); err != nil {
@@ -209,6 +221,9 @@ func startServer(port int) (*server.Server, string, error) {
 	}
 	c := newCollector(false)
 	prims := infra.Native()
+	// Versioni portable: si scaricano dal sito ufficiale passando dal proxy di
+	// sistema, come il browser.
+	fetcher := tools.NewFetcher("STARNET-Polaris/"+version, func(r *http.Request) (*url.URL, error) { return probe.HTTPProxy(r) })
 	srv := &server.Server{Collector: c, Web: assets.Web(), Version: version, Ping: c.QuickPing, Infra: &prims, InfraOpt: infra.Prudent,
 		BenchCPU: func(ctx context.Context, r bench.Report) (*scan.CPUBench, error) {
 			return bench.CPU(ctx, cpuOptions(false), r)
@@ -224,7 +239,10 @@ func startServer(port int) (*server.Server, string, error) {
 		DefenderReady: defender.Available,
 		Tools:         tools.InstalledPrograms,
 		Bundled:       tools.BundledPrograms,
-		OpenTool:      tools.Open,
+		Portable:      fetcher.Find,
+		FetchTool:     fetcher.Fetch,
+		RemoveTool:    fetcher.Remove,
+		OpenTool:      func(id, target string) error { return tools.Open(id, target, fetcher) },
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = httpSrv.Serve(ln) }()

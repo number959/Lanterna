@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Programmi di terze parti inclusi nel pacchetto: le copie originali di
 # CrystalDiskInfo e CrystalDiskMark (hiyohiyo, licenza MIT), come le pubblica il
-# produttore su SourceForge, dove rimanda il sito ufficiale crystalmark.info.
+# produttore su SourceForge, dove rimanda il sito ufficiale crystalmark.info, e
+# di BlueScreenView (NirSoft, freeware ridistribuibile gratuitamente e senza
+# modifiche), dal sito nirsoft.net.
 # Ogni archivio si verifica con l'impronta SHA-256 fissata qui e si estrae, senza
 # modificare nulla, in <pacchetto>/strumenti/<programma>/.
 #   scripts/strumenti.sh build/STARNET-Polaris
@@ -22,9 +24,12 @@ CACHE="$ROOT/build/cache-strumenti"
 # Dimensione e MD5 pubblicati da SourceForge, verificati sulla prima copia:
 #   CrystalDiskInfo9_9_2.zip  8533389 byte, MD5 f27564837d3a4c77813bc69769bacf5c (25/07/2026)
 #   CrystalDiskMark9_0_3.zip  3725706 byte, MD5 b93d7c56381d0d765a3fc8238da611f0 (23/05/2026)
+# BlueScreenView 1.55 per Windows a 64 bit: 85380 byte, invariato dal 29/01/2015
+# (data del server); l'eseguibile è firmato da Nir Sofer.
 TOOLS=(
   "CrystalDiskInfo 9.9.2 https://downloads.sourceforge.net/project/crystaldiskinfo/9.9.2/CrystalDiskInfo9_9_2.zip 01acb3176851a85824d9589c6514e3eb9771eb7f9d5ee58ed9b4e057bd21c7df"
   "CrystalDiskMark 9.0.3 https://downloads.sourceforge.net/project/crystaldiskmark/9.0.3/CrystalDiskMark9_0_3.zip e0c1e76a8ca5df524ffb83b4553cc8f27e539feb3c2a692cc41189783c494b78"
+  "BlueScreenView 1.55 https://www.nirsoft.net/utils/bluescreenview-x64.zip df57d4c9418dd2771035f2f7b70952caeb20d2269af683a0ab0665125c821479"
 )
 
 sha256() {

@@ -32,6 +32,7 @@ import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './ch
 import { HexGauge } from './brand';
 import { guidesForAction } from '../guides';
 import { AnimatedNumber, FindingList, Segmented, SevBadge, SevIcon, Stat, TableWrap, fmtNum, sevColor, spotHandlers, useOpenGuide, useToast } from './components';
+import { Anim } from './anim';
 import { useFx } from './fx';
 import { useLocalState } from './hooks';
 import { monitorCsv, summarize } from './monitor';
@@ -205,7 +206,10 @@ export function Overview({ scan, analysis: a, go }: ViewProps) {
                 {...spotHandlers()}
               >
                 <span className="t-label">
-                  <I size={16} aria-hidden /> {c.label}
+                  <Anim kind="draw">
+                    <I size={16} />
+                  </Anim>{' '}
+                  {c.label}
                   <span className={`end c-${c.worst}`}><SevIcon sev={c.worst} size={16} /></span>
                 </span>
                 <span className="t-score">{c.score === null ? '—' : <AnimatedNumber value={c.score} />}</span>

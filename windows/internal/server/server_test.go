@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -560,5 +561,109 @@ func TestToolsEndpoints(t *testing.T) {
 	}
 	if strings.Join(opened, ",") != "task-manager:app,cpu-z:site,cpu-z:app,crystaldiskinfo:app" {
 		t.Fatalf("aperti: %v", opened)
+	}
+}
+
+func TestToolsFetchEndpoints(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	if r := doBody(t, h, "POST", "/api/tools/fetch", "application/json", `{"tool":"cpu-z"}`); r.Code != http.StatusNotImplemented {
+		t.Fatalf("non disponibile: %d", r.Code)
+	}
+	release := make(chan struct{})
+	var removed []string
+	s.FetchTool = func(ctx context.Context, id string, progress func(done, total int64)) (tools.Downloaded, error) {
+		progress(1<<20, 5<<20)
+		select {
+		case <-release:
+			return tools.Downloaded{Version: "3.01", Signer: "CPUID"}, nil
+		case <-ctx.Done():
+			return tools.Downloaded{}, errors.New("download interrotto")
+		}
+	}
+	s.RemoveTool = func(id string) error { removed = append(removed, id); return nil }
+	s.Portable = func() map[string]tools.Downloaded {
+		return map[string]tools.Downloaded{"autoruns": {Version: "14.21", Signer: "Microsoft Corporation", Date: "2026-10-19", Path: `C:\Users\Anna\AppData\Local\STARNET Polaris\strumenti\autoruns\Autoruns64.exe`}}
+	}
+	for _, c := range []struct {
+		body string
+		code int
+	}{
+		{`{"tool":"cmd.exe"}`, 404},
+		{`{"tool":"crystaldiskinfo"}`, 400}, // incluso nel pacchetto, non si scarica
+		{`{"tool":"memtest86"}`, 400},
+	} {
+		if r := doBody(t, h, "POST", "/api/tools/fetch", "application/json", c.body); r.Code != c.code {
+			t.Errorf("%s: %d %s", c.body, r.Code, r.Body)
+		}
+	}
+	if r := doBody(t, h, "POST", "/api/tools/fetch", "text/plain", `{"tool":"cpu-z"}`); r.Code != http.StatusUnsupportedMediaType {
+		t.Errorf("senza JSON: %d", r.Code)
+	}
+	if r := doBody(t, h, "POST", "/api/tools/fetch", "application/json", `{"tool":"cpu-z"}`); r.Code != http.StatusAccepted {
+		t.Fatalf("avvio: %d %s", r.Code, r.Body)
+	}
+	if r := doBody(t, h, "POST", "/api/tools/fetch", "application/json", `{"tool":"hwinfo"}`); r.Code != http.StatusConflict {
+		t.Errorf("secondo download: %d", r.Code)
+	}
+	if r := doBody(t, h, "POST", "/api/tools/remove", "application/json", `{"tool":"cpu-z"}`); r.Code != http.StatusConflict {
+		t.Errorf("eliminazione durante il download: %d", r.Code)
+	}
+	// Attende lo stato voluto: in corso con l'avanzamento già riferito, oppure finito.
+	waitFetch := func(running bool) string {
+		t.Helper()
+		for i := 0; i < 300; i++ {
+			r := do(t, h, "GET", "/api/tools", nil)
+			body := r.Body.String()
+			if strings.Contains(body, `"running":`+strconv.FormatBool(running)) && !strings.Contains(body, `"total":-1`) {
+				return body
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatal("stato del download non raggiunto")
+		return ""
+	}
+	body := waitFetch(true)
+	if !strings.Contains(body, `"fetch":{"running":true,"tool":"cpu-z","done":1048576,"total":5242880}`) {
+		t.Errorf("avanzamento: %s", body)
+	}
+	if !strings.Contains(body, `"autoruns":{"version":"14.21","signer":"Microsoft Corporation","date":"2026-10-19"}`) || strings.Contains(body, "AppData") {
+		t.Errorf("copie scaricate (senza percorsi): %s", body)
+	}
+	close(release)
+	body = waitFetch(false)
+	if strings.Contains(body, `"error"`) {
+		t.Errorf("download riuscito con errore: %s", body)
+	}
+	// Un secondo download, interrotto.
+	release = make(chan struct{})
+	if r := doBody(t, h, "POST", "/api/tools/fetch", "application/json", `{"tool":"wiztree"}`); r.Code != http.StatusAccepted {
+		t.Fatalf("nuovo avvio: %d", r.Code)
+	}
+	waitFetch(true)
+	req := httptest.NewRequest("DELETE", "/api/tools/fetch", nil)
+	req.Host = "127.0.0.1:8737"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"stopping":true`) {
+		t.Fatalf("interruzione: %d %s", rec.Code, rec.Body)
+	}
+	if body := waitFetch(false); !strings.Contains(body, `"error":"download interrotto"`) {
+		t.Errorf("esito dell'interruzione: %s", body)
+	}
+	for _, c := range []struct {
+		body string
+		code int
+	}{
+		{`{"tool":"cpu-z"}`, 200},
+		{`{"tool":"../../Windows"}`, 404},
+		{`{"tool":"crystaldiskinfo"}`, 404},
+	} {
+		if r := doBody(t, h, "POST", "/api/tools/remove", "application/json", c.body); r.Code != c.code {
+			t.Errorf("eliminazione %s: %d %s", c.body, r.Code, r.Body)
+		}
+	}
+	if strings.Join(removed, ",") != "cpu-z" {
+		t.Errorf("eliminati: %v", removed)
 	}
 }

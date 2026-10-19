@@ -298,7 +298,7 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
           >
             <div className="infra-progress">
               <div
-                className="progress"
+                className="progress live"
                 role="progressbar"
                 aria-label="Avanzamento dell'inventario"
                 aria-valuemin={0}

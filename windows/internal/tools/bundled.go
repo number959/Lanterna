@@ -28,7 +28,8 @@ type Binary struct {
 
 // Bundled sono i programmi inclusi. Gli archivi originali e le loro impronte
 // sono in scripts/strumenti.sh; qui ci sono le impronte degli eseguibili che
-// contengono, firmati dal produttore (CrystalMark Inc.).
+// contengono, firmati dal produttore (CrystalMark Inc., Nir Sofer).
+// BlueScreenView esiste solo a 32 e 64 bit: su Windows per ARM gira emulato.
 var Bundled = map[string]Bundle{
 	"crystaldiskinfo": {Dir: "CrystalDiskInfo", Version: "9.9.2", Exe: map[string]Binary{
 		"amd64": {"DiskInfo64.exe", "3be01fbd2189c2f8e70fcb97315f9d46baf7dfa8aa48a0dff0e399b787bd9ec3"},
@@ -39,6 +40,10 @@ var Bundled = map[string]Bundle{
 		"amd64": {"DiskMark64.exe", "4ac51fcd01866696b41d2894227557941b272ffa2d685837a22862eb61fa0f33"},
 		"arm64": {"DiskMarkA64.exe", "29ff72da6f5c0bb1a8a70583aabbaecf4c9eb836f304744ff77e3fd93849ba1c"},
 		"386":   {"DiskMark32.exe", "c3b51e98143b0327cea9359b06165d12bcc1c5ad37664d43f0a384e9ff1ddf89"},
+	}},
+	"bluescreenview": {Dir: "BlueScreenView", Version: "1.55", Exe: map[string]Binary{
+		"amd64": {"BlueScreenView.exe", "09f3023554be864f31d80f2e7e7c7e824d79a69ddf84f1f02a433e85e866282c"},
+		"arm64": {"BlueScreenView.exe", "09f3023554be864f31d80f2e7e7c7e824d79a69ddf84f1f02a433e85e866282c"},
 	}},
 }
 

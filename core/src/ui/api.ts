@@ -222,13 +222,47 @@ export async function runDefender(action: DefenderAction, onProgress: (st: Defen
 
 // ---- Cassetta degli attrezzi: l'agente apre solo voci della sua lista bianca.
 
+/** Versione portable già scaricata dal sito ufficiale. */
+export interface PortableState {
+  version?: string;
+  signer?: string;
+  /** Giorno del download (AAAA-MM-GG). */
+  date?: string;
+  /** Scaduta (Microsoft Safety Scanner smette di funzionare dopo 10 giorni). */
+  expired?: boolean;
+  /** Presente se il file non è quello verificato: allora non si avvia. */
+  problem?: string;
+}
+
+/** Download in corso o appena concluso (total -1 se il sito non dichiara la dimensione). */
+export interface FetchState {
+  running: boolean;
+  tool?: string;
+  done: number;
+  total: number;
+  error?: string;
+}
+
 export interface ToolsState {
   installed: Record<string, { version?: string }>;
   /** Programmi inclusi nel pacchetto: problem se il file non è l'originale (e allora non si avvia). */
   bundled?: Record<string, { version: string; problem?: string }>;
+  portable?: Record<string, PortableState>;
+  fetch?: FetchState;
 }
 
 export const toolsStatus = () => getJson<ToolsState>('api/tools');
+
+/** Scarica dal sito ufficiale la versione portable e ne verifica la firma (in background). */
+export const fetchTool = (tool: string) => postJson<{ started: boolean }>('api/tools/fetch', { tool });
+
+export async function cancelFetch(): Promise<void> {
+  const r = await fetch('api/tools/fetch', { method: 'DELETE', cache: 'no-store' });
+  if (!r.ok) throw await errorOf(r);
+}
+
+/** Elimina la copia scaricata. */
+export const removeTool = (tool: string) => postJson<{ removed: boolean }>('api/tools/remove', { tool });
 
 /** Apre uno strumento di Windows, un programma (la copia inclusa in Polaris o quella installata: app) o il suo sito ufficiale (site). */
 export const openTool = (tool: string, target: 'app' | 'site') => postJson<{ opened: boolean }>('api/open', { tool, target });

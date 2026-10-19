@@ -7,6 +7,8 @@ export { ASSESS_AREAS, ASSESS_QUESTIONS, scoreAssessment } from './kb/assessment
 export type { AreaScore, AssessArea, AssessAreaId, AssessQuestion } from './kb/assessment';
 export { adviseChannels, apCount, bandOf, freqToChannel, channelToFreq, ownRadios, secFamily, spectrum, phyLabel } from './wifi';
 export { renderText } from './report';
+export { documentParts, renderDocument } from './document';
+export type { DocOptions } from './document';
 export { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';
 export { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw, STATUS_LABEL } from './smart';
 export type { AttrState, DiskSignal, DiskStatus } from './smart';

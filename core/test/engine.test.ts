@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { demoScan } from '../src/demo/sample';
-import { ACTIONS, adviseChannels, analyze, bandOf, freqToChannel, METRICS, renderText, spectrum } from '../src/engine';
+import { ACTIONS, adviseChannels, analyze, bandOf, freqToChannel, METRICS, renderDocument, renderText, spectrum } from '../src/engine';
 import type { Bss, Scan } from '../src/engine';
 import { base } from './fixtures';
 
@@ -338,10 +338,12 @@ describe('bundle per host senza moduli (goja)', () => {
     ctx.globalThis = ctx;
     vm.createContext(ctx);
     vm.runInContext(code, ctx);
-    const engine = ctx.PolarisEngine as { analyzeJson(s: string): string; reportText(s: string, v: boolean): string };
+    const engine = ctx.PolarisEngine as { analyzeJson(s: string): string; reportText(s: string, v: boolean): string; reportHtml(s: string, v: string, g: string): string };
     const json = JSON.stringify(demoScan);
     expect(JSON.parse(engine.analyzeJson(json))).toEqual(JSON.parse(JSON.stringify(analyze(demoScan))));
     expect(engine.reportText(json, false)).toContain('STARNET Polaris');
+    // Il documento stampabile esce uguale anche dal motore della riga di comando.
+    expect(engine.reportHtml(json, '0.7.0', '19/10/2026 alle 10:00')).toBe(renderDocument(demoScan, analyze(demoScan), { version: '0.7.0', generated: '19/10/2026 alle 10:00' }));
     expect(readFileSync(entry, 'utf8')).toContain('PolarisEngine');
   });
 });

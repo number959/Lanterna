@@ -3,11 +3,12 @@
 // ufficiali. Tutto passa da una lista bianca: dall'interfaccia arriva solo
 // un identificativo, mai un percorso, un comando o un indirizzo.
 //
-// CrystalDiskInfo e CrystalDiskMark (open source, licenza MIT) sono inclusi
-// nel pacchetto come copie originali e si avviano solo se l'eseguibile è
-// quello del produttore (bundled.go). Gli altri programmi non sono inclusi:
-// le loro licenze (CPU-Z, Malwarebytes...) non lo permettono o non lo rendono
-// opportuno. Polaris li rileva se sono già installati e indica dove scaricarli.
+// CrystalDiskInfo, CrystalDiskMark e BlueScreenView, che si possono
+// ridistribuire, sono inclusi nel pacchetto come copie originali e si avviano
+// solo se l'eseguibile è quello del produttore (bundled.go). Gli altri non si
+// possono ridistribuire: su richiesta Polaris ne scarica la versione portable
+// dal sito ufficiale e la avvia solo con la firma digitale del produttore
+// (portable.go), oppure apre quella già installata o il sito.
 package tools
 
 import (
@@ -53,13 +54,14 @@ type Program struct {
 }
 
 // Programs sono i programmi della cassetta degli attrezzi. I siti sono stati
-// verificati il 18 ottobre 2026.
+// verificati il 18 e il 19 ottobre 2026.
 var Programs = map[string]Program{
 	"crystaldiskinfo":     {Site: "https://crystalmark.info/en/software/crystaldiskinfo/", Names: []string{"crystaldiskinfo"}, Exes: []string{"DiskInfo64.exe", "DiskInfo32.exe", "DiskInfoA64.exe", "DiskInfo.exe"}},
 	"crystaldiskmark":     {Site: "https://crystalmark.info/en/software/crystaldiskmark/", Names: []string{"crystaldiskmark"}, Exes: []string{"DiskMark64.exe", "DiskMark32.exe", "DiskMarkA64.exe", "DiskMark.exe"}},
 	"cpu-z":               {Site: "https://www.cpuid.com/softwares/cpu-z.html", Names: []string{"cpu-z"}, Exes: []string{"cpuz.exe", "cpuz_x64.exe", "cpuz_x32.exe"}},
 	"hwinfo":              {Site: "https://www.hwinfo.com/", Names: []string{"hwinfo"}, Exes: []string{"HWiNFO64.exe", "HWiNFO32.exe", "HWiNFO.exe"}},
 	"malwarebytes":        {Site: "https://www.malwarebytes.com/mwb-download", Names: []string{"malwarebytes"}, Exes: []string{"Malwarebytes.exe", "mbam.exe"}},
+	"adwcleaner":          {Site: "https://www.malwarebytes.com/adwcleaner", Exes: []string{"adwcleaner.exe"}},
 	"safety-scanner":      {Site: "https://learn.microsoft.com/it-it/defender-endpoint/safety-scanner-download"},
 	"eset-online-scanner": {Site: "https://www.eset.com/int/home/online-scanner/"},
 	"autoruns":            {Site: "https://learn.microsoft.com/it-it/sysinternals/downloads/autoruns"},

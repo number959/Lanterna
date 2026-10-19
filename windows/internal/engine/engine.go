@@ -20,6 +20,7 @@ type Engine struct {
 	version string
 	report  goja.Callable
 	analyze goja.Callable
+	html    goja.Callable
 }
 
 // Load compila engine.js da src (o dalle risorse incorporate se src è nil).
@@ -48,6 +49,9 @@ func Load(src []byte) (*Engine, error) {
 	if e.analyze, ok = goja.AssertFunction(o.Get("analyzeJson")); !ok {
 		return nil, fmt.Errorf("PolarisEngine.analyzeJson mancante")
 	}
+	if e.html, ok = goja.AssertFunction(o.Get("reportHtml")); !ok {
+		return nil, fmt.Errorf("PolarisEngine.reportHtml mancante")
+	}
 	return e, nil
 }
 
@@ -58,6 +62,17 @@ func (e *Engine) Report(scanJSON []byte, verbose bool) (string, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	v, err := e.report(goja.Undefined(), e.vm.ToValue(string(scanJSON)), e.vm.ToValue(verbose))
+	if err != nil {
+		return "", err
+	}
+	return v.String(), nil
+}
+
+// Document produce il documento HTML stampabile sullo stato del PC.
+func (e *Engine) Document(scanJSON []byte, version, generated string) (string, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	v, err := e.html(goja.Undefined(), e.vm.ToValue(string(scanJSON)), e.vm.ToValue(version), e.vm.ToValue(generated))
 	if err != nil {
 		return "", err
 	}

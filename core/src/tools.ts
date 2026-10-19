@@ -1,13 +1,14 @@
 // Cassetta degli attrezzi: gli strumenti di Windows che Polaris può aprire e
 // i programmi gratuiti di diagnostica più noti, con il loro sito ufficiale.
-// CrystalDiskInfo e CrystalDiskMark (open source, licenza MIT) sono inclusi nel
-// pacchetto come copie originali del produttore; gli altri no, perché le
-// licenze non lo permettono o non lo rendono opportuno: Polaris li rileva se
-// sono già installati e li apre.
-// Identificativi, siti e versioni incluse devono coincidere con l'agente
-// (windows/internal/tools) e con scripts/strumenti.sh: lo verificano i test
-// dell'agente. Siti e licenze verificati sui siti dei produttori il 18 e il
-// 19 ottobre 2026.
+// CrystalDiskInfo, CrystalDiskMark e BlueScreenView, che si possono
+// ridistribuire, sono inclusi nel pacchetto come copie originali del
+// produttore. Gli altri no: su richiesta Polaris ne scarica la versione
+// portable dal sito ufficiale e la avvia solo con la firma del produttore,
+// oppure apre quella già installata.
+// Identificativi, siti, versioni incluse e download devono coincidere con
+// l'agente (windows/internal/tools) e con scripts/strumenti.sh: lo verificano
+// i test dell'agente. Siti, licenze, indirizzi e firme verificati sui siti dei
+// produttori il 18 e il 19 ottobre 2026.
 
 export type ToolCategory = 'disco' | 'hardware' | 'sicurezza' | 'avvio' | 'spazio' | 'errori' | 'windows';
 
@@ -73,6 +74,21 @@ export interface Tool {
   installs?: boolean;
   /** Versione della copia originale inclusa nel pacchetto di Polaris. */
   included?: string;
+  /** Versione portable che Polaris scarica dal sito ufficiale, su richiesta. */
+  portable?: PortableInfo;
+}
+
+export interface PortableInfo {
+  /** Sito da cui si scarica. */
+  from: string;
+  /** Editore della firma digitale verificata prima di ogni avvio. */
+  signer: string;
+  /** Dimensione indicativa del download, in MB. */
+  mb: number;
+  /** Versione fissata; senza, si scarica l'ultima pubblicata dal produttore. */
+  version?: string;
+  /** Condizioni d'uso da leggere prima di scaricare. */
+  terms: string;
 }
 
 export const TOOLS: Tool[] = [
@@ -109,10 +125,11 @@ export const TOOLS: Tool[] = [
     category: 'hardware',
     what: 'Scheda tecnica di processore, scheda madre, memoria (con i dati dei moduli) e grafica.',
     polaris: 'Computer > Scheda tecnica: processore, cache, core P ed E, moduli di memoria, firmware.',
-    license: 'freeware; il produttore non ne concede la ridistribuzione, perciò non è incluso',
+    license: 'freeware; il produttore non ne concede la ridistribuzione: Polaris lo scarica dal sito ufficiale',
     site: 'https://www.cpuid.com/softwares/cpu-z.html',
     note: 'Legge anche i profili XMP/EXPO dei moduli, che Windows non mostra.',
     installs: true,
+    portable: { from: 'download.cpuid.com', signer: 'CPUID', mb: 5.5, version: '3.01', terms: 'gratuito (freeware); all\'avvio chiede i permessi di amministratore e carica il proprio driver' },
   },
   {
     id: 'hwinfo',
@@ -123,7 +140,9 @@ export const TOOLS: Tool[] = [
     polaris: 'Polaris non legge i sensori di temperatura di processore e scheda madre: per quelli serve HWiNFO.',
     license: 'gratuito per uso personale (licenza Pro per uso commerciale: da verificare sul sito)',
     site: 'https://www.hwinfo.com/',
+    note: 'La versione scaricata da Polaris è la 8.34, l\'ultima che il produttore ha pubblicato su SourceForge; le più recenti si scaricano dal sito ufficiale, che non consente download automatici.',
     installs: true,
+    portable: { from: 'downloads.sourceforge.net', signer: 'REALiX, s.r.o.', mb: 18.6, version: '8.34', terms: 'gratuito per uso personale; per uso commerciale serve la licenza Pro; chiede i permessi di amministratore' },
   },
   {
     id: 'malwarebytes',
@@ -134,8 +153,20 @@ export const TOOLS: Tool[] = [
     polaris: 'Computer > Antivirus: stato e scansioni di Microsoft Defender.',
     license: 'versione gratuita per scansione e rimozione a richiesta; protezione in tempo reale a pagamento',
     site: 'https://www.malwarebytes.com/mwb-download',
-    note: 'All\'installazione può attivare una prova della versione a pagamento: per non avere due antivirus in tempo reale insieme a Defender, al termine della prova resta la sola scansione a richiesta (da verificare nelle impostazioni del programma).',
+    note: 'All\'installazione può attivare una prova della versione a pagamento: per non avere due antivirus in tempo reale insieme a Defender, al termine della prova resta la sola scansione a richiesta (da verificare nelle impostazioni del programma). Senza installare nulla c\'è AdwCleaner, dello stesso produttore.',
     installs: true,
+  },
+  {
+    id: 'adwcleaner',
+    name: 'AdwCleaner',
+    vendor: 'Malwarebytes',
+    category: 'sicurezza',
+    what: 'Trova e rimuove adware, programmi indesiderati, barre degli strumenti e dirottamenti del browser, senza installazione.',
+    polaris: 'Computer > Antivirus: minacce rilevate da Microsoft Defender.',
+    license: 'gratuito',
+    site: 'https://www.malwarebytes.com/adwcleaner',
+    note: 'Prima di confermare la pulizia guarda l\'elenco: alcune voci (barre, programmi preinstallati) potresti volerle tenere. Chiede i permessi di amministratore.',
+    portable: { from: 'downloads.malwarebytes.com', signer: 'Malwarebytes Inc', mb: 9.6, terms: 'gratuito; si scarica sempre l\'ultima versione' },
   },
   {
     id: 'safety-scanner',
@@ -145,7 +176,8 @@ export const TOOLS: Tool[] = [
     what: 'Scanner antimalware a richiesta, senza installazione, con il motore di Defender e firme fresche.',
     license: 'gratuito',
     site: 'https://learn.microsoft.com/it-it/defender-endpoint/safety-scanner-download',
-    note: 'Smette di funzionare 10 giorni dopo il download: va riscaricato a ogni uso.',
+    note: 'Smette di funzionare 10 giorni dopo il download: va riscaricato a ogni uso. Contiene le firme antivirus, per questo pesa più di 200 MB.',
+    portable: { from: 'go.microsoft.com', signer: 'Microsoft Corporation', mb: 230, terms: 'gratuito; smette di funzionare 10 giorni dopo il download' },
   },
   {
     id: 'eset-online-scanner',
@@ -155,6 +187,8 @@ export const TOOLS: Tool[] = [
     what: 'Scansione a richiesta con un motore diverso da quello di Microsoft: una vera seconda opinione.',
     license: 'gratuito',
     site: 'https://www.eset.com/int/home/online-scanner/',
+    note: 'All\'avvio scarica il motore e le firme di ESET: serve Internet.',
+    portable: { from: 'download.eset.com', signer: 'ESET, spol. s r.o.', mb: 8.4, terms: 'gratuito; si scarica sempre l\'ultima versione' },
   },
   {
     id: 'autoruns',
@@ -166,6 +200,7 @@ export const TOOLS: Tool[] = [
     license: 'gratuito',
     site: 'https://learn.microsoft.com/it-it/sysinternals/downloads/autoruns',
     note: 'Strumento per esperti: disattivare la voce sbagliata può impedire l\'avvio di Windows.',
+    portable: { from: 'download.sysinternals.com', signer: 'Microsoft Corporation', mb: 3.2, terms: 'gratuito (licenza Sysinternals); si scarica sempre l\'ultima versione' },
   },
   {
     id: 'process-explorer',
@@ -176,6 +211,7 @@ export const TOOLS: Tool[] = [
     polaris: 'Computer > Avvio e processi: i processi che pesano di più durante l\'analisi.',
     license: 'gratuito',
     site: 'https://learn.microsoft.com/it-it/sysinternals/downloads/process-explorer',
+    portable: { from: 'download.sysinternals.com', signer: 'Microsoft Corporation', mb: 3.8, terms: 'gratuito (licenza Sysinternals); si scarica sempre l\'ultima versione' },
   },
   {
     id: 'memtest86',
@@ -198,6 +234,7 @@ export const TOOLS: Tool[] = [
     license: 'gratuito per uso personale; licenza a pagamento per uso commerciale',
     site: 'https://diskanalyzer.com/',
     installs: true,
+    portable: { from: 'diskanalyzer.com', signer: 'Antibody Software Limited', mb: 7.9, version: '4.33', terms: 'gratuito per uso personale; per uso commerciale serve la licenza del produttore' },
   },
   {
     id: 'windirstat',
@@ -218,9 +255,11 @@ export const TOOLS: Tool[] = [
     category: 'errori',
     what: 'Legge i file delle schermate blu e indica il driver coinvolto.',
     polaris: 'Computer > Eventi: codice delle schermate blu con la spiegazione.',
-    license: 'freeware',
+    license: 'freeware, ridistribuibile gratuitamente e senza modifiche',
     site: 'https://www.nirsoft.net/utils/blue_screen_view.html',
+    note: 'Legge i minidump in C:\\Windows\\Minidump: per vederli tutti chiede i permessi di amministratore.',
     installs: true,
+    included: '1.55',
   },
   {
     id: 'pc-health-check',

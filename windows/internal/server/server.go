@@ -17,11 +17,15 @@
 //	                    ({"action": "quick" | "full" | "update"})
 //	GET  /api/defender  stato ed esito dell'ultima operazione
 //	DELETE /api/defender interrompe la scansione in corso
-//	GET  /api/tools     programmi della cassetta degli attrezzi già installati
-//	                    e inclusi nel pacchetto di Polaris
-//	POST /api/open      apre uno strumento di Windows, un programma incluso o
-//	                    installato, o il sito ufficiale ({"tool": "cpu-z",
-//	                    "target": "site"})
+//	GET  /api/tools     programmi della cassetta degli attrezzi installati,
+//	                    inclusi nel pacchetto e scaricati, con il download in corso
+//	POST /api/tools/fetch scarica dal sito ufficiale la versione portable
+//	                    ({"tool": "cpu-z"}) e ne verifica la firma
+//	DELETE /api/tools/fetch interrompe il download in corso
+//	POST /api/tools/remove elimina una copia scaricata ({"tool": "cpu-z"})
+//	POST /api/open      apre uno strumento di Windows, un programma incluso,
+//	                    scaricato o installato, o il sito ufficiale
+//	                    ({"tool": "cpu-z", "target": "site"})
 //
 // Ascolta solo su 127.0.0.1 e rifiuta richieste con Host diverso (difesa dal
 // DNS rebinding) e POST provenienti da altre origini (difesa dal CSRF). Le
@@ -39,6 +43,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -113,6 +118,20 @@ type Server struct {
 	Tools    func() map[string]tools.Installed
 	Bundled  func() map[string]tools.Included
 	OpenTool func(id, target string) error
+
+	// Versioni portable (nil = non disponibili): copie scaricate, download dal
+	// sito ufficiale su richiesta, uno alla volta, ed eliminazione.
+	Portable   func() map[string]tools.Downloaded
+	FetchTool  func(ctx context.Context, id string, progress func(done, total int64)) (tools.Downloaded, error)
+	RemoveTool func(id string) error
+
+	fetchMu      sync.Mutex
+	fetchRunning bool
+	fetchTool    string
+	fetchDone    int64
+	fetchTotal   int64
+	fetchErr     string
+	fetchCancel  context.CancelFunc
 
 	defMu      sync.Mutex
 	defRunning bool
@@ -724,14 +743,84 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, 200, map[string]bool{"stopping": cancel != nil})
 	})
 	mux.HandleFunc("GET /api/tools", func(w http.ResponseWriter, r *http.Request) {
-		installed, bundled := map[string]tools.Installed{}, map[string]tools.Included{}
+		installed, bundled, portable := map[string]tools.Installed{}, map[string]tools.Included{}, map[string]tools.Downloaded{}
 		if s.Tools != nil {
 			installed = s.Tools()
 		}
 		if s.Bundled != nil {
 			bundled = s.Bundled()
 		}
-		writeJSON(w, 200, map[string]any{"installed": installed, "bundled": bundled})
+		if s.Portable != nil {
+			portable = s.Portable()
+		}
+		s.fetchMu.Lock()
+		fetch := fetchState{Running: s.fetchRunning, Tool: s.fetchTool, Done: s.fetchDone, Total: s.fetchTotal, Error: s.fetchErr}
+		s.fetchMu.Unlock()
+		writeJSON(w, 200, map[string]any{"installed": installed, "bundled": bundled, "portable": portable, "fetch": fetch})
+	})
+	mux.HandleFunc("POST /api/tools/fetch", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Tool string `json:"tool"`
+		}
+		if code, err := readJSON(w, r, &body); err != nil {
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		if s.FetchTool == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "download dei programmi non disponibile"})
+			return
+		}
+		if err := tools.CanFetch(body.Tool, runtime.GOARCH); err != nil {
+			code := http.StatusBadRequest
+			if errors.Is(err, tools.ErrUnknown) {
+				code = http.StatusNotFound
+			}
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := s.startFetch(body.Tool); err != nil {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"started": true, "tool": body.Tool})
+	})
+	mux.HandleFunc("DELETE /api/tools/fetch", func(w http.ResponseWriter, r *http.Request) {
+		s.fetchMu.Lock()
+		cancel := s.fetchCancel
+		s.fetchMu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		writeJSON(w, 200, map[string]bool{"stopping": cancel != nil})
+	})
+	mux.HandleFunc("POST /api/tools/remove", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Tool string `json:"tool"`
+		}
+		if code, err := readJSON(w, r, &body); err != nil {
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		if s.RemoveTool == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "download dei programmi non disponibile"})
+			return
+		}
+		if _, ok := tools.Portables[body.Tool]; !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": tools.ErrUnknown.Error()})
+			return
+		}
+		s.fetchMu.Lock()
+		busy := s.fetchRunning && s.fetchTool == body.Tool
+		s.fetchMu.Unlock()
+		if busy {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "download in corso per questo programma"})
+			return
+		}
+		if err := s.RemoveTool(body.Tool); err != nil {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"removed": true})
 	})
 	mux.HandleFunc("POST /api/open", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -758,7 +847,7 @@ func (s *Server) Handler() http.Handler {
 		if err := s.OpenTool(body.Tool, body.Target); err != nil {
 			code := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, tools.ErrNotInstalled), errors.Is(err, tools.ErrModified):
+			case errors.Is(err, tools.ErrNotInstalled), errors.Is(err, tools.ErrModified), errors.Is(err, tools.ErrDownloadModified):
 				code = http.StatusUnprocessableEntity
 			case errors.Is(err, tools.ErrCancelled):
 				code = http.StatusConflict
@@ -825,4 +914,39 @@ func guard(next http.Handler) http.Handler {
 // Listen apre la porta indicata (0 = libera a caso) solo in locale.
 func Listen(port int) (net.Listener, error) {
 	return net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+}
+
+// fetchState è lo stato del download di una versione portable.
+type fetchState struct {
+	Running bool   `json:"running"`
+	Tool    string `json:"tool,omitempty"`
+	Done    int64  `json:"done"`
+	Total   int64  `json:"total"`
+	Error   string `json:"error,omitempty"`
+}
+
+// startFetch avvia il download in background; uno alla volta.
+func (s *Server) startFetch(id string) error {
+	s.fetchMu.Lock()
+	defer s.fetchMu.Unlock()
+	if s.fetchRunning {
+		return errors.New("c'è già un download in corso")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+	s.fetchRunning, s.fetchTool, s.fetchDone, s.fetchTotal, s.fetchErr, s.fetchCancel = true, id, 0, -1, "", cancel
+	go func() {
+		defer cancel()
+		_, err := s.FetchTool(ctx, id, func(done, total int64) {
+			s.fetchMu.Lock()
+			s.fetchDone, s.fetchTotal = done, total
+			s.fetchMu.Unlock()
+		})
+		s.fetchMu.Lock()
+		defer s.fetchMu.Unlock()
+		s.fetchRunning, s.fetchCancel = false, nil
+		if err != nil {
+			s.fetchErr = err.Error()
+		}
+	}()
+	return nil
 }

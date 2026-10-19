@@ -72,6 +72,14 @@ jobs:
           ./polaris-cli.exe report --quick --verbose
           if ($LASTEXITCODE -ne 0) { throw "report fallito" }
           ./polaris-cli.exe report --quick --json --out scan.json
+          # Documento stampabile dallo stesso rapporto (allegato agli artefatti).
+          ./polaris-cli.exe report --html --input scan.json --out stato-pc.html
+          if ($LASTEXITCODE -ne 0) { throw "documento non creato" }
+          $doc = Get-Content stato-pc.html -Raw -Encoding UTF8
+          if ($doc -notmatch '<h1>Stato del computer</h1>' -or $doc -notmatch 'Piano d.azione' -or $doc -notmatch 'Note e firma') { throw "documento incompleto" }
+          $macs = [regex]::Matches($doc, '\b[0-9a-fA-F]{2}([:-][0-9a-fA-F]{2}){5}\b')
+          if ($macs.Count) { throw "indirizzi MAC nel documento: $($macs[0].Value)" }
+          "Documento: $([math]::Round((Get-Item stato-pc.html).Length / 1KB)) KB, nessun indirizzo MAC"
           $s = Get-Content scan.json -Raw | ConvertFrom-Json
           "Sistema: $($s.agent.os); amministratore: $($s.agent.elevated)"
           "Schede: " + (($s.adapters | ForEach-Object { "$($_.name) [$($_.kind)] $($_.ipv4 -join ',') gw=$($_.gateways -join ',')" }) -join ' | ')
@@ -205,7 +213,7 @@ jobs:
             if ($html.Content -notmatch '<title>STARNET Polaris</title>') { throw "interfaccia non servita" }
             if (-not $html.Headers['Content-Security-Policy']) { throw "CSP mancante" }
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
-      - name: Programmi inclusi (CrystalDiskInfo e CrystalDiskMark)
+      - name: Programmi inclusi (CrystalDiskInfo, CrystalDiskMark, BlueScreenView)
         run: |
           $exes = @{ crystaldiskinfo = 'strumenti/CrystalDiskInfo/DiskInfo64.exe'; crystaldiskmark = 'strumenti/CrystalDiskMark/DiskMark64.exe' }
           foreach ($id in $exes.Keys) {
@@ -213,17 +221,20 @@ jobs:
             "$id`: firma $($sig.Status), $($sig.SignerCertificate.Subject -replace ',.*$', '')"
             if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'CN=CrystalMark Inc\.') { throw "firma di $($exes[$id]) non valida" }
           }
+          # BlueScreenView si verifica con l'impronta: la sua firma del 2015 usa un certificato scaduto.
+          $bsv = Get-AuthenticodeSignature 'strumenti/BlueScreenView/BlueScreenView.exe'
+          "bluescreenview: firma $($bsv.Status), $($bsv.SignerCertificate.Subject -replace ',.*$', '') (informativo)"
           $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8738' -PassThru -NoNewWindow
           try {
             Start-Sleep 2
             $api = 'http://127.0.0.1:8738/api'
             $t = Invoke-RestMethod "$api/tools"
-            "Inclusi: CrystalDiskInfo $($t.bundled.crystaldiskinfo.version), CrystalDiskMark $($t.bundled.crystaldiskmark.version)"
-            foreach ($id in $exes.Keys) {
+            "Inclusi: CrystalDiskInfo $($t.bundled.crystaldiskinfo.version), CrystalDiskMark $($t.bundled.crystaldiskmark.version), BlueScreenView $($t.bundled.bluescreenview.version)"
+            foreach ($id in @($exes.Keys) + 'bluescreenview') {
               if (-not $t.bundled.$id.version -or $t.bundled.$id.problem) { throw "$id non riconosciuto come copia integra: $($t | ConvertTo-Json -Compress)" }
             }
             # Avvio con un clic (come dall'interfaccia), poi chiusura.
-            foreach ($c in @(@{ id = 'crystaldiskmark'; proc = 'DiskMark64' }, @{ id = 'crystaldiskinfo'; proc = 'DiskInfo64' })) {
+            foreach ($c in @(@{ id = 'crystaldiskmark'; proc = 'DiskMark64' }, @{ id = 'crystaldiskinfo'; proc = 'DiskInfo64' }, @{ id = 'bluescreenview'; proc = 'BlueScreenView' })) {
               Invoke-RestMethod -Method Post -ContentType 'application/json' -Body "{`"tool`":`"$($c.id)`",`"target`":`"app`"}" -TimeoutSec 30 "$api/open" | Out-Null
               $t0 = 0
               do { Start-Sleep 1; $t0++; $run = Get-Process $c.proc -ErrorAction SilentlyContinue } while (-not $run -and $t0 -lt 15)
@@ -247,6 +258,57 @@ jobs:
               if (Get-Process DiskMark64 -ErrorAction SilentlyContinue) { throw "copia alterata in esecuzione" }
               "Copia alterata rifiutata: $($t.bundled.crystaldiskmark.problem)"
             } finally { Move-Item -Force "$exe.orig" $exe }
+          } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+      - name: Versioni portable dal sito ufficiale (Autoruns, CPU-Z)
+        timeout-minutes: 8
+        run: |
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8739' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $api = 'http://127.0.0.1:8739/api'
+            # Programma fuori catalogo o senza versione portable: rifiutato.
+            foreach ($case in @(@{ body = '{"tool":"cmd.exe"}'; code = 404 }, @{ body = '{"tool":"crystaldiskinfo"}'; code = 400 })) {
+              try {
+                Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $case.body "$api/tools/fetch" | Out-Null
+                throw "accettato: $($case.body)"
+              } catch {
+                if ($_.Exception.Response.StatusCode.value__ -ne $case.code) { throw "atteso $($case.code) per $($case.body): $($_.Exception.Message)" }
+              }
+            }
+            foreach ($id in 'autoruns', 'cpu-z') {
+              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body "{`"tool`":`"$id`"}" "$api/tools/fetch" | Out-Null
+              $t0 = 0
+              do { Start-Sleep 1; $t0++; $st = Invoke-RestMethod "$api/tools" } while ($st.fetch.running -and $t0 -lt 180)
+              if ($st.fetch.running -or $st.fetch.error) { throw "$id`: download non riuscito: $($st.fetch.error)" }
+              $d = $st.portable.$id
+              "$id`: scaricato $([math]::Round($st.fetch.done / 1MB, 1)) MB, versione $($d.version), firma di $($d.signer), data $($d.date)"
+              if (-not $d.signer -or $d.problem) { throw "$id non verificato: $($st | ConvertTo-Json -Compress -Depth 4)" }
+            }
+            if ($st.portable.'cpu-z'.signer -ne 'CPUID' -or $st.portable.autoruns.signer -ne 'Microsoft Corporation') { throw "firmatari inattesi" }
+            $dir = Join-Path $env:LOCALAPPDATA 'STARNET Polaris\strumenti\autoruns'
+            "Cartella: $dir ($((Get-ChildItem $dir).Count) file)"
+            # Avvio con la firma verificata di nuovo, poi chiusura.
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"tool":"autoruns","target":"app"}' -TimeoutSec 60 "$api/open" | Out-Null
+            $t0 = 0
+            do { Start-Sleep 1; $t0++; $run = Get-Process Autoruns64 -ErrorAction SilentlyContinue } while (-not $run -and $t0 -lt 20)
+            if (-not $run) { throw "Autoruns64 non avviato" }
+            "Autoruns64 avviato da Polaris (PID $($run[0].Id))"
+            Stop-Process -Name Autoruns64 -Force
+            Start-Sleep 1
+            # Copia alterata dopo il download: segnalata, non avviata, eliminabile.
+            Add-Content -Path (Join-Path $dir 'Autoruns64.exe') -Value 'x' -NoNewline
+            $st = Invoke-RestMethod "$api/tools"
+            if (-not $st.portable.autoruns.problem) { throw "copia alterata non segnalata" }
+            try {
+              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"tool":"autoruns","target":"app"}' -TimeoutSec 60 "$api/open" | Out-Null
+              throw "copia alterata avviata"
+            } catch {
+              if ($_.Exception.Response.StatusCode.value__ -ne 422) { throw "atteso 422 per la copia alterata: $($_.Exception.Message)" }
+            }
+            if (Get-Process Autoruns64 -ErrorAction SilentlyContinue) { throw "copia alterata in esecuzione" }
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"tool":"autoruns"}' "$api/tools/remove" | Out-Null
+            if (Test-Path $dir) { throw "copia non eliminata" }
+            "Copia alterata rifiutata ed eliminata: $($st.portable.autoruns.problem)"
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
       - name: Microsoft Defender da riga di comando (prova non bloccante)
         continue-on-error: true
@@ -276,5 +338,6 @@ jobs:
           name: collaudo-windows
           path: |
             STARNET-Polaris/scan.json
+            STARNET-Polaris/stato-pc.html
             STARNET-Polaris/finestra.png
           if-no-files-found: ignore

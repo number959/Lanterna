@@ -979,7 +979,7 @@ SOFTWARE.
 
 # Programmi inclusi nella cartella strumenti
 
-Il pacchetto contiene le copie originali e non modificate di due programmi di terze parti, scaricate dalla pagina SourceForge del produttore (a cui rimanda il sito ufficiale https://crystalmark.info/) e verificate con l'impronta SHA-256 dell'archivio. Gli eseguibili sono firmati digitalmente da CrystalMark Inc. Ogni programma ha nella sottocartella License i testi completi delle licenze sue e dei componenti che contiene.
+Il pacchetto contiene le copie originali e non modificate di tre programmi di terze parti, verificate con l'impronta SHA-256 dell'archivio: CrystalDiskInfo e CrystalDiskMark, scaricati dalla pagina SourceForge del produttore (a cui rimanda il sito ufficiale https://crystalmark.info/), con gli eseguibili firmati digitalmente da CrystalMark Inc. e i testi completi delle licenze nella sottocartella License; BlueScreenView, scaricato dal sito https://www.nirsoft.net/, con l'eseguibile firmato da Nir Sofer e la licenza nel suo readme.txt.
 
 ## CrystalDiskInfo 9.9.2 (hiyohiyo, MIT)
 
@@ -1037,4 +1037,28 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+```
+
+## BlueScreenView 1.55 (NirSoft, freeware)
+
+Archivio originale: bluescreenview-x64.zip, SHA-256 df57d4c9418dd2771035f2f7b70952caeb20d2269af683a0ab0665125c821479, in strumenti/BlueScreenView (con BlueScreenView.chm e readme.txt). Si ridistribuisce solo gratuitamente e con tutti i file del pacchetto, senza modifiche: se Polaris venisse distribuito a pagamento, BlueScreenView andrebbe tolto.
+
+```
+License
+=======
+
+This utility is released as freeware. You are allowed to freely
+distribute this utility via floppy disk, CD-ROM, Internet, or in any
+other way, as long as you don't charge anything for this. If you
+distribute this utility, you must include all files in the distribution
+package, without any modification !
+
+Disclaimer
+==========
+
+The software is provided "AS IS" without any warranty, either expressed
+or implied, including, but not limited to, the implied warranties of
+merchantability and fitness for a particular purpose. The author will not
+be liable for any special, incidental, consequential or indirect damages
+due to loss of data or any other reason.
 ```

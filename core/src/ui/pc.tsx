@@ -51,6 +51,7 @@ import type { BenchRequest, DefenderAction, DefenderResult } from './api';
 import { FindingList, Segmented, SevIcon, Stat, TableWrap, fmtNum, sevColor, useOpenGuide, useToast } from './components';
 import { useWidth } from './hooks';
 import { ToolShortcut, Toolbox } from './toolbox';
+import { Anim } from './anim';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -808,7 +809,7 @@ function BenchProgress({ run, onStop }: { run: BenchRun; onStop: () => void }) {
       style={{ overflow: 'hidden' }}
     >
       <div className="bench-live">
-        <div className="progress" role="progressbar" aria-label="Avanzamento del test" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(run.done * 100)}>
+        <div className="progress live" role="progressbar" aria-label="Avanzamento del test" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(run.done * 100)}>
           <m.i initial={false} animate={{ scaleX: Math.min(1, run.done) }} transition={spring.gentle} />
         </div>
         <div className="bench-live-row">
@@ -918,7 +919,10 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
         <m.section variants={rise} className="card bench-panel">
           <div className="card-head">
             <h2 className="disk-title">
-              <Cpu size={19} aria-hidden /> Processore
+              <Anim kind="pulse" on={run?.kind === 'cpu'}>
+                <Cpu size={19} />
+              </Anim>{' '}
+              Processore
             </h2>
             <span className="sub">circa 25 secondi</span>
             <span className="spacer" />
@@ -936,7 +940,7 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
           {!readOnly && (
             <div className="infra-start">
               <button className="btn primary" disabled={busy} onClick={() => start({ kind: 'cpu' })}>
-                <Play size={16} aria-hidden /> {run?.kind === 'cpu' ? 'Test in corso…' : cpu ? 'Ripeti il test' : live ? 'Avvia il test' : 'Simula il test'}
+                <Play size={16} className="nudge" aria-hidden /> {run?.kind === 'cpu' ? 'Test in corso…' : cpu ? 'Ripeti il test' : live ? 'Avvia il test' : 'Simula il test'}
               </button>
             </div>
           )}
@@ -971,7 +975,10 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
         <m.section variants={rise} className="card bench-panel">
           <div className="card-head">
             <h2 className="disk-title">
-              <HardDrive size={19} aria-hidden /> Disco
+              <Anim kind="blink" on={run?.kind === 'disk'}>
+                <HardDrive size={19} />
+              </Anim>{' '}
+              Disco
             </h2>
             <span className="sub">fino a 50 secondi</span>
             <span className="spacer" />
@@ -1011,7 +1018,7 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
                 </span>
               </label>
               <button className="btn primary" disabled={busy || !consent || lowSpace} onClick={() => start({ kind: 'disk', drive, confirm: true })}>
-                <Play size={16} aria-hidden /> {run?.kind === 'disk' ? 'Test in corso…' : diskRes ? 'Ripeti il test' : live ? 'Avvia il test' : 'Simula il test'}
+                <Play size={16} className="nudge" aria-hidden /> {run?.kind === 'disk' ? 'Test in corso…' : diskRes ? 'Ripeti il test' : live ? 'Avvia il test' : 'Simula il test'}
               </button>
               {lowSpace && <span className="faint" style={{ fontSize: 13 }}>Servono almeno 2 GB liberi su {drive}.</span>}
             </div>
@@ -1493,13 +1500,22 @@ function DefenderCard({ scan, live, source, analysis, patchPc }: ViewProps) {
               )}
               <div className="chip-actions">
                 <button className="btn primary" disabled={!!run || benchBusy} onClick={() => start('quick')}>
-                  <ScanSearch size={16} aria-hidden /> Scansione rapida
+                  <Anim kind="sweep" on={run?.action === 'quick'}>
+                    <ScanSearch size={16} />
+                  </Anim>{' '}
+                  Scansione rapida
                 </button>
                 <button className="btn" disabled={!!run || benchBusy} onClick={() => setConfirmFull(true)} aria-expanded={confirmFull}>
-                  <Search size={16} aria-hidden /> Scansione completa
+                  <Anim kind="sweep" on={run?.action === 'full'}>
+                    <Search size={16} />
+                  </Anim>{' '}
+                  Scansione completa
                 </button>
                 <button className="btn" disabled={!!run || benchBusy} onClick={() => start('update')}>
-                  <RefreshCw size={16} aria-hidden /> Aggiorna le firme
+                  <Anim kind="spin" on={run?.action === 'update'}>
+                    <RefreshCw size={16} />
+                  </Anim>{' '}
+                  Aggiorna le firme
                 </button>
               </div>
               {benchBusy && !run && <span className="faint" style={{ fontSize: 13 }}>Attendi la fine del test di velocità.</span>}

@@ -132,3 +132,21 @@ func TestPcInGoja(t *testing.T) {
 		}
 	}
 }
+
+// Il documento stampabile esce dal motore incorporato nell'exe (report --html).
+func TestDocumentInGoja(t *testing.T) {
+	e := load(t)
+	html, err := e.Document([]byte(scanJSON), "0.7.0", "19/10/2026 alle 10:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`<!doctype html><html lang="it">`, "<h1>Stato della rete</h1>", "Da sistemare per primo", "Valutazione completa", "Potenza del segnale", "STARNET Polaris 0.7.0", "il 19/10/2026 alle 10:00", "@page{size:A4"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("manca %q nel documento", want)
+		}
+	}
+	// Il BSSID del Wi-Fi è un indirizzo MAC: non deve comparire.
+	if strings.Contains(html, "aa:bb:cc:00:00:01") {
+		t.Error("indirizzo MAC nel documento")
+	}
+}

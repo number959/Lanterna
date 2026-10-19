@@ -13,15 +13,26 @@ describe('cassetta degli attrezzi', () => {
     }
   });
 
-  it('inclusi nel pacchetto solo i programmi open source ridistribuibili', () => {
+  it('inclusi nel pacchetto solo i programmi ridistribuibili, gli altri si scaricano', () => {
     const included = TOOLS.filter((t) => t.included);
-    expect(included.map((t) => t.id).sort()).toEqual(['crystaldiskinfo', 'crystaldiskmark']);
+    expect(included.map((t) => t.id).sort()).toEqual(['bluescreenview', 'crystaldiskinfo', 'crystaldiskmark']);
     for (const t of included) {
-      expect(t.included, t.id).toMatch(/^\d+\.\d+\.\d+$/);
-      expect(t.license, t.id).toMatch(/licenza MIT/);
+      expect(t.included, t.id).toMatch(/^\d+\.\d+(\.\d+)?$/);
+      expect(t.license, t.id).toMatch(/licenza MIT|ridistribuibile/);
+      expect(t.portable, t.id).toBeUndefined();
     }
-    // CPU-Z resta fuori: il produttore non ne concede la ridistribuzione.
-    expect(TOOLS.find((t) => t.id === 'cpu-z')?.included).toBeUndefined();
+    // CPU-Z resta fuori dal pacchetto: il produttore non ne concede la
+    // ridistribuzione. Polaris lo scarica dal sito ufficiale, con la firma.
+    const cpuz = TOOLS.find((t) => t.id === 'cpu-z');
+    expect(cpuz?.included).toBeUndefined();
+    expect(cpuz?.portable?.signer).toBe('CPUID');
+    for (const t of TOOLS.filter((x) => x.portable)) {
+      const p = t.portable!;
+      expect(p.from, t.id).toMatch(/^[a-z0-9.-]+\.[a-z]+$/);
+      expect(p.signer.length, t.id).toBeGreaterThan(2);
+      expect(p.mb, t.id).toBeGreaterThan(0);
+      expect(p.terms.length, t.id).toBeGreaterThan(5);
+    }
   });
 
   it('le scorciatoie del piano d\'azione puntano ad azioni e strumenti esistenti', () => {

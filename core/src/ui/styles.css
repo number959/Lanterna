@@ -988,9 +988,18 @@ a.btn { text-decoration: none; }
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: 12px; padding: 10px 14px;
   border: 1px dashed var(--line); border-radius: var(--radius-s); font-size: 13.5px; color: var(--text-2);
 }
-.tool-shortcut > svg { flex: none; color: var(--accent-text); }
+.tool-shortcut > svg, .tool-shortcut > .ico { flex: none; color: var(--accent-text); }
 .tool-shortcut > span { flex: 1 1 260px; }
 .tool-shortcut b { color: var(--text); font-weight: 650; }
+.btn.primary-soft { color: var(--accent-text); border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+.btn.primary-soft:hover { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+.tool-confirm { margin: 0 0 12px; overflow: hidden; flex-wrap: wrap; }
+.tool-confirm > span:not(.chip-actions):not(.ico) { flex: 1 1 260px; font-size: 13.5px; }
+.tool-confirm > .ico { color: var(--accent-text); margin-top: 1px; }
+.tool-fetch { margin: 0 0 12px; overflow: hidden; display: grid; gap: 8px; }
+.tool-fetch-row { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text-2); }
+.tool-fetch-row .spacer { flex: 1; }
+.tool-fetch-row > .ico, .tool-fetch-row > .hex-loader { color: var(--accent-text); }
 .tool-card { display: flex; flex-direction: column; }
 /* Microsoft Defender */
 .defender-note { font-size: 13px; margin: 0 0 12px; }
@@ -1156,6 +1165,104 @@ a.btn { text-decoration: none; }
   .r-kind { grid-row: auto; justify-self: start; }
   .diagram figcaption { flex-direction: column; align-items: flex-start; }
 }
+
+/* ---------- Documento stampabile (document.tsx) ---------- */
+.pdoc-open, .pdoc-open body { overflow: hidden; }
+.pdoc-portal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 18px; }
+.pdoc-backdrop { position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 72%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.lite .pdoc-backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; background: color-mix(in srgb, var(--bg) 88%, transparent); }
+.pdoc-modal {
+  position: relative; display: flex; flex-direction: column; width: min(980px, 100%); height: min(94vh, 100%);
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: var(--shadow-2); overflow: hidden;
+}
+.pdoc-modal:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pdoc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.pdoc-toolbar > .ico { color: var(--accent-text); }
+.pdoc-toolbar .spacer { flex: 1; }
+.pdoc-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pdoc-scroll { flex: 1; overflow: auto; padding: 22px; background: #e9eef5; }
+.pdoc-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pdoc-sheet { box-shadow: 0 10px 40px -18px rgb(2 45 98 / 0.45); border-radius: 4px; }
+@media (max-width: 640px) {
+  .pdoc-portal { padding: 0; }
+  .pdoc-modal { height: 100%; border-radius: 0; }
+  .pdoc-scroll { padding: 10px; }
+  .pdoc-actions { order: 3; width: 100%; }
+}
+/* In stampa resta solo il documento. */
+@media print {
+  html.pdoc-printing body > *:not(.pdoc-portal) { display: none !important; }
+  html.pdoc-printing, html.pdoc-printing body { background: #fff !important; overflow: visible !important; height: auto !important; }
+  html.pdoc-printing .pdoc-portal, html.pdoc-printing .pdoc-modal, html.pdoc-printing .pdoc-scroll {
+    position: static !important; display: block !important; inset: auto !important; width: auto !important; height: auto !important;
+    padding: 0 !important; overflow: visible !important; border: 0 !important; box-shadow: none !important; background: #fff !important; transform: none !important;
+  }
+  html.pdoc-printing .pdoc-backdrop, html.pdoc-printing .pdoc-toolbar { display: none !important; }
+  html.pdoc-printing .pdoc-sheet { box-shadow: none !important; max-width: none !important; margin: 0 !important; padding: 0 !important; opacity: 1 !important; transform: none !important; }
+}
+
+/* ---------- Icone animate e caricamenti (anim.tsx) ---------- */
+.ico { display: inline-flex; flex: none; line-height: 0; }
+.ico > svg { transform-origin: 50% 50%; }
+.hex-loader { display: inline-flex; flex: none; line-height: 0; color: var(--accent); }
+.hex-loader .hl-track { stroke: currentColor; opacity: 0.22; }
+.hex-loader .hl-run { stroke: currentColor; stroke-linecap: round; stroke-dasharray: 28 72; }
+.hex-loader .hl-core { fill: currentColor; opacity: 0.85; transform-origin: 12px 12px; }
+.btn .hex-loader, .btn-loader { color: inherit; }
+.skeleton {
+  display: inline-block; vertical-align: middle;
+  background: linear-gradient(90deg, var(--surface-3) 0%, color-mix(in srgb, var(--surface-3) 45%, var(--line-strong)) 50%, var(--surface-3) 100%) 0 0 / 220% 100%;
+}
+/* Barra di avanzamento con un riflesso che scorre mentre il lavoro procede. */
+.progress.live i { position: relative; overflow: hidden; }
+.progress.live i::after {
+  content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.38), transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Tratti che si disegnano: ogni elemento dell'icona, appena sfalsato. */
+  .ico-draw > svg > * { animation: ico-draw 0.75s var(--ease-out) backwards; }
+  .ico-draw > svg > :nth-child(2) { animation-delay: 0.07s; }
+  .ico-draw > svg > :nth-child(3) { animation-delay: 0.14s; }
+  .ico-draw > svg > :nth-child(n + 4) { animation-delay: 0.2s; }
+  .ico-pop > svg { animation: ico-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
+  .ico-spin.on > svg { animation: spin 1s linear infinite; }
+  .ico-pulse.on > svg { animation: ico-pulse 1.3s ease-in-out infinite; }
+  .ico-bounce.on > svg { animation: ico-bounce 0.9s ease-in-out infinite; }
+  .ico-sweep.on > svg { animation: ico-sweep 1.8s ease-in-out infinite; }
+  .ico-blink.on > svg { animation: ico-blink 1.1s ease-in-out infinite; }
+  /* Onde (icona Wi-Fi): gli archi si accendono dal più piccolo al più grande. */
+  .ico-wave.on > svg > :nth-child(n + 2) { animation: ico-wave 1.5s ease-in-out infinite; }
+  .ico-wave.on > svg > :nth-child(3) { animation-delay: 0.18s; }
+  .ico-wave.on > svg > :nth-child(2) { animation-delay: 0.36s; }
+  .hex-loader .hl-run { animation: hl-run 1.25s linear infinite; }
+  .hex-loader .hl-core { animation: hl-core 1.25s ease-in-out infinite; }
+  .skeleton { animation: skeleton 1.4s ease-in-out infinite; }
+  .progress.live i::after { animation: sheen 1.6s ease-in-out infinite; }
+  /* L'icona di un pulsante accompagna il passaggio del mouse. */
+  .btn > svg, .btn > .ico > svg { transition: transform 0.25s var(--ease-out); }
+  .btn:hover:not(:disabled) > svg.nudge, .btn:hover:not(:disabled) > .ico > svg.nudge { transform: translateX(2px); }
+  .btn:active:not(:disabled) > svg, .btn:active:not(:disabled) > .ico > svg { transform: scale(0.9); }
+  /* Le icone delle aree si animano al passaggio del mouse. */
+  .tile .t-label .ico > svg { transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .tile:hover .t-label .ico > svg { transform: scale(1.15) rotate(-8deg); }
+  /* Il simbolo dei titoli di sezione si accende quando la sezione entra. */
+  .section-title::before { animation: star-in 0.9s var(--ease-out) backwards; }
+  /* Nei messaggi l'icona si disegna. */
+  .toast > svg > * { animation: ico-draw 0.6s var(--ease-out) 0.08s backwards; }
+}
+@keyframes ico-draw { from { stroke-dasharray: 100; stroke-dashoffset: 100; } to { stroke-dasharray: 100; stroke-dashoffset: 0; } }
+@keyframes ico-pop { from { transform: scale(0.35); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes ico-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.84); opacity: 0.65; } }
+@keyframes ico-bounce { 0%, 100% { transform: translateY(-2px); } 50% { transform: translateY(2.5px); } }
+@keyframes ico-sweep { 0%, 100% { transform: translate(-2px, 0) rotate(-10deg); } 50% { transform: translate(2px, 1px) rotate(8deg); } }
+@keyframes ico-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes ico-wave { 0%, 100% { opacity: 0.25; } 45% { opacity: 1; } }
+@keyframes hl-run { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+@keyframes hl-core { 0%, 100% { transform: scale(0.7); opacity: 0.45; } 50% { transform: scale(1); opacity: 1; } }
+@keyframes skeleton { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@keyframes sheen { to { transform: translateX(100%); } }
+@keyframes star-in { from { transform: rotate(-90deg) scale(0.2); opacity: 0; } 60% { transform: rotate(10deg) scale(1.25); opacity: 1; } to { transform: none; } }
 
 /* ---------- Movimento ridotto ---------- */
 @media (prefers-reduced-motion: reduce) {

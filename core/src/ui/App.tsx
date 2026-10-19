@@ -12,6 +12,7 @@ import {
   Moon,
   Network,
   OctagonX,
+  Printer,
   RefreshCw,
   Router,
   Sun,
@@ -30,6 +31,7 @@ import { demoScan } from '../demo/sample';
 import { agentInfo, download, isScan, lastScan, runScan } from './api';
 import type { AgentInfo, Progress } from './api';
 import { BrandLogo, BrandSymbol } from './brand';
+import { DocumentPreview } from './document';
 import { GuideLinkContext, Segmented, ToastProvider, useToast } from './components';
 import { setFxPref, useFx } from './fx';
 import { useLocalState } from './hooks';
@@ -152,6 +154,7 @@ function Shell() {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [slow, setSlow] = useState(false);
+  const [docOpen, setDocOpen] = useState(false);
   const [demoKind, setDemoKind] = useLocalState<DemoKind>('polaris.demo', 'home');
   const [theme, setTheme] = useTheme();
   const fx = useFx();
@@ -325,6 +328,7 @@ function Shell() {
   };
 
   const stamp = scan ? scan.agent.startedAt.replace(/[:T]/g, '-').slice(0, 16) : '';
+  const closeDoc = useCallback(() => setDocOpen(false), []);
   const save = (name: string, content: string, type: string) => {
     download(name, content, type);
     toast(`Download avviato · ${name}`);
@@ -384,7 +388,10 @@ function Shell() {
                   title={`${n.label} (tasto ${keyOf(i)})`}
                 >
                   {on && <m.span layoutId="nav-pill" className="nav-pill" transition={spring.snappy} />}
-                  <I size={18} strokeWidth={on ? 2.2 : 1.9} aria-hidden />
+                  {/* L'icona della sezione scelta si ridisegna (la chiave la rimonta). */}
+                  <span key={on ? 'on' : 'off'} className={on ? 'ico ico-draw' : 'ico'} aria-hidden="true">
+                    <I size={18} strokeWidth={on ? 2.2 : 1.9} />
+                  </span>
                   <span className="nav-label">{n.label}</span>
                   <span className="nav-short" aria-hidden="true">{n.short}</span>
                   {dot && <span className={`dot ${dot}`} role="img" aria-label={dot === 'crit' ? 'problemi critici' : 'avvisi'} />}
@@ -453,6 +460,15 @@ function Shell() {
               )}
               {scan && analysis && (
                 <>
+                  <button
+                    className="btn"
+                    onClick={() => setDocOpen(true)}
+                    title="Documento sullo stato del PC da stampare, salvare in PDF o consegnare"
+                    aria-label="Documento stampabile"
+                    aria-haspopup="dialog"
+                  >
+                    <Printer size={16} aria-hidden /> <span className="btn-label">Documento</span>
+                  </button>
                   <button
                     className="btn"
                     onClick={() => save(`polaris-${stamp}.json`, JSON.stringify(effective ?? scan, null, 2), 'application/json')}
@@ -571,6 +587,11 @@ function Shell() {
           </AnimatePresence>
         </main>
       </div>
+      <AnimatePresence>
+        {docOpen && (effective ?? scan) && analysis && (
+          <DocumentPreview key="doc" scan={effective ?? scan!} analysis={analysis} version={agent?.version} onClose={closeDoc} onSave={save} />
+        )}
+      </AnimatePresence>
     </GuideLinkContext.Provider>
   );
 }
