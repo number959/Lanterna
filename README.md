@@ -102,7 +102,7 @@ serie.
 | --- | --- |
 | ![Test di velocità](docs/img/test-velocita.webp) | ![Dischi](docs/img/dischi.webp) |
 
-| Scheda tecnica | Microsoft Defender | Programmi inclusi (agente reale) |
+| Scheda tecnica | Microsoft Defender | Programmi inclusi (exe reale sotto Wine) |
 | --- | --- | --- |
 | ![Scheda tecnica](docs/img/scheda-tecnica.webp) | ![Antivirus](docs/img/antivirus.webp) | ![Cassetta degli attrezzi](docs/img/cassetta.webp) |
 
