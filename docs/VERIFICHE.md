@@ -1,7 +1,8 @@
 # Verifiche
 
-Cosa è stato verificato, come, e cosa resta da provare. Versione attuale: 0.4.0 (17 ottobre 2026), con le guide di rete e gli
-strumenti per le reti complesse e le strutture sanitarie (sezione 8). Fino alla versione 0.2.0 il programma si chiamava LANterna:
+Cosa è stato verificato, come, e cosa resta da provare. Versione attuale: 0.6.0 (19 ottobre 2026), con SMART completo, profilo di
+CrystalDiskMark, scheda tecnica, Microsoft Defender, cassetta degli attrezzi e CrystalDiskInfo e CrystalDiskMark inclusi nel
+pacchetto (sezione 10). Fino alla versione 0.2.0 il programma si chiamava LANterna:
 le sezioni che descrivono prove precedenti riportano i nomi di allora.
 
 ## 1. Test automatici
@@ -393,3 +394,126 @@ Microsoft e sono riportati come tali nelle guide. Dischi, eventi, antivirus e ag
 Wine non è disponibile: su Windows reale li ha verificati la CI, ma su una macchina virtuale, quindi senza contatori SMART né
 batteria. Su un PC fisico con dischi veri, batteria ed eventi reali restano da provare. La temperatura del processore non viene
 letta.
+
+## 10. Versione 0.6.0: SMART, CrystalDiskMark, scheda tecnica, Defender e programmi inclusi
+
+**Cosa è nuovo.**
+- **Agente.** In `pcinfo`:
+  - SMART letto direttamente dal disco (attributi ATA con soglie, registro di salute NVMe);
+  - scheda tecnica da API native e dallo script.
+- **Nuovi pacchetti dell'agente.**
+  - `defender`: stato, minacce, scansioni con `MpCmdRun`, API `/api/defender`, comando `polaris-cli defender`;
+  - `tools`: cassetta degli attrezzi, API `/api/tools` e `/api/open`.
+- **Test del disco.** Usa il profilo di CrystalDiskMark con I/O sovrapposto.
+- **Motore 1.2.0.** Sette metriche nuove (canali e velocità della memoria, Secure Boot, TPM, requisiti di Windows 11, minacce,
+  protezione di Defender) e quattro azioni.
+- **Interfaccia.** Tabella SMART e registro NVMe, griglia di CrystalDiskMark, schede Scheda tecnica, Antivirus e Cassetta degli
+  attrezzi.
+- **Guide.** 66 guide e 188 voci di glossario.
+- **Pacchetto.** Contiene CrystalDiskInfo 9.9.2 e CrystalDiskMark 9.0.3 nella cartella `strumenti`.
+
+**Test automatici.**
+
+| Insieme | Esito |
+| --- | --- |
+| Motore, guide e catalogo (vitest) | 166 test superati, 84 dei quali sul computer: regole di stato SMART (attributo guasto alla soglia, attributi di attenzione 05, C5, C6, BB, bit di avviso NVMe), errori non correggibili non contati due volte, profilo del disco, memoria e canali, Secure Boot, TPM, Windows 11, minacce e protezione di Defender; il catalogo della cassetta, compresi i programmi inclusi |
+| Agente (Go, anche con `-race`) | 116 test superati, tra cui: ATA pass-through e attributi costruiti byte per byte, registro NVMe; profondità di coda reale e interruzione del test del disco; topologia del processore e cache; interpretazione di stato e minacce di Defender ed esclusione reciproca con i test; lista bianca degli strumenti, rilevamento dei programmi installati, programmi inclusi (copia integra, alterata, mancante, architettura senza eseguibile), precedenza della copia verificata; API con codici `404`, `400`, `422` e `409` |
+| Coerenza tra le parti | un test dell'agente confronta catalogo, siti e versioni incluse con `core/src/tools.ts`, `scripts/strumenti.sh` e `scripts/notices.sh` |
+| Motore in goja | rapporto con SMART, scheda tecnica e Defender |
+| `GOOS=windows go vet`, `gofmt`, `tsc` | nessun problema |
+
+**Programmi inclusi: provenienza e integrità.**
+- **Fonte.** Il sito ufficiale crystalmark.info rimanda alla pagina SourceForge del produttore.
+- **Versioni.** Pubblicate da almeno 14 giorni: CrystalDiskInfo 9.9.2 del 25/07/2026 (la 9.9.3 aveva 8 giorni) e
+  CrystalDiskMark 9.0.3 del 23/05/2026.
+- **Download.** Il primo tentativo è stato rifiutato da un mirror di SourceForge (risposta `403`, non dal proxy dell'ambiente).
+  Il secondo, servito da un altro mirror, è riuscito.
+- **Dimensione e MD5.** Coincidono con quelli pubblicati da SourceForge per gli stessi file (8.533.389 byte, MD5
+  `f27564837d3a4c77813bc69769bacf5c`; 3.725.706 byte, MD5 `b93d7c56381d0d765a3fc8238da611f0`). L'impronta SHA-256 degli
+  archivi è fissata in `scripts/strumenti.sh`.
+- **Estrazione.** Dopo l'estrazione i 642 + 242 file sono identici byte per byte a quelli degli archivi, senza file in più.
+- **Firma digitale.**
+  - Gli eseguibili contengono una firma Authenticode EV emessa da GlobalSign a CrystalMark Inc.: il soggetto è stato letto con
+    OpenSSL.
+  - Su Windows reale `Get-AuthenticodeSignature` la dà **Valid**.
+- **Licenze lette** nell'archivio:
+  - MIT per i due programmi e per PolyHook 2.0, win32-darkmode, menubar theme, NVMeInterpreter, SlotSpeedGetter, MailKit,
+    MimeKit e DiskSpd;
+  - BSD per opus-tools;
+  - GCC Runtime Library Exception per libgcc;
+  - licenza propria per la libreria AMD_RC2t7, le cui impronte coincidono con quelle dichiarate nel suo file.
+- **CPU-Z.** La pagina ufficiale lo dichiara solo "freeware" e non ne concede la ridistribuzione: resta un collegamento.
+
+**Interfaccia**, Chromium 141 sulla build di produzione:
+- **axe-core** (WCAG 2.1 A/AA e buone pratiche): 0 violazioni.
+  - 10 sezioni × 2 temi × desktop e telefono, reti Casa e Clinica.
+  - Sezione Computer con un agente simulato (API intercettate) che riporta una copia inclusa, una alterata e un programma
+    installato, in 4 combinazioni di tema e schermo.
+- **A 390 px** nessuno scorrimento orizzontale; la tabella SMART diventa un elenco.
+- **Immagini aggiornate:** dischi con SMART, test di velocità, scheda tecnica, Antivirus e programmi inclusi.
+
+**Exe 0.6.0 sotto Wine 9.0:**
+- **Prove precedenti di questa versione:**
+  - test del disco con I/O sovrapposto completato, file di prova cancellato;
+  - scheda tecnica letta dalle API native;
+  - API di Defender e degli strumenti con i codici attesi.
+- **Programmi inclusi**, su una copia del pacchetto. Nessun programma è stato avviato sotto Wine.
+  - `/api/tools` riconosce CrystalDiskInfo 9.9.2 e CrystalDiskMark 9.0.3, senza percorsi.
+  - Dopo l'aggiunta di un byte a `DiskMark64.exe` la copia risulta alterata e `/api/open` risponde `422` con il messaggio.
+  - CPU-Z non installato: `422`. Un percorso al posto dell'identificativo: `404`.
+- **Interfaccia servita dall'exe:**
+  - badge "Incluso in Polaris" e pulsanti Apri;
+  - avviso sulla copia alterata, poi scomparso dopo il ripristino del file;
+  - scorciatoie nelle schede Dischi e Test di velocità;
+  - nessun errore della pagina, anche a 390 px.
+
+**Difetti trovati e corretti durante il lavoro:**
+1. La tabella SMART era troppo larga sui telefoni ed ereditava le maiuscole delle intestazioni: ora compatta e, sugli schermi
+   stretti, a elenco.
+2. Gli errori non correggibili comparivano due volte, dai contatori di Windows e dagli attributi 187/198.
+3. Una regola CSS per il telefono era scritta prima di quella generale e non aveva effetto.
+4. L'avanzamento dell'inventario di rete poteva fermarsi a 5 su 6: due goroutine riferivano in ordine inverso.
+5. Le dimensioni da 10 TB in su avevano troppi decimali.
+6. Nel collaudo in CI `@($null).Count` vale 1 in PowerShell e falsava il numero di attributi SMART stampato.
+
+**Windows reale (CI).** Run 39180459370 sul commit `1eceb50`: tutti i passi verdi su Windows Server 2025 Datacenter 24H2 (build
+26100.33438), eseguito come amministratore. Verdi anche i run dei commit precedenti: SMART, profilo di CrystalDiskMark, scheda
+tecnica, Defender, cassetta degli attrezzi.
+- **Scheda tecnica.**
+  - Macchina virtuale Hyper-V, firmware UEFI, Secure Boot disattivato, nessun TPM.
+  - Processore AMD famiglia 25 modello 1, con cache L1/L2/L3 e istruzioni fino ad AVX2.
+  - Due moduli di memoria virtuali senza velocità dichiarata.
+- **SMART.** I dischi virtuali non forniscono attributi: è il comportamento atteso, e compare la spiegazione.
+- **Test del disco breve.**
+
+  | Profilo | Lettura MB/s | Scrittura MB/s |
+  | --- | --- | --- |
+  | SEQ1M Q8T1 | 527,4 | 178,2 |
+  | SEQ1M Q1T1 | 406,3 | 176,1 |
+  | RND4K Q32T1 | 21,3 (5.208 IOPS) | 2,5 (609 IOPS) |
+  | RND4K Q1T1 | 19,4 (4.728 IOPS) | 2,7 (653 IOPS) |
+
+  Nessun file di prova rimasto.
+- **Microsoft Defender.**
+  - Modalità normale, protezione in tempo reale e da manomissioni disattivate sul runner.
+  - Firme 1.461.96.0 di giornata, cronologia vuota.
+  - Via API: azione non valida `400`; scansione rapida avviata, test di velocità rifiutato durante la scansione, interruzione
+    riuscita.
+  - Da riga di comando: scansione rapida completata in 41 s, nessuna nuova minaccia.
+- **Programmi inclusi.**
+  - Firma **Valid** di CN=CrystalMark Inc. per i due eseguibili.
+  - `/api/tools` con le versioni 9.9.2 e 9.0.3.
+  - `/api/open` ha avviato `DiskMark64.exe` e `DiskInfo64.exe` dalle loro cartelle (poi chiusi).
+  - Con un byte aggiunto a `DiskMark64.exe` la copia è segnalata come alterata, `/api/open` risponde `422` e il programma non
+    parte.
+- **Finestra WebView2.** Titolo "STARNET Polaris", 6 processi `msedgewebview2`.
+
+**Avvertenze.**
+- **Dischi fisici.** SMART e registro NVMe sono verificati con strutture costruite byte per byte e sui dischi virtuali della CI,
+  che non hanno attributi: su un PC fisico con dischi SATA e NVMe veri restano da provare.
+- **Scheda tecnica.** Core P ed E, moduli di memoria reali e TPM vanno provati su hardware vero.
+- **Minacce di Defender.** Le minacce della cronologia sono verificate solo con i test: il runner non ne aveva.
+- **Permessi di amministratore.** In CI i programmi inclusi sono partiti senza richiesta, perché il runner è già amministratore.
+  Su un PC normale CrystalDiskInfo chiede i permessi; il messaggio per una richiesta annullata è verificato solo con i test.
+- **Licenze.** Le condizioni sono riportate come lette nei testi originali. Non sono una consulenza legale: in particolare la
+  clausola sulla vendita della libreria AMD_RC2t7 va verificata se Polaris venisse distribuito a pagamento.

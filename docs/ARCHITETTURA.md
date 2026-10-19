@@ -32,6 +32,8 @@ nome, che non compare più all'utente.
    │   infra/   inventario e verifiche su richiesta, ritmo prudente          │
    │   pcinfo/  dati del computer: API native + uno script PowerShell        │
    │   bench/   test di velocità di processore e dischi, su richiesta        │
+   │   defender/ Microsoft Defender: stato, minacce, scansioni a richiesta   │
+   │   tools/   cassetta degli attrezzi e programmi inclusi, lista bianca    │
    │   collect/ orchestrazione parallela con avanzamento reale               │
    │   server/  API locale + interfaccia incorporata                         │
    └──────────────────────────────────────────────────────────────────────────┘
@@ -157,10 +159,14 @@ rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFIC
 | Computer: volumi | `GetLogicalDriveStrings`, `GetDriveType`, `GetDiskFreeSpaceEx`, `GetVolumeInformation` | solo dischi locali e rimovibili: niente unità di rete o CD |
 | Computer: avvio e processi | chiavi `Run` (utente, computer, 32 bit), cartelle di esecuzione automatica, `StartupApproved`; Toolhelp32 + `GetProcessTimes` + `K32GetProcessMemoryInfo` su 1,5 s a fine analisi | cartella dell'utente sostituita da `%USERPROFILE%`; processi raggruppati per nome |
 | Computer: dischi, eventi, sicurezza | un solo script PowerShell nascosto con uscita JSON: `Get-PhysicalDisk`, `Get-Partition`, `Get-StorageReliabilityCounter` (da amministratore), classi batteria di `root/wmi`, `Get-WinEvent` (livelli 1-3, 30 giorni, 14 codici), `root/SecurityCenter2` con riserva `Get-MpComputerStatus`, `Get-HotFix`, `Win32_Processor`, `Win32_VideoController` | ogni sezione protetta da `try`; timeout di 40 s; niente numeri di serie |
+| Computer: SMART (da amministratore) | apertura del disco fisico in sola lettura, in parallelo allo script; `IOCTL_STORAGE_QUERY_PROPERTY` per il tipo di bus e, sugli NVMe, per il registro di salute (log 02h); sui SATA `IOCTL_ATA_PASS_THROUGH` (comandi SMART READ DATA e READ THRESHOLDS) con riserva `SMART_RCV_DRIVE_DATA` | stato Buono/Attenzione/Critico con le regole di CrystalDiskInfo: attributo guasto se l'attuale scende alla soglia; 05, C5, C6 e BB non nulli danno "Attenzione"; bit di avviso critico NVMe |
+| Computer: scheda tecnica | `GetLogicalProcessorInformationEx` (core per classe di efficienza, cache per livello e tipo), istruzioni lette con CPUID, `GetFirmwareType`, Secure Boot dal registro, memoria video dal registro (`qwMemorySize`); nello script `Win32_ComputerSystem`, `Win32_BaseBoard`, `Win32_BIOS`, `Win32_PhysicalMemory`, `Win32_PhysicalMemoryArray`, TPM da `Win32_PnPEntity` | sola lettura; niente numeri di serie |
+| Microsoft Defender | `Get-MpComputerStatus`, `Get-MpThreat` e `Get-MpThreatDetection` nello script; su richiesta `MpCmdRun.exe -Scan -ScanType 1\|2`, `-SignatureUpdate`, `-Scan -Cancel`, poi nuova lettura di stato e minacce | delle minacce solo nome, gravità, stato e date: niente percorsi dei file né nomi utente; non si sovrappone ai test di velocità |
+| Cassetta degli attrezzi | `ShellExecute` di una voce della lista bianca (comando di Windows, indirizzo `ms-settings:`, programma trovato tra le voci di disinstallazione con un eseguibile ammesso, programma incluso, sito https del produttore) | da amministratore i siti si aprono tramite Esplora risorse, con i permessi normali; i programmi inclusi in `strumenti/` partono solo se l'eseguibile ha l'impronta SHA-256 scritta nell'agente |
 | Test del processore (su richiesta) | `compress/flate` su un testo sintetico deterministico: 3 s con un thread, 20 s con tutti, campioni al secondo | punta = migliore media su 3 s nella prima metà; finale = media dell'ultimo quarto |
-| Test del disco (su richiesta) | `CreateFile` con `FILE_FLAG_NO_BUFFERING` e `FILE_FLAG_DELETE_ON_CLOSE`, `ReadFile`/`WriteFile` posizionati con `OVERLAPPED` su handle sincrono, `FlushFileBuffers` nel tempo; 1 MiB in sequenza, 4 KiB casuali QD1 | file fino a 1 GiB, almeno 2 GiB lasciati liberi, durata massima per fase, buffer allineati a 4 KiB e dati non comprimibili |
+| Test del disco (su richiesta) | `CreateFile` con `FILE_FLAG_NO_BUFFERING`, `FILE_FLAG_DELETE_ON_CLOSE` e `FILE_FLAG_OVERLAPPED`; ogni richiesta in coda è una goroutine con la sua `OVERLAPPED` e il suo evento (`GetOverlappedResult`); profilo di CrystalDiskMark: SEQ1M Q8T1, SEQ1M Q1T1, RND4K Q32T1, RND4K Q1T1, 4 s per misura | file fino a 1 GiB (o ciò che si scrive in 15 s), almeno 2 GiB lasciati liberi, buffer allineati a 4 KiB e dati non comprimibili |
 
-Modalità del programma: `Polaris.exe` (finestra), `report`, `serve`, `bench cpu` e `bench disk`. La finestra usa WebView2; se il runtime manca (o non
+Modalità del programma: `Polaris.exe` (finestra), `report`, `serve`, `bench cpu`, `bench disk` e `defender status|quick|full|update`. La finestra usa WebView2; se il runtime manca (o non
 funziona) STARNET Polaris lo dice con un messaggio e apre l'interfaccia nel browser predefinito. `Polaris.exe` è compilato come
 applicazione grafica e si aggancia alla console del prompt quando riceve un comando; `polaris-cli.exe` è la stessa cosa compilata
 per la console, comoda negli script.
@@ -181,11 +187,17 @@ per la console, comoda negli script.
 | `POST /api/bench` | corpo `{"kind": "cpu"}` oppure `{"kind": "disk", "drive": "C:", "confirm": true}`: `202` avvia il test; `400` senza conferma o con unità non valida, `422` se l'unità non è un disco locale o rimovibile, `409` se c'è un test o un'analisi in corso |
 | `GET /api/bench` | test in corso con fase e avanzamento (campioni al secondo per il processore), eventuale errore e ultimi risultati |
 | `DELETE /api/bench` | interrompe il test in corso; il file temporaneo del test del disco viene cancellato |
+| `POST /api/defender` | corpo `{"action": "quick"\|"full"\|"update"}`: `202` avvia l'operazione; `400` per un'azione non valida, `422` se Defender non è disponibile, `409` se c'è già un'operazione o un test di velocità in corso |
+| `GET /api/defender` | operazione in corso, eventuale errore ed esito dell'ultima (con stato e minacce riletti) |
+| `DELETE /api/defender` | interrompe la scansione in corso |
+| `GET /api/tools` | programmi della cassetta installati (`installed`) e inclusi nel pacchetto (`bundled`, con `problem` se l'eseguibile non è l'originale), con le versioni e senza percorsi |
+| `POST /api/open` | corpo `{"tool": "<id>", "target": "app"\|"site"}`: apre uno strumento di Windows, un programma (la copia inclusa se integra, altrimenti quella installata) o il sito ufficiale; `404` per un identificativo fuori dalla lista bianca, `400` per una destinazione non valida, `422` se il programma non c'è o la copia inclusa è alterata, `409` se la richiesta dei permessi di amministratore viene annullata |
 
 Sicurezza: ascolto solo su `127.0.0.1`; richieste con `Host` diverso da localhost rifiutate (DNS rebinding); `POST` con `Origin`
 estranea o `Sec-Fetch-Site: cross-site` rifiutate (CSRF); i `POST` di inventario e verifiche accettano solo corpi
 `application/json` fino a 64 kB, che una pagina di un altro sito non può inviare senza un preflight CORS (lo stesso vale per i
-test di velocità, e `DELETE` richiede comunque un preflight); CSP restrittiva
+test di velocità, Defender e l'apertura degli strumenti, e `DELETE` richiede comunque un preflight); `/api/open` riceve solo
+identificativi, mai percorsi o comandi; CSP restrittiva
 sull'interfaccia; nessuna intestazione CORS. ESP32 ed
 eventuali altri agenti esporranno la stessa API, quindi l'interfaccia non cambia.
 

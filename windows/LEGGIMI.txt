@@ -9,10 +9,15 @@ Polaris.exe.
 COSA FA
   Analizza il computer: versione e supporto di Windows, memoria, carico del
   processore e processi, salute dei dischi HDD e SSD (stato, e da
-  amministratore temperatura, usura ed errori), spazio, programmi all'avvio,
-  riavvii, spegnimenti imprevisti, schermate blu, errori hardware, antivirus,
-  aggiornamenti, batteria e piano di alimentazione. Su richiesta esegue test
-  di velocita' del processore e dei dischi.
+  amministratore attributi SMART, registro NVMe, temperatura, usura ed
+  errori, come in CrystalDiskInfo), spazio, programmi all'avvio, riavvii,
+  spegnimenti imprevisti, schermate blu, errori hardware, antivirus e
+  Microsoft Defender, aggiornamenti, batteria e piano di alimentazione.
+  Compila la scheda tecnica come CPU-Z (processore, memoria, scheda madre,
+  firmware, Secure Boot, TPM, video). Su richiesta esegue test di velocita'
+  del processore e dei dischi (profilo di CrystalDiskMark) e scansioni di
+  Microsoft Defender. La cassetta degli attrezzi apre gli strumenti di
+  Windows e i programmi inclusi (vedi STRUMENTI INCLUSI).
   Misura Wi-Fi (segnale in dBm, canale, larghezza, carico dell'access point,
   reti vicine), rete locale (router, perdite, stabilita'), Internet (latenza,
   percorso, MTU), DNS, servizi esposti dal router, UPnP e firewall di Windows.
@@ -21,7 +26,7 @@ COSA FA
   (802.11k/v/r), gli AP sullo stesso canale e il PC agganciato a un AP lontano;
   riconosce le reti con dominio. La sezione Infrastruttura censisce la
   sottorete, verifica la separazione tra le zone e i servizi critici e guida
-  un'autovalutazione delle misure organizzative. 64 guide spiegano come si
+  un'autovalutazione delle misure organizzative. 66 guide spiegano come si
   usa il programma, il computer e la rete, dalle basi alle reti cliniche.
 
 REQUISITI
@@ -33,7 +38,7 @@ REQUISITI
     localizzazione" e "Consenti alle app desktop di accedere alla posizione".
   - Non servono privilegi di amministratore. Avviando Polaris come
     amministratore (clic destro > Esegui come amministratore) compaiono anche
-    temperatura, usura ed errori dei dischi.
+    attributi SMART, registro NVMe, temperatura, usura ed errori dei dischi.
 
 INTERFACCIA
   Tasti 1-9 e 0: sezioni; tasto /: cerca nella guida. Prima volta? Nella
@@ -53,6 +58,23 @@ RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
   polaris-cli bench cpu               test di velocita' del processore (25 s)
   polaris-cli bench disk --drive D:   test di un'unita' (scrive un file
                                       temporaneo, cancellato alla fine)
+  polaris-cli defender status         stato di Microsoft Defender e minacce
+  polaris-cli defender quick          scansione rapida (full: completa,
+                                      update: aggiornamento delle firme)
+
+STRUMENTI INCLUSI
+  Nella cartella strumenti ci sono CrystalDiskInfo 9.9.2 e CrystalDiskMark
+  9.0.3 di hiyohiyo (https://crystalmark.info/): copie originali e non
+  modificate, open source con licenza MIT, eseguibili firmati da
+  CrystalMark Inc. Si aprono da Computer > Cassetta degli attrezzi con il
+  pulsante Apri, senza installare nulla; CrystalDiskInfo chiede i permessi
+  di amministratore. Prima di avviarli Polaris controlla l'impronta SHA-256
+  dell'eseguibile: se il file e' stato modificato o sostituito non lo avvia.
+  Non spostare ne' modificare i loro file. Le licenze sono nella cartella
+  License di ciascun programma e in THIRD_PARTY_NOTICES.md.
+  CPU-Z, HWiNFO, Malwarebytes e gli altri programmi della cassetta non sono
+  inclusi (le loro licenze non lo permettono o non lo rendono opportuno):
+  Polaris li apre se sono installati, altrimenti apre il sito ufficiale.
 
 PRIVACY
   Tutto resta su questo PC: Polaris non invia dati a nessun servizio esterno.
@@ -68,6 +90,9 @@ PRIVACY
   I dati del computer si leggono senza modificare nulla. I test di velocita'
   partono solo su richiesta; quello del disco chiede conferma, lascia almeno
   2 GB liberi e cancella il file di prova anche se viene interrotto.
+  Di Microsoft Defender si leggono stato e minacce (nome, gravita' e stato,
+  senza percorsi dei file ne' nomi utente); scansioni e aggiornamento delle
+  firme partono solo su tua richiesta.
 
 Licenze dei componenti inclusi: THIRD_PARTY_NOTICES.md
 Il marchio STARNET appartiene al suo titolare.
