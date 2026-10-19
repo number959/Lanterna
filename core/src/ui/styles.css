@@ -981,6 +981,16 @@ select.field { cursor: pointer; }
 .tool-license { font-size: 12.5px; margin: 0 0 8px; }
 a.btn { text-decoration: none; }
 .tool-card .chip-actions { margin-top: auto; padding-top: 4px; }
+.tool-badges { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.tool-problem { display: flex; gap: 7px; align-items: flex-start; margin: 0 0 10px; font-size: 12.5px; color: var(--warn); }
+.tool-problem svg { flex: none; margin-top: 2px; }
+.tool-shortcut {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: 12px; padding: 10px 14px;
+  border: 1px dashed var(--line); border-radius: var(--radius-s); font-size: 13.5px; color: var(--text-2);
+}
+.tool-shortcut > svg { flex: none; color: var(--accent-text); }
+.tool-shortcut > span { flex: 1 1 260px; }
+.tool-shortcut b { color: var(--text); font-weight: 650; }
 .tool-card { display: flex; flex-direction: column; }
 /* Microsoft Defender */
 .defender-note { font-size: 13px; margin: 0 0 12px; }

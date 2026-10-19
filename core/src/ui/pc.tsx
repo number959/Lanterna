@@ -50,7 +50,7 @@ import { benchStatus, defenderStatus, runBench, runDefender, stopBench, stopDefe
 import type { BenchRequest, DefenderAction, DefenderResult } from './api';
 import { FindingList, Segmented, SevIcon, Stat, TableWrap, fmtNum, sevColor, useOpenGuide, useToast } from './components';
 import { useWidth } from './hooks';
-import { Toolbox } from './toolbox';
+import { ToolShortcut, Toolbox } from './toolbox';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -118,11 +118,13 @@ export function PcView(props: ViewProps) {
       {pc && ((pc.disks?.length ?? 0) > 0 || (pc.volumes?.length ?? 0) > 0) && (
         <Section title="Dischi e spazio">
           <DisksGrid pc={pc} findings={a.findings} elevated={scan.agent.elevated} />
+          <ToolShortcut id="crystaldiskinfo" live={props.live} text="per una seconda opinione: cronologia dei valori SMART e avviso continuo dalla barra delle applicazioni" />
         </Section>
       )}
 
       <Section title="Test di velocità">
         <BenchCard {...props} />
+        <ToolShortcut id="crystaldiskmark" live={props.live} text="per il test completo, con passate, dimensione del file e unità a scelta" />
       </Section>
 
       {pc && (pc.defender || pc.threats || pc.antivirus) && (

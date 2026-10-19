@@ -499,7 +499,7 @@ func TestDefenderEndpoint(t *testing.T) {
 func TestToolsEndpoints(t *testing.T) {
 	s := newServer()
 	h := s.Handler()
-	if r := do(t, h, "GET", "/api/tools", nil); r.Code != 200 || !strings.Contains(r.Body.String(), `"installed":{}`) {
+	if r := do(t, h, "GET", "/api/tools", nil); r.Code != 200 || !strings.Contains(r.Body.String(), `"installed":{}`) || !strings.Contains(r.Body.String(), `"bundled":{}`) {
 		t.Fatalf("senza rilevamento: %d %s", r.Code, r.Body)
 	}
 	if r := doBody(t, h, "POST", "/api/open", "application/json", `{"tool":"task-manager","target":"app"}`); r.Code != http.StatusNotImplemented {
@@ -509,9 +509,20 @@ func TestToolsEndpoints(t *testing.T) {
 	s.Tools = func() map[string]tools.Installed {
 		return map[string]tools.Installed{"cpu-z": {Version: "2.10", Path: `C:\Program Files\CPUID\CPU-Z\cpuz.exe`}}
 	}
+	s.Bundled = func() map[string]tools.Included {
+		return map[string]tools.Included{
+			"crystaldiskinfo": {Version: "9.9.2", Path: `C:\Polaris\strumenti\CrystalDiskInfo\DiskInfo64.exe`},
+			"crystaldiskmark": {Version: "9.0.3", Problem: "file modificato"},
+		}
+	}
 	s.OpenTool = func(id, target string) error {
-		if id == "hwinfo" && target == "app" {
+		switch {
+		case id == "hwinfo" && target == "app":
 			return tools.ErrNotInstalled
+		case id == "crystaldiskmark" && target == "app":
+			return tools.ErrModified
+		case id == "windows-security":
+			return tools.ErrCancelled
 		}
 		opened = append(opened, id+":"+target)
 		return nil
@@ -519,6 +530,9 @@ func TestToolsEndpoints(t *testing.T) {
 	r := do(t, h, "GET", "/api/tools", nil)
 	if r.Code != 200 || !strings.Contains(r.Body.String(), `"cpu-z":{"version":"2.10"}`) || strings.Contains(r.Body.String(), "Program Files") {
 		t.Fatalf("elenco (senza percorsi): %s", r.Body)
+	}
+	if !strings.Contains(r.Body.String(), `"crystaldiskinfo":{"version":"9.9.2"}`) || !strings.Contains(r.Body.String(), `"crystaldiskmark":{"version":"9.0.3","problem":"file modificato"}`) || strings.Contains(r.Body.String(), "strumenti") {
+		t.Fatalf("programmi inclusi (senza percorsi): %s", r.Body)
 	}
 	cases := []struct {
 		body string
@@ -528,6 +542,9 @@ func TestToolsEndpoints(t *testing.T) {
 		{`{"tool":"cpu-z","target":"site"}`, 200},
 		{`{"tool":"cpu-z","target":"app"}`, 200},
 		{`{"tool":"hwinfo","target":"app"}`, 422},
+		{`{"tool":"crystaldiskinfo","target":"app"}`, 200},
+		{`{"tool":"crystaldiskmark","target":"app"}`, 422},
+		{`{"tool":"windows-security","target":"app"}`, 409},
 		{`{"tool":"cmd.exe","target":"app"}`, 404},
 		{`{"tool":"C:\\Windows\\System32\\cmd.exe","target":"app"}`, 404},
 		{`{"tool":"windows-update","target":"site"}`, 400},
@@ -541,7 +558,7 @@ func TestToolsEndpoints(t *testing.T) {
 	if r := doBody(t, h, "POST", "/api/open", "text/plain", `{"tool":"task-manager","target":"app"}`); r.Code != http.StatusUnsupportedMediaType {
 		t.Errorf("senza JSON: %d", r.Code)
 	}
-	if strings.Join(opened, ",") != "task-manager:app,cpu-z:site,cpu-z:app" {
+	if strings.Join(opened, ",") != "task-manager:app,cpu-z:site,cpu-z:app,crystaldiskinfo:app" {
 		t.Fatalf("aperti: %v", opened)
 	}
 }

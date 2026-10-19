@@ -29,6 +29,10 @@ jobs:
           npm ci --no-audit --no-fund
           npx tsc --noEmit
           npm test
+      - uses: actions/cache@v4
+        with:
+          path: build/cache-strumenti
+          key: strumenti-${{ hashFiles('scripts/strumenti.sh') }}
       - name: Build per Windows
         run: scripts/build-windows.sh
       - name: Licenze di terze parti allineate alle dipendenze incluse
@@ -200,6 +204,49 @@ jobs:
             $html = Invoke-WebRequest http://127.0.0.1:8737/ -UseBasicParsing
             if ($html.Content -notmatch '<title>STARNET Polaris</title>') { throw "interfaccia non servita" }
             if (-not $html.Headers['Content-Security-Policy']) { throw "CSP mancante" }
+          } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+      - name: Programmi inclusi (CrystalDiskInfo e CrystalDiskMark)
+        run: |
+          $exes = @{ crystaldiskinfo = 'strumenti/CrystalDiskInfo/DiskInfo64.exe'; crystaldiskmark = 'strumenti/CrystalDiskMark/DiskMark64.exe' }
+          foreach ($id in $exes.Keys) {
+            $sig = Get-AuthenticodeSignature $exes[$id]
+            "$id`: firma $($sig.Status), $($sig.SignerCertificate.Subject -replace ',.*$', '')"
+            if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'CN=CrystalMark Inc\.') { throw "firma di $($exes[$id]) non valida" }
+          }
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8738' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $api = 'http://127.0.0.1:8738/api'
+            $t = Invoke-RestMethod "$api/tools"
+            "Inclusi: CrystalDiskInfo $($t.bundled.crystaldiskinfo.version), CrystalDiskMark $($t.bundled.crystaldiskmark.version)"
+            foreach ($id in $exes.Keys) {
+              if (-not $t.bundled.$id.version -or $t.bundled.$id.problem) { throw "$id non riconosciuto come copia integra: $($t | ConvertTo-Json -Compress)" }
+            }
+            # Avvio con un clic (come dall'interfaccia), poi chiusura.
+            foreach ($c in @(@{ id = 'crystaldiskmark'; proc = 'DiskMark64' }, @{ id = 'crystaldiskinfo'; proc = 'DiskInfo64' })) {
+              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body "{`"tool`":`"$($c.id)`",`"target`":`"app`"}" -TimeoutSec 30 "$api/open" | Out-Null
+              $t0 = 0
+              do { Start-Sleep 1; $t0++; $run = Get-Process $c.proc -ErrorAction SilentlyContinue } while (-not $run -and $t0 -lt 15)
+              if (-not $run) { throw "$($c.proc) non avviato" }
+              "$($c.proc) avviato da Polaris (PID $($run[0].Id) dalla cartella $(Split-Path $run[0].Path -Parent | Split-Path -Leaf))"
+              Stop-Process -Name $c.proc -Force
+            }
+            # Una copia alterata non si avvia.
+            $exe = $exes.crystaldiskmark
+            Copy-Item $exe "$exe.orig"
+            Add-Content -Path $exe -Value 'x' -NoNewline
+            try {
+              $t = Invoke-RestMethod "$api/tools"
+              if (-not $t.bundled.crystaldiskmark.problem) { throw "copia alterata non segnalata" }
+              try {
+                Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"tool":"crystaldiskmark","target":"app"}' -TimeoutSec 30 "$api/open" | Out-Null
+                throw "copia alterata avviata"
+              } catch {
+                if ($_.Exception.Response.StatusCode.value__ -ne 422) { throw "atteso 422 per la copia alterata: $($_.Exception.Message)" }
+              }
+              if (Get-Process DiskMark64 -ErrorAction SilentlyContinue) { throw "copia alterata in esecuzione" }
+              "Copia alterata rifiutata: $($t.bundled.crystaldiskmark.problem)"
+            } finally { Move-Item -Force "$exe.orig" $exe }
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
       - name: Microsoft Defender da riga di comando (prova non bloccante)
         continue-on-error: true

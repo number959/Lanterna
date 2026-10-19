@@ -13,6 +13,17 @@ describe('cassetta degli attrezzi', () => {
     }
   });
 
+  it('inclusi nel pacchetto solo i programmi open source ridistribuibili', () => {
+    const included = TOOLS.filter((t) => t.included);
+    expect(included.map((t) => t.id).sort()).toEqual(['crystaldiskinfo', 'crystaldiskmark']);
+    for (const t of included) {
+      expect(t.included, t.id).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(t.license, t.id).toMatch(/licenza MIT/);
+    }
+    // CPU-Z resta fuori: il produttore non ne concede la ridistribuzione.
+    expect(TOOLS.find((t) => t.id === 'cpu-z')?.included).toBeUndefined();
+  });
+
   it('le scorciatoie del piano d\'azione puntano ad azioni e strumenti esistenti', () => {
     const actions = new Set(Object.keys(ACTIONS));
     const tools = new Set(WINDOWS_TOOLS.map((w) => w.id));

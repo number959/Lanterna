@@ -3,9 +3,11 @@
 // ufficiali. Tutto passa da una lista bianca: dall'interfaccia arriva solo
 // un identificativo, mai un percorso, un comando o un indirizzo.
 //
-// I programmi di terze parti non sono inclusi in Polaris: le loro licenze
-// (CPU-Z, Malwarebytes...) non lo permettono o non lo rendono opportuno.
-// Polaris li rileva se sono già installati e indica dove scaricarli.
+// CrystalDiskInfo e CrystalDiskMark (open source, licenza MIT) sono inclusi
+// nel pacchetto come copie originali e si avviano solo se l'eseguibile è
+// quello del produttore (bundled.go). Gli altri programmi non sono inclusi:
+// le loro licenze (CPU-Z, Malwarebytes...) non lo permettono o non lo rendono
+// opportuno. Polaris li rileva se sono già installati e indica dove scaricarli.
 package tools
 
 import (
@@ -79,6 +81,8 @@ var (
 	ErrUnknown      = errors.New("strumento sconosciuto")
 	ErrNotInstalled = errors.New("il programma non risulta installato su questo PC: scaricalo dal sito ufficiale")
 	ErrTarget       = errors.New("target deve essere app o site")
+	ErrModified     = errors.New("la copia inclusa in Polaris risulta modificata o sostituita: per sicurezza non viene avviata. Riscarica il pacchetto di Polaris dalla fonte originale")
+	ErrCancelled    = errors.New("avvio annullato: la richiesta dei permessi di amministratore non è stata confermata")
 )
 
 // Entry è una voce di disinstallazione del registro.
@@ -146,15 +150,30 @@ func exeOf(e Entry, p Program, exists func(string) bool) string {
 	return ""
 }
 
-// Target dice che cosa aprire: un file da eseguire con i suoi argomenti, o un
-// indirizzo web (url true).
+// Target dice che cosa aprire: un file da eseguire con i suoi argomenti e la
+// cartella di lavoro, o un indirizzo web (url true).
 type Target struct {
-	File, Args string
-	URL        bool
+	File, Args, Dir string
+	URL             bool
+}
+
+// Merge unisce i programmi installati e le copie incluse in Polaris, che hanno
+// la precedenza perché sono verificate.
+func Merge(installed map[string]Installed, bundled map[string]Included) map[string]Installed {
+	out := make(map[string]Installed, len(installed)+len(bundled))
+	for id, in := range installed {
+		out[id] = in
+	}
+	for id, b := range bundled {
+		if b.Path != "" {
+			out[id] = Installed{Version: b.Version, Path: b.Path}
+		}
+	}
+	return out
 }
 
 // Resolve traduce identificativo e destinazione (app o site) in ciò che va
-// aperto, usando solo il catalogo e i programmi rilevati.
+// aperto, usando solo il catalogo e i programmi trovati (vedi Merge).
 func Resolve(id, target string, installed map[string]Installed) (Target, error) {
 	if w, ok := WindowsTools[id]; ok {
 		if target != "app" {
@@ -171,9 +190,17 @@ func Resolve(id, target string, installed map[string]Installed) (Target, error) 
 		return Target{File: p.Site, URL: true}, nil
 	case "app":
 		if in, ok := installed[id]; ok && in.Path != "" {
-			return Target{File: in.Path}, nil
+			return Target{File: in.Path, Dir: dirOf(in.Path)}, nil
 		}
 		return Target{}, ErrNotInstalled
 	}
 	return Target{}, ErrTarget
+}
+
+// dirOf è la cartella di un percorso Windows (anche nei test su altri sistemi).
+func dirOf(path string) string {
+	if i := strings.LastIndexAny(path, `\/`); i > 0 {
+		return path[:i]
+	}
+	return ""
 }

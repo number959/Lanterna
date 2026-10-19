@@ -223,6 +223,7 @@ func startServer(port int) (*server.Server, string, error) {
 		DefenderRun:   defender.Run,
 		DefenderReady: defender.Available,
 		Tools:         tools.InstalledPrograms,
+		Bundled:       tools.BundledPrograms,
 		OpenTool:      tools.Open,
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}

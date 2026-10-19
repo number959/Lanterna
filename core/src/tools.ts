@@ -1,10 +1,13 @@
 // Cassetta degli attrezzi: gli strumenti di Windows che Polaris può aprire e
 // i programmi gratuiti di diagnostica più noti, con il loro sito ufficiale.
-// I programmi non sono inclusi in Polaris (le licenze non lo permettono o non
-// lo rendono opportuno): Polaris li rileva se sono già installati e li apre.
-// Gli identificativi e i siti devono coincidere con il catalogo dell'agente
-// (windows/internal/tools): lo verifica un test dell'agente.
-// Siti e licenze verificati sui siti dei produttori il 18 ottobre 2026.
+// CrystalDiskInfo e CrystalDiskMark (open source, licenza MIT) sono inclusi nel
+// pacchetto come copie originali del produttore; gli altri no, perché le
+// licenze non lo permettono o non lo rendono opportuno: Polaris li rileva se
+// sono già installati e li apre.
+// Identificativi, siti e versioni incluse devono coincidere con l'agente
+// (windows/internal/tools) e con scripts/strumenti.sh: lo verificano i test
+// dell'agente. Siti e licenze verificati sui siti dei produttori il 18 e il
+// 19 ottobre 2026.
 
 export type ToolCategory = 'disco' | 'hardware' | 'sicurezza' | 'avvio' | 'spazio' | 'errori' | 'windows';
 
@@ -68,6 +71,8 @@ export interface Tool {
   note?: string;
   /** Si installa: Polaris può riconoscerlo e aprirlo. */
   installs?: boolean;
+  /** Versione della copia originale inclusa nel pacchetto di Polaris. */
+  included?: string;
 }
 
 export const TOOLS: Tool[] = [
@@ -78,10 +83,11 @@ export const TOOLS: Tool[] = [
     category: 'disco',
     what: 'Salute dei dischi: attributi SMART, temperatura, ore di accensione, avvisi in tempo reale.',
     polaris: 'Computer > Dischi e spazio: stato Buono/Attenzione/Critico, tabella SMART e registro NVMe.',
-    license: 'open source, licenza MIT',
+    license: 'open source, licenza MIT (i componenti di terze parti hanno le loro licenze, nella cartella License del programma)',
     site: 'https://crystalmark.info/en/software/crystaldiskinfo/',
-    note: 'Utile se vuoi un avviso continuo dalla barra delle applicazioni o per dischi dietro controller particolari.',
+    note: 'Seconda opinione sui dischi, con la cronologia dei valori e l\'avviso continuo dalla barra delle applicazioni; legge anche dischi dietro alcuni controller RAID e adattatori USB. Chiede i permessi di amministratore.',
     installs: true,
+    included: '9.9.2',
   },
   {
     id: 'crystaldiskmark',
@@ -90,9 +96,11 @@ export const TOOLS: Tool[] = [
     category: 'disco',
     what: 'Test di velocità dei dischi, il riferimento per confrontare i propri valori con quelli dichiarati.',
     polaris: 'Computer > Test di velocità: stesso profilo (SEQ1M Q8T1, SEQ1M Q1T1, RND4K Q32T1, RND4K Q1T1), in versione breve.',
-    license: 'open source, licenza MIT',
+    license: 'open source, licenza MIT (DiskSpd di Microsoft e gli altri componenti hanno le loro licenze, nella cartella License del programma)',
     site: 'https://crystalmark.info/en/software/crystaldiskmark/',
+    note: 'Il test completo, con numero di passate, dimensione del file e unità a scelta: confronta i valori con quelli dichiarati dal produttore del disco.',
     installs: true,
+    included: '9.0.3',
   },
   {
     id: 'cpu-z',
@@ -101,7 +109,7 @@ export const TOOLS: Tool[] = [
     category: 'hardware',
     what: 'Scheda tecnica di processore, scheda madre, memoria (con i dati dei moduli) e grafica.',
     polaris: 'Computer > Scheda tecnica: processore, cache, core P ed E, moduli di memoria, firmware.',
-    license: 'freeware, non ridistribuibile',
+    license: 'freeware; il produttore non ne concede la ridistribuzione, perciò non è incluso',
     site: 'https://www.cpuid.com/softwares/cpu-z.html',
     note: 'Legge anche i profili XMP/EXPO dei moduli, che Windows non mostra.',
     installs: true,

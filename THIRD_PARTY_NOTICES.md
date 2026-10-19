@@ -977,3 +977,64 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+# Programmi inclusi nella cartella strumenti
+
+Il pacchetto contiene le copie originali e non modificate di due programmi di terze parti, scaricate dalla pagina SourceForge del produttore (a cui rimanda il sito ufficiale https://crystalmark.info/) e verificate con l'impronta SHA-256 dell'archivio. Gli eseguibili sono firmati digitalmente da CrystalMark Inc. Ogni programma ha nella sottocartella License i testi completi delle licenze sue e dei componenti che contiene.
+
+## CrystalDiskInfo 9.9.2 (hiyohiyo, MIT)
+
+Archivio originale: CrystalDiskInfo9_9_2.zip, SHA-256 01acb3176851a85824d9589c6514e3eb9771eb7f9d5ee58ed9b4e057bd21c7df, in strumenti/CrystalDiskInfo.
+
+Componenti con licenza propria, testi in strumenti/CrystalDiskInfo/License: PolyHook 2.0, win32-darkmode, win32-custom-menubar-aero-theme, NVMeInterpreter, SlotSpeedGetter, MailKit e MimeKit (MIT); libgcc (GPL 3 con GCC Runtime Library Exception); opus-tools (BSD, in strumenti/CrystalDiskInfo/CdiResource/opus/COPYING.txt).
+
+Contiene anche la libreria AMD_RC2t7 versione 0b8 Rev.2 di Gakuto Matsumura (弦生ささと), con licenza propria (testo completo in License/AMD_RC2t7.COPYRIGHT-en.txt): si può ridistribuire solo dentro il pacchetto del programma che la usa, senza modifiche, indicando nome dei file, versione, impronta SHA-256 e licenza. File: CdiResource/dll/AMD_RC2t7x64.dll (SHA-256 bdb01316ec6f444049bfef2b13ca34ee2f5f1713df2007e611d3220bc1b3b8b0) e CdiResource/dll/AMD_RC2t7x86.dll (SHA-256 68d7f33a3fa41668a07e4febe68f15d1d0107024cbbafc938a1af283ca0ff07c). La licenza chiede un accordo aggiuntivo se le funzioni o i risultati della libreria vengono venduti o fatti pagare (articolo 6).
+
+```
+(C) 2008-2026 hiyohiyo
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+## CrystalDiskMark 9.0.3 (hiyohiyo, MIT)
+
+Archivio originale: CrystalDiskMark9_0_3.zip, SHA-256 e0c1e76a8ca5df524ffb83b4553cc8f27e539feb3c2a692cc41189783c494b78, in strumenti/CrystalDiskMark.
+
+Componenti con licenza propria, testi in strumenti/CrystalDiskMark/License: DiskSpd di Microsoft, PolyHook 2.0, win32-darkmode e win32-custom-menubar-aero-theme (MIT).
+
+```
+(C) 2007-2026 hiyohiyo
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```

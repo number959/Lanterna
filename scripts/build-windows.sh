@@ -2,12 +2,13 @@
 # Compila STARNET Polaris per Windows (da Linux, macOS o Windows con Git Bash).
 #   scripts/build-windows.sh            -> build/STARNET-Polaris/ e build/STARNET-Polaris-windows-<arch>.zip
 #   ARCH=arm64 scripts/build-windows.sh -> versione per Windows su ARM
-# Requisiti: Node.js 20+, Go 1.24+.
+#   STRUMENTI=no scripts/build-windows.sh -> senza CrystalDiskInfo e CrystalDiskMark
+# Requisiti: Node.js 20+, Go 1.24+, curl e unzip (o Python 3) per i programmi inclusi.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 ARCH=${ARCH:-amd64}
-VERSION=${VERSION:-0.5.0+$(git rev-parse --short HEAD 2>/dev/null || echo dev)}
+VERSION=${VERSION:-0.6.0+$(git rev-parse --short HEAD 2>/dev/null || echo dev)}
 export GOTOOLCHAIN=${GOTOOLCHAIN:-local}
 
 echo "==> Nucleo web (interfaccia + motore di analisi)"
@@ -32,6 +33,13 @@ LDFLAGS="-s -w -X main.version=$VERSION"
 CGO_ENABLED=0 GOOS=windows GOARCH=$ARCH go build -trimpath -ldflags "$LDFLAGS -H windowsgui" -o "$OUT/Polaris.exe" ./cmd/lanterna
 CGO_ENABLED=0 GOOS=windows GOARCH=$ARCH go build -trimpath -ldflags "$LDFLAGS" -o "$OUT/polaris-cli.exe" ./cmd/lanterna
 cp "$ROOT/windows/LEGGIMI.txt" "$ROOT/THIRD_PARTY_NOTICES.md" "$OUT/"
+
+if [ "${STRUMENTI:-si}" = no ]; then
+  echo "==> Programmi inclusi: esclusi (STRUMENTI=no)"
+else
+  echo "==> Programmi inclusi (copie originali verificate)"
+  "$ROOT/scripts/strumenti.sh" "$OUT"
+fi
 
 cd "$ROOT/build"
 rm -f "STARNET-Polaris-windows-$ARCH.zip"

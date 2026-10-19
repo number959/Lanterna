@@ -3,6 +3,7 @@
 package tools
 
 import (
+	"errors"
 	"os"
 
 	"golang.org/x/sys/windows"
@@ -57,11 +58,16 @@ func InstalledPrograms() map[string]Installed {
 	return Detect(uninstallEntries(), fileExists)
 }
 
-// Open apre lo strumento indicato. Se Polaris gira come amministratore le
-// pagine web si aprono tramite Esplora risorse, così il browser parte con i
-// permessi normali dell'utente e non con quelli elevati.
+// Open apre lo strumento indicato: per i programmi, la copia inclusa in Polaris
+// se c'è ed è integra, altrimenti quella installata. Se Polaris gira come
+// amministratore le pagine web si aprono tramite Esplora risorse, così il
+// browser parte con i permessi normali dell'utente e non con quelli elevati.
 func Open(id, target string) error {
-	t, err := Resolve(id, target, InstalledPrograms())
+	bundled := BundledPrograms()
+	t, err := Resolve(id, target, Merge(InstalledPrograms(), bundled))
+	if errors.Is(err, ErrNotInstalled) && bundled[id].Problem != "" {
+		return ErrModified
+	}
 	if err != nil {
 		return err
 	}
@@ -74,11 +80,20 @@ func Open(id, target string) error {
 	if err != nil {
 		return err
 	}
-	var a *uint16
+	var a, dir *uint16
 	if args != "" {
 		if a, err = windows.UTF16PtrFromString(args); err != nil {
 			return err
 		}
 	}
-	return windows.ShellExecute(0, verb, f, a, nil, windows.SW_SHOWNORMAL)
+	if t.Dir != "" {
+		if dir, err = windows.UTF16PtrFromString(t.Dir); err != nil {
+			return err
+		}
+	}
+	err = windows.ShellExecute(0, verb, f, a, dir, windows.SW_SHOWNORMAL)
+	if errors.Is(err, windows.ERROR_CANCELLED) {
+		return ErrCancelled
+	}
+	return err
 }

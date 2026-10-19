@@ -224,11 +224,13 @@ export async function runDefender(action: DefenderAction, onProgress: (st: Defen
 
 export interface ToolsState {
   installed: Record<string, { version?: string }>;
+  /** Programmi inclusi nel pacchetto: problem se il file non è l'originale (e allora non si avvia). */
+  bundled?: Record<string, { version: string; problem?: string }>;
 }
 
 export const toolsStatus = () => getJson<ToolsState>('api/tools');
 
-/** Apre uno strumento di Windows, un programma installato (app) o il suo sito ufficiale (site). */
+/** Apre uno strumento di Windows, un programma (la copia inclusa in Polaris o quella installata: app) o il suo sito ufficiale (site). */
 export const openTool = (tool: string, target: 'app' | 'site') => postJson<{ opened: boolean }>('api/open', { tool, target });
 
 export function download(name: string, content: string, type: string) {

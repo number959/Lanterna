@@ -18,8 +18,10 @@
 //	GET  /api/defender  stato ed esito dell'ultima operazione
 //	DELETE /api/defender interrompe la scansione in corso
 //	GET  /api/tools     programmi della cassetta degli attrezzi già installati
-//	POST /api/open      apre uno strumento di Windows, un programma installato
-//	                    o il sito ufficiale ({"tool": "cpu-z", "target": "site"})
+//	                    e inclusi nel pacchetto di Polaris
+//	POST /api/open      apre uno strumento di Windows, un programma incluso o
+//	                    installato, o il sito ufficiale ({"tool": "cpu-z",
+//	                    "target": "site"})
 //
 // Ascolta solo su 127.0.0.1 e rifiuta richieste con Host diverso (difesa dal
 // DNS rebinding) e POST provenienti da altre origini (difesa dal CSRF). Le
@@ -105,9 +107,11 @@ type Server struct {
 	// DefenderReady verifica subito che Defender sia presente (nil = nessun controllo).
 	DefenderReady func() error
 
-	// Cassetta degli attrezzi (nil = non disponibile): elenco dei programmi
-	// installati e apertura per identificativo, solo dalla lista bianca.
+	// Cassetta degli attrezzi (nil = non disponibile): programmi installati,
+	// programmi inclusi nel pacchetto e apertura per identificativo, solo dalla
+	// lista bianca.
 	Tools    func() map[string]tools.Installed
+	Bundled  func() map[string]tools.Included
 	OpenTool func(id, target string) error
 
 	defMu      sync.Mutex
@@ -720,11 +724,14 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, 200, map[string]bool{"stopping": cancel != nil})
 	})
 	mux.HandleFunc("GET /api/tools", func(w http.ResponseWriter, r *http.Request) {
-		installed := map[string]tools.Installed{}
+		installed, bundled := map[string]tools.Installed{}, map[string]tools.Included{}
 		if s.Tools != nil {
 			installed = s.Tools()
 		}
-		writeJSON(w, 200, map[string]any{"installed": installed})
+		if s.Bundled != nil {
+			bundled = s.Bundled()
+		}
+		writeJSON(w, 200, map[string]any{"installed": installed, "bundled": bundled})
 	})
 	mux.HandleFunc("POST /api/open", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -750,8 +757,11 @@ func (s *Server) Handler() http.Handler {
 		}
 		if err := s.OpenTool(body.Tool, body.Target); err != nil {
 			code := http.StatusInternalServerError
-			if errors.Is(err, tools.ErrNotInstalled) {
+			switch {
+			case errors.Is(err, tools.ErrNotInstalled), errors.Is(err, tools.ErrModified):
 				code = http.StatusUnprocessableEntity
+			case errors.Is(err, tools.ErrCancelled):
+				code = http.StatusConflict
 			}
 			writeJSON(w, code, map[string]string{"error": err.Error()})
 			return
