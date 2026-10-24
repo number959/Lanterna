@@ -232,15 +232,26 @@ export interface PortableState {
   expired?: boolean;
   /** Presente se il file non è quello verificato: allora non si avvia. */
   problem?: string;
+  /** Copia nel kit per l'uso senza Internet, accanto a Polaris. */
+  kit?: boolean;
 }
 
-/** Download in corso o appena concluso (total -1 se il sito non dichiara la dimensione). */
+/**
+ * Download in corso o appena concluso (total -1 se il sito non dichiara la
+ * dimensione). Per il kit (kit true) i programmi si scaricano uno dopo
+ * l'altro: queue quelli che mancano, ready quelli pronti, failed quelli non
+ * riusciti con il motivo.
+ */
 export interface FetchState {
   running: boolean;
   tool?: string;
   done: number;
   total: number;
   error?: string;
+  kit?: boolean;
+  queue?: string[];
+  ready?: string[];
+  failed?: Record<string, string>;
 }
 
 export interface ToolsState {
@@ -248,6 +259,10 @@ export interface ToolsState {
   /** Programmi inclusi nel pacchetto: problem se il file non è l'originale (e allora non si avvia). */
   bundled?: Record<string, { version: string; problem?: string }>;
   portable?: Record<string, PortableState>;
+  /** Programmi che su questo PC si possono scaricare. */
+  fetchable?: string[];
+  /** L'agente sa preparare il kit per l'uso senza Internet. */
+  kit?: boolean;
   fetch?: FetchState;
 }
 
@@ -260,6 +275,9 @@ export async function cancelFetch(): Promise<void> {
   const r = await fetch('api/tools/fetch', { method: 'DELETE', cache: 'no-store' });
   if (!r.ok) throw await errorOf(r);
 }
+
+/** Prepara il kit per l'uso senza Internet accanto a Polaris (in background). */
+export const prepareKit = (tools: string[]) => postJson<{ started: boolean; tools: string[] }>('api/tools/kit', { tools });
 
 /** Elimina la copia scaricata. */
 export const removeTool = (tool: string) => postJson<{ removed: boolean }>('api/tools/remove', { tool });

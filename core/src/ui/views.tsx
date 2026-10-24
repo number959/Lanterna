@@ -875,7 +875,7 @@ export function PlanView({ analysis: a, focus, scan, live }: ViewProps) {
   const toast = useToast();
   const launch = (id: string, name: string) =>
     openTool(id, 'app')
-      .then(() => toast(`${name} aperto`))
+      .then(() => toast(`${name} aperto`, 'ok', 'open'))
       .catch((e) => toast(e instanceof Error ? e.message : String(e), 'error'));
   const key = `polaris.done.${scan.agent.host ?? 'demo'}`;
   const [done, setDone] = useLocalState<string[]>(key, []);

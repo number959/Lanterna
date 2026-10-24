@@ -18,6 +18,8 @@ import {
   Sun,
   SunMoon,
   Upload,
+  Volume2,
+  VolumeX,
   Wifi,
   type LucideIcon,
 } from 'lucide-react';
@@ -38,6 +40,7 @@ import { useLocalState } from './hooks';
 import { InfraView } from './infra';
 import { PcView } from './pc';
 import { useMonitor } from './monitor';
+import { installAudioUnlock, play, useSound } from './sound';
 import { ease, page, spring } from './motion';
 import { ScanOrbit } from './scan';
 import { useTheme } from './theme';
@@ -157,6 +160,7 @@ function Shell() {
   const [docOpen, setDocOpen] = useState(false);
   const [demoKind, setDemoKind] = useLocalState<DemoKind>('polaris.demo', 'home');
   const [theme, setTheme] = useTheme();
+  const [soundOn, setSoundOn] = useSound();
   const fx = useFx();
   const fileRef = useRef<HTMLInputElement>(null);
   const viewRef = useRef(view);
@@ -170,6 +174,8 @@ function Shell() {
     const t = setTimeout(() => setSlow(true), 350);
     return () => clearTimeout(t);
   }, []);
+  // I suoni partono solo dopo il primo gesto nella pagina (regola dei browser).
+  useEffect(() => installAudioUnlock(), []);
 
   const scanNow = useCallback(async () => {
     setBusy(true);
@@ -190,7 +196,7 @@ function Shell() {
       focusRef.current = undefined;
       setView('overview');
       setFocus(undefined);
-      toast('Analisi completata');
+      toast('Analisi completata', 'ok', 'complete');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -277,6 +283,7 @@ function Shell() {
       // Stessa sezione: si torna solo in cima. Sezione diversa: lo scorrimento
       // avviene a pagina uscita (onExitComplete), così non si vede saltare.
       if (v === viewRef.current && !f) window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+      else if (v !== viewRef.current) play('tap');
       viewRef.current = v;
       focusRef.current = f;
       setView(v);
@@ -462,7 +469,10 @@ function Shell() {
                 <>
                   <button
                     className="btn"
-                    onClick={() => setDocOpen(true)}
+                    onClick={() => {
+                      play('open');
+                      setDocOpen(true);
+                    }}
                     title="Documento sullo stato del PC da stampare, salvare in PDF o consegnare"
                     aria-label="Documento stampabile"
                     aria-haspopup="dialog"
@@ -505,6 +515,26 @@ function Shell() {
                   e.target.value = '';
                 }}
               />
+              <button
+                className="btn icon"
+                onClick={() => setSoundOn(!soundOn)}
+                aria-pressed={soundOn}
+                aria-label="Suoni"
+                title={soundOn ? 'Suoni attivi: clic per spegnerli' : 'Suoni spenti: clic per accenderli'}
+              >
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <m.span
+                    key={soundOn ? 'on' : 'off'}
+                    style={{ display: 'flex' }}
+                    initial={{ scale: 0.4, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.4, opacity: 0 }}
+                    transition={spring.snappy}
+                  >
+                    {soundOn ? <Volume2 size={17} aria-hidden /> : <VolumeX size={17} aria-hidden />}
+                  </m.span>
+                </AnimatePresence>
+              </button>
               <button className="btn icon" onClick={onTheme} aria-label={`Tema ${THEME_LABEL[theme]}: passa a ${THEME_LABEL[THEME_NEXT[theme]]}`} title={`Tema: ${THEME_LABEL[theme]}`}>
                 <AnimatePresence mode="popLayout" initial={false}>
                   <m.span

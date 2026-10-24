@@ -17,10 +17,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -69,6 +72,12 @@ Uso:
   polaris-cli defender full      scansione completa (può durare ore)
   polaris-cli defender update    aggiornamento delle firme
   polaris-cli defender ... --json  stampa il risultato in JSON
+  polaris-cli tools status       versioni portable scaricate (su questo PC e nel kit)
+  polaris-cli tools kit [ID...]  prepara il kit per l'uso senza Internet: scarica dai
+                                 siti ufficiali e verifica i programmi nella cartella
+                                 strumenti-scaricati accanto a Polaris
+      --all                      anche Microsoft Safety Scanner (oltre 200 MB,
+                                 scade dopo 10 giorni)
   polaris-cli version            versione del programma e del motore
 `
 
@@ -102,6 +111,8 @@ func main() {
 		err = runBench(args[1:])
 	case args[0] == "defender":
 		err = runDefender(args[1:])
+	case args[0] == "tools":
+		err = runTools(args[1:])
 	case args[0] == "version" || args[0] == "--version":
 		eng, e := engine.Load(nil)
 		ev := "non incluso"
@@ -221,9 +232,7 @@ func startServer(port int) (*server.Server, string, error) {
 	}
 	c := newCollector(false)
 	prims := infra.Native()
-	// Versioni portable: si scaricano dal sito ufficiale passando dal proxy di
-	// sistema, come il browser.
-	fetcher := tools.NewFetcher("STARNET-Polaris/"+version, func(r *http.Request) (*url.URL, error) { return probe.HTTPProxy(r) })
+	fetcher := newFetcher()
 	srv := &server.Server{Collector: c, Web: assets.Web(), Version: version, Ping: c.QuickPing, Infra: &prims, InfraOpt: infra.Prudent,
 		BenchCPU: func(ctx context.Context, r bench.Report) (*scan.CPUBench, error) {
 			return bench.CPU(ctx, cpuOptions(false), r)
@@ -242,6 +251,8 @@ func startServer(port int) (*server.Server, string, error) {
 		Portable:      fetcher.Find,
 		FetchTool:     fetcher.Fetch,
 		RemoveTool:    fetcher.Remove,
+		FetchKit:      fetcher.FetchKit,
+		KitCheck:      fetcher.KitCheck,
 		OpenTool:      func(id, target string) error { return tools.Open(id, target, fetcher) },
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
@@ -423,6 +434,100 @@ func runDefender(args []string) error {
 		printThreats(res.Threats)
 	}
 	return nil
+}
+
+// newFetcher prepara i download delle versioni portable: dal sito ufficiale,
+// passando dal proxy di sistema come il browser.
+func newFetcher() *tools.Fetcher {
+	return tools.NewFetcher("STARNET-Polaris/"+version, func(r *http.Request) (*url.URL, error) { return probe.HTTPProxy(r) })
+}
+
+func runTools(args []string) error {
+	if len(args) == 0 {
+		return errors.New("specificare status oppure kit (polaris-cli tools status)")
+	}
+	action := args[0]
+	fs := flag.NewFlagSet("tools", flag.ContinueOnError)
+	all := fs.Bool("all", false, "")
+	fs.Usage = func() { fmt.Fprintf(os.Stderr, usage, version) }
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	f := newFetcher()
+	ids := slices.Sorted(maps.Keys(tools.Portables))
+	switch action {
+	case "status":
+		found := f.Find()
+		for _, id := range ids {
+			d, ok := found[id]
+			switch {
+			case !ok:
+				fmt.Printf("  %-20s non scaricato\n", id)
+			case d.Problem != "":
+				fmt.Printf("  %-20s DA ELIMINARE: %s\n", id, d.Problem)
+			default:
+				where, expired := "su questo PC", ""
+				if d.Kit {
+					where = "nel kit"
+				}
+				if d.Expired {
+					expired = "; SCADUTO, riscaricalo"
+				}
+				fmt.Printf("  %-20s %s, versione %s, firma di %s, scaricato il %s%s\n", id, where, d.Version, d.Signer, d.Date, expired)
+			}
+		}
+		return nil
+	case "kit":
+		if fs.NArg() > 0 {
+			ids = fs.Args()
+		} else {
+			ids = slices.DeleteFunc(ids, func(id string) bool {
+				return tools.CanFetch(id, runtime.GOARCH) != nil || !*all && tools.Portables[id].ExpiresDays > 0
+			})
+		}
+		for _, id := range ids {
+			if err := tools.CanFetch(id, runtime.GOARCH); err != nil {
+				return fmt.Errorf("%s: %w", id, err)
+			}
+		}
+		if err := f.KitCheck(); err != nil {
+			return err
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer cancel()
+		fmt.Fprintf(os.Stderr, "Kit per l'uso senza Internet nella cartella %s accanto a Polaris (Ctrl+C per interrompere)\n", tools.KitName)
+		var failed []string
+		for _, id := range ids {
+			var last time.Time
+			d, err := f.FetchKit(ctx, id, func(done, total int64) {
+				if time.Since(last) < time.Second {
+					return
+				}
+				last = time.Now()
+				if total > 0 {
+					fmt.Fprintf(os.Stderr, "\r  %-20s %.1f di %.1f MB ", id, float64(done)/1e6, float64(total)/1e6)
+				} else {
+					fmt.Fprintf(os.Stderr, "\r  %-20s %.1f MB ", id, float64(done)/1e6)
+				}
+			})
+			fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 50))
+			if err != nil {
+				fmt.Printf("  %-20s NON RIUSCITO: %v\n", id, err)
+				failed = append(failed, id)
+				if ctx.Err() != nil {
+					return errors.New("preparazione del kit interrotta")
+				}
+				continue
+			}
+			fmt.Printf("  %-20s pronto: versione %s, firma di %s verificata\n", id, d.Version, d.Signer)
+		}
+		if len(failed) > 0 {
+			return fmt.Errorf("non riusciti: %s (riprova più tardi: il sito del produttore potrebbe non rispondere)", strings.Join(failed, ", "))
+		}
+		fmt.Printf("Kit pronto. Copia la cartella di Polaris, compresa %s, su una chiavetta: sui PC senza Internet Polaris usa questi programmi dopo averne verificato la firma.\n", tools.KitName)
+		return nil
+	}
+	return errors.New("specificare status oppure kit (polaris-cli tools status)")
 }
 
 func onOff(b bool) string {

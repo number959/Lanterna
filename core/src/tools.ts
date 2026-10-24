@@ -89,6 +89,8 @@ export interface PortableInfo {
   version?: string;
   /** Condizioni d'uso da leggere prima di scaricare. */
   terms: string;
+  /** Giorni dopo i quali il programma smette di funzionare e va riscaricato. */
+  expiresDays?: number;
 }
 
 export const TOOLS: Tool[] = [
@@ -177,7 +179,7 @@ export const TOOLS: Tool[] = [
     license: 'gratuito',
     site: 'https://learn.microsoft.com/it-it/defender-endpoint/safety-scanner-download',
     note: 'Smette di funzionare 10 giorni dopo il download: va riscaricato a ogni uso. Contiene le firme antivirus, per questo pesa più di 200 MB.',
-    portable: { from: 'go.microsoft.com', signer: 'Microsoft Corporation', mb: 230, terms: 'gratuito; smette di funzionare 10 giorni dopo il download' },
+    portable: { from: 'go.microsoft.com', signer: 'Microsoft Corporation', mb: 230, expiresDays: 10, terms: 'gratuito; smette di funzionare 10 giorni dopo il download' },
   },
   {
     id: 'eset-online-scanner',

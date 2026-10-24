@@ -21,7 +21,11 @@
 //	                    inclusi nel pacchetto e scaricati, con il download in corso
 //	POST /api/tools/fetch scarica dal sito ufficiale la versione portable
 //	                    ({"tool": "cpu-z"}) e ne verifica la firma
-//	DELETE /api/tools/fetch interrompe il download in corso
+//	DELETE /api/tools/fetch interrompe il download in corso (anche del kit)
+//	POST /api/tools/kit prepara il kit per l'uso senza Internet: scarica e
+//	                    verifica i programmi indicati nella cartella
+//	                    strumenti-scaricati accanto a Polaris
+//	                    ({"tools": ["cpu-z", "autoruns"]})
 //	POST /api/tools/remove elimina una copia scaricata ({"tool": "cpu-z"})
 //	POST /api/open      apre uno strumento di Windows, un programma incluso,
 //	                    scaricato o installato, o il sito ufficiale
@@ -39,11 +43,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"maps"
 	"mime"
 	"net"
 	"net/http"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -124,6 +130,10 @@ type Server struct {
 	Portable   func() map[string]tools.Downloaded
 	FetchTool  func(ctx context.Context, id string, progress func(done, total int64)) (tools.Downloaded, error)
 	RemoveTool func(id string) error
+	// FetchKit scarica nel kit accanto a Polaris; KitCheck controlla prima
+	// che la cartella si possa scrivere.
+	FetchKit func(ctx context.Context, id string, progress func(done, total int64)) (tools.Downloaded, error)
+	KitCheck func() error
 
 	fetchMu      sync.Mutex
 	fetchRunning bool
@@ -132,6 +142,10 @@ type Server struct {
 	fetchTotal   int64
 	fetchErr     string
 	fetchCancel  context.CancelFunc
+	fetchKit     bool
+	fetchQueue   []string
+	fetchReady   []string
+	fetchFailed  map[string]string
 
 	defMu      sync.Mutex
 	defRunning bool
@@ -753,10 +767,16 @@ func (s *Server) Handler() http.Handler {
 		if s.Portable != nil {
 			portable = s.Portable()
 		}
-		s.fetchMu.Lock()
-		fetch := fetchState{Running: s.fetchRunning, Tool: s.fetchTool, Done: s.fetchDone, Total: s.fetchTotal, Error: s.fetchErr}
-		s.fetchMu.Unlock()
-		writeJSON(w, 200, map[string]any{"installed": installed, "bundled": bundled, "portable": portable, "fetch": fetch})
+		// Programmi che su questo PC si possono scaricare (anche nel kit).
+		fetchable := []string{}
+		if s.FetchTool != nil {
+			for _, id := range slices.Sorted(maps.Keys(tools.Portables)) {
+				if tools.CanFetch(id, runtime.GOARCH) == nil {
+					fetchable = append(fetchable, id)
+				}
+			}
+		}
+		writeJSON(w, 200, map[string]any{"installed": installed, "bundled": bundled, "portable": portable, "fetchable": fetchable, "kit": s.FetchKit != nil, "fetch": s.fetchStatus()})
 	})
 	mux.HandleFunc("POST /api/tools/fetch", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -778,11 +798,51 @@ func (s *Server) Handler() http.Handler {
 			writeJSON(w, code, map[string]string{"error": err.Error()})
 			return
 		}
-		if err := s.startFetch(body.Tool); err != nil {
+		if err := s.startFetch([]string{body.Tool}, false); err != nil {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusAccepted, map[string]any{"started": true, "tool": body.Tool})
+	})
+	mux.HandleFunc("POST /api/tools/kit", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Tools []string `json:"tools"`
+		}
+		if code, err := readJSON(w, r, &body); err != nil {
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		if s.FetchKit == nil || s.KitCheck == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "kit per l'uso senza Internet non disponibile"})
+			return
+		}
+		var ids []string
+		for _, id := range body.Tools {
+			if err := tools.CanFetch(id, runtime.GOARCH); err != nil {
+				code := http.StatusBadRequest
+				if errors.Is(err, tools.ErrUnknown) {
+					code = http.StatusNotFound
+				}
+				writeJSON(w, code, map[string]string{"error": id + ": " + err.Error()})
+				return
+			}
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nessun programma da mettere nel kit"})
+			return
+		}
+		if err := s.KitCheck(); err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := s.startFetch(ids, true); err != nil {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"started": true, "tools": ids})
 	})
 	mux.HandleFunc("DELETE /api/tools/fetch", func(w http.ResponseWriter, r *http.Request) {
 		s.fetchMu.Lock()
@@ -810,7 +870,7 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		s.fetchMu.Lock()
-		busy := s.fetchRunning && s.fetchTool == body.Tool
+		busy := s.fetchRunning && (s.fetchTool == body.Tool || slices.Contains(s.fetchQueue, body.Tool))
 		s.fetchMu.Unlock()
 		if busy {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "download in corso per questo programma"})
@@ -916,37 +976,86 @@ func Listen(port int) (net.Listener, error) {
 	return net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 }
 
-// fetchState è lo stato del download di una versione portable.
+// fetchState è lo stato del download di una versione portable o della
+// preparazione del kit (Kit), che scarica più programmi uno dopo l'altro.
 type fetchState struct {
 	Running bool   `json:"running"`
 	Tool    string `json:"tool,omitempty"`
 	Done    int64  `json:"done"`
 	Total   int64  `json:"total"`
 	Error   string `json:"error,omitempty"`
+	Kit     bool   `json:"kit,omitempty"`
+	// Solo per il kit: programmi ancora da scaricare, scaricati e verificati,
+	// non riusciti con il motivo.
+	Queue  []string          `json:"queue,omitempty"`
+	Ready  []string          `json:"ready,omitempty"`
+	Failed map[string]string `json:"failed,omitempty"`
 }
 
-// startFetch avvia il download in background; uno alla volta.
-func (s *Server) startFetch(id string) error {
+func (s *Server) fetchStatus() fetchState {
+	s.fetchMu.Lock()
+	defer s.fetchMu.Unlock()
+	st := fetchState{Running: s.fetchRunning, Tool: s.fetchTool, Done: s.fetchDone, Total: s.fetchTotal, Error: s.fetchErr, Kit: s.fetchKit,
+		Queue: slices.Clone(s.fetchQueue), Ready: slices.Clone(s.fetchReady)}
+	if len(s.fetchFailed) > 0 {
+		st.Failed = maps.Clone(s.fetchFailed)
+	}
+	return st
+}
+
+// startFetch avvia in background il download di uno o più programmi, uno
+// dopo l'altro: nella cartella del PC o, con kit, nel kit accanto a Polaris.
+// Un lavoro alla volta. Nel kit un programma non riuscito non ferma gli
+// altri; un'interruzione sì.
+func (s *Server) startFetch(ids []string, kit bool) error {
+	fetch := s.FetchTool
+	if kit {
+		fetch = s.FetchKit
+	}
 	s.fetchMu.Lock()
 	defer s.fetchMu.Unlock()
 	if s.fetchRunning {
 		return errors.New("c'è già un download in corso")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
-	s.fetchRunning, s.fetchTool, s.fetchDone, s.fetchTotal, s.fetchErr, s.fetchCancel = true, id, 0, -1, "", cancel
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute*time.Duration(len(ids)))
+	s.fetchRunning, s.fetchCancel, s.fetchKit, s.fetchErr = true, cancel, kit, ""
+	s.fetchTool, s.fetchDone, s.fetchTotal = ids[0], 0, -1
+	s.fetchQueue, s.fetchReady, s.fetchFailed = slices.Clone(ids[1:]), nil, nil
 	go func() {
 		defer cancel()
-		_, err := s.FetchTool(ctx, id, func(done, total int64) {
+		for i, id := range ids {
 			s.fetchMu.Lock()
-			s.fetchDone, s.fetchTotal = done, total
+			s.fetchTool, s.fetchDone, s.fetchTotal, s.fetchQueue = id, 0, -1, slices.Clone(ids[i+1:])
 			s.fetchMu.Unlock()
-		})
+			_, err := fetch(ctx, id, func(done, total int64) {
+				s.fetchMu.Lock()
+				s.fetchDone, s.fetchTotal = done, total
+				s.fetchMu.Unlock()
+			})
+			s.fetchMu.Lock()
+			switch {
+			case err == nil && kit:
+				s.fetchReady = append(s.fetchReady, id)
+			case err != nil && kit:
+				if s.fetchFailed == nil {
+					s.fetchFailed = map[string]string{}
+				}
+				s.fetchFailed[id] = err.Error()
+			case err != nil:
+				s.fetchErr = err.Error()
+			}
+			stop := ctx.Err() != nil
+			if stop && kit {
+				s.fetchErr = "preparazione del kit interrotta"
+			}
+			s.fetchMu.Unlock()
+			if stop {
+				break
+			}
+		}
 		s.fetchMu.Lock()
 		defer s.fetchMu.Unlock()
-		s.fetchRunning, s.fetchCancel = false, nil
-		if err != nil {
-			s.fetchErr = err.Error()
-		}
+		s.fetchRunning, s.fetchCancel, s.fetchQueue = false, nil, nil
 	}()
 	return nil
 }

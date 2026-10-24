@@ -17,6 +17,8 @@ import { ACTIONS, METRICS } from '../engine';
 import type { Finding, Severity } from '../engine';
 import { guidesForMetric } from '../guides';
 import { ease, rise, spring, stagger } from './motion';
+import { play } from './sound';
+import type { Cue } from './sound';
 
 /** Apre una guida da qualunque punto dell'interfaccia (lo fornisce la shell). */
 export const GuideLinkContext = createContext<((id: string) => void) | null>(null);
@@ -258,19 +260,26 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
 
 // ---------------------------------------------------------------- Avvisi temporanei
 
+type ToastKind = 'ok' | 'warn' | 'error';
+
 interface Toast {
   id: number;
   text: string;
-  kind: 'ok' | 'error';
+  kind: ToastKind;
 }
 
-const ToastCtx = createContext<(text: string, kind?: 'ok' | 'error') => void>(() => undefined);
+// Ogni messaggio ha il suo suono (se i suoni sono accesi): di norma quello del
+// tipo di messaggio, oppure uno scelto da chi lo mostra.
+const TOAST_CUE: Record<ToastKind, Cue> = { ok: 'success', warn: 'warn', error: 'error' };
+
+const ToastCtx = createContext<(text: string, kind?: ToastKind, cue?: Cue) => void>(() => undefined);
 export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [list, setList] = useState<Toast[]>([]);
   const seq = useRef(0);
-  const push = useCallback((text: string, kind: 'ok' | 'error' = 'ok') => {
+  const push = useCallback((text: string, kind: ToastKind = 'ok', cue?: Cue) => {
+    play(cue ?? TOAST_CUE[kind]);
     const id = ++seq.current;
     setList((l) => [...l.slice(-2), { id, text, kind }]);
     setTimeout(() => setList((l) => l.filter((t) => t.id !== id)), 3600);
@@ -289,7 +298,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               animate={{ opacity: 1, y: 0, scale: 1, transition: spring.smooth }}
               exit={{ opacity: 0, x: 24, transition: { duration: 0.2, ease: ease.inOut } }}
             >
-              {t.kind === 'error' ? <OctagonX size={18} aria-hidden /> : <CircleCheck size={18} aria-hidden />}
+              {t.kind === 'error' ? <OctagonX size={18} aria-hidden /> : t.kind === 'warn' ? <TriangleAlert size={18} aria-hidden /> : <CircleCheck size={18} aria-hidden />}
               {t.text}
             </m.div>
           ))}

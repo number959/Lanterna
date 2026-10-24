@@ -820,6 +820,7 @@ mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: in
 }
 .toast svg { flex: none; color: var(--ok); }
 .toast.error svg { color: var(--crit); }
+.toast.warn svg { color: var(--warn); }
 
 /* ---------- Grafica leggera (automatica o scelta) e trasparenze ridotte ---------- */
 .lite .backdrop .glow { animation: none; will-change: auto; }
@@ -1001,6 +1002,29 @@ a.btn { text-decoration: none; }
 .tool-fetch-row .spacer { flex: 1; }
 .tool-fetch-row > .ico, .tool-fetch-row > .hex-loader { color: var(--accent-text); }
 .tool-card { display: flex; flex-direction: column; }
+/* Kit per i PC senza Internet */
+.kit-card { margin-top: 14px; }
+.kit-card .disk-title .ico { color: var(--accent-text); }
+.kit-what { margin: 0 0 12px; font-size: 13.5px; color: var(--text-2); max-width: 78ch; }
+.kit-pick { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 12px; margin: 0 0 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 6px 14px; overflow: hidden; }
+.kit-pick legend { font-size: 12.5px; font-weight: 650; color: var(--text-2); padding: 0 6px; }
+.kit-item { display: flex; gap: 9px; align-items: flex-start; padding: 7px 6px; border-radius: var(--radius-xs); cursor: pointer; font-size: 13.5px; }
+.kit-item:hover { background: var(--surface-2); }
+.kit-item input { margin-top: 3px; accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
+.kit-item small { display: block; font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.kit-steps { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; }
+.kit-step { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+.kit-step.ok svg, .kit-step.ok .ico { color: var(--ok); }
+.kit-step.crit { color: var(--crit); }
+.kit-step.run { color: var(--text); font-weight: 600; }
+.kit-step.run .hex-loader { color: var(--accent-text); }
+.kit-step.wait svg { opacity: 0.6; }
+.kit-result { margin: 0 0 12px; font-size: 13.5px; overflow: hidden; }
+.kit-result svg { color: var(--ok); }
+.kit-result.warn svg { color: var(--warn); }
+.kit-fail { display: block; margin-top: 4px; font-size: 12.5px; color: var(--warn); }
+.kit-hint { margin: 10px 0 0; }
+.kit-terms { margin: 12px 0 0; max-width: 90ch; }
 /* Microsoft Defender */
 .defender-note { font-size: 13px; margin: 0 0 12px; }
 .hw-block .defender-note { margin: 12px 0 0; }

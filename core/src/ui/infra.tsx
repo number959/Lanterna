@@ -185,7 +185,7 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
 
   const done = (r: Inventory) => {
     setInfra({ inventory: r });
-    toast(`Inventario completato · ${r.hosts.filter((h) => !h.self).length} dispositivi`);
+    toast(`Inventario completato · ${r.hosts.filter((h) => !h.self).length} dispositivi`, 'ok', 'complete');
   };
   const fail = (e: Error) => {
     setError(e.message);
@@ -504,7 +504,8 @@ function ReachCard({ scan, live, source, setInfra }: ViewProps) {
         : await new Promise<ReturnType<typeof simulatedReach>>((ok) => setTimeout(() => ok(simulatedReach(scan, targets)), 900));
       setInfra({ reach: res });
       const bad = res.results.filter((r) => !r.ok).length;
-      toast(bad ? `Verifiche completate · ${bad} da controllare` : 'Verifiche completate · tutto come previsto');
+      if (bad) toast(`Verifiche completate · ${bad} da controllare`, 'warn');
+      else toast('Verifiche completate · tutto come previsto', 'ok', 'complete');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);

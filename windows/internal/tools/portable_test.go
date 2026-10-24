@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -371,8 +372,134 @@ func TestPortableCatalog(t *testing.T) {
 		if p.Version != "" && !strings.Contains(block[1], "version: '"+p.Version+"'") {
 			t.Errorf("%s: in tools.ts manca la versione %s", id, p.Version)
 		}
+		if want := fmt.Sprintf("expiresDays: %d", p.ExpiresDays); p.ExpiresDays > 0 != strings.Contains(block[1], want) || p.ExpiresDays == 0 && strings.Contains(block[1], "expiresDays") {
+			t.Errorf("%s: scadenza diversa da tools.ts (attesa %d giorni)", id, p.ExpiresDays)
+		}
 	}
 	if n := strings.Count(ts, "portable: {"); n != len(Portables) {
 		t.Errorf("tools.ts descrive %d versioni portable, l'agente %d", n, len(Portables))
 	}
 }
+
+// Kit per l'uso senza Internet: preparato su un PC con la rete, usato su un
+// altro che non ce l'ha.
+func TestKit(t *testing.T) {
+	body := zipOf(t, map[string]string{"tool64.exe": "MZ programma"})
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+	withPortable(t, map[string]Portable{
+		"cpu-z": {URL: map[string]string{"*": srv.URL + "/t.zip"}, Hosts: []string{"127.0.0.1"}, Zip: true, Exe: map[string]string{"amd64": "tool64.exe"}, Signer: "Produttore", MaxMB: 1},
+	})
+	f := testFetcher(t, srv, validAs("Produttore"))
+	f.Kit = filepath.Join(t.TempDir(), KitName)
+	d, err := f.FetchKit(context.Background(), "cpu-z", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Kit || d.Path != filepath.Join(f.Kit, "cpu-z", "tool64.exe") {
+		t.Fatalf("scaricato nel kit: %+v", d)
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.Kit, "LEGGIMI.txt")); !strings.Contains(string(b), "uso senza Internet\r\n") {
+		t.Errorf("LEGGIMI del kit: %q", b)
+	}
+	if _, err := os.Stat(filepath.Join(f.Root, "cpu-z")); err == nil {
+		t.Error("il kit non deve finire nella cartella del PC")
+	}
+
+	// Un altro PC, senza rete e senza copie sue, usa il kit.
+	offline := &Fetcher{Root: t.TempDir(), Kit: f.Kit, Arch: "amd64", Verify: validAs("Produttore"),
+		Wait:      func(context.Context, time.Duration) error { return nil },
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, errors.New("nessuna rete") })}
+	g := offline.Find()["cpu-z"]
+	if !g.Kit || g.Problem != "" || g.Path != d.Path || g.Signer != "Produttore" {
+		t.Fatalf("kit visto senza rete: %+v", g)
+	}
+	if err := offline.Check("cpu-z", g.Path); err != nil {
+		t.Errorf("firma del kit: %v", err)
+	}
+	if _, err := offline.Fetch(context.Background(), "cpu-z", nil); err == nil {
+		t.Error("download riuscito senza rete")
+	}
+
+	// La copia del PC, se integra, vale prima di quella del kit; se è
+	// alterata, vale il kit.
+	pc, err := f.Fetch(context.Background(), "cpu-z", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := f.Find()["cpu-z"]; g.Kit || g.Path != pc.Path {
+		t.Fatalf("copia del PC non preferita: %+v", g)
+	}
+	if err := os.WriteFile(pc.Path, []byte("MZ sostituito"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if g := f.Find()["cpu-z"]; !g.Kit || g.Path != d.Path {
+		t.Fatalf("con la copia del PC alterata vale il kit: %+v", g)
+	}
+	// Elimina prima la copia del PC, poi quella del kit.
+	if err := f.Remove("cpu-z"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.Kit, "cpu-z")); err != nil {
+		t.Fatal("eliminata la copia del kit al posto di quella del PC")
+	}
+	if err := f.Remove("cpu-z"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := f.Find()["cpu-z"]; ok {
+		t.Error("copia del kit non eliminata")
+	}
+}
+
+func TestKitNotWritable(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, kit := range []string{"", filepath.Join(file, KitName)} {
+		f := &Fetcher{Root: t.TempDir(), Kit: kit, Arch: "amd64"}
+		err := f.KitCheck()
+		if !errors.Is(err, ErrKitNotWritable) {
+			t.Fatalf("kit %q: %v", kit, err)
+		}
+		if kit != "" && strings.Contains(err.Error(), file) {
+			t.Errorf("il messaggio non deve contenere il percorso: %v", err)
+		}
+		if _, err := f.FetchKit(context.Background(), "cpu-z", nil); !errors.Is(err, ErrKitNotWritable) {
+			t.Errorf("FetchKit con kit %q: %v", kit, err)
+		}
+	}
+}
+
+func TestSumCache(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.exe")
+	if err := os.WriteFile(path, []byte("MZ uno"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := &Fetcher{}
+	a, err := f.sum(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := f.sum(path); b != a {
+		t.Fatal("impronta diversa senza modifiche")
+	}
+	// Stessa dimensione, data di modifica diversa: l'impronta si ricalcola.
+	if err := os.WriteFile(path, []byte("MZ due"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := f.sum(path); b == a {
+		t.Fatal("impronta non ricalcolata dopo la modifica")
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

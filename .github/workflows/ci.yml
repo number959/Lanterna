@@ -310,6 +310,65 @@ jobs:
             if (Test-Path $dir) { throw "copia non eliminata" }
             "Copia alterata rifiutata ed eliminata: $($st.portable.autoruns.problem)"
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+      - name: Kit per l'uso senza Internet (Autoruns su un altro profilo, con la rete bloccata)
+        timeout-minutes: 8
+        run: |
+          $kit = Join-Path $PWD 'strumenti-scaricati'
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8740' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $api = 'http://127.0.0.1:8740/api'
+            foreach ($case in @(@{ body = '{"tools":["cmd.exe"]}'; code = 404 }, @{ body = '{"tools":[]}'; code = 400 })) {
+              try {
+                Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $case.body "$api/tools/kit" | Out-Null
+                throw "accettato: $($case.body)"
+              } catch {
+                if ($_.Exception.Response.StatusCode.value__ -ne $case.code) { throw "atteso $($case.code) per $($case.body): $($_.Exception.Message)" }
+              }
+            }
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"tools":["autoruns"]}' "$api/tools/kit" | Out-Null
+            $t0 = 0
+            do { Start-Sleep 1; $t0++; $st = Invoke-RestMethod "$api/tools" } while ($st.fetch.running -and $t0 -lt 180)
+            if ($st.fetch.running -or $st.fetch.failed -or -not ($st.fetch.ready -contains 'autoruns')) { throw "kit non preparato: $($st.fetch | ConvertTo-Json -Compress -Depth 4)" }
+            if (-not (Test-Path (Join-Path $kit 'autoruns\Autoruns64.exe')) -or -not (Test-Path (Join-Path $kit 'LEGGIMI.txt'))) { throw "cartella del kit incompleta" }
+            $d = $st.portable.autoruns
+            "Kit preparato: $((Get-ChildItem $kit -Recurse -File).Count) file in strumenti-scaricati; Autoruns $($d.version), firma di $($d.signer), nel kit: $($d.kit)"
+          } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+
+          # Un altro PC: profilo vuoto (nessuna copia in LOCALAPPDATA) e rete in uscita
+          # bloccata dal firewall per Polaris e per la verifica della firma (PowerShell).
+          $saved = $env:LOCALAPPDATA
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'altro-pc'
+          New-Item -ItemType Directory -Force $env:LOCALAPPDATA | Out-Null
+          $fw = @(Get-NetFirewallProfile | Where-Object { $_.Enabled }).Count
+          New-NetFirewallRule -DisplayName 'polaris-senza-rete' -Direction Outbound -Action Block -Program (Resolve-Path ./polaris-cli.exe).Path | Out-Null
+          New-NetFirewallRule -DisplayName 'polaris-senza-rete-ps' -Direction Outbound -Action Block -Program "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" | Out-Null
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8741' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $api = 'http://127.0.0.1:8741/api'
+            ./polaris-cli.exe tools status
+            $d = (Invoke-RestMethod "$api/tools").portable.autoruns
+            if (-not $d.kit -or $d.problem) { throw "copia del kit non vista dall'altro profilo: $($d | ConvertTo-Json -Compress)" }
+            # Senza rete il download non riesce...
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"tool":"cpu-z"}' "$api/tools/fetch" | Out-Null
+            $t0 = 0
+            do { Start-Sleep 1; $t0++; $st = Invoke-RestMethod "$api/tools" } while ($st.fetch.running -and $t0 -lt 90)
+            if ($fw -gt 0 -and -not $st.fetch.error) { throw "download riuscito con la rete bloccata" }
+            "Firewall attivo su $fw profili; download di CPU-Z senza rete: $($st.fetch.error)"
+            # ...ma la copia del kit si apre, con la firma verificata di nuovo.
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"tool":"autoruns","target":"app"}' -TimeoutSec 90 "$api/open" | Out-Null
+            $t0 = 0
+            do { Start-Sleep 1; $t0++; $run = Get-Process Autoruns64 -ErrorAction SilentlyContinue } while (-not $run -and $t0 -lt 20)
+            if (-not $run) { throw "Autoruns64 dal kit non avviato" }
+            "Autoruns64 avviato dal kit senza rete (PID $($run[0].Id))"
+            Stop-Process -Name Autoruns64 -Force
+          } finally {
+            Stop-Process $p -ErrorAction SilentlyContinue
+            Remove-NetFirewallRule -DisplayName 'polaris-senza-rete', 'polaris-senza-rete-ps' -ErrorAction SilentlyContinue
+            $env:LOCALAPPDATA = $saved
+            Remove-Item -Recurse -Force $kit -ErrorAction SilentlyContinue
+          }
       - name: Microsoft Defender da riga di comando (prova non bloccante)
         continue-on-error: true
         timeout-minutes: 12

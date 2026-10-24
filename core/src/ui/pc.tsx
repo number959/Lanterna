@@ -851,11 +851,11 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
     const patch = kind === 'cpu' ? { cpu: r as CpuBench } : { disk: r as DiskBench };
     addBench(patch);
     pushHistory(histKey, patch);
-    toast(kind === 'cpu' ? 'Test del processore completato' : `Test dell'unità ${(r as DiskBench).drive} completato`);
+    toast(kind === 'cpu' ? 'Test del processore completato' : `Test dell'unità ${(r as DiskBench).drive} completato`, 'ok', 'complete');
   };
   const fail = (e: Error) => {
     setError(e.message);
-    if (/interrott/i.test(e.message)) toast('Test interrotto');
+    if (/interrott/i.test(e.message)) toast('Test interrotto', 'ok', 'tap');
     else toast(`Test non riuscito: ${e.message}`, 'error');
   };
 
@@ -1416,7 +1416,8 @@ function DefenderCard({ scan, live, source, analysis, patchPc }: ViewProps) {
     if (r.threats) patch.threats = r.threats;
     patchPc(patch);
     setMsg({ text: r.message });
-    toast(r.newThreats ? `${DEF_LABEL[r.action]}: trovate minacce` : `${DEF_LABEL[r.action]} completata`, r.newThreats ? 'error' : undefined);
+    if (r.newThreats) toast(`${DEF_LABEL[r.action]}: trovate minacce`, 'error', 'alert');
+    else toast(`${DEF_LABEL[r.action]} completata`, 'ok', 'complete');
   };
   const fail = (e: Error) => {
     setMsg({ text: /interrott/i.test(e.message) ? 'Operazione interrotta.' : e.message, error: !/interrott/i.test(e.message) });

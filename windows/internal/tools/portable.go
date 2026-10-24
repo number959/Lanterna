@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -113,6 +114,7 @@ type Downloaded struct {
 	Signer  string `json:"signer,omitempty"`
 	Date    string `json:"date,omitempty"` // giorno del download (AAAA-MM-GG)
 	Expired bool   `json:"expired,omitempty"`
+	Kit     bool   `json:"kit,omitempty"` // nel kit accanto a Polaris, non nella cartella del PC
 	Problem string `json:"problem,omitempty"`
 	Path    string `json:"-"`
 }
@@ -134,6 +136,25 @@ var (
 )
 
 const manifestName = "polaris.json"
+
+// KitName è la cartella del kit per l'uso senza Internet, accanto a Polaris.
+const KitName = "strumenti-scaricati"
+
+const kitReadme = `Kit di STARNET Polaris per l'uso senza Internet
+
+Questa cartella contiene versioni portable di programmi gratuiti, scaricate
+da Polaris dai siti ufficiali dei produttori su richiesta di chi la usa. Su
+un PC senza Internet Polaris le trova qui, controlla che non siano cambiate
+dal download e le avvia solo con la firma digitale del produttore.
+
+I programmi restano dei rispettivi produttori e si usano alle loro
+condizioni: il kit e' per uso proprio, non va ridistribuito. Alcuni sono
+gratuiti solo per uso personale o non commerciale: per il lavoro serve la
+licenza del produttore.
+
+La cartella e' affidabile quanto il supporto su cui sta: tienila su una
+chiavetta o in una cartella a cui solo tu puoi scrivere.
+`
 
 type manifest struct {
 	Version string `json:"version,omitempty"`
@@ -189,7 +210,8 @@ func allowedURL(u *url.URL, hosts []string) error {
 
 // Fetcher scarica, verifica e conserva le versioni portable.
 type Fetcher struct {
-	Root      string // cartella dei programmi scaricati
+	Root      string // cartella dei programmi scaricati su questo PC
+	Kit       string // cartella del kit per l'uso senza Internet (vuota: nessun kit)
 	Arch      string
 	Transport http.RoundTripper
 	// Verify chiede a Windows firma e versione di un eseguibile.
@@ -199,6 +221,19 @@ type Fetcher struct {
 	// Wait è la pausa tra un tentativo e il successivo (i mirror di
 	// SourceForge a volte rifiutano: il tentativo dopo ne sceglie un altro).
 	Wait func(ctx context.Context, d time.Duration) error
+
+	mu   sync.Mutex
+	sums map[string]sumEntry
+}
+
+// sumEntry ricorda l'impronta di un file finché dimensione e data di modifica
+// non cambiano: l'elenco dei programmi si rilegge spesso durante i download e
+// rifare l'SHA-256 di Safety Scanner (oltre 200 MB) ogni volta costerebbe.
+// Prima di ogni avvio resta comunque la verifica della firma (Check).
+type sumEntry struct {
+	size int64
+	mod  time.Time
+	sum  string
 }
 
 // NewFetcher prepara i download nella cartella dei dati di Polaris
@@ -209,8 +244,13 @@ func NewFetcher(userAgent string, proxy func(*http.Request) (*url.URL, error)) *
 	if err != nil {
 		base = os.TempDir()
 	}
+	kit := ""
+	if exe, err := os.Executable(); err == nil {
+		kit = filepath.Join(filepath.Dir(exe), KitName)
+	}
 	return &Fetcher{
 		Root:      filepath.Join(base, "STARNET Polaris", "strumenti"),
+		Kit:       kit,
 		Arch:      runtime.GOARCH,
 		Transport: &http.Transport{Proxy: proxy, TLSHandshakeTimeout: 20 * time.Second, ResponseHeaderTimeout: time.Minute, IdleConnTimeout: 30 * time.Second},
 		Verify:    defaultVerify,
@@ -227,10 +267,29 @@ func (f *Fetcher) now() time.Time {
 
 // Find elenca le versioni portable già scaricate per questa architettura e
 // controlla che l'eseguibile sia quello verificato al momento del download.
+// Cerca nella cartella del PC e nel kit accanto a Polaris: vale la prima
+// copia integra, prima quella del PC.
 func (f *Fetcher) Find() map[string]Downloaded {
+	out := f.findIn(f.Root)
+	if f.Kit == "" {
+		return out
+	}
+	for id, d := range f.findIn(f.Kit) {
+		d.Kit = true
+		if have, ok := out[id]; !ok || have.Problem != "" && d.Problem == "" {
+			out[id] = d
+		}
+	}
+	return out
+}
+
+func (f *Fetcher) findIn(root string) map[string]Downloaded {
 	out := map[string]Downloaded{}
+	if root == "" {
+		return out
+	}
 	for id, p := range Portables {
-		dir := filepath.Join(f.Root, id)
+		dir := filepath.Join(root, id)
 		b, err := os.ReadFile(filepath.Join(dir, manifestName))
 		if err != nil {
 			continue
@@ -247,7 +306,7 @@ func (f *Fetcher) Find() map[string]Downloaded {
 			d.Expired = p.ExpiresDays > 0 && f.now().Sub(t) > time.Duration(p.ExpiresDays)*24*time.Hour
 		}
 		path := filepath.Join(dir, exe)
-		if sum, err := fileSHA256(path); err != nil || sum != m.SHA256 {
+		if sum, err := f.sum(path); err != nil || sum != m.SHA256 {
 			d.Problem = "il file è stato modificato o sostituito dopo il download: per sicurezza Polaris non lo avvia"
 		} else {
 			d.Path = path
@@ -255,6 +314,30 @@ func (f *Fetcher) Find() map[string]Downloaded {
 		out[id] = d
 	}
 	return out
+}
+
+func (f *Fetcher) sum(path string) (string, error) {
+	st, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	f.mu.Lock()
+	e, ok := f.sums[path]
+	f.mu.Unlock()
+	if ok && e.size == st.Size() && e.mod.Equal(st.ModTime()) {
+		return e.sum, nil
+	}
+	sum, err := fileSHA256(path)
+	if err != nil {
+		return "", err
+	}
+	f.mu.Lock()
+	if f.sums == nil {
+		f.sums = map[string]sumEntry{}
+	}
+	f.sums[path] = sumEntry{st.Size(), st.ModTime(), sum}
+	f.mu.Unlock()
+	return sum, nil
 }
 
 // Check verifica la firma di una copia scaricata subito prima di avviarla.
@@ -279,12 +362,17 @@ func (f *Fetcher) Check(id, path string) error {
 	return nil
 }
 
-// Remove elimina la copia scaricata di un programma.
+// Remove elimina la copia scaricata di un programma: quella del PC se c'è,
+// altrimenti quella del kit.
 func (f *Fetcher) Remove(id string) error {
 	if _, ok := Portables[id]; !ok {
 		return ErrUnknown
 	}
-	if err := os.RemoveAll(filepath.Join(f.Root, id)); err != nil {
+	dir := filepath.Join(f.Root, id)
+	if _, err := os.Stat(dir); err != nil && f.Kit != "" {
+		dir = filepath.Join(f.Kit, id)
+	}
+	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("copia non eliminata (il programma è ancora aperto?): %w", err)
 	}
 	return nil
@@ -294,16 +382,60 @@ func (f *Fetcher) Remove(id string) error {
 // verifica impronta o firma e la sostituisce alla copia precedente.
 // progress riceve i byte scaricati e il totale (-1 se non dichiarato).
 func (f *Fetcher) Fetch(ctx context.Context, id string, progress func(done, total int64)) (Downloaded, error) {
+	return f.fetchInto(ctx, f.Root, id, progress)
+}
+
+// FetchKit fa lo stesso nel kit accanto a Polaris, da portare su un PC senza
+// Internet (per esempio su una chiavetta insieme a Polaris).
+func (f *Fetcher) FetchKit(ctx context.Context, id string, progress func(done, total int64)) (Downloaded, error) {
+	if err := f.KitCheck(); err != nil {
+		return Downloaded{}, err
+	}
+	d, err := f.fetchInto(ctx, f.Kit, id, progress)
+	d.Kit = err == nil
+	return d, err
+}
+
+// ErrKitNotWritable: la cartella di Polaris non accetta file (per esempio
+// perché sta in Programmi o su un supporto in sola lettura).
+var ErrKitNotWritable = errors.New("non riesco a scrivere nella cartella di Polaris: copia la cartella di Polaris in una tua cartella o su una chiavetta e riprova da lì")
+
+// KitCheck prepara la cartella del kit (con un LEGGIMI) e controlla che si
+// possa scrivere.
+func (f *Fetcher) KitCheck() error {
+	if f.Kit == "" {
+		return ErrKitNotWritable
+	}
+	if err := os.MkdirAll(f.Kit, 0o755); err != nil {
+		return fmt.Errorf("%w (%v)", ErrKitNotWritable, withoutPath(err))
+	}
+	if err := os.WriteFile(filepath.Join(f.Kit, "LEGGIMI.txt"), []byte(strings.ReplaceAll(kitReadme, "\n", "\r\n")), 0o644); err != nil {
+		return fmt.Errorf("%w (%v)", ErrKitNotWritable, withoutPath(err))
+	}
+	return nil
+}
+
+// withoutPath toglie il percorso dagli errori dei file: i messaggi arrivano
+// all'interfaccia e il percorso può contenere il nome dell'utente.
+func withoutPath(err error) error {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return pe.Err
+	}
+	return err
+}
+
+func (f *Fetcher) fetchInto(ctx context.Context, root, id string, progress func(done, total int64)) (Downloaded, error) {
 	if err := CanFetch(id, f.Arch); err != nil {
 		return Downloaded{}, err
 	}
 	p := Portables[id]
 	rawURL, key := pick(p.URL, f.Arch)
 	exe, _ := pick(p.Exe, f.Arch)
-	if err := os.MkdirAll(f.Root, 0o755); err != nil {
+	if err := os.MkdirAll(root, 0o755); err != nil {
 		return Downloaded{}, err
 	}
-	tmp, err := os.MkdirTemp(f.Root, "."+id+"-")
+	tmp, err := os.MkdirTemp(root, "."+id+"-")
 	if err != nil {
 		return Downloaded{}, err
 	}
@@ -357,7 +489,7 @@ func (f *Fetcher) Fetch(ctx context.Context, id string, progress func(done, tota
 	if err := os.WriteFile(filepath.Join(files, manifestName), b, 0o644); err != nil {
 		return Downloaded{}, err
 	}
-	final := filepath.Join(f.Root, id)
+	final := filepath.Join(root, id)
 	if err := os.RemoveAll(final); err != nil {
 		return Downloaded{}, fmt.Errorf("copia precedente non sostituita (il programma è ancora aperto?): %w", err)
 	}

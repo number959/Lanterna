@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ping } from './api';
+import { play } from './sound';
 
 // Sessione del monitor: un ping al secondo verso router e Internet. Vive
 // nell'App, non nella pagina, così continua mentre si consultano le altre
@@ -33,6 +34,9 @@ export function useMonitor(live: boolean): MonitorSession {
   const [samples, setSamples] = useState<MonitorSample[]>([]);
   const [tick, setTick] = useState(0);
   const n = useRef(0);
+  // Misure perse di fila per serie: all'inizio di un'interruzione suona un
+  // richiamo, al ritorno della connessione un segnale di via libera.
+  const miss = useRef({ gw: 0, inet: 0 });
 
   useEffect(() => {
     if (!running) return;
@@ -51,6 +55,18 @@ export function useMonitor(live: boolean): MonitorSession {
         gw = Math.random() < 0.03 ? null : Math.round((4 + Math.random() * 6 + (burst ? 25 : 0)) * 10) / 10;
         inet = Math.random() < 0.02 ? null : Math.round((26 + Math.random() * 9 + (burst ? 40 : 0)) * 10) / 10;
       }
+      let down = false;
+      let back = false;
+      for (const [k, v] of [['gw', gw], ['inet', inet]] as const) {
+        if (v === null) {
+          if (++miss.current[k] === OUTAGE_MIN) down = true;
+        } else {
+          if (miss.current[k] >= OUTAGE_MIN) back = true;
+          miss.current[k] = 0;
+        }
+      }
+      if (down) play('alert');
+      else if (back) play('success');
       setSamples((xs) => {
         const next = xs.length >= MAX_SAMPLES ? xs.slice(xs.length - MAX_SAMPLES + 1) : xs.slice();
         next.push({ t, gw, inet });
@@ -65,6 +81,7 @@ export function useMonitor(live: boolean): MonitorSession {
   }, [running, live]);
 
   const start = useCallback(() => {
+    miss.current = { gw: 0, inet: 0 };
     setStartedAt((s) => s ?? Date.now());
     setRunning(true);
   }, []);

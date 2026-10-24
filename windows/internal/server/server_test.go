@@ -667,3 +667,134 @@ func TestToolsFetchEndpoints(t *testing.T) {
 		t.Errorf("eliminati: %v", removed)
 	}
 }
+
+func TestToolsKitEndpoint(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	if r := doBody(t, h, "POST", "/api/tools/kit", "application/json", `{"tools":["cpu-z"]}`); r.Code != http.StatusNotImplemented {
+		t.Fatalf("non disponibile: %d", r.Code)
+	}
+	var mu sync.Mutex
+	var calls []string
+	gate := map[string]chan struct{}{}
+	s.FetchKit = func(ctx context.Context, id string, progress func(done, total int64)) (tools.Downloaded, error) {
+		mu.Lock()
+		calls = append(calls, id)
+		g := gate[id]
+		mu.Unlock()
+		progress(2<<20, 4<<20)
+		if g != nil {
+			select {
+			case <-g:
+			case <-ctx.Done():
+				return tools.Downloaded{}, errors.New("download interrotto")
+			}
+		}
+		if id == "hwinfo" {
+			return tools.Downloaded{}, errors.New("il mirror non risponde")
+		}
+		return tools.Downloaded{Kit: true}, nil
+	}
+	s.FetchTool = s.FetchKit
+	kitErr := errors.New("non riesco a scrivere nella cartella di Polaris")
+	s.KitCheck = func() error { return kitErr }
+	s.RemoveTool = func(string) error { return nil }
+
+	for _, c := range []struct {
+		body string
+		code int
+	}{
+		{`{"tools":[]}`, 400},
+		{`{}`, 400},
+		{`{"tools":["cpu-z","cmd.exe"]}`, 404},
+		{`{"tools":["crystaldiskinfo"]}`, 400}, // incluso nel pacchetto
+		{`{"tools":["cpu-z"]}`, 422},           // cartella non scrivibile
+	} {
+		if r := doBody(t, h, "POST", "/api/tools/kit", "application/json", c.body); r.Code != c.code {
+			t.Errorf("%s: %d %s", c.body, r.Code, r.Body)
+		} else if c.code == 422 && !strings.Contains(r.Body.String(), "non riesco a scrivere") {
+			t.Errorf("motivo del 422: %s", r.Body)
+		}
+	}
+	mu.Lock()
+	if len(calls) != 0 {
+		t.Fatalf("download partiti con richieste rifiutate: %v", calls)
+	}
+	mu.Unlock()
+
+	kitErr = nil
+	waitDone := func() string {
+		t.Helper()
+		for i := 0; i < 300; i++ {
+			body := do(t, h, "GET", "/api/tools", nil).Body.String()
+			if strings.Contains(body, `"running":false`) {
+				return body
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatal("kit non terminato")
+		return ""
+	}
+
+	// Tre programmi (uno ripetuto), uno non riesce: gli altri proseguono.
+	gate["cpu-z"] = make(chan struct{})
+	r := doBody(t, h, "POST", "/api/tools/kit", "application/json", `{"tools":["cpu-z","hwinfo","cpu-z","autoruns"]}`)
+	if r.Code != http.StatusAccepted || !strings.Contains(r.Body.String(), `"tools":["cpu-z","hwinfo","autoruns"]`) {
+		t.Fatalf("avvio del kit: %d %s", r.Code, r.Body)
+	}
+	if r := doBody(t, h, "POST", "/api/tools/fetch", "application/json", `{"tool":"wiztree"}`); r.Code != http.StatusConflict {
+		t.Errorf("download singolo durante il kit: %d", r.Code)
+	}
+	if r := doBody(t, h, "POST", "/api/tools/remove", "application/json", `{"tool":"autoruns"}`); r.Code != http.StatusConflict {
+		t.Errorf("eliminazione di un programma in coda: %d", r.Code)
+	}
+	var body string
+	for i := 0; i < 300; i++ {
+		body = do(t, h, "GET", "/api/tools", nil).Body.String()
+		if strings.Contains(body, `"total":4194304`) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !strings.Contains(body, `"fetchable":["adwcleaner","autoruns","cpu-z",`) || !strings.Contains(body, `"kit":true,"portable":`) {
+		t.Errorf("programmi scaricabili: %s", body)
+	}
+	if !strings.Contains(body, `"fetch":{"running":true,"tool":"cpu-z","done":2097152,"total":4194304,"kit":true,"queue":["hwinfo","autoruns"]}`) {
+		t.Errorf("stato durante il kit: %s", body)
+	}
+	close(gate["cpu-z"])
+	body = waitDone()
+	if !strings.Contains(body, `"kit":true,"ready":["cpu-z","autoruns"],"failed":{"hwinfo":"il mirror non risponde"}}`) || strings.Contains(body, `"error"`) {
+		t.Errorf("esito del kit: %s", body)
+	}
+
+	// Interrotto: il programma in corso si ferma, quelli in coda non partono.
+	mu.Lock()
+	calls = nil
+	gate["wiztree"] = make(chan struct{})
+	mu.Unlock()
+	if r := doBody(t, h, "POST", "/api/tools/kit", "application/json", `{"tools":["wiztree","autoruns"]}`); r.Code != http.StatusAccepted {
+		t.Fatalf("secondo kit: %d %s", r.Code, r.Body)
+	}
+	for i := 0; i < 300; i++ {
+		mu.Lock()
+		n := len(calls)
+		mu.Unlock()
+		if n == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if r := do(t, h, "DELETE", "/api/tools/fetch", nil); r.Code != 200 || !strings.Contains(r.Body.String(), `"stopping":true`) {
+		t.Fatalf("interruzione: %d %s", r.Code, r.Body)
+	}
+	body = waitDone()
+	if !strings.Contains(body, `"error":"preparazione del kit interrotta","kit":true,"failed":{"wiztree":"download interrotto"}}`) {
+		t.Errorf("kit interrotto: %s", body)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(calls) != 1 {
+		t.Errorf("dopo l'interruzione non doveva partire altro: %v", calls)
+	}
+}
