@@ -19,6 +19,7 @@ import (
 
 	"lanterna/internal/probe"
 	"lanterna/internal/scan"
+	"lanterna/internal/winps"
 )
 
 const createNoWindow = 0x08000000
@@ -95,7 +96,10 @@ const psFirewall = `$ErrorActionPreference='Stop';` +
 // profilo è in uso. Prima PowerShell (dati effettivi, criteri inclusi),
 // poi il registro come riserva.
 func Firewall(ctx context.Context) (*scan.FirewallData, error) {
-	out, err := runHidden(ctx, 15*time.Second, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psFirewall)
+	pctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	b, err := winps.Command(pctx, psFirewall).Output()
+	out := string(b)
 	if err == nil {
 		if i := strings.Index(out, "{"); i >= 0 {
 			var r psResult

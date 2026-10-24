@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -19,6 +18,7 @@ import (
 	"golang.org/x/sys/windows/registry"
 
 	"lanterna/internal/scan"
+	"lanterna/internal/winps"
 )
 
 var (
@@ -32,8 +32,6 @@ var (
 	procPowerGetActiveScheme  = powrprof.NewProc("PowerGetActiveScheme")
 	procPowerReadFriendlyName = powrprof.NewProc("PowerReadFriendlyName")
 )
-
-const createNoWindow = 0x08000000
 
 // Collect legge i dati del computer. Non fallisce se una parte non è
 // leggibile: i limiti finiscono in Notes.
@@ -148,11 +146,9 @@ func OnAC() *bool {
 func DefenderStatus(ctx context.Context) (*scan.DefenderInfo, []scan.Threat, error) {
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", DefenderScript)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
-	out, err := cmd.Output()
+	out, err := winps.Command(ctx, DefenderScript).Output()
 	if err != nil && len(out) == 0 {
-		return nil, nil, err
+		return nil, nil, winps.Explain(err)
 	}
 	return ParseDefender(string(out))
 }
@@ -160,15 +156,13 @@ func DefenderStatus(ctx context.Context) (*scan.DefenderInfo, []scan.Threat, err
 func runPS(ctx context.Context) (*psOut, error) {
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", PSScript)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
-	out, err := cmd.Output()
+	out, err := winps.Command(ctx, PSScript).Output()
 	if err != nil && len(out) == 0 {
 		var ee *exec.Error
 		if errors.As(err, &ee) {
 			return nil, errors.New("non disponibile")
 		}
-		return nil, err
+		return nil, winps.Explain(err)
 	}
 	return parsePS(string(out))
 }

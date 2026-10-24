@@ -6,12 +6,12 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
+
+	"lanterna/internal/winps"
 )
 
 // uninstallEntries legge le voci di disinstallazione del computer (64 e 32
@@ -117,8 +117,6 @@ func Open(id, target string, f *Fetcher) error {
 	return err
 }
 
-const createNoWindow = 0x08000000
-
 // signatureScript chiede a Windows la verifica Authenticode del file indicato
 // in POLARIS_FILE: stato della firma, nome del firmatario e versione.
 const signatureScript = `$ErrorActionPreference = 'Stop'
@@ -132,12 +130,9 @@ $v = (Get-Item -LiteralPath $p).VersionInfo
 var defaultVerify = func(path string) (Signature, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", signatureScript)
-	cmd.Env = append(os.Environ(), "POLARIS_FILE="+path)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
-	out, err := cmd.Output()
+	out, err := winps.Command(ctx, signatureScript, "POLARIS_FILE="+path).Output()
 	if err != nil && len(out) == 0 {
-		return Signature{}, err
+		return Signature{}, winps.Explain(err)
 	}
 	return ParseSignature(out)
 }
