@@ -580,6 +580,13 @@ AMD EPYC 7763 (2 core, 4 thread), eseguito come amministratore. Tutti i passi ve
   virtuale non dichiara la frequenza del bus: la riga del bus non compare, come previsto.
 - **Documento**: `report --html` produce il documento con le sezioni attese e senza indirizzi MAC.
 
+**Exe 0.7.0 sotto Wine 9.0** (build finale):
+- `polaris-cli clock` si ferma con un messaggio chiaro: Wine non ha il contatore delle prestazioni del processore (errore PDH
+  `0xC0000BB9`, contatore inesistente); `/api/cpu/clock` risponde `501` con lo stesso motivo.
+- `/api/tools` elenca gli otto programmi scaricabili, il kit disponibile e i tre programmi inclusi; `tools status` funziona.
+- Interfaccia servita dall'exe: nella scheda Processore il riquadro della velocità dei core mostra il motivo e il pulsante
+  Riprova; nessun errore della pagina.
+
 **Difetti trovati e corretti durante il lavoro:**
 1. Sul collaudo in CI la verifica della firma usciva con codice 1: Polaris avviato da PowerShell 7 ereditava un
    `PSModulePath` con i moduli di PowerShell 7 in testa e `powershell.exe` caricava il `Microsoft.PowerShell.Security` sbagliato.
