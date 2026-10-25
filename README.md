@@ -15,7 +15,10 @@ Del **computer** controlla versione e supporto di Windows, memoria, **salute dei
 NVMe come in CrystalDiskInfo, usura, temperatura, errori), spazio, programmi all'avvio, processi, spegnimenti imprevisti,
 schermate blu, **Microsoft Defender** (protezione, minacce e scansioni su richiesta), aggiornamenti e batteria; compila la
 **scheda tecnica** come CPU-Z e offre **test di velocità** del processore e dei dischi, questi con il profilo di CrystalDiskMark.
-La **cassetta degli attrezzi** apre gli strumenti di Windows e **CrystalDiskInfo e CrystalDiskMark, inclusi nel pacchetto**.
+La **cassetta degli attrezzi** apre gli strumenti di Windows e **CrystalDiskInfo, CrystalDiskMark e BlueScreenView, inclusi nel
+pacchetto**; CPU-Z, HWiNFO, Autoruns e gli altri programmi che non si possono ridistribuire li **scarica dal sito ufficiale**, solo
+su richiesta, e li avvia solo con la firma digitale del produttore. Per i PC senza Internet prepara un **kit** da portare su una
+chiavetta. Un **documento stampabile** riassume lo stato del PC, da consegnare o salvare in PDF.
 Della **rete** misura Wi-Fi, router, Internet e DNS.
 
 Funziona in casa come in uno studio, in un'azienda o in una **struttura sanitaria**: riconosce le reti con più access point e
@@ -43,9 +46,15 @@ Il movimento riprende il marchio:
 - il punteggio è un esagono che si riempie allo stesso modo;
 - durante l'analisi il simbolo sta al centro, la sua cornice si completa con l'avanzamento reale e le sonde, man mano che
   finiscono, si collegano in una costellazione;
-- le sezioni entrano in cascata, i numeri si assestano con una molla, il monitor scorre in modo continuo.
+- le sezioni entrano in cascata, i numeri si assestano con una molla, il monitor scorre in modo continuo;
+- le icone della sezione scelta si disegnano, quelle delle operazioni in corso si animano (scansione, test, download), i
+  caricamenti percorrono l'esagono del marchio e i dati in arrivo hanno segnaposto con un riflesso.
 
 Se in Windows le animazioni sono disattivate restano solo brevi dissolvenze: niente spostamenti, rotazioni o scorrimenti.
+
+**Suoni**: segnali brevi e a volume basso, generati dal programma senza file audio, per il cambio di sezione, le aperture, le
+operazioni riuscite, la fine di analisi e test, avvisi, errori, minacce trovate e, nel monitor, l'interruzione e il ritorno della
+connessione. Si spengono con l'altoparlante nella barra in alto e la scelta resta salvata.
 
 - **Tastiera**: `1`…`9` e `0` per le sezioni, `/` per cercare nella guida, frecce nei selettori e nelle risposte dell'autovalutazione;
   ogni comando è raggiungibile con Tab.
@@ -87,12 +96,24 @@ script PowerShell nascosto: nessuna impostazione viene modificata.
   alla fine anche se il test si interrompe (`FILE_FLAG_DELETE_ON_CLOSE`). I risultati si confrontano con quelli tipici del tipo
   di disco ed entrano nel rapporto; le prove precedenti restano sul PC per il confronto "prima e dopo".
 - **Cassetta degli attrezzi**: 16 strumenti di Windows (Gestione attività, Monitoraggio affidabilità, Visualizzatore eventi,
-  Diagnostica memoria...) e 14 programmi gratuiti di diagnostica, con che cosa fanno, licenza, sito ufficiale e dove Polaris fa
-  una cosa simile. **CrystalDiskInfo 9.9.2 e CrystalDiskMark 9.0.3 sono inclusi** nella cartella `strumenti`: copie originali
-  e non modificate (licenza MIT, eseguibili firmati da CrystalMark Inc.) che si aprono con un clic, senza installare nulla.
-  Polaris li avvia solo se l'eseguibile ha l'impronta SHA-256 attesa. Gli altri programmi (CPU-Z, HWiNFO, Malwarebytes...) non
-  sono inclusi perché le licenze non lo permettono o non lo rendono opportuno: Polaris li riconosce se sono installati e apre il
-  sito ufficiale. Tutto passa da una lista bianca: dall'interfaccia arriva solo un identificativo, mai un percorso o un comando.
+  Diagnostica memoria...) e 15 programmi gratuiti di diagnostica, con che cosa fanno, licenza, sito ufficiale e dove Polaris fa
+  una cosa simile. Tutto passa da una lista bianca: dall'interfaccia arriva solo un identificativo, mai un percorso o un comando.
+  - **Inclusi** nella cartella `strumenti`: CrystalDiskInfo 9.9.2 e CrystalDiskMark 9.0.3 (licenza MIT, eseguibili firmati da
+    CrystalMark Inc.) e BlueScreenView 1.55 (gratuito, ridistribuibile senza modifiche). Copie originali che si aprono con un
+    clic, senza installare nulla; Polaris le avvia solo se l'eseguibile ha l'impronta SHA-256 attesa.
+  - **Scaricati dal sito ufficiale**, solo su richiesta: CPU-Z, HWiNFO, AdwCleaner, Microsoft Safety Scanner, ESET Online
+    Scanner, Autoruns, Process Explorer e WizTree. Prima di scaricare Polaris dice da dove, chi deve aver firmato, quanto pesa e
+    con quali condizioni d'uso. Il download segue solo https e gli host del produttore, scarta file troppo grandi o pagine web al
+    posto del programma, controlla l'impronta SHA-256 delle versioni fissate e la firma digitale (stato valido ed editore atteso)
+    al download e a ogni avvio. I programmi restano in `%LOCALAPPDATA%\STARNET Polaris\strumenti`; una copia modificata non
+    parte e si elimina dalla cassetta.
+  - **Kit per i PC senza Internet**: su un PC collegato Polaris scarica i programmi scelti nella cartella `strumenti-scaricati`
+    accanto a Polaris.exe; copiata la cartella di Polaris su una chiavetta, sui PC senza rete li trova lì e li avvia con le stesse
+    verifiche. Il kit è per uso proprio: le licenze dei produttori non ne consentono la ridistribuzione.
+- **Documento stampabile**: in A4, con punteggio e voto, le cinque cose da sistemare per prime, sistema, sicurezza, dischi e
+  spazio, valutazione completa, scheda tecnica, stabilità, test di velocità, piano d'azione con caselle da spuntare e spazio per
+  note e firma. Dall'interfaccia si stampa, si salva in PDF o si scarica in HTML autonomo; da riga di comando
+  `polaris-cli report --html`. Non contiene numeri di serie, indirizzi MAC né l'IP pubblico.
 
 Il punteggio della panoramica descrive PC e rete insieme; un disco che sta per guastarsi diventa il problema più urgente e la
 prima azione del piano (copiare i dati). Nei rapporti la cartella dell'utente diventa `%USERPROFILE%` e non compaiono numeri di
@@ -105,6 +126,10 @@ serie.
 | Scheda tecnica | Microsoft Defender | Programmi inclusi (exe reale sotto Wine) |
 | --- | --- | --- |
 | ![Scheda tecnica](docs/img/scheda-tecnica.webp) | ![Antivirus](docs/img/antivirus.webp) | ![Cassetta degli attrezzi](docs/img/cassetta.webp) |
+
+| Documento stampabile | Kit per i PC senza Internet (agente simulato) |
+| --- | --- |
+| ![Documento stampabile](docs/img/documento.webp) | ![Kit per i PC senza Internet](docs/img/kit.webp) |
 
 ## Cosa misura
 
@@ -178,7 +203,7 @@ piattaforma producono solo dati grezzi in un formato comune; l'interpretazione �
 ## Uso su Windows
 
 Scarica `STARNET-Polaris-windows-amd64.zip`, estrai la cartella e fai doppio clic su `Polaris.exe`. L'analisi parte da sola e dura circa 25 secondi.
-Nella cartella `strumenti` ci sono CrystalDiskInfo e CrystalDiskMark: si aprono dalla cassetta degli attrezzi.
+Nella cartella `strumenti` ci sono CrystalDiskInfo, CrystalDiskMark e BlueScreenView: si aprono dalla cassetta degli attrezzi.
 
 ```text
 polaris-cli report                  rapporto a schermo
@@ -190,6 +215,9 @@ polaris-cli bench cpu               test di velocità del processore (circa 25 s
 polaris-cli bench disk --drive D:   test di un'unità (file temporaneo cancellato alla fine)
 polaris-cli defender status         stato di Microsoft Defender e minacce
 polaris-cli defender quick          scansione rapida (full: completa; update: firme)
+polaris-cli report --html --out stato-pc.html   documento stampabile sullo stato del PC
+polaris-cli tools kit               kit per i PC senza Internet in strumenti-scaricati (--all: anche Safety Scanner)
+polaris-cli tools status            programmi scaricati, sul PC e nel kit
 ```
 
 Su Windows 11 24H2 e successivi la lettura delle reti Wi-Fi richiede il permesso di posizione per le app desktop: Polaris lo
@@ -207,9 +235,10 @@ cd ../windows && go test ./...       # agente Windows (gira anche su Linux)
 cd .. && scripts/build-windows.sh    # build/STARNET-Polaris/ e build/STARNET-Polaris-windows-amd64.zip
 ```
 
-La build scarica gli archivi originali di CrystalDiskInfo e CrystalDiskMark dalla pagina SourceForge del produttore, li verifica
-con l'impronta SHA-256 fissata in `scripts/strumenti.sh` e li estrae senza modifiche in `strumenti/`; gli archivi restano in
-`build/cache-strumenti/`. Con `STRUMENTI=no scripts/build-windows.sh` il pacchetto esce senza programmi inclusi.
+La build scarica gli archivi originali di CrystalDiskInfo e CrystalDiskMark dalla pagina SourceForge del produttore e di
+BlueScreenView da nirsoft.net, li verifica con l'impronta SHA-256 fissata in `scripts/strumenti.sh` e li estrae senza modifiche in
+`strumenti/`; gli archivi restano in `build/cache-strumenti/`. Con `STRUMENTI=no scripts/build-windows.sh` il pacchetto esce senza
+programmi inclusi.
 
 `npm run dev` usa i dati dimostrativi (la rete *Casa*; dal selettore nell'avviso si passa a *Clinica*); con `polaris-cli serve`
 avviato, il server di sviluppo inoltra `/api` all'agente vero.
@@ -240,14 +269,21 @@ PC con scheda Wi-Fi: [docs/VERIFICHE.md](docs/VERIFICHE.md).
   utente; scansioni e aggiornamento delle firme partono solo su richiesta (la scansione completa con una conferma).
 - La cassetta degli attrezzi apre solo voci della sua lista bianca. I programmi inclusi si avviano solo se l'eseguibile è
   quello originale: una copia modificata o sostituita viene segnalata e non parte.
+- I programmi scaricati arrivano solo quando li chiedi e solo dai siti del produttore (`download.cpuid.com`,
+  `downloads.sourceforge.net`, `download.sysinternals.com`, `downloads.malwarebytes.com`, `go.microsoft.com`,
+  `download.eset.com`, `diskanalyzer.com` e i loro server di distribuzione), passando dal proxy di sistema come il browser; la
+  richiesta non porta dati del PC. Partono solo con la firma digitale valida dell'editore atteso, verificata da Windows a ogni
+  avvio. La cartella del kit è affidabile quanto il supporto su cui sta: chi può scriverci può sostituire anche Polaris.exe.
+- Il documento stampabile toglie indirizzi MAC e IP pubblici anche dai testi dei giudizi.
 
 ## Licenze
 
 I componenti di terze parti inclusi nell'eseguibile e le loro licenze sono in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 (MIT, BSD, ISC, Apache-2.0, SIL Open Font License 1.1 per i font e la licenza del loader WebView2 di Microsoft), generato da
 `scripts/notices.sh` a partire da ciò che finisce davvero nel bundle. Lo stesso file elenca i programmi della cartella
-`strumenti` (CrystalDiskInfo e CrystalDiskMark, licenza MIT) con archivi, impronte e i componenti che contengono, ognuno con i
-testi completi nella propria cartella `License`. Tra questi c'è la libreria AMD_RC2t7 di CrystalDiskInfo, con una licenza
+`strumenti` (CrystalDiskInfo e CrystalDiskMark, licenza MIT; BlueScreenView, gratuito e ridistribuibile senza modifiche) con
+archivi, impronte e i componenti che contengono, ognuno con i testi completi nella propria cartella `License`. I programmi che
+Polaris scarica su richiesta non fanno parte del pacchetto e restano soggetti alle licenze dei produttori. Tra questi c'è la libreria AMD_RC2t7 di CrystalDiskInfo, con una licenza
 propria: si ridistribuisce solo dentro il pacchetto del programma, senza modifiche, e chiede un accordo aggiuntivo se le sue
 funzioni o i suoi risultati vengono venduti. Se Polaris venisse distribuito a pagamento, queste condizioni andrebbero verificate. La licenza di STARNET Polaris stessa non è ancora stata scelta. Il marchio STARNET (cartella `brand/`) appartiene al suo
 titolare e non è coperto da quelle licenze.

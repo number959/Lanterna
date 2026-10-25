@@ -17,7 +17,10 @@ COSA FA
   firmware, Secure Boot, TPM, video). Su richiesta esegue test di velocita'
   del processore e dei dischi (profilo di CrystalDiskMark) e scansioni di
   Microsoft Defender. La cassetta degli attrezzi apre gli strumenti di
-  Windows e i programmi inclusi (vedi STRUMENTI INCLUSI).
+  Windows e i programmi inclusi (vedi STRUMENTI INCLUSI) e scarica dal sito
+  ufficiale, solo su richiesta, i programmi che non si possono includere
+  (vedi PROGRAMMI SCARICATI E KIT). Il pulsante Documento prepara un
+  documento sullo stato del PC da stampare, salvare in PDF o in HTML.
   Misura Wi-Fi (segnale in dBm, canale, larghezza, carico dell'access point,
   reti vicine), rete locale (router, perdite, stabilita'), Internet (latenza,
   percorso, MTU), DNS, servizi esposti dal router, UPnP e firewall di Windows.
@@ -48,6 +51,9 @@ INTERFACCIA
   Polaris passa da solo alla "grafica leggera" (si puo' anche scegliere in
   fondo alla barra laterale). Se in Windows le animazioni sono disattivate,
   restano solo brevi dissolvenze.
+  Suoni: brevi segnali a volume basso (fine di analisi e test, avvisi,
+  errori, interruzioni durante il monitor). Si spengono con il pulsante
+  dell'altoparlante in alto; la scelta resta salvata.
 
 RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
   polaris-cli report                  rapporto a schermo
@@ -61,20 +67,47 @@ RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
   polaris-cli defender status         stato di Microsoft Defender e minacce
   polaris-cli defender quick          scansione rapida (full: completa,
                                       update: aggiornamento delle firme)
+  polaris-cli report --html --out stato-pc.html
+                                      documento stampabile sullo stato del PC
+  polaris-cli tools kit               prepara il kit per i PC senza Internet
+                                      (--all: anche Microsoft Safety Scanner)
+  polaris-cli tools status            programmi scaricati, sul PC e nel kit
 
 STRUMENTI INCLUSI
   Nella cartella strumenti ci sono CrystalDiskInfo 9.9.2 e CrystalDiskMark
-  9.0.3 di hiyohiyo (https://crystalmark.info/): copie originali e non
-  modificate, open source con licenza MIT, eseguibili firmati da
-  CrystalMark Inc. Si aprono da Computer > Cassetta degli attrezzi con il
-  pulsante Apri, senza installare nulla; CrystalDiskInfo chiede i permessi
-  di amministratore. Prima di avviarli Polaris controlla l'impronta SHA-256
-  dell'eseguibile: se il file e' stato modificato o sostituito non lo avvia.
-  Non spostare ne' modificare i loro file. Le licenze sono nella cartella
-  License di ciascun programma e in THIRD_PARTY_NOTICES.md.
-  CPU-Z, HWiNFO, Malwarebytes e gli altri programmi della cassetta non sono
-  inclusi (le loro licenze non lo permettono o non lo rendono opportuno):
-  Polaris li apre se sono installati, altrimenti apre il sito ufficiale.
+  9.0.3 di hiyohiyo (https://crystalmark.info/), open source con licenza
+  MIT ed eseguibili firmati da CrystalMark Inc., e BlueScreenView 1.55 di
+  NirSoft (https://www.nirsoft.net/), gratuito e ridistribuibile senza
+  modifiche: copie originali e non modificate. Si aprono da Computer >
+  Cassetta degli attrezzi con il pulsante Apri, senza installare nulla;
+  CrystalDiskInfo chiede i permessi di amministratore. Prima di avviarli
+  Polaris controlla l'impronta SHA-256 dell'eseguibile: se il file e' stato
+  modificato o sostituito non lo avvia. Non spostare ne' modificare i loro
+  file. Le licenze sono nella cartella di ciascun programma e in
+  THIRD_PARTY_NOTICES.md.
+
+PROGRAMMI SCARICATI E KIT
+  CPU-Z, HWiNFO, AdwCleaner, Microsoft Safety Scanner, ESET Online Scanner,
+  Autoruns, Process Explorer e WizTree non si possono ridistribuire. Con
+  "Scarica e apri" Polaris dice da dove li scarica, chi deve averli firmati,
+  quanto pesano e con quali condizioni d'uso; poi scarica la versione
+  portable dal sito del produttore (solo https e solo i suoi siti), la
+  tiene in %LOCALAPPDATA%\STARNET Polaris\strumenti e la avvia solo se
+  Windows conferma la firma digitale dell'editore atteso (al download e a
+  ogni avvio). Una copia modificata non parte e si elimina dalla cassetta.
+  Microsoft Safety Scanner smette di funzionare 10 giorni dopo il download.
+  PC SENZA INTERNET: su un PC collegato apri Computer > Cassetta degli
+  attrezzi > Kit per i PC senza Internet e premi "Prepara il kit" (oppure
+  polaris-cli tools kit). I programmi scelti finiscono nella cartella
+  strumenti-scaricati accanto a Polaris.exe: copia l'intera cartella di
+  Polaris su una chiavetta e, sui PC senza Internet, Polaris li trova li' e
+  li avvia con le stesse verifiche. La cartella di Polaris deve essere
+  scrivibile (non in Programmi). Il kit e' per uso tuo: non ridistribuirlo.
+  HWiNFO e WizTree sono gratuiti solo per uso personale: per il lavoro serve
+  la licenza del produttore. Tieni la chiavetta con te: chi puo' scriverci
+  puo' sostituire anche Polaris.exe.
+  I programmi gia' installati Polaris li riconosce e li apre; per gli altri
+  apre il sito ufficiale.
 
 PRIVACY
   Tutto resta su questo PC: Polaris non invia dati a nessun servizio esterno.
@@ -93,6 +126,9 @@ PRIVACY
   Di Microsoft Defender si leggono stato e minacce (nome, gravita' e stato,
   senza percorsi dei file ne' nomi utente); scansioni e aggiornamento delle
   firme partono solo su tua richiesta.
+  I programmi della cassetta si scaricano solo quando li chiedi, dai siti
+  dei produttori: la richiesta non porta dati del PC. Il documento
+  stampabile non contiene numeri di serie, indirizzi MAC ne' IP pubblico.
 
 Licenze dei componenti inclusi: THIRD_PARTY_NOTICES.md
 Il marchio STARNET appartiene al suo titolare.

@@ -14,9 +14,10 @@ nome, che non compare più all'utente.
             │    pc.ts          computer: Windows e supporto, dischi, eventi, test        │
             │    wifi.ts        canali, spettro, interferenza, AP della rete              │
             │    report.ts      rapporto testuale                                         │
-            │  guides/   64 guide come dati tipizzati, glossario, ricerca                 │
+            │    document.ts    documento stampabile: HTML A4 autonomo                    │
+            │  guides/   66 guide come dati tipizzati, glossario, ricerca                 │
             │  demo/     PC e reti dimostrative Casa e Clinica, simulazioni               │
-            │  ui/       interfaccia React (animazioni, grafici SVG, 10 viste)            │
+            │  ui/       interfaccia React (animazioni, suoni, grafici SVG, 10 viste)     │
             └───────────────▲───────────────────────────────▲────────────────────────────┘
                             │ stesso bundle                  │ engine.js (IIFE ES2015)
              interfaccia    │                                │
@@ -33,7 +34,8 @@ nome, che non compare più all'utente.
    │   pcinfo/  dati del computer: API native + uno script PowerShell        │
    │   bench/   test di velocità di processore e dischi, su richiesta        │
    │   defender/ Microsoft Defender: stato, minacce, scansioni a richiesta   │
-   │   tools/   cassetta degli attrezzi e programmi inclusi, lista bianca    │
+   │   tools/   cassetta degli attrezzi: inclusi, scaricati, kit, lista bianca │
+   │   winps/   avvio di Windows PowerShell senza moduli ereditati           │
    │   collect/ orchestrazione parallela con avanzamento reale               │
    │   server/  API locale + interfaccia incorporata                         │
    └──────────────────────────────────────────────────────────────────────────┘
@@ -87,6 +89,12 @@ motore lo mostra come "non misurato" invece di inventare un giudizio.
   HDD, USB). Un disco con guasto previsto diventa il problema più urgente del titolo e l'azione *copia i dati* sale in cima al
   piano (`URGENT_ACTIONS`). Date in italiano con la preposizione giusta ("dall'11 novembre"), senza `Intl` perché il motore gira
   anche in goja.
+- **Documento stampabile** (`document.ts`). `documentParts` produce titolo, CSS e corpo; `renderDocument` li unisce in un HTML
+  autonomo (nessuno script, immagine o collegamento esterno) in formato A4. Lo usano l'interfaccia (anteprima, stampa, file HTML)
+  e l'exe (`report --html`, attraverso goja: per questo è scritto in ES2015 senza `Intl`). Tutti gli stili stanno sotto `.pdoc`,
+  così l'anteprima non tocca il resto della pagina, salvo `@page`. I testi passano da un filtro che toglie indirizzi MAC e IPv4
+  pubblici (restano gli indirizzi privati, i resolver 1.1.1.1, 8.8.8.8 e 9.9.9.9 e i numeri di versione); il logo è quello a
+  colori, su fondo chiaro.
 
 ## Interfaccia
 
@@ -128,9 +136,21 @@ Organizzazione di `core/src/ui/`:
 - `infra.tsx`: la sezione Infrastruttura. L'inventario vive a livello di modulo, quindi prosegue anche cambiando pagina; senza
   agente (demo) inventario e verifiche sono simulati da `demo/simulate.ts` e dichiarati come tali; con un rapporto importato si
   consultano solo i risultati salvati.
+- `anim.tsx`: icone animate in CSS (si disegnano, entrano con una spinta, girano, pulsano, scorrono), il caricamento a esagono
+  (`HexLoader`, un tratto che percorre la cornice del marchio) e i segnaposto con riflesso (`Skeleton`). Tutto sotto
+  `prefers-reduced-motion: no-preference`; il marchio non viene mai animato con effetti.
+- `sound.ts`: suoni sintetizzati con Web Audio (oscillatori con attacco breve e coda esponenziale, volume generale 0,14), senza
+  file audio. Sette segnali: tocco, apertura, riuscito, concluso, avviso, errore, richiamo. Stato fuori da React
+  (`useSyncExternalStore`) così che messaggi e monitor possano suonare; preferenza in `localStorage`. Il contesto audio si sblocca
+  al primo clic o tasto (regola dei browser) e finché è sospeso i suoni si saltano invece di accumularsi.
+- `document.tsx`: anteprima del documento in un dialogo; "Stampa o salva PDF" aggiunge a `<html>` la classe `pdoc-printing`, che
+  in stampa nasconde tutto tranne il documento.
+- `toolbox.tsx`: stato della cassetta condiviso a livello di modulo (una richiesta alla volta, rilettura ogni 400 ms durante un
+  download anche cambiando sezione), conferma prima di scaricare, avanzamento, pannello del kit con coda ed esito.
 - `monitor.ts`: la sessione del monitor appartiene all'App e continua fra le sezioni; riepilogo dell'intera sessione (media, 95°
   percentile, massimo con l'ora, perdite, interruzioni di almeno tre ping consecutivi, picchi oltre 2,5 volte il valore tipico) e
-  CSV per i fogli di calcolo italiani (`;` e virgola decimale).
+  CSV per i fogli di calcolo italiani (`;` e virgola decimale). Tre misure perse di fila suonano un richiamo, il ritorno della
+  connessione un segnale di via libera.
 - Autovalutazione e destinazioni delle verifiche restano in `localStorage`, separate per contesto (rete, demo); l'App le unisce
   allo `Scan` prima dell'analisi e delle esportazioni. Il MAC del router di ogni rete è ricordato per segnalare un cambio.
 
@@ -158,15 +178,24 @@ rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFIC
 | Computer: sistema | `RtlGetVersion`, registro (`CurrentVersion`, `CentralProcessor`, `HiberbootEnabled`, chiavi dei riavvii in sospeso), `GetTickCount64`, `GlobalMemoryStatusEx`, `GetSystemPowerStatus`, `PowerGetActiveScheme` | Windows 11 riconosciuto dalla build (il registro dice ancora "Windows 10") |
 | Computer: volumi | `GetLogicalDriveStrings`, `GetDriveType`, `GetDiskFreeSpaceEx`, `GetVolumeInformation` | solo dischi locali e rimovibili: niente unità di rete o CD |
 | Computer: avvio e processi | chiavi `Run` (utente, computer, 32 bit), cartelle di esecuzione automatica, `StartupApproved`; Toolhelp32 + `GetProcessTimes` + `K32GetProcessMemoryInfo` su 1,5 s a fine analisi | cartella dell'utente sostituita da `%USERPROFILE%`; processi raggruppati per nome |
-| Computer: dischi, eventi, sicurezza | un solo script PowerShell nascosto con uscita JSON: `Get-PhysicalDisk`, `Get-Partition`, `Get-StorageReliabilityCounter` (da amministratore), classi batteria di `root/wmi`, `Get-WinEvent` (livelli 1-3, 30 giorni, 14 codici), `root/SecurityCenter2` con riserva `Get-MpComputerStatus`, `Get-HotFix`, `Win32_Processor`, `Win32_VideoController` | ogni sezione protetta da `try`; timeout di 40 s; niente numeri di serie |
+| Computer: dischi, eventi, sicurezza | un solo script PowerShell nascosto (vedi sotto) con uscita JSON: `Get-PhysicalDisk`, `Get-Partition`, `Get-StorageReliabilityCounter` (da amministratore), classi batteria di `root/wmi`, `Get-WinEvent` (livelli 1-3, 30 giorni, 14 codici), `root/SecurityCenter2` con riserva `Get-MpComputerStatus`, `Get-HotFix`, `Win32_Processor`, `Win32_VideoController` | ogni sezione protetta da `try`; timeout di 40 s; niente numeri di serie |
 | Computer: SMART (da amministratore) | apertura del disco fisico in sola lettura, in parallelo allo script; `IOCTL_STORAGE_QUERY_PROPERTY` per il tipo di bus e, sugli NVMe, per il registro di salute (log 02h); sui SATA `IOCTL_ATA_PASS_THROUGH` (comandi SMART READ DATA e READ THRESHOLDS) con riserva `SMART_RCV_DRIVE_DATA` | stato Buono/Attenzione/Critico con le regole di CrystalDiskInfo: attributo guasto se l'attuale scende alla soglia; 05, C5, C6 e BB non nulli danno "Attenzione"; bit di avviso critico NVMe |
 | Computer: scheda tecnica | `GetLogicalProcessorInformationEx` (core per classe di efficienza, cache per livello e tipo), istruzioni lette con CPUID, `GetFirmwareType`, Secure Boot dal registro, memoria video dal registro (`qwMemorySize`); nello script `Win32_ComputerSystem`, `Win32_BaseBoard`, `Win32_BIOS`, `Win32_PhysicalMemory`, `Win32_PhysicalMemoryArray`, TPM da `Win32_PnPEntity` | sola lettura; niente numeri di serie |
 | Microsoft Defender | `Get-MpComputerStatus`, `Get-MpThreat` e `Get-MpThreatDetection` nello script; su richiesta `MpCmdRun.exe -Scan -ScanType 1\|2`, `-SignatureUpdate`, `-Scan -Cancel`, poi nuova lettura di stato e minacce | delle minacce solo nome, gravità, stato e date: niente percorsi dei file né nomi utente; non si sovrappone ai test di velocità |
-| Cassetta degli attrezzi | `ShellExecute` di una voce della lista bianca (comando di Windows, indirizzo `ms-settings:`, programma trovato tra le voci di disinstallazione con un eseguibile ammesso, programma incluso, sito https del produttore) | da amministratore i siti si aprono tramite Esplora risorse, con i permessi normali; i programmi inclusi in `strumenti/` partono solo se l'eseguibile ha l'impronta SHA-256 scritta nell'agente |
+| Cassetta degli attrezzi | `ShellExecute` di una voce della lista bianca (comando di Windows, indirizzo `ms-settings:`, programma trovato tra le voci di disinstallazione con un eseguibile ammesso, programma incluso o scaricato, sito https del produttore), con la cartella del programma come cartella di lavoro | da amministratore i siti si aprono tramite Esplora risorse, con i permessi normali; i programmi inclusi in `strumenti/` partono solo se l'eseguibile ha l'impronta SHA-256 scritta nell'agente; precedenza: incluso, poi scaricato, poi installato |
+| Versioni portable (su richiesta) | `tools.Fetcher`: download https con il proxy di sistema, host ammessi controllati a ogni rimando, cookie (i mirror di SourceForge li usano), fino a 3 tentativi; limite di dimensione, risposte HTML scartate; estrazione dello zip con `filepath.IsLocal` e limite totale; impronta SHA-256 dell'archivio per le versioni fissate; firma Authenticode (`Get-AuthenticodeSignature`: stato `Valid` e nome del firmatario uguale a quello atteso) al download e prima di ogni avvio | in `%LOCALAPPDATA%\STARNET Polaris\strumenti\<id>` con `polaris.json` (impronta dell'eseguibile, versione, firmatario, data, indirizzo); l'impronta si ricalcola solo se cambiano dimensione o data del file; Safety Scanner scade dopo 10 giorni |
+| Kit per i PC senza Internet (su richiesta) | lo stesso `Fetcher` scrive in `strumenti-scaricati` accanto all'exe (con un LEGGIMI); `Find` cerca nella cartella del PC e nel kit e preferisce la prima copia integra, prima quella del PC | la cartella deve essere scrivibile (verifica prima di partire, messaggi senza percorsi); sui PC senza rete valgono le stesse verifiche: impronta registrata e firma |
 | Test del processore (su richiesta) | `compress/flate` su un testo sintetico deterministico: 3 s con un thread, 20 s con tutti, campioni al secondo | punta = migliore media su 3 s nella prima metà; finale = media dell'ultimo quarto |
 | Test del disco (su richiesta) | `CreateFile` con `FILE_FLAG_NO_BUFFERING`, `FILE_FLAG_DELETE_ON_CLOSE` e `FILE_FLAG_OVERLAPPED`; ogni richiesta in coda è una goroutine con la sua `OVERLAPPED` e il suo evento (`GetOverlappedResult`); profilo di CrystalDiskMark: SEQ1M Q8T1, SEQ1M Q1T1, RND4K Q32T1, RND4K Q1T1, 4 s per misura | file fino a 1 GiB (o ciò che si scrive in 15 s), almeno 2 GiB lasciati liberi, buffer allineati a 4 KiB e dati non comprimibili |
 
-Modalità del programma: `Polaris.exe` (finestra), `report`, `serve`, `bench cpu`, `bench disk` e `defender status|quick|full|update`. La finestra usa WebView2; se il runtime manca (o non
+Gli script PowerShell (dati del PC, Defender, firewall, verifica delle firme) passano da `winps`: `powershell.exe` dalla cartella
+di sistema, mai un omonimo nel `PATH`, senza finestra e senza la variabile `PSModulePath`. Se Polaris viene avviato da
+PowerShell 7 la eredita con i moduli di PowerShell 7 in testa, e Windows PowerShell proverebbe a caricare quelli (per esempio
+`Microsoft.PowerShell.Security`, fatto per .NET Core); senza la variabile usa i propri percorsi predefiniti. All'errore di uno
+script si aggiunge la prima riga scritta da PowerShell.
+
+Modalità del programma: `Polaris.exe` (finestra), `report` (anche `--html`), `serve`, `bench cpu`, `bench disk`,
+`defender status|quick|full|update` e `tools status|kit`. La finestra usa WebView2; se il runtime manca (o non
 funziona) STARNET Polaris lo dice con un messaggio e apre l'interfaccia nel browser predefinito. `Polaris.exe` è compilato come
 applicazione grafica e si aggancia alla console del prompt quando riceve un comando; `polaris-cli.exe` è la stessa cosa compilata
 per la console, comoda negli script.
@@ -190,14 +219,19 @@ per la console, comoda negli script.
 | `POST /api/defender` | corpo `{"action": "quick"\|"full"\|"update"}`: `202` avvia l'operazione; `400` per un'azione non valida, `422` se Defender non è disponibile, `409` se c'è già un'operazione o un test di velocità in corso |
 | `GET /api/defender` | operazione in corso, eventuale errore ed esito dell'ultima (con stato e minacce riletti) |
 | `DELETE /api/defender` | interrompe la scansione in corso |
-| `GET /api/tools` | programmi della cassetta installati (`installed`) e inclusi nel pacchetto (`bundled`, con `problem` se l'eseguibile non è l'originale), con le versioni e senza percorsi |
-| `POST /api/open` | corpo `{"tool": "<id>", "target": "app"\|"site"}`: apre uno strumento di Windows, un programma (la copia inclusa se integra, altrimenti quella installata) o il sito ufficiale; `404` per un identificativo fuori dalla lista bianca, `400` per una destinazione non valida, `422` se il programma non c'è o la copia inclusa è alterata, `409` se la richiesta dei permessi di amministratore viene annullata |
+| `GET /api/tools` | programmi della cassetta installati (`installed`), inclusi nel pacchetto (`bundled`) e scaricati (`portable`, con `kit` per le copie del kit e `expired` per quelle scadute), con `problem` se l'eseguibile non è quello verificato; programmi scaricabili su questo PC (`fetchable`), disponibilità del kit (`kit`) e download in corso o concluso (`fetch`: programma, byte, totale, errore; per il kit anche `queue`, `ready` e `failed`). Mai percorsi |
+| `POST /api/tools/fetch` | corpo `{"tool": "<id>"}`: `202` avvia il download della versione portable; `404` fuori catalogo, `400` se il programma non ha una versione portable per questo PC, `409` se c'è già un download, `501` se l'agente non scarica |
+| `POST /api/tools/kit` | corpo `{"tools": ["<id>", ...]}`: `202` avvia la preparazione del kit (duplicati ignorati); `404` e `400` come sopra, `400` con elenco vuoto, `422` se la cartella di Polaris non è scrivibile, `409` se c'è già un download |
+| `DELETE /api/tools/fetch` | interrompe il download o la preparazione del kit |
+| `POST /api/tools/remove` | corpo `{"tool": "<id>"}`: elimina la copia scaricata (prima quella del PC, poi quella del kit); `409` se è in download o in coda |
+| `POST /api/open` | corpo `{"tool": "<id>", "target": "app"\|"site"}`: apre uno strumento di Windows, un programma (la copia inclusa se integra, poi quella scaricata, con la firma verificata di nuovo, poi quella installata) o il sito ufficiale; `404` per un identificativo fuori dalla lista bianca, `400` per una destinazione non valida, `422` se il programma non c'è o la copia è alterata, `409` se la richiesta dei permessi di amministratore viene annullata |
 
 Sicurezza: ascolto solo su `127.0.0.1`; richieste con `Host` diverso da localhost rifiutate (DNS rebinding); `POST` con `Origin`
 estranea o `Sec-Fetch-Site: cross-site` rifiutate (CSRF); i `POST` di inventario e verifiche accettano solo corpi
 `application/json` fino a 64 kB, che una pagina di un altro sito non può inviare senza un preflight CORS (lo stesso vale per i
 test di velocità, Defender e l'apertura degli strumenti, e `DELETE` richiede comunque un preflight); `/api/open` riceve solo
-identificativi, mai percorsi o comandi; CSP restrittiva
+identificativi, mai percorsi o comandi; i download seguono solo https e gli host del programma, anche nei rimandi, e un
+programma scaricato parte solo con la firma dell'editore atteso; CSP restrittiva
 sull'interfaccia; nessuna intestazione CORS. ESP32 ed
 eventuali altri agenti esporranno la stessa API, quindi l'interfaccia non cambia.
 
