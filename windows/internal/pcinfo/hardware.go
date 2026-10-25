@@ -253,6 +253,10 @@ func mergeHW(hw *scan.Hardware, ps *psHW) {
 	if hw.CPU != nil {
 		hw.CPU.Socket = cleanVendor(ps.Socket)
 		hw.CPU.Virtualization = ps.Virt
+		// Il firmware a volte lascia 0 o valori senza senso.
+		if ps.Bus > 0 && ps.Bus <= 1000 {
+			hw.CPU.BusMHz = ps.Bus
+		}
 	}
 	m := &scan.HwMemory{Slots: ps.Slots}
 	if ps.MaxKB > 0 {
@@ -290,6 +294,7 @@ type psHW struct {
 	Bios         string `json:"bios"`
 	BiosDate     string `json:"biosDate"`
 	Socket       string `json:"socket"`
+	Bus          int    `json:"bus"`
 	Virt         *bool  `json:"virt"`
 	Slots        int    `json:"slots"`
 	MaxKB        int64  `json:"maxKB"`

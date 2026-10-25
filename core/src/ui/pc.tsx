@@ -52,6 +52,7 @@ import { FindingList, Segmented, SevIcon, Stat, TableWrap, fmtNum, sevColor, use
 import { useWidth } from './hooks';
 import { ToolShortcut, Toolbox } from './toolbox';
 import { Anim } from './anim';
+import { CoreClock } from './clock';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -151,7 +152,7 @@ export function PcView(props: ViewProps) {
 
       {pc?.hardware && (
         <Section title="Scheda tecnica">
-          <HardwareCard pc={pc} />
+          <HardwareCard pc={pc} live={props.live} source={props.source} />
         </Section>
       )}
 
@@ -1641,7 +1642,7 @@ function Kv({ rows }: { rows: [string, ReactNode | undefined, Severity?][] }) {
  * Scheda tecnica come CPU-Z: processore, memoria, scheda madre e firmware,
  * video. Solo dati letti da Windows; nessun numero di serie.
  */
-function HardwareCard({ pc }: { pc: PcData }) {
+function HardwareCard({ pc, live, source }: { pc: PcData; live: boolean; source: ViewProps['source'] }) {
   const hw = pc.hardware!;
   const [tab, setTab] = useState<HwTab>('cpu');
   const c = hw.cpu;
@@ -1679,9 +1680,11 @@ function HardwareCard({ pc }: { pc: PcData }) {
                 ['Core', c ? [coreLayout(c), c.threads ? `${c.threads} thread` : ''].filter(Boolean).join(', ') : undefined],
                 ['Processori fisici', c?.packages && c.packages > 1 ? String(c.packages) : undefined],
                 ['Frequenza di base', pc.cpu?.maxMhz ? `${fmtNum(pc.cpu.maxMhz / 1000, 2)} GHz` : undefined],
+                ['Frequenza del bus', c?.busMhz ? `${c.busMhz} MHz (nominale)` : undefined],
                 ['Virtualizzazione', virt],
               ]}
             />
+            <CoreClock pc={pc} live={live} source={source} />
             {(c?.caches ?? []).length > 0 && (
               <div className="hw-block">
                 <h3>Cache</h3>

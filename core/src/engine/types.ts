@@ -450,6 +450,8 @@ export interface HwCpu {
   model?: number;
   stepping?: number;
   socket?: string;
+  /** Frequenza esterna (BCLK) nominale dichiarata dal firmware (SMBIOS): non è misurata. */
+  busMhz?: number;
   packages?: number;
   cores?: number;
   threads?: number;

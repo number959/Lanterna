@@ -17,6 +17,8 @@
 //	                    ({"action": "quick" | "full" | "update"})
 //	GET  /api/defender  stato ed esito dell'ultima operazione
 //	DELETE /api/defender interrompe la scansione in corso
+//	GET  /api/cpu/clock frequenza effettiva dei core in questo istante (il
+//	                    "Core Speed" di CPU-Z), dai contatori di Windows
 //	GET  /api/tools     programmi della cassetta degli attrezzi installati,
 //	                    inclusi nel pacchetto e scaricati, con il download in corso
 //	POST /api/tools/fetch scarica dal sito ufficiale la versione portable
@@ -57,6 +59,7 @@ import (
 
 	"lanterna/internal/bench"
 	"lanterna/internal/collect"
+	"lanterna/internal/cpuclock"
 	"lanterna/internal/defender"
 	"lanterna/internal/infra"
 	"lanterna/internal/scan"
@@ -77,6 +80,8 @@ type Server struct {
 	// Ping misura un singolo tempo di risposta (nil = nessuna risposta).
 	// preferTCP è vero quando nell'ultima analisi quell'host ha risposto solo via TCP.
 	Ping func(ctx context.Context, ip string, tcpPorts []int, preferTCP bool) *float64
+	// CPUClock legge la frequenza effettiva dei core (nil: non disponibile).
+	CPUClock func(ctx context.Context) (cpuclock.Sample, error)
 
 	// Infra abilita inventario e verifiche di raggiungibilità (nil = non disponibili).
 	Infra    *infra.Prims
@@ -568,6 +573,24 @@ func (s *Server) Handler() http.Handler {
 			cancel()
 		}
 		writeJSON(w, 200, map[string]any{"target": target, "ip": ip, "ms": v})
+	})
+	mux.HandleFunc("GET /api/cpu/clock", func(w http.ResponseWriter, r *http.Request) {
+		if s.CPUClock == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": cpuclock.ErrUnavailable.Error()})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		smp, err := s.CPUClock(ctx)
+		if err != nil {
+			code := http.StatusServiceUnavailable
+			if errors.Is(err, cpuclock.ErrUnavailable) {
+				code = http.StatusNotImplemented
+			}
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, smp)
 	})
 	mux.HandleFunc("POST /api/inventory", func(w http.ResponseWriter, r *http.Request) {
 		if s.Infra == nil {

@@ -140,7 +140,7 @@ func TestHardwareNormalizers(t *testing.T) {
 const psHWFixture = `{"gpus":[{"name":"NVIDIA GeForce RTX 3060","driverVersion":"32.0.15.6094","driverDate":"2024-08-14","w":2560,"h":1440,"hz":144},` +
 	`{"name":"Microsoft Basic Display Adapter","driverVersion":"10.0","driverDate":"","w":0,"h":0,"hz":0}],` +
 	`"hw":{"vendor":"System manufacturer","model":"System Product Name","type":1,"hypervisor":true,"boardVendor":"ASUSTeK COMPUTER INC.","board":"PRIME B550-PLUS","boardVersion":"Rev X.0x",` +
-	`"biosVendor":"American Megatrends Inc.","bios":"3002","biosDate":"2023-02-09","socket":"AM4","virt":null,"slots":4,"maxKB":134217728,` +
+	`"biosVendor":"American Megatrends Inc.","bios":"3002","biosDate":"2023-02-09","socket":"AM4","bus":100,"virt":null,"slots":4,"maxKB":134217728,` +
 	`"mem":[{"size":8589934592,"speed":2133,"conf":2133,"vendor":"Kingston","part":"KHX3200C16D4/8GX  ","slot":"DIMM_A1","bank":"BANK 0","type":26,"form":8,"mv":1200},` +
 	`{"size":8589934592,"speed":2133,"conf":2133,"vendor":"Kingston","part":"KHX3200C16D4/8GX","slot":"DIMM_A2","bank":"BANK 1","type":26,"form":8,"mv":1200},` +
 	`{"size":0,"speed":0,"conf":0,"vendor":"","part":"","slot":"","bank":"","type":0,"form":0,"mv":0}],` +
@@ -164,7 +164,7 @@ func TestMergeHW(t *testing.T) {
 	if hw.Board == nil || hw.Board.Product != "PRIME B550-PLUS" || hw.Board.BiosVersion != "3002" || hw.Board.BiosDate != "2023-02-09" {
 		t.Errorf("scheda madre: %+v", hw.Board)
 	}
-	if hw.CPU.Socket != "AM4" || hw.CPU.Virtualization != nil || hw.CPU.Cores != 8 {
+	if hw.CPU.Socket != "AM4" || hw.CPU.BusMHz != 100 || hw.CPU.Virtualization != nil || hw.CPU.Cores != 8 {
 		t.Errorf("processore: %+v", hw.CPU)
 	}
 	m := hw.Memory
@@ -188,6 +188,12 @@ func TestMergeHW(t *testing.T) {
 	mergeHW(unread, &psHW{})
 	if unread.TPM != nil {
 		t.Errorf("TPM non letto: %v", *unread.TPM)
+	}
+	// Frequenza esterna senza senso: scartata.
+	odd := &scan.Hardware{CPU: &scan.HwCPU{}}
+	mergeHW(odd, &psHW{Bus: 65535})
+	if odd.CPU.BusMHz != 0 {
+		t.Errorf("bus: %d", odd.CPU.BusMHz)
 	}
 }
 

@@ -419,7 +419,25 @@ export function LatencyChart({ series, height = 170 }: { series: Series[]; heigh
  * sinistra in modo continuo (lo spostamento di un passo dura quanto
  * l'intervallo tra due misure), invece di avanzare a scatti.
  */
-export function LiveChart({ series, tick, maxPoints = 60, height = 230, intervalMs = 1000 }: { series: Series[]; tick: number; maxPoints?: number; height?: number; intervalMs?: number }) {
+export function LiveChart({
+  series,
+  tick,
+  maxPoints = 60,
+  height = 230,
+  intervalMs = 1000,
+  unit = 'ms',
+  label = 'Latenza in tempo reale',
+}: {
+  series: Series[];
+  tick: number;
+  maxPoints?: number;
+  height?: number;
+  intervalMs?: number;
+  /** Unità dell'asse verticale. */
+  unit?: string;
+  /** Descrizione del grafico per i lettori di schermo. */
+  label?: string;
+}) {
   const [ref, w] = useWidth<HTMLDivElement>();
   const reduce = useReducedMotion();
   const gid = useId();
@@ -447,7 +465,7 @@ export function LiveChart({ series, tick, maxPoints = 60, height = 230, interval
   return (
     <div ref={ref}>
       {w > 0 && (
-        <svg className="chart" width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`Latenza in tempo reale: ${series.map((s) => s.label).join(', ')}`}>
+        <svg className="chart" width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${label}: ${series.map((s) => s.label).join(', ')}`}>
           <defs>
             <clipPath id={`${gid}-clip`}>
               <rect x={pad.l} y={0} width={Math.max(0, w - pad.l - pad.r)} height={h} />
@@ -465,7 +483,7 @@ export function LiveChart({ series, tick, maxPoints = 60, height = 230, interval
               <text x={pad.l - 7} y={y(t) + 4} textAnchor="end">{Math.round(t)}</text>
             </g>
           ))}
-          <text x={pad.l - 7} y={h - 4} textAnchor="end">ms</text>
+          <text x={pad.l - 7} y={h - 4} textAnchor="end">{unit}</text>
           <g clipPath={`url(#${gid}-clip)`}>
             <m.g style={{ x: offset }}>
               {series.map((s, si) => {

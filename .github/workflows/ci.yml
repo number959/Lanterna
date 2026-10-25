@@ -121,8 +121,28 @@ jobs:
           if (-not $hw.cpu.cores -or -not $hw.cpu.caches) { throw "processore della scheda tecnica non letto" }
           if (-not $hw.firmware) { throw "tipo di firmware non letto" }
           if ($null -eq $hw.tpm) { throw "dispositivi di sicurezza non letti (PowerShell)" }
+          "Bus nominale (SMBIOS): $($hw.cpu.busMhz) MHz"
           "Defender: $($pc.defender | ConvertTo-Json -Compress)"
           "Minacce: $(if ($null -eq $pc.threats) { 'non lette' } else { "$(@($pc.threats).Count)" })"
+      - name: Velocità dei core in tempo reale (contatori di Windows)
+        timeout-minutes: 3
+        run: |
+          $c = @(./polaris-cli.exe clock --seconds 3 --json | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0) { throw "clock fallito" }
+          foreach ($x in $c) { "Core Speed $($x.mhz) MHz ($($x.perfPct) % della base $($x.baseMhz) MHz); più veloce $($x.maxMhz) MHz; carico $($x.loadPct) %; $($x.cores.Count) processori logici" }
+          $last = $c[-1]
+          if ($c.Count -ne 3) { throw "attese 3 letture, ottenute $($c.Count)" }
+          if (-not $last.mhz -or $last.mhz -le 0 -or -not $last.baseMhz) { throw "frequenza non letta: $($last | ConvertTo-Json -Compress)" }
+          if ($last.cores.Count -ne [Environment]::ProcessorCount) { throw "processori logici: $($last.cores.Count) invece di $([Environment]::ProcessorCount)" }
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8742' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $a = Invoke-RestMethod http://127.0.0.1:8742/api/cpu/clock
+            Start-Sleep 1
+            $b = Invoke-RestMethod http://127.0.0.1:8742/api/cpu/clock
+            "API: $($a.mhz) MHz alle $($a.at), poi $($b.mhz) MHz alle $($b.at)"
+            if (-not $b.mhz -or $a.at -eq $b.at) { throw "letture via API non aggiornate" }
+          } finally { Stop-Process $p -ErrorAction SilentlyContinue }
       - name: Test di velocità da riga di comando
         run: |
           $c = ./polaris-cli.exe bench cpu --quick --json | ConvertFrom-Json

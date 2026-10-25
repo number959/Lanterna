@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 
 	"lanterna/internal/bench"
 	"lanterna/internal/collect"
+	"lanterna/internal/cpuclock"
 	"lanterna/internal/defender"
 	"lanterna/internal/infra"
 	"lanterna/internal/scan"
@@ -796,5 +798,40 @@ func TestToolsKitEndpoint(t *testing.T) {
 	defer mu.Unlock()
 	if len(calls) != 1 {
 		t.Errorf("dopo l'interruzione non doveva partire altro: %v", calls)
+	}
+}
+
+func TestCPUClockEndpoint(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	if r := do(t, h, "GET", "/api/cpu/clock", nil); r.Code != http.StatusNotImplemented {
+		t.Fatalf("senza contatori: %d", r.Code)
+	}
+	at := time.Date(2026, 10, 25, 9, 30, 0, 0, time.UTC)
+	var calls int
+	s.CPUClock = func(context.Context) (cpuclock.Sample, error) {
+		calls++
+		switch calls {
+		case 1:
+			return cpuclock.Sample{MHz: 4350, MaxMHz: 4700, BaseMHz: 2900, PerfPct: 150, LoadPct: 12, Cores: []cpuclock.Core{{ID: "0,0", MHz: 4700, LoadPct: 30}}, At: at}, nil
+		case 2:
+			return cpuclock.Sample{}, fmt.Errorf("%w (PDH)", cpuclock.ErrUnavailable)
+		default:
+			return cpuclock.Sample{}, errors.New("PdhCollectQueryData: errore PDH 0x800007D5")
+		}
+	}
+	r := do(t, h, "GET", "/api/cpu/clock", nil)
+	if r.Code != 200 || r.Body.String() != `{"mhz":4350,"maxMhz":4700,"baseMhz":2900,"perfPct":150,"loadPct":12,"cores":[{"id":"0,0","mhz":4700,"loadPct":30}],"at":"2026-10-25T09:30:00Z"}`+"\n" {
+		t.Fatalf("campione: %d %s", r.Code, r.Body)
+	}
+	if r := do(t, h, "GET", "/api/cpu/clock", nil); r.Code != http.StatusNotImplemented {
+		t.Errorf("contatori assenti: %d %s", r.Code, r.Body)
+	}
+	if r := do(t, h, "GET", "/api/cpu/clock", nil); r.Code != http.StatusServiceUnavailable || !strings.Contains(r.Body.String(), "0x800007D5") {
+		t.Errorf("errore di lettura: %d %s", r.Code, r.Body)
+	}
+	// Host estraneo: rifiutato come ogni altra API.
+	if r := do(t, h, "GET", "/api/cpu/clock", map[string]string{"Host": "evil.example:8737"}); r.Code != http.StatusForbidden {
+		t.Errorf("host estraneo: %d", r.Code)
 	}
 }

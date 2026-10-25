@@ -31,6 +31,7 @@ import (
 	"lanterna/internal/assets"
 	"lanterna/internal/bench"
 	"lanterna/internal/collect"
+	"lanterna/internal/cpuclock"
 	"lanterna/internal/defender"
 	"lanterna/internal/engine"
 	"lanterna/internal/gui"
@@ -72,6 +73,10 @@ Uso:
   polaris-cli defender full      scansione completa (può durare ore)
   polaris-cli defender update    aggiornamento delle firme
   polaris-cli defender ... --json  stampa il risultato in JSON
+  polaris-cli clock              frequenza effettiva dei core in tempo reale (Core Speed),
+                                 una lettura al secondo:
+      --seconds N                durata in secondi (predefinita 5)
+      --json                     stampa le letture in JSON
   polaris-cli tools status       versioni portable scaricate (su questo PC e nel kit)
   polaris-cli tools kit [ID...]  prepara il kit per l'uso senza Internet: scarica dai
                                  siti ufficiali e verifica i programmi nella cartella
@@ -113,6 +118,8 @@ func main() {
 		err = runDefender(args[1:])
 	case args[0] == "tools":
 		err = runTools(args[1:])
+	case args[0] == "clock":
+		err = runClock(args[1:])
 	case args[0] == "version" || args[0] == "--version":
 		eng, e := engine.Load(nil)
 		ev := "non incluso"
@@ -233,6 +240,7 @@ func startServer(port int) (*server.Server, string, error) {
 	c := newCollector(false)
 	prims := infra.Native()
 	fetcher := newFetcher()
+	clock := cpuclock.New()
 	srv := &server.Server{Collector: c, Web: assets.Web(), Version: version, Ping: c.QuickPing, Infra: &prims, InfraOpt: infra.Prudent,
 		BenchCPU: func(ctx context.Context, r bench.Report) (*scan.CPUBench, error) {
 			return bench.CPU(ctx, cpuOptions(false), r)
@@ -253,6 +261,7 @@ func startServer(port int) (*server.Server, string, error) {
 		RemoveTool:    fetcher.Remove,
 		FetchKit:      fetcher.FetchKit,
 		KitCheck:      fetcher.KitCheck,
+		CPUClock:      clock.Read,
 		OpenTool:      func(id, target string) error { return tools.Open(id, target, fetcher) },
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
@@ -432,6 +441,52 @@ func runDefender(args []string) error {
 	fmt.Printf("%s (%d s)\n", res.Message, res.DurationMs/1000)
 	if action != defender.Update {
 		printThreats(res.Threats)
+	}
+	return nil
+}
+
+// runClock stampa la frequenza effettiva dei core una volta al secondo.
+func runClock(args []string) error {
+	fs := flag.NewFlagSet("clock", flag.ContinueOnError)
+	seconds := fs.Int("seconds", 5, "")
+	asJSON := fs.Bool("json", false, "")
+	fs.Usage = func() { fmt.Fprintf(os.Stderr, usage, version) }
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *seconds < 1 || *seconds > 3600 {
+		return errors.New("--seconds deve essere tra 1 e 3600")
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	s := cpuclock.New()
+	defer s.Close()
+	var all []cpuclock.Sample
+	for i := 0; i < *seconds; i++ {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(time.Second):
+			}
+		}
+		smp, err := s.Read(ctx)
+		if err != nil {
+			return err
+		}
+		if *asJSON {
+			all = append(all, smp)
+			continue
+		}
+		ratio := ""
+		if smp.PerfPct > 0 {
+			ratio = fmt.Sprintf(" (%.0f %% della base %.0f MHz)", smp.PerfPct, smp.BaseMHz)
+		}
+		fmt.Printf("Core Speed %.0f MHz%s; core più veloce %.0f MHz; carico %.0f %%; %d processori logici\n", smp.MHz, ratio, smp.MaxMHz, smp.LoadPct, len(smp.Cores))
+	}
+	if *asJSON {
+		b, _ := json.MarshalIndent(all, "", "  ")
+		fmt.Println(string(b))
 	}
 	return nil
 }

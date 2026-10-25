@@ -414,9 +414,12 @@ type HwCPU struct {
 	Model    int    `json:"model,omitempty"`
 	Stepping int    `json:"stepping,omitempty"`
 	Socket   string `json:"socket,omitempty"`
-	Packages int    `json:"packages,omitempty"`
-	Cores    int    `json:"cores,omitempty"`
-	Threads  int    `json:"threads,omitempty"`
+	// BusMHz è la frequenza esterna (BCLK) nominale dichiarata dal firmware
+	// (SMBIOS, Win32_Processor.ExternalClock): non è misurata.
+	BusMHz   int `json:"busMhz,omitempty"`
+	Packages int `json:"packages,omitempty"`
+	Cores    int `json:"cores,omitempty"`
+	Threads  int `json:"threads,omitempty"`
 	// CoreClasses conta i core per classe di efficienza, dalla più potente:
 	// [8, 16] = 8 core P e 16 core E; un solo valore = processore non ibrido.
 	CoreClasses []int     `json:"coreClasses,omitempty"`

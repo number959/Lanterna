@@ -268,6 +268,27 @@ export interface ToolsState {
 
 export const toolsStatus = () => getJson<ToolsState>('api/tools');
 
+/** Frequenza effettiva dei core in un istante, dai contatori delle prestazioni di Windows. */
+export interface CpuClockSample {
+  /** Media dei core, come la mostra Gestione attività (MHz). */
+  mhz: number;
+  /** Il core più veloce in questo istante (MHz). */
+  maxMhz: number;
+  /** Frequenza nominale (MHz). */
+  baseMhz: number;
+  /** Frequenza effettiva in percentuale della nominale: oltre 100 = turbo. */
+  perfPct: number;
+  loadPct: number;
+  cores: { id: string; mhz: number; loadPct: number }[];
+  at: string;
+}
+
+export async function cpuClock(signal?: AbortSignal): Promise<CpuClockSample> {
+  const r = await fetch('api/cpu/clock', { cache: 'no-store', signal });
+  if (!r.ok) throw await errorOf(r);
+  return (await r.json()) as CpuClockSample;
+}
+
 /** Scarica dal sito ufficiale la versione portable e ne verifica la firma (in background). */
 export const fetchTool = (tool: string) => postJson<{ started: boolean }>('api/tools/fetch', { tool });
 
