@@ -517,3 +517,96 @@ tecnica, Defender, cassetta degli attrezzi.
   Su un PC normale CrystalDiskInfo chiede i permessi; il messaggio per una richiesta annullata è verificato solo con i test.
 - **Licenze.** Le condizioni sono riportate come lette nei testi originali. Non sono una consulenza legale: in particolare la
   clausola sulla vendita della libreria AMD_RC2t7 va verificata se Polaris venisse distribuito a pagamento.
+
+## 11. Versione 0.7.0: programmi scaricati, kit senza Internet, documento, animazioni, suoni e velocità dei core
+
+**Cosa è nuovo.**
+- **Agente.**
+  - `tools.Fetcher`: versioni portable scaricate su richiesta dal sito del produttore (CPU-Z, HWiNFO, AdwCleaner, Microsoft
+    Safety Scanner, ESET Online Scanner, Autoruns, Process Explorer, WizTree) e verificate con la firma Authenticode al download
+    e a ogni avvio; kit per i PC senza Internet nella cartella `strumenti-scaricati` accanto a Polaris.
+  - `cpuclock`: velocità dei core in tempo reale dai contatori delle prestazioni di Windows (PDH), senza driver.
+  - `winps`: avvio di Windows PowerShell senza i moduli ereditati da PowerShell 7.
+  - Bus nominale del processore (SMBIOS) nella scheda tecnica.
+  - API `/api/tools/fetch`, `/api/tools/kit`, `/api/tools/remove`, `/api/cpu/clock`; comandi `polaris-cli report --html`,
+    `tools status`, `tools kit`, `clock`.
+- **Motore.** Documento stampabile sullo stato del PC (`document.ts`), HTML A4 autonomo, usato anche dall'exe tramite goja.
+- **Interfaccia.** Cassetta degli attrezzi con download, conferma, avanzamento e kit; anteprima del documento con stampa, PDF e
+  HTML; icone e caricamenti animati; suoni con interruttore; velocità dei core in tempo reale nella scheda tecnica.
+- **Guide.** 66 guide e 192 voci di glossario (nuove: Core Speed, Turbo, BCLK, Moltiplicatore).
+- **Pacchetto.** BlueScreenView 1.55 si aggiunge a CrystalDiskInfo e CrystalDiskMark nella cartella `strumenti`.
+
+**Test automatici.**
+
+| Insieme | Esito |
+| --- | --- |
+| Motore, guide, interfaccia (vitest) | 179 test superati, tra cui: documento (sezioni, caselle del piano, logo a colori, nessuna risorsa esterna, filtro di MAC e IP pubblici, stili confinati in `.pdoc`); suoni con un contesto audio finto (note, inviluppi senza clic, preferenza salvata, muti fino al primo gesto, segnali non accavallati); simulazione e storico della velocità dei core |
+| Agente (Go, anche con `-race`) | 141 test superati, tra cui: download con server TLS di prova (rimandi, host ammessi, file troppo grandi, pagine web al posto del file, zip con percorsi fuori cartella, impronta, firma attesa e diversa, interruzione, nuovi tentativi); kit (copia nel kit vista da un altro profilo senza rete, precedenza della copia del PC, eliminazione, cartella non scrivibile senza percorsi nel messaggio); cache delle impronte; preparazione del kit via API (coda, pronti, non riusciti, interruzione, eliminazione di un programma in coda rifiutata); ambiente di PowerShell senza `PSModulePath` e prima riga d'errore; frequenza dei core (ordinamento numerico, riserva della nominale, valori assurdi scartati, due raccolte alla prima lettura, cache, chiusura per inattività, riapertura dopo un errore); API `/api/cpu/clock` con `200`, `501` e `503` |
+| Coerenza tra le parti | un test dell'agente confronta il catalogo dei download (host, firmatario, versione fissata, scadenza) con `core/src/tools.ts` |
+| Download reali (`-tags realnet`, prova manuale) | i sette programmi sotto i 100 MB scaricati dai siti veri con gli stessi rimandi, host, limiti e impronte dell'agente; fuori da Windows la firma non si può verificare e la prova lo dichiara |
+| `go vet` (Linux, Windows amd64 e arm64), `gofmt`, `tsc` | nessun problema; `vet` per Windows a 32 bit segnala costanti fuori misura in `pcinfo`, codice precedente: il pacchetto è solo a 64 bit |
+
+**Licenze e provenienza.**
+- **BlueScreenView 1.55** (NirSoft): gratuito e ridistribuibile senza modifiche, come dice la sua licenza; archivio con impronta
+  SHA-256 fissata in `scripts/strumenti.sh`, testo della licenza in `THIRD_PARTY_NOTICES.md`.
+- **Programmi scaricati.** Non sono nel pacchetto: CPU-Z non concede la ridistribuzione, gli altri hanno licenze proprie. Siti,
+  firmatari e versioni sono stati verificati il 19/10/2026; il catalogo è in `windows/internal/tools/portable.go`.
+- **Alternative open source** con licenze lette il 25/10/2026: [ALTERNATIVE-OPEN-SOURCE.md](ALTERNATIVE-OPEN-SOURCE.md).
+
+**Interfaccia**, Chromium 141 sulla build di produzione, axe-core (WCAG 2.1 A/AA e buone pratiche):
+- cassetta con un agente simulato: download in corso, conferma, copie pronte, scadute e alterate; 4 combinazioni di tema e
+  schermo;
+- documento aperto, in tema scuro e chiaro, desktop e telefono;
+- kit: pronto, scelta dei programmi, preparazione in corso con un programma non riuscito, esito; barra con i suoni spenti;
+- velocità dei core: demo in tema scuro, chiaro e a 390 px; agente simulato; errore con Riprova;
+- audit completo sulla build finale: 10 sezioni × 2 temi × desktop e telefono, reti Casa e Clinica: **0 violazioni**;
+- **Comportamento verificato con gli stessi script**: richiesta del kit senza Safety Scanner e senza un programma tolto dalla
+  scelta; messaggio finale di avviso con il suo suono; un tocco cambiando sezione, due note aprendo il documento, nessun suono a
+  interruttore spento, conferma alla riaccensione; una lettura al secondo della velocità dei core, nessuna lettura in pausa, con
+  un'altra scheda aperta o dopo un errore, ripresa con Riprova.
+
+**Windows reale (CI).** Windows Server 2025 Datacenter 24H2 (build 26100.33650) su una macchina virtuale Hyper-V con processore
+AMD EPYC 7763 (2 core, 4 thread), eseguito come amministratore. Tutti i passi verdi anche nel run finale 40182647278.
+- **Programmi scaricati** (run 40088230616, commit `777f96f`): Autoruns 14.3 (3 MB) con firma di Microsoft Corporation e CPU-Z
+  3.01 (5,2 MB) con firma di CPUID scaricati e verificati; Autoruns64 avviato da Polaris; dopo un byte aggiunto
+  all'eseguibile la copia risulta alterata, `/api/open` risponde `422`, il programma non parte e la copia si elimina.
+- **Kit senza Internet** (run 40144127327, commit `bc0b15c`): kit preparato con Autoruns (9 file in `strumenti-scaricati`);
+  da un profilo vuoto e con la rete in uscita bloccata dal firewall per `polaris-cli.exe` e `powershell.exe` (firewall attivo
+  su 3 profili) `tools status` vede Autoruns "nel kit", il download di CPU-Z fallisce ("An attempt was made to access a socket
+  in a way forbidden by its access permissions") e Autoruns64 parte dal kit con la firma verificata di nuovo.
+- **Velocità dei core** (run 40182647278, commit `0779b3b`): da riga di comando tre letture di 3.231, 3.180 e 3.165 MHz, il
+  132-130 % della nominale di 2.445 MHz (il turbo del processore è visibile, quindi i valori oltre il 100 % non vengono
+  tagliati), un valore per ciascuno dei 4 processori logici; via API 3.216 e poi 3.208 MHz con l'ora aggiornata. Il firmware
+  virtuale non dichiara la frequenza del bus: la riga del bus non compare, come previsto.
+- **Documento**: `report --html` produce il documento con le sezioni attese e senza indirizzi MAC.
+
+**Difetti trovati e corretti durante il lavoro:**
+1. Sul collaudo in CI la verifica della firma usciva con codice 1: Polaris avviato da PowerShell 7 ereditava un
+   `PSModulePath` con i moduli di PowerShell 7 in testa e `powershell.exe` caricava il `Microsoft.PowerShell.Security` sbagliato.
+   Ora `winps` avvia Windows PowerShell senza quella variabile; lo stesso sarebbe successo aprendo Polaris da un terminale
+   PowerShell 7.
+2. L'elenco dei programmi scaricati ricalcolava lo SHA-256 di ogni eseguibile a ogni lettura, cioè ogni 400 ms durante un
+   download: con Safety Scanner (oltre 200 MB) era pesante. Ora l'impronta si ricalcola solo se cambiano dimensione o data;
+   prima di ogni avvio resta la verifica della firma.
+3. Durante il kit la scheda del programma in corso mostrava "Interrompi il download", che avrebbe fermato tutto il kit: ora si
+   interrompe solo dal pannello del kit.
+4. Anteprima del documento: intestazione di tabella vuota, area scorrevole non raggiungibile da tastiera, punti di riferimento
+   annidati; corretti fino a 0 violazioni.
+5. Documento: la prima pagina restava mezza vuota per una regola di interruzione di pagina troppo rigida.
+6. Cassetta: due pulsanti "Scarica e apri" mentre la conferma era aperta; barra del documento che andava a capo sui telefoni.
+7. Velocità dei core: l'elenco delle barre aveva `role="img"` su un `<ul>` (axe: elementi di elenco senza elenco), il pallino
+   "dal vivo" finiva da solo su una riga sui telefoni e con pochi core le barre restavano schiacciate a sinistra.
+8. Un test dell'API dei download poteva leggere lo stato prima dell'avanzamento (corsa rilevata con `-race`).
+
+**Avvertenze.**
+- **PC mai collegati a Internet.** La verifica della firma usa i certificati già presenti in Windows. In CI ha funzionato con la
+  rete bloccata, ma le liste di revoca potevano essere già in cache e i certificati principali erano presenti. Su un PC mai
+  collegato potrebbe mancare il certificato principale di un produttore: allora la firma non risulta valida e Polaris non avvia
+  il programma (comportamento sicuro, da provare su un PC isolato).
+- **Kit su chiavetta.** Provato su disco NTFS in CI, non su una chiavetta FAT32 o exFAT reale.
+- **Firme verificate su Windows** per Autoruns e CPU-Z; per gli altri sei programmi download, host e impronte sono provati con i
+  siti veri, la firma solo con i test (fuori da Windows non si può verificare).
+- **Velocità dei core.** Verificata sulla macchina virtuale della CI, con il turbo visibile. Processori ibridi (core P ed E con
+  nominali diverse), bus e moltiplicatore dichiarati da un firmware vero e portatili a batteria vanno provati su PC fisici.
+- **Suoni.** Verificati con un contesto audio finto; l'ascolto reale dentro WebView2 resta da provare su un PC.
+- **Licenze.** Le condizioni sono riportate come lette nei testi originali; non sono una consulenza legale.

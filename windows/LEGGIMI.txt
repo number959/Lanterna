@@ -14,7 +14,8 @@ COSA FA
   spegnimenti imprevisti, schermate blu, errori hardware, antivirus e
   Microsoft Defender, aggiornamenti, batteria e piano di alimentazione.
   Compila la scheda tecnica come CPU-Z (processore, memoria, scheda madre,
-  firmware, Secure Boot, TPM, video). Su richiesta esegue test di velocita'
+  firmware, Secure Boot, TPM, video), con la velocita' dei core in tempo
+  reale letta dai contatori di Windows, senza driver. Su richiesta esegue test di velocita'
   del processore e dei dischi (profilo di CrystalDiskMark) e scansioni di
   Microsoft Defender. La cassetta degli attrezzi apre gli strumenti di
   Windows e i programmi inclusi (vedi STRUMENTI INCLUSI) e scarica dal sito
@@ -72,6 +73,8 @@ RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
   polaris-cli tools kit               prepara il kit per i PC senza Internet
                                       (--all: anche Microsoft Safety Scanner)
   polaris-cli tools status            programmi scaricati, sul PC e nel kit
+  polaris-cli clock                   velocita' dei core in tempo reale, una
+                                      lettura al secondo (--seconds N, --json)
 
 STRUMENTI INCLUSI
   Nella cartella strumenti ci sono CrystalDiskInfo 9.9.2 e CrystalDiskMark

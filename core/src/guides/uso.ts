@@ -54,7 +54,7 @@ export const uso: Guide[] = [
     blocks: [
       { t: 'table', head: ['Tasto', 'Sezione', 'Che cosa mostra', 'Quando usarla'], rows: [
         ['1', 'Panoramica', 'punteggio, aree, problemi principali, prime azioni', 'sempre, come punto di partenza'],
-        ['2', 'Computer', 'sistema, dischi con SMART, spazio, test di velocità, antivirus, avvio, processi, eventi, scheda tecnica, cassetta degli attrezzi', 'PC lento o instabile, dischi sospetti, controllo periodico'],
+        ['2', 'Computer', 'sistema, dischi con SMART, spazio, test di velocità, antivirus, avvio, processi, eventi, scheda tecnica con la velocità dei core in tempo reale, cassetta degli attrezzi', 'PC lento o instabile, dischi sospetti, controllo periodico'],
         ['3', 'Wi-Fi', 'segnale, canali, reti vicine, access point della tua rete', 'Wi-Fi lento, instabile o con poca copertura'],
         ['4', 'Rete locale', 'scheda di rete, indirizzi, router, dispositivi visti', 'problemi di collegamento o di indirizzi'],
         ['5', 'Internet e DNS', 'latenza, perdite, percorso, MTU, DNS, siti web', 'Internet lento, siti che non si aprono'],
@@ -191,6 +191,7 @@ export const uso: Guide[] = [
         ['`polaris-cli defender status`', 'stato di Microsoft Defender e minacce della cronologia'],
         ['`polaris-cli defender quick` / `full`', 'scansione rapida o completa (la completa può durare ore)'],
         ['`polaris-cli defender update`', 'aggiornamento delle firme; con `--json` il risultato in JSON'],
+        ['`polaris-cli clock`', 'frequenza effettiva dei core una volta al secondo (Core Speed); `--seconds N` per la durata, `--json` per i dati'],
         ['`polaris-cli tools status`', 'versioni portable scaricate, sul PC e nel kit, con versione, firma e data'],
         ['`polaris-cli tools kit`', 'prepara il kit per i PC senza Internet nella cartella strumenti-scaricati; si possono indicare i programmi, per esempio `tools kit cpu-z autoruns`'],
         ['`--all` con tools kit', 'aggiunge Microsoft Safety Scanner (circa 230 MB, scade dopo 10 giorni)'],

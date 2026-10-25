@@ -14,7 +14,8 @@ confluiscono in un piano unico, ordinato per gravità, impatto e facilità.
 Del **computer** controlla versione e supporto di Windows, memoria, **salute dei dischi HDD e SSD** (attributi SMART e registro
 NVMe come in CrystalDiskInfo, usura, temperatura, errori), spazio, programmi all'avvio, processi, spegnimenti imprevisti,
 schermate blu, **Microsoft Defender** (protezione, minacce e scansioni su richiesta), aggiornamenti e batteria; compila la
-**scheda tecnica** come CPU-Z e offre **test di velocità** del processore e dei dischi, questi con il profilo di CrystalDiskMark.
+**scheda tecnica** come CPU-Z, con la **velocità dei core in tempo reale**, e offre **test di velocità** del processore e dei dischi,
+questi con il profilo di CrystalDiskMark.
 La **cassetta degli attrezzi** apre gli strumenti di Windows e **CrystalDiskInfo, CrystalDiskMark e BlueScreenView, inclusi nel
 pacchetto**; CPU-Z, HWiNFO, Autoruns e gli altri programmi che non si possono ridistribuire li **scarica dal sito ufficiale**, solo
 su richiesta, e li avvia solo con la firma digitale del produttore. Per i PC senza Internet prepara un **kit** da portare su una
@@ -89,6 +90,10 @@ script PowerShell nascosto: nessuna impostazione viene modificata.
 - **Scheda tecnica**, come in CPU-Z: processore (famiglia, modello e stepping, core P ed E, cache per livello, istruzioni,
   virtualizzazione), scheda madre e BIOS, moduli di memoria con slot, tipo e velocità, firmware UEFI, Secure Boot, TPM, scheda
   video e schermo. Giudizi su canali e velocità della memoria, Secure Boot, TPM e requisiti verificabili di Windows 11.
+- **Velocità dei core in tempo reale**, come il "Core Speed" di CPU-Z: una lettura al secondo della frequenza effettiva (media dei
+  core come in Gestione attività, core più veloce, percentuale rispetto alla base con il turbo, massima della sessione, carico),
+  grafico dell'ultimo minuto e una barra per processore logico. I valori vengono dai contatori delle prestazioni di Windows, senza
+  driver; bus e moltiplicatore sono quelli nominali dichiarati dal firmware.
 - **Alimentazione**: salute della batteria, piano di alimentazione, driver della scheda video.
 - **Test di velocità** (solo su richiesta): il processore comprime dati con un thread e con tutti per circa 25 secondi e rivela
   il calo dovuto a calore o limiti di potenza; il disco scrive e rilegge un file temporaneo fino a 1 GB senza cache di Windows
@@ -135,7 +140,7 @@ serie.
 
 | Area | Misure |
 | --- | --- |
-| Computer | versione e supporto di Windows, RAM installata e in uso, carico del processore e processi, salute dei dischi (stato, attributi SMART, registro NVMe, usura, temperatura, errori), tipo del disco di sistema, spazio per volume, programmi all'avvio, riavvio e riavvii in sospeso, spegnimenti imprevisti, schermate blu, errori hardware e di disco nel registro, antivirus e Microsoft Defender (protezione, firme, scansioni, minacce), ultimo aggiornamento, batteria, piano di alimentazione, driver video, scheda tecnica (processore, memoria e canali, scheda madre, firmware, Secure Boot, TPM, video) |
+| Computer | versione e supporto di Windows, RAM installata e in uso, carico del processore e processi, velocità dei core in tempo reale, salute dei dischi (stato, attributi SMART, registro NVMe, usura, temperatura, errori), tipo del disco di sistema, spazio per volume, programmi all'avvio, riavvio e riavvii in sospeso, spegnimenti imprevisti, schermate blu, errori hardware e di disco nel registro, antivirus e Microsoft Defender (protezione, firme, scansioni, minacce), ultimo aggiornamento, batteria, piano di alimentazione, driver video, scheda tecnica (processore, memoria e canali, scheda madre, firmware, Secure Boot, TPM, video) |
 | Test di velocità (su richiesta) | processore con un thread e con tutti, punta e velocità mantenuta; disco con il profilo di CrystalDiskMark (SEQ1M Q8T1, SEQ1M Q1T1, RND4K Q32T1, RND4K Q1T1), in MB/s e IOPS |
 | Antivirus (su richiesta) | scansione rapida o completa e aggiornamento delle firme di Microsoft Defender |
 | Wi-Fi | potenza in dBm, qualità, velocità radio, banda, standard (Wi-Fi 4…7), larghezza di canale, reti sullo stesso canale, canali 2,4 GHz sovrapposti, carico dichiarato dall'access point (BSS Load), sicurezza (WPA2/WPA3 Personal ed Enterprise, TKIP, PMF, WPS), canale consigliato per 2,4 e 5 GHz |
@@ -179,7 +184,7 @@ Senza agente, le due reti dimostrative (*Casa* e *Clinica*) mostrano tutte le fu
 ![Guide](docs/img/guide.webp)
 
 66 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
-complesse e sanità, diagnosi), un glossario di 188 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
+complesse e sanità, diagnosi), un glossario di 192 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
 d'uso parte dai primi passi e arriva alla riga di comando e alla cassetta degli attrezzi; il capitolo sul computer spiega
 componenti, scheda tecnica, dischi HDD e SSD, attributi SMART, test di velocità, memoria, avvio, aggiornamenti, antivirus e
 Microsoft Defender, registro eventi, batteria e il metodo per un PC lento. Le date di supporto di
@@ -218,6 +223,7 @@ polaris-cli defender quick          scansione rapida (full: completa; update: fi
 polaris-cli report --html --out stato-pc.html   documento stampabile sullo stato del PC
 polaris-cli tools kit               kit per i PC senza Internet in strumenti-scaricati (--all: anche Safety Scanner)
 polaris-cli tools status            programmi scaricati, sul PC e nel kit
+polaris-cli clock                   velocità dei core in tempo reale (--seconds N, --json)
 ```
 
 Su Windows 11 24H2 e successivi la lettura delle reti Wi-Fi richiede il permesso di posizione per le app desktop: Polaris lo
@@ -245,6 +251,11 @@ avviato, il server di sviluppo inoltra `/api` all'agente vero.
 
 Fino alla versione 0.2.0 il programma si chiamava LANterna: il repository e il modulo Go conservano quel nome interno.
 I master del marchio sono in `brand/`; `node scripts/brand.mjs` rigenera i tracciati usati dall'interfaccia.
+
+## Alternative open source
+
+Quali programmi open source o quali funzioni native possono sostituire i download (CPU-Z, HWiNFO, Process Explorer, Autoruns,
+WizTree, scanner antivirus), con licenze verificate, limiti e priorità: [docs/ALTERNATIVE-OPEN-SOURCE.md](docs/ALTERNATIVE-OPEN-SOURCE.md).
 
 ## Verifiche
 

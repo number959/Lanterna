@@ -33,6 +33,7 @@ nome, che non compare più all'utente.
    │   infra/   inventario e verifiche su richiesta, ritmo prudente          │
    │   pcinfo/  dati del computer: API native + uno script PowerShell        │
    │   bench/   test di velocità di processore e dischi, su richiesta        │
+   │   cpuclock/ velocità dei core in tempo reale dai contatori PDH          │
    │   defender/ Microsoft Defender: stato, minacce, scansioni a richiesta   │
    │   tools/   cassetta degli attrezzi: inclusi, scaricati, kit, lista bianca │
    │   winps/   avvio di Windows PowerShell senza moduli ereditati           │
@@ -145,6 +146,8 @@ Organizzazione di `core/src/ui/`:
   al primo clic o tasto (regola dei browser) e finché è sospeso i suoni si saltano invece di accumularsi.
 - `document.tsx`: anteprima del documento in un dialogo; "Stampa o salva PDF" aggiunge a `<html>` la classe `pdoc-printing`, che
   in stampa nasconde tutto tranne il documento.
+- `clock.tsx`: velocità dei core in tempo reale nella scheda tecnica. Una lettura al secondo solo mentre il riquadro è montato e la
+  pagina visibile; pausa; dopo un errore le letture si fermano fino a Riprova; nella demo valori simulati e dichiarati.
 - `toolbox.tsx`: stato della cassetta condiviso a livello di modulo (una richiesta alla volta, rilettura ogni 400 ms durante un
   download anche cambiando sezione), conferma prima di scaricare, avanzamento, pannello del kit con coda ed esito.
 - `monitor.ts`: la sessione del monitor appartiene all'App e continua fra le sezioni; riepilogo dell'intera sessione (media, 95°
@@ -185,6 +188,7 @@ rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFIC
 | Cassetta degli attrezzi | `ShellExecute` di una voce della lista bianca (comando di Windows, indirizzo `ms-settings:`, programma trovato tra le voci di disinstallazione con un eseguibile ammesso, programma incluso o scaricato, sito https del produttore), con la cartella del programma come cartella di lavoro | da amministratore i siti si aprono tramite Esplora risorse, con i permessi normali; i programmi inclusi in `strumenti/` partono solo se l'eseguibile ha l'impronta SHA-256 scritta nell'agente; precedenza: incluso, poi scaricato, poi installato |
 | Versioni portable (su richiesta) | `tools.Fetcher`: download https con il proxy di sistema, host ammessi controllati a ogni rimando, cookie (i mirror di SourceForge li usano), fino a 3 tentativi; limite di dimensione, risposte HTML scartate; estrazione dello zip con `filepath.IsLocal` e limite totale; impronta SHA-256 dell'archivio per le versioni fissate; firma Authenticode (`Get-AuthenticodeSignature`: stato `Valid` e nome del firmatario uguale a quello atteso) al download e prima di ogni avvio | in `%LOCALAPPDATA%\STARNET Polaris\strumenti\<id>` con `polaris.json` (impronta dell'eseguibile, versione, firmatario, data, indirizzo); l'impronta si ricalcola solo se cambiano dimensione o data del file; Safety Scanner scade dopo 10 giorni |
 | Kit per i PC senza Internet (su richiesta) | lo stesso `Fetcher` scrive in `strumenti-scaricati` accanto all'exe (con un LEGGIMI); `Find` cerca nella cartella del PC e nel kit e preferisce la prima copia integra, prima quella del PC | la cartella deve essere scrivibile (verifica prima di partire, messaggi senza percorsi); sui PC senza rete valgono le stesse verifiche: impronta registrata e firma |
+| Velocità dei core (dal vivo) | PDH con `PdhAddEnglishCounterW` (nomi uguali in ogni lingua): `\Processor Information(*)\% Processor Performance`, `Processor Frequency` e `% Processor Time`, letti con `PdhGetFormattedCounterArrayW` e `PDH_FMT_NOCAP100` (il turbo supera il 100 %); frequenza di un core = nominale × prestazioni / 100, media dall'istanza `_Total` come Gestione attività | i contatori si aprono alla prima lettura (due raccolte a 250 ms), letture ravvicinate condividono il campione, chiusura dopo un minuto senza letture; nominale di riserva da `~MHz` nel registro; bus nominale da SMBIOS (`Win32_Processor.ExternalClock`); nessun driver |
 | Test del processore (su richiesta) | `compress/flate` su un testo sintetico deterministico: 3 s con un thread, 20 s con tutti, campioni al secondo | punta = migliore media su 3 s nella prima metà; finale = media dell'ultimo quarto |
 | Test del disco (su richiesta) | `CreateFile` con `FILE_FLAG_NO_BUFFERING`, `FILE_FLAG_DELETE_ON_CLOSE` e `FILE_FLAG_OVERLAPPED`; ogni richiesta in coda è una goroutine con la sua `OVERLAPPED` e il suo evento (`GetOverlappedResult`); profilo di CrystalDiskMark: SEQ1M Q8T1, SEQ1M Q1T1, RND4K Q32T1, RND4K Q1T1, 4 s per misura | file fino a 1 GiB (o ciò che si scrive in 15 s), almeno 2 GiB lasciati liberi, buffer allineati a 4 KiB e dati non comprimibili |
 
@@ -195,7 +199,7 @@ PowerShell 7 la eredita con i moduli di PowerShell 7 in testa, e Windows PowerSh
 script si aggiunge la prima riga scritta da PowerShell.
 
 Modalità del programma: `Polaris.exe` (finestra), `report` (anche `--html`), `serve`, `bench cpu`, `bench disk`,
-`defender status|quick|full|update` e `tools status|kit`. La finestra usa WebView2; se il runtime manca (o non
+`defender status|quick|full|update`, `tools status|kit` e `clock`. La finestra usa WebView2; se il runtime manca (o non
 funziona) STARNET Polaris lo dice con un messaggio e apre l'interfaccia nel browser predefinito. `Polaris.exe` è compilato come
 applicazione grafica e si aggancia alla console del prompt quando riceve un comando; `polaris-cli.exe` è la stessa cosa compilata
 per la console, comoda negli script.
@@ -219,6 +223,7 @@ per la console, comoda negli script.
 | `POST /api/defender` | corpo `{"action": "quick"\|"full"\|"update"}`: `202` avvia l'operazione; `400` per un'azione non valida, `422` se Defender non è disponibile, `409` se c'è già un'operazione o un test di velocità in corso |
 | `GET /api/defender` | operazione in corso, eventuale errore ed esito dell'ultima (con stato e minacce riletti) |
 | `DELETE /api/defender` | interrompe la scansione in corso |
+| `GET /api/cpu/clock` | frequenza effettiva dei core in questo istante: media, core più veloce, nominale, percentuale, carico e valori per processore logico; `501` se i contatori non esistono, `503` se la lettura non riesce |
 | `GET /api/tools` | programmi della cassetta installati (`installed`), inclusi nel pacchetto (`bundled`) e scaricati (`portable`, con `kit` per le copie del kit e `expired` per quelle scadute), con `problem` se l'eseguibile non è quello verificato; programmi scaricabili su questo PC (`fetchable`), disponibilità del kit (`kit`) e download in corso o concluso (`fetch`: programma, byte, totale, errore; per il kit anche `queue`, `ready` e `failed`). Mai percorsi |
 | `POST /api/tools/fetch` | corpo `{"tool": "<id>"}`: `202` avvia il download della versione portable; `404` fuori catalogo, `400` se il programma non ha una versione portable per questo PC, `409` se c'è già un download, `501` se l'agente non scarica |
 | `POST /api/tools/kit` | corpo `{"tools": ["<id>", ...]}`: `202` avvia la preparazione del kit (duplicati ignorati); `404` e `400` come sopra, `400` con elenco vuoto, `422` se la cartella di Polaris non è scrivibile, `409` se c'è già un download |
