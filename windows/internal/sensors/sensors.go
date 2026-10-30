@@ -528,6 +528,7 @@ func gpuGroups(r Raw) (groups []Group, noTelemetry bool) {
 			continue
 		}
 		x, hasInfo := known[l]
+		missingTelemetry := false
 		g := Group{ID: "gpu." + l, Kind: "gpu", Name: strings.TrimSpace(x.Name)}
 		if g.Name == "" {
 			g.Name = "Scheda video " + strconv.Itoa(n+1)
@@ -567,9 +568,7 @@ func gpuGroups(r Raw) (groups []Group, noTelemetry bool) {
 			if ok(x.VoltageMV) && x.VoltageMV > 0 && x.VoltageMV < 3000 {
 				b.add(Sensor{ID: pre + "voltage", Label: "Tensione del motore grafico", Value: round(x.VoltageMV/1000, 3), Unit: "V"})
 			}
-			if !ok(x.TempC) && !ok(x.CoreMHz) && !ok(x.FanRPM) {
-				noTelemetry = true
-			}
+			missingTelemetry = !ok(x.TempC) && !ok(x.CoreMHz) && !ok(x.FanRPM)
 		}
 		if a.hasMem {
 			if ok(a.dedic) {
@@ -595,9 +594,13 @@ func gpuGroups(r Raw) (groups []Group, noTelemetry bool) {
 			}
 			b.add(Sensor{ID: pre + "engine." + slug(e), Label: strings.TrimSpace(label), Value: round(clamp(a.engines[e], 0, 100), 1), Unit: "%", Detail: e != "3D"})
 		}
+		// La nota sulla telemetria mancante vale solo per le schede mostrate.
 		if len(g.Sensors) > 0 {
 			groups = append(groups, g)
 			n++
+			if missingTelemetry {
+				noTelemetry = true
+			}
 		}
 	}
 	if r.GPUErr != nil && len(r.GPUs) == 0 && len(groups) > 0 {

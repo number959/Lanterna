@@ -143,6 +143,10 @@ serie.
 | --- | --- |
 | ![Documento stampabile](docs/img/documento.webp) | ![Kit per i PC senza Internet](docs/img/kit.webp) |
 
+| Sensori in tempo reale (demo: il portatile si scalda e limita il processore) |
+| --- |
+| ![Sensori in tempo reale](docs/img/sensori.webp) |
+
 ## Cosa misura
 
 | Area | Misure |

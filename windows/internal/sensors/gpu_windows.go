@@ -82,7 +82,10 @@ func openGPUs() (*gpuReader, error) {
 		var typ [4]byte
 		software := false
 		if queryAdapter(a.hAdapter, kmtqaiAdapterType, typ[:]) == nil {
-			software = binary.LittleEndian.Uint32(typ[:])&adapterTypeSoftware != 0
+			// Adattatori software o solo per lo schermo (senza motori di
+			// calcolo): non sono schede video da monitorare.
+			t := binary.LittleEndian.Uint32(typ[:])
+			software = t&adapterTypeSoftware != 0 || t&adapterTypeRender == 0
 		}
 		// D3DKMT_ADAPTERREGISTRYINFO: quattro stringhe da MAX_PATH caratteri;
 		// la prima è il nome della scheda.

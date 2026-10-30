@@ -225,6 +225,12 @@ func TestBuildGPU(t *testing.T) {
 	if !missingHas(s, "scheda video") || group(t, s, "gpu.0x00000000_0x0000d1b8").Name != "Intel(R) UHD Graphics" {
 		t.Errorf("senza telemetria: %q", s.Missing)
 	}
+	// Scheda senza telemetria e senza contatori (per esempio il video di una
+	// macchina virtuale): non si mostra, e quindi nessuna nota.
+	s = Build(Raw{GPUs: []GPU{emptyGPU("0x00000000_0x0000abcd", "Microsoft Hyper-V Video", false)}})
+	if missingHas(s, "scheda video") || len(s.Groups) != 0 && s.Groups[0].Kind == "gpu" {
+		t.Errorf("scheda vuota: %q %+v", s.Missing, s.Groups)
+	}
 	s = Build(Raw{Counters: map[string]map[string]float64{cGpuEngine: {"pid_1_" + l + "_phys_0_eng_0_engtype_3D": 5}}, GPUErr: errors.New("no")})
 	if !missingHas(s, "scheda video") {
 		t.Errorf("D3DKMT non disponibile: %q", s.Missing)

@@ -22,7 +22,9 @@ const (
 	kmtqaiAdapterPerfData     = 62
 	kmtqaiAdapterPerfDataCaps = 63
 
-	// D3DKMT_ADAPTERTYPE: bit SoftwareDevice (Microsoft Basic Render Driver).
+	// D3DKMT_ADAPTERTYPE: bit RenderSupported e SoftwareDevice (Microsoft
+	// Basic Render Driver).
+	adapterTypeRender   = 1 << 0
 	adapterTypeSoftware = 1 << 2
 
 	// D3DKMT_DRIVERVERSION: i dati sulle prestazioni richiedono WDDM 2.4.
