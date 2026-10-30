@@ -642,7 +642,7 @@ func memoryGroup(r Raw) Group {
 	const gib = 1 << 30
 	if m := r.Memory; m != nil && m.Total > 0 {
 		used := float64(m.Total - min(m.Avail, m.Total))
-		g.Sub = strconv.FormatFloat(round(float64(m.Total)/gib, 1), 'f', -1, 64) + " GB utilizzabili"
+		g.Sub = Number(round(float64(m.Total)/gib, 1)) + " GB utilizzabili"
 		b.add(Sensor{ID: "mem.load", Label: "Memoria fisica in uso", Value: round(100*used/float64(m.Total), 0), Unit: "%", Warn: pf(85), Crit: pf(95)})
 		b.add(Sensor{ID: "mem.used", Label: "Memoria fisica usata", Value: round(used/gib, 2), Unit: "GB"})
 		b.add(Sensor{ID: "mem.avail", Label: "Memoria fisica disponibile", Value: round(float64(m.Avail)/gib, 2), Unit: "GB"})

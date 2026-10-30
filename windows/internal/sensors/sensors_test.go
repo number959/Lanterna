@@ -286,7 +286,7 @@ func TestBuildMemoryDisksNetwork(t *testing.T) {
 	if v := find(t, s, "mem.commitload"); v.Value != 70 {
 		t.Errorf("impegnata: %+v", v)
 	}
-	if g := group(t, s, "memory"); g.Sub != "16 GB utilizzabili" {
+	if g := group(t, s, "memory"); g.Sub != "16 GB utilizzabili" || Build(Raw{Memory: &Memory{Total: 16_857_000_000, Avail: 1}}).Groups[0].Sub != "15,7 GB utilizzabili" {
 		t.Errorf("memoria: %q", g.Sub)
 	}
 	find(t, s, "mem.pagefile")
