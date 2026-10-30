@@ -680,8 +680,9 @@ livelli di attenzione e allarme indicati solo dal colore; valori troncati nella 
 **Exe sotto Wine 9.0.** Wine non implementa `PdhGetFormattedCounterArrayW`: la prima versione si fermava con "unimplemented
 function". Ora i contatori senza carattere jolly si leggono uno per uno e quelli che mancano si saltano: `polaris-cli sensors`
 mostra memoria e tempo dall'avvio con le note su ciò che manca, il JSON è valido, un percorso CSV sbagliato si segnala subito e
-il registro si scrive riga per riga.
-- La stessa prova ha trovato una virgola mancante: "15.7 GB utilizzabili" ora è "15,7 GB".
+il registro si scrive riga per riga. Con l'exe del pacchetto, l'interfaccia servita dall'agente sotto Wine mostra la sezione
+Sensori con memoria e sistema, le note su ciò che manca e nessun errore della pagina; la stessa prova ha trovato una virgola
+mancante ("15.7 GB utilizzabili", ora "15,7 GB").
 
 **Windows reale (CI).** Windows Server 2025 Datacenter 24H2 (build 26100.33650) su macchine virtuali Azure con 2 core e 4
 thread, eseguito come amministratore; tutte le run dalla 29 alla 34 verdi.
