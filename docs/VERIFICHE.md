@@ -681,3 +681,44 @@ livelli di attenzione e allarme indicati solo dal colore; valori troncati nella 
 function". Ora i contatori senza carattere jolly si leggono uno per uno e quelli che mancano si saltano: `polaris-cli sensors`
 mostra memoria e tempo dall'avvio con le note su ciò che manca, il JSON è valido, un percorso CSV sbagliato si segnala subito e
 il registro si scrive riga per riga.
+- La stessa prova ha trovato una virgola mancante: "15.7 GB utilizzabili" ora è "15,7 GB".
+
+**Windows reale (CI).** Windows Server 2025 Datacenter 24H2 (build 26100.33650) su macchine virtuali Azure con 2 core e 4
+thread, eseguito come amministratore; tutte le run dalla 29 alla 34 verdi.
+- **Monitor da riga di comando** (run 41106718717, commit `9a2048e`, Intel Xeon Platinum 8370C): processore con utilizzo
+  5,2 %, utilità 7,4 %, frequenza effettiva media 3.321 MHz (il 119 % della base, quindi turbo visibile), limite di prestazioni
+  100 % e le righe di dettaglio dei 4 processori logici; memoria (16 GB); due dischi con attività, velocità e tempo di risposta;
+  due schede di rete; sistema. Note su ciò che manca coerenti con una macchina virtuale: niente Energy Meter, niente zone
+  termiche, e la nota sulla scheda video assente perché nessuna scheda viene mostrata. CSV di 3 letture e 47 colonne; via API
+  7 gruppi con l'ora aggiornata da una lettura all'altra.
+- **Temperatura dei dischi** (run 41101981191, Intel Xeon Platinum 8573C): i due dischi NVMe virtuali di quella macchina
+  riportavano 50 °C e 72 °C; i dischi "Msft Virtual Disk" delle run successive non riportano temperatura e la riga non compare.
+- **Windows senza inglese, traduzione forzata** con `POLARIS_PDH_LOCALIZED=1` (run 41103576216 e 41106718717): l'insieme
+  Processor Information si trova attraverso le funzioni di registrazione della versione 2 e si legge con `PdhAddCounterW`;
+  frequenza 3.072 e 3.207 MHz nel monitor, 3.024 e 3.429 MHz nella velocità dei core. Gli insiemi della versione 1 (dischi,
+  rete, memoria) non passano da questa strada, come previsto: con la traduzione forzata mancano, nell'uso normale si leggono con
+  i nomi inglesi, che per loro esistono su ogni Windows.
+
+**Difetti trovati e corretti durante il lavoro** (oltre ai rilievi della revisione indipendente):
+1. Sotto Wine, Polaris si fermava sulla prima lettura dei contatori senza carattere jolly; ora si leggono con la funzione per
+   un solo valore.
+2. La nota sulla telemetria della scheda video compariva anche senza nessuna scheda mostrata (la macchina virtuale della CI
+   ha solo un adattatore video senza motori di calcolo).
+3. La velocità dei core della 0.7.0 poteva non funzionare su un Windows installato solo in italiano: ora usa la stessa
+   traduzione dei nomi.
+4. Valori troncati nella tabella con le colonne fisse; grafico della batteria in valore assoluto; demo con un avviso ogni
+   minuto.
+
+**Avvertenze: cosa resta da provare su PC fisici.**
+- **Scheda video dedicata.** Temperatura, ventola, potenza, frequenze e tensione dal driver non si possono provare in CI (le
+  macchine virtuali non hanno una GPU). Costanti e strutture sono verificate su più fonti e la decodifica è provata con buffer
+  costruiti a mano, ma la lettura va confermata su una scheda NVIDIA o AMD recente.
+- **Consumi (Energy Meter).** Nome dei canali e unità (milliwatt) hanno una sola fonte: da verificare su un portatile Intel
+  recente.
+- **Batteria e zone termiche.** Provate con dati costruiti a mano e nella demo, non su un portatile vero.
+- **Windows solo in italiano.** La traduzione dei nomi è provata forzandola su Windows in inglese e, da windows_exporter, su
+  Windows 11 in tedesco; manca la prova su un'installazione italiana senza risorse in inglese.
+- **Dischi SATA e meccanici.** La temperatura SMART da amministratore e il risveglio dei dischi meccanici fermi vanno provati su
+  un PC con dischi veri.
+- **Ciò che richiede un driver** (temperature e tensioni di processore e scheda madre, ventole) resta escluso per scelta: per
+  quei valori c'è HWiNFO.
