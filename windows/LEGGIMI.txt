@@ -87,7 +87,8 @@ RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
                                       lettura al secondo, poi attuale, minimo,
                                       massimo e media (--seconds N, --all per
                                       le righe di dettaglio, --csv FILE per il
-                                      registro da aprire con Excel, --json)
+                                      registro da aprire con Excel, scritto
+                                      riga per riga, --json)
 
 STRUMENTI INCLUSI
   Nella cartella strumenti ci sono CrystalDiskInfo 9.9.2 e CrystalDiskMark

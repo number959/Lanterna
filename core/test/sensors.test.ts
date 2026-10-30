@@ -128,7 +128,7 @@ describe('monitor dei sensori', () => {
     const d0 = home.groups.find((g) => g.id === 'disk.0')!;
     expect(d0.sensors.find((x) => x.id === 'disk.0.temp')).toMatchObject({ warn: 70, crit: 80 });
     expect(home.groups.find((g) => g.id === 'disk.1')!.sensors.some((x) => x.unit === '°C')).toBe(false);
-    expect(home.missing!.some((m) => m.includes('scheda video'))).toBe(true);
+    expect(home.missing!.some((m) => m.startsWith('Temperatura e frequenze di Intel(R) Iris(R) Xe Graphics:'))).toBe(true);
     expect(home.missing!.some((m) => m.includes('HWiNFO'))).toBe(true);
     // Il PC dell'ambulatorio è un fisso: niente zone termiche né batteria.
     const clinic = simulateSensors(clinicScan, 30);
@@ -152,5 +152,70 @@ describe('monitor dei sensori', () => {
     // Il portatile, scaldandosi, limita il processore.
     const hot = Array.from({ length: 120 }, (_, t) => simulateSensors(demoScan, t)).find((s) => s.groups.find((g) => g.id === 'cpu')!.sensors.find((x) => x.id === 'cpu.limit')!.value < 95);
     expect(hot).toBeDefined();
+  });
+});
+
+describe('monitor dei sensori: casi limite', () => {
+  const at = (sec: number) => new Date(Date.UTC(2026, 9, 30, 9, 0, sec)).toISOString();
+  const one = (sec: number, v: number, unit = 'ms', warn = 100, crit = 500): SensorSnapshot => ({
+    at: at(sec),
+    groups: [{ id: 'disk.0', kind: 'disk', name: 'Disco 0', sensors: [{ id: 'disk.0.latency', label: 'Tempo di risposta medio', value: v, unit, warn, crit }] }],
+  });
+
+  it('segna le pause come interruzioni e scarta le letture ripetute', () => {
+    let s = pushSnapshot(emptySensors(), one(0, 5));
+    s = pushSnapshot(s, one(1, 6));
+    const same = pushSnapshot(s, one(1, 6));
+    expect(same).toBe(s);
+    // Dieci secondi di pausa: nove buchi, poi il valore.
+    s = pushSnapshot(s, one(11, 7));
+    expect(s.stats['disk.0.latency'].hist).toEqual([5, 6, null, null, null, null, null, null, null, null, null, 7]);
+    // Un ritardo normale (fino a 2,5 s) non crea buchi.
+    s = pushSnapshot(s, one(13, 8));
+    expect(s.stats['disk.0.latency'].hist.slice(-2)).toEqual([7, 8]);
+    expect(s.stats['disk.0.latency'].n).toBe(4);
+  });
+
+  it('non ripete l\'allarme del tempo di risposta a ogni oscillazione', () => {
+    let s = emptySensors();
+    let armed = {};
+    let fired = 0;
+    [520, 480, 510, 495, 530, 499, 501].forEach((v, i) => {
+      s = pushSnapshot(s, one(i, v));
+      const a = nextAlerts(armed, s);
+      armed = a.armed;
+      fired += a.fire.length;
+    });
+    expect(fired).toBe(1);
+    // Rientrato sotto 425 ms (il 15 % sotto 500) si riarma.
+    s = pushSnapshot(s, one(10, 400));
+    armed = nextAlerts(armed, s).armed;
+    s = pushSnapshot(s, one(11, 520));
+    expect(nextAlerts(armed, s).fire).toHaveLength(1);
+  });
+
+  it('mostra prima gli allarmi e rinvia gli avvisi in eccesso', () => {
+    const snap: SensorSnapshot = {
+      at: at(0),
+      groups: [
+        { id: 'thermal', kind: 'thermal', name: 'Zone termiche ACPI', sensors: [
+          { id: 'tz.a', label: 'Zona TZ00', value: 88, unit: '°C', warn: 85, crit: 95 },
+          { id: 'tz.b', label: 'Zona TZ01', value: 87, unit: '°C', warn: 85, crit: 95 },
+        ] },
+        { id: 'battery.0', kind: 'battery', name: 'Batteria', sensors: [{ id: 'b', label: 'Carica', value: 8, unit: '%', warn: 20, crit: 10, below: true }] },
+      ],
+    };
+    const s = pushSnapshot(emptySensors(), snap);
+    const a = nextAlerts({}, s);
+    expect(a.fire.map((f) => f.id)).toEqual(['b', 'tz.a']);
+    // La seconda zona arriva alla lettura dopo, la batteria non si ripete.
+    const s2 = pushSnapshot(s, { ...snap, at: at(1) });
+    expect(nextAlerts(a.armed, s2).fire.map((f) => f.id)).toEqual(['tz.b']);
+  });
+
+  it('nella demo il portatile si scalda solo nel primo minuto', () => {
+    const warn = (t: number) => simulateSensors(demoScan, t).groups.find((g) => g.id === 'thermal')!.sensors[0].value >= 85;
+    expect(Array.from({ length: 56 }, (_, t) => t).some(warn)).toBe(true);
+    expect(Array.from({ length: 600 }, (_, t) => t + 56).some(warn)).toBe(false);
   });
 });

@@ -178,6 +178,9 @@ type Disk struct {
 	TempC float64
 	// WarnC e CritC: soglie dichiarate dal disco (NaN se non le dichiara).
 	WarnC, CritC float64
+	// NeedsAdmin: disco ATA, SATA, SAS o dietro un controller RAID, la cui
+	// temperatura si legge con SMART solo da amministratore.
+	NeedsAdmin bool
 }
 
 // Raw è una lettura grezza di tutte le fonti.
@@ -192,6 +195,8 @@ type Raw struct {
 	Batteries []Battery
 	Disks     map[string]Disk
 	Elevated  bool
+	// NoCounters: Windows non ha dato nessun contatore delle prestazioni.
+	NoCounters bool
 }
 
 var nan = math.NaN()
@@ -235,6 +240,9 @@ func (b builder) add(s Sensor) {
 func Build(r Raw) Snapshot {
 	var out Snapshot
 	missing := func(s string) { out.Missing = append(out.Missing, s) }
+	if r.NoCounters {
+		missing("Contatori delle prestazioni di Windows non leggibili: mancano utilizzo, frequenze, attività dei dischi e rete. Succede quando la loro registrazione è danneggiata; di solito si ripristina con il comando lodctr /R da amministratore (da verificare caso per caso).")
+	}
 	if g := cpuGroup(r); len(g.Sensors) > 0 {
 		out.Groups = append(out.Groups, g)
 	}
@@ -243,13 +251,15 @@ func Build(r Raw) Snapshot {
 	}
 	if g := thermalGroup(r); len(g.Sensors) > 0 {
 		out.Groups = append(out.Groups, g)
+	} else if len(r.Counters[cTzTemp])+len(r.Counters[cTzHP]) > 0 {
+		missing("Zone termiche: il firmware di questo PC ne dichiara, ma con valori non validi (fermi a zero o fuori scala).")
 	} else {
 		missing("Zone termiche: il firmware di questo PC non ne dichiara a Windows.")
 	}
 	gpus, noTelemetry := gpuGroups(r)
 	out.Groups = append(out.Groups, gpus...)
-	if noTelemetry {
-		missing("Temperatura e frequenze della scheda video: il driver non le fornisce a Windows (servono un driver WDDM 2.4 o successivo e il supporto del produttore).")
+	if len(noTelemetry) > 0 {
+		missing("Temperatura e frequenze di " + strings.Join(noTelemetry, ", ") + ": il driver non le fornisce a Windows (servono un driver WDDM 2.4 o successivo e il supporto del produttore).")
 	}
 	if g := memoryGroup(r); len(g.Sensors) > 0 {
 		out.Groups = append(out.Groups, g)
@@ -449,13 +459,16 @@ func luidOf(inst string) string {
 	return strings.ToLower(parts[0] + "_" + parts[1])
 }
 
-// engineOf restituisce il tipo di motore ("3D", "Copy", "VideoDecode"...).
-func engineOf(inst string) string {
+// engineOf restituisce il motore ("phys_0_eng_3") e il suo tipo ("3D",
+// "Copy", "VideoDecode"...): una scheda può avere più motori dello stesso
+// tipo, per esempio due di codifica video.
+func engineOf(inst string) (node, kind string) {
 	i := strings.Index(inst, "engtype_")
-	if i < 0 {
-		return ""
+	p := strings.Index(inst, "phys_")
+	if i < 0 || p < 0 || p > i {
+		return "", ""
 	}
-	return inst[i+8:]
+	return strings.TrimSuffix(inst[p:i], "_"), inst[i+8:]
 }
 
 var engineLabels = map[string]string{
@@ -468,9 +481,12 @@ var engineLabels = map[string]string{
 	"Cuda":            "Calcolo (CUDA)",
 }
 
-func gpuGroups(r Raw) (groups []Group, noTelemetry bool) {
+// gpuGroups restituisce i gruppi delle schede video e i nomi di quelle
+// mostrate senza telemetria dal driver.
+func gpuGroups(r Raw) (groups []Group, noTelemetry []string) {
 	type acc struct {
-		engines       map[string]float64
+		nodes         map[string]float64 // motore → somma dei processi
+		kinds         map[string]string  // motore → tipo
 		dedic, shared float64
 		hasMem        bool
 	}
@@ -478,7 +494,7 @@ func gpuGroups(r Raw) (groups []Group, noTelemetry bool) {
 	get := func(l string) *acc {
 		a := by[l]
 		if a == nil {
-			a = &acc{engines: map[string]float64{}, dedic: math.NaN(), shared: math.NaN()}
+			a = &acc{nodes: map[string]float64{}, kinds: map[string]string{}, dedic: math.NaN(), shared: math.NaN()}
 			by[l] = a
 		}
 		return a
@@ -486,11 +502,14 @@ func gpuGroups(r Raw) (groups []Group, noTelemetry bool) {
 	// Come Gestione attività: per ogni motore la somma dei processi, per la
 	// scheda il motore più impegnato.
 	for inst, v := range r.Counters[cGpuEngine] {
-		l, e := luidOf(inst), engineOf(inst)
-		if l == "" || e == "" || !ok(v) || v < 0 {
+		l := luidOf(inst)
+		node, kind := engineOf(inst)
+		if l == "" || node == "" || kind == "" || !ok(v) || v < 0 {
 			continue
 		}
-		get(l).engines[e] += v
+		a := get(l)
+		a.nodes[node] += v
+		a.kinds[node] = kind
 	}
 	for inst, v := range r.Counters[cGpuDedic] {
 		if l := luidOf(inst); l != "" && ok(v) {
@@ -537,9 +556,16 @@ func gpuGroups(r Raw) (groups []Group, noTelemetry bool) {
 		}
 		b := builder{&g}
 		pre := g.ID + "."
-		if len(a.engines) > 0 {
+		// Per ogni tipo di motore il più impegnato (la riga di dettaglio),
+		// per la scheda il massimo di tutti.
+		engines := map[string]float64{}
+		for node, v := range a.nodes {
+			k := a.kinds[node]
+			engines[k] = math.Max(engines[k], math.Min(100, v))
+		}
+		if len(a.nodes) > 0 {
 			top := 0.0
-			for _, v := range a.engines {
+			for _, v := range engines {
 				top = math.Max(top, v)
 			}
 			b.add(Sensor{ID: pre + "usage", Label: "Utilizzo", Value: round(clamp(top, 0, 100), 1), Unit: "%"})
@@ -559,7 +585,9 @@ func gpuGroups(r Raw) (groups []Group, noTelemetry bool) {
 				b.add(Sensor{ID: pre + "fan", Label: "Ventola", Value: round(x.FanRPM, 0), Unit: "giri/min"})
 			}
 			if ok(x.PowerPct) && x.PowerPct > 0 && x.PowerPct <= 200 {
-				b.add(Sensor{ID: pre + "power", Label: "Potenza (rispetto al massimo)", Value: round(x.PowerPct, 1), Unit: "%"})
+				// Percentuale indicata dal driver: Windows non documenta il
+				// riferimento (non sono watt).
+				b.add(Sensor{ID: pre + "power", Label: "Potenza (percentuale indicata dal driver)", Value: round(x.PowerPct, 1), Unit: "%"})
 			}
 			if ok(x.CoreMHz) && x.CoreMHz > 0 && x.CoreMHz < 10000 {
 				b.add(Sensor{ID: pre + "coreclock", Label: "Frequenza del motore grafico", Value: round(x.CoreMHz, 0), Unit: "MHz"})
@@ -580,12 +608,12 @@ func gpuGroups(r Raw) (groups []Group, noTelemetry bool) {
 				b.add(Sensor{ID: pre + "shared", Label: "Memoria condivisa in uso", Value: round(a.shared/(1<<20), 0), Unit: "MB"})
 			}
 		}
-		engines := make([]string, 0, len(a.engines))
-		for e := range a.engines {
-			engines = append(engines, e)
+		kinds := make([]string, 0, len(engines))
+		for e := range engines {
+			kinds = append(kinds, e)
 		}
-		sort.Strings(engines)
-		for _, e := range engines {
+		sort.Strings(kinds)
+		for _, e := range kinds {
 			label := engineLabels[e]
 			if label == "" {
 				if strings.HasPrefix(e, "Compute") {
@@ -594,19 +622,16 @@ func gpuGroups(r Raw) (groups []Group, noTelemetry bool) {
 					label = "Motore " + e
 				}
 			}
-			b.add(Sensor{ID: pre + "engine." + slug(e), Label: strings.TrimSpace(label), Value: round(clamp(a.engines[e], 0, 100), 1), Unit: "%", Detail: e != "3D"})
+			b.add(Sensor{ID: pre + "engine." + slug(e), Label: strings.TrimSpace(label), Value: round(clamp(engines[e], 0, 100), 1), Unit: "%", Detail: e != "3D"})
 		}
 		// La nota sulla telemetria mancante vale solo per le schede mostrate.
 		if len(g.Sensors) > 0 {
 			groups = append(groups, g)
 			n++
-			if missingTelemetry {
-				noTelemetry = true
+			if missingTelemetry || !hasInfo && r.GPUErr != nil && len(r.GPUs) == 0 {
+				noTelemetry = append(noTelemetry, g.Name)
 			}
 		}
-	}
-	if r.GPUErr != nil && len(r.GPUs) == 0 && len(groups) > 0 {
-		noTelemetry = true
 	}
 	return groups, noTelemetry
 }
@@ -673,7 +698,8 @@ func diskGroups(r Raw) (groups []Group, noTemp bool) {
 		}
 		b := builder{&g}
 		pre := g.ID + "."
-		if hasInfo && ok(d.TempC) && d.TempC > 0 && d.TempC < 120 {
+		hasTemp := hasInfo && ok(d.TempC) && d.TempC > 0 && d.TempC < 120
+		if hasTemp {
 			// Come nella valutazione SMART: 70 e 80 °C per i dischi a stato
 			// solido, 55 e 60 per quelli meccanici; a metà se non è noto.
 			warn, crit := 60.0, 70.0
@@ -692,8 +718,6 @@ func diskGroups(r Raw) (groups []Group, noTemp bool) {
 				}
 			}
 			b.add(Sensor{ID: pre + "temp", Label: "Temperatura", Value: round(d.TempC, 0), Unit: "°C", Warn: pf(warn), Crit: pf(crit)})
-		} else {
-			noTemp = true
 		}
 		if inst != "" {
 			if v, found := r.Counters[cDiskIdle][inst]; found && ok(v) {
@@ -714,6 +738,11 @@ func diskGroups(r Raw) (groups []Group, noTemp bool) {
 		}
 		if len(g.Sensors) > 0 {
 			groups = append(groups, g)
+			// La nota sull'amministratore vale solo per i dischi mostrati
+			// che la richiedono davvero (non per NVMe, USB o dischi virtuali).
+			if !hasTemp && hasInfo && d.NeedsAdmin {
+				noTemp = true
+			}
 		}
 	}
 	return groups, noTemp

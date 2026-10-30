@@ -123,13 +123,23 @@ func (m *Monitor) armLocked() {
 	if m.timer != nil {
 		m.timer.Stop()
 	}
-	m.timer = time.AfterFunc(m.idle(), func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		if m.src != nil && m.now().Sub(m.used) >= m.idle() {
-			m.closeLocked()
-		}
-	})
+	m.timer = time.AfterFunc(m.idle(), m.onIdle)
+}
+
+// onIdle chiude le fonti se nessuno le legge da un periodo di inattività;
+// altrimenti (letture servite dalla cache dopo l'ultima raccolta) riprogramma
+// il controllo per quando il periodo scadrà.
+func (m *Monitor) onIdle() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.src == nil {
+		return
+	}
+	if since := m.now().Sub(m.used); since < m.idle() {
+		m.timer = time.AfterFunc(m.idle()-since, m.onIdle)
+		return
+	}
+	m.closeLocked()
 }
 
 func (m *Monitor) closeLocked() {

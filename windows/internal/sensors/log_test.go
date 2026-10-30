@@ -16,7 +16,7 @@ func TestLog(t *testing.T) {
 		}
 		return s
 	}
-	var l Log
+	l := Log{KeepRows: true}
 	l.Add(snap(0, 10, false))
 	l.Add(snap(1, 30.5, true))
 	l.Add(snap(2, 20, false))
@@ -27,8 +27,11 @@ func TestLog(t *testing.T) {
 	if c := st[0]; c.Cur != 20 || c.Min != 10 || c.Max != 30.5 || c.N != 3 || c.Avg() != 60.5/3 {
 		t.Errorf("riepilogo: %+v media %v", c, c.Avg())
 	}
-	if b := st[1]; b.N != 1 || b.Min != -7.5 || !b.Detail {
-		t.Errorf("sensore comparso dopo: %+v", b)
+	if b := st[1]; b.N != 1 || b.Min != -7.5 || !b.Detail || b.Present {
+		t.Errorf("sensore comparso dopo e poi sparito: %+v", b)
+	}
+	if !st[0].Present || l.Len() != 3 {
+		t.Errorf("presenza e conteggio: %+v %d", st[0], l.Len())
 	}
 	var buf bytes.Buffer
 	if err := l.WriteCSV(&buf); err != nil {
@@ -49,6 +52,26 @@ func TestLog(t *testing.T) {
 		if lines[i] != want[i] {
 			t.Errorf("riga %d: %q, attesa %q", i, lines[i], want[i])
 		}
+	}
+	// Scrittura man mano: intestazione e righe con le colonne della prima lettura.
+	var st2 bytes.Buffer
+	stream := Log{KeepRows: true}
+	stream.Add(snap(0, 10, false))
+	n := stream.Columns()
+	_ = stream.WriteHeader(&st2, n)
+	_ = stream.WriteLastRow(&st2, n)
+	stream.Add(snap(1, 30.5, true))
+	_ = stream.WriteLastRow(&st2, n)
+	if got := st2.String(); got != "\ufeffData e ora;\"Intel; \"\"i5\"\" - Utilizzo totale [%]\"\r\n2026-10-30 09:00:00;10\r\n2026-10-30 09:00:01;30,5\r\n" || stream.Columns() != 2 {
+		t.Errorf("scrittura man mano: %q", got)
+	}
+	// Senza KeepRows niente righe: il CSV ha solo l'intestazione.
+	var light Log
+	light.Add(snap(0, 10, true))
+	var lb bytes.Buffer
+	_ = light.WriteCSV(&lb)
+	if n := strings.Count(lb.String(), "\r\n"); n != 1 || light.Stats()[0].N != 1 {
+		t.Errorf("registro leggero: %d righe", n)
 	}
 	if Number(1234.5) != "1234,5" || Number(-0.25) != "-0,25" || Number(3) != "3" {
 		t.Error("formato dei numeri")

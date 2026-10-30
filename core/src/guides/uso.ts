@@ -193,7 +193,7 @@ export const uso: Guide[] = [
         ['`polaris-cli defender quick` / `full`', 'scansione rapida o completa (la completa può durare ore)'],
         ['`polaris-cli defender update`', 'aggiornamento delle firme; con `--json` il risultato in JSON'],
         ['`polaris-cli clock`', 'frequenza effettiva dei core una volta al secondo (Core Speed); `--seconds N` per la durata, `--json` per i dati'],
-        ['`polaris-cli sensors`', 'monitor dei sensori senza driver (come HWiNFO): una lettura al secondo e, alla fine, attuale, minimo, massimo e media di ogni sensore; `--seconds N` per la durata (predefinita 10, fino a 24 ore), `--all` per le righe di dettaglio, `--csv FILE` per il registro da aprire con Excel, `--json` per i dati (vedi [[sensori]])'],
+        ['`polaris-cli sensors`', 'monitor dei sensori senza driver (come HWiNFO): una lettura al secondo e, alla fine, attuale, minimo, massimo e media di ogni sensore; `--seconds N` per la durata (predefinita 10, fino a 24 ore), `--all` per le righe di dettaglio, `--csv FILE` per il registro da aprire con Excel, scritto riga per riga, `--json` per i dati (vedi [[sensori]])'],
         ['`polaris-cli tools status`', 'versioni portable scaricate, sul PC e nel kit, con versione, firma e data'],
         ['`polaris-cli tools kit`', 'prepara il kit per i PC senza Internet nella cartella strumenti-scaricati; si possono indicare i programmi, per esempio `tools kit cpu-z autoruns`'],
         ['`--all` con tools kit', 'aggiunge Microsoft Safety Scanner (circa 230 MB, scade dopo 10 giorni)'],

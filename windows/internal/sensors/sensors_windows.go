@@ -40,6 +40,8 @@ type winSource struct {
 	gpus     *gpuReader
 	gpuErr   error
 	disks    *diskWatcher
+	// noCounters: nessun contatore aggiunto.
+	noCounters bool
 }
 
 // Open apre i contatori, le schede video e la lettura delle temperature dei
@@ -54,24 +56,15 @@ func Open() (Source, error) {
 		return nil, err
 	}
 	s := &winSource{q: q, counters: map[string]pdh.Counter{}}
-	var firstErr error
+	// I contatori che questo Windows non ha si saltano.
 	for key, path := range Counters {
-		c, err := q.Add(path)
-		if err != nil {
-			if firstErr == nil && !pdh.Missing(err) {
-				firstErr = err
-			}
-			continue
+		if c, err := q.Add(path); err == nil {
+			s.counters[key] = c
 		}
-		s.counters[key] = c
 	}
-	if len(s.counters) == 0 {
-		q.Close()
-		if firstErr != nil {
-			return nil, fmt.Errorf("%w (%v)", ErrUnavailable, firstErr)
-		}
-		return nil, ErrUnavailable
-	}
+	// Senza contatori (registrazione dei contatori guasta) si va avanti
+	// con le altre fonti: memoria, scheda video, batteria, dischi.
+	s.noCounters = len(s.counters) == 0
 	if k, err := registry.OpenKey(registry.LOCAL_MACHINE, `HARDWARE\DESCRIPTION\System\CentralProcessor\0`, registry.QUERY_VALUE); err == nil {
 		s.cpuName, _, _ = k.GetStringValue("ProcessorNameString")
 		if v, _, err := k.GetIntegerValue("~MHz"); err == nil {
@@ -85,10 +78,15 @@ func Open() (Source, error) {
 	return s, nil
 }
 
-func (s *winSource) Collect() error { return s.q.Collect() }
+func (s *winSource) Collect() error {
+	if s.noCounters {
+		return nil // PdhCollectQueryData su una query vuota risponde PDH_NO_DATA
+	}
+	return s.q.Collect()
+}
 
 func (s *winSource) Read() (Raw, error) {
-	r := Raw{Counters: map[string]map[string]float64{}, CPUName: s.cpuName, BaseMHz: s.baseMHz, Elevated: s.elevated, GPUErr: s.gpuErr}
+	r := Raw{Counters: map[string]map[string]float64{}, CPUName: s.cpuName, BaseMHz: s.baseMHz, Elevated: s.elevated, GPUErr: s.gpuErr, NoCounters: s.noCounters}
 	for key, c := range s.counters {
 		if vals, err := s.q.Values(c); err == nil {
 			r.Counters[key] = vals
@@ -124,6 +122,11 @@ const (
 	ioctlStorageQueryProperty   = 0x002D1400
 	storageDeviceProperty       = 0
 	storageDeviceSeekPenalty    = 7
+	busSCSI                     = 1 // STORAGE_BUS_TYPE
+	busATA                      = 3
+	busRAID                     = 8
+	busSAS                      = 10
+	busSATA                     = 11
 	busNVMe                     = 17
 	maxDisks                    = 32
 	storageDescriptorBusTypeOff = 28
@@ -228,7 +231,12 @@ func diskInfo(n int) (Disk, bool) {
 	}
 	var d Disk
 	d.Model = descriptorModel(out)
-	if binary.LittleEndian.Uint32(out[storageDescriptorBusTypeOff:]) == busNVMe {
+	bus := binary.LittleEndian.Uint32(out[storageDescriptorBusTypeOff:])
+	switch bus {
+	case busSCSI, busATA, busRAID, busSAS, busSATA:
+		d.NeedsAdmin = true
+	}
+	if bus == busNVMe {
 		flash := true
 		d.Flash = &flash
 	} else {

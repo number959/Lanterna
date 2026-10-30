@@ -27,6 +27,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"lanterna/internal/assets"
@@ -85,7 +86,7 @@ Uso:
                                  attuale, minimo, massimo e media di ogni sensore
       --seconds N                durata in secondi, una lettura al secondo (predefinita 10)
       --all                      anche le righe di dettaglio (core, stati C, motori video)
-      --csv FILE                 registra tutte le letture in un file CSV per Excel
+      --csv FILE                 registra le letture in un file CSV per Excel, riga per riga
       --json                     stampa le letture in JSON
   polaris-cli tools status       versioni portable scaricate (su questo PC e nel kit)
   polaris-cli tools kit [ID...]  prepara il kit per l'uso senza Internet: scarica dai
@@ -506,7 +507,11 @@ func runClock(args []string) error {
 }
 
 // runSensors legge i sensori una volta al secondo e alla fine stampa il
-// riepilogo, come le colonne di HWiNFO; con --csv registra ogni lettura.
+// riepilogo, come le colonne di HWiNFO; con --csv registra ogni lettura. Il
+// file si crea subito (un percorso sbagliato si scopre prima, non dopo ore) e
+// si scrive riga per riga con le colonne della prima lettura, così resta su
+// disco anche se il PC si blocca o si spegne; alla fine, se nel frattempo
+// sono comparsi altri sensori, si riscrive completo.
 func runSensors(args []string) error {
 	fs := flag.NewFlagSet("sensors", flag.ContinueOnError)
 	seconds := fs.Int("seconds", 10, "")
@@ -520,45 +525,96 @@ func runSensors(args []string) error {
 	if *seconds < 1 || *seconds > 86400 {
 		return errors.New("--seconds deve essere tra 1 e 86400")
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
-	m := sensors.New()
-	defer m.Close()
-	var reg sensors.Log
-	var snaps []sensors.Snapshot
-	var last sensors.Snapshot
-	if !*asJSON {
-		fmt.Printf("Lettura dei sensori per %d s (Ctrl+C per fermare)...\n", *seconds)
-	}
-	for i := 0; i < *seconds; i++ {
-		if i > 0 {
-			select {
-			case <-ctx.Done():
-				i = *seconds
-				continue
-			case <-time.After(time.Second):
-			}
-		}
-		snap, err := m.Read(ctx)
-		if err != nil {
-			if ctx.Err() != nil && len(snaps) > 0 {
-				break
-			}
-			return err
-		}
-		last = snap
-		reg.Add(snap)
-		if *asJSON {
-			snaps = append(snaps, snap)
-		}
-	}
+	var csvFile *os.File
 	if *csvPath != "" {
 		f, err := os.Create(*csvPath)
 		if err != nil {
 			return fmt.Errorf("file CSV: %w", err)
 		}
-		werr := reg.WriteCSV(f)
-		if cerr := f.Close(); werr == nil {
+		csvFile = f
+		defer csvFile.Close()
+	}
+	// SIGTERM arriva quando si chiude la finestra della console o ci si
+	// disconnette: si salva comunque quanto letto.
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	m := sensors.New()
+	defer m.Close()
+	reg := sensors.Log{KeepRows: csvFile != nil}
+	var last sensors.Snapshot
+	var readErr, csvErr error
+	csvCols := 0
+	if *asJSON {
+		// Le letture si stampano man mano: nessun accumulo in memoria.
+		fmt.Println("[")
+	} else {
+		fmt.Printf("Lettura dei sensori per %d s (Ctrl+C per fermare)...\n", *seconds)
+	}
+loop:
+	for i := 0; i < *seconds; i++ {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				break loop
+			case <-time.After(time.Second):
+			}
+		}
+		snap, err := m.Read(ctx)
+		if err != nil {
+			readErr = err
+			break
+		}
+		if *asJSON {
+			b, _ := json.MarshalIndent(snap, "  ", "  ")
+			sep := ","
+			if reg.Len() == 0 {
+				sep = ""
+			}
+			fmt.Printf("%s  %s\n", sep, b)
+		}
+		last = snap
+		reg.Add(snap)
+		if csvFile != nil {
+			if reg.Len() == 1 {
+				csvCols = reg.Columns()
+				csvErr = reg.WriteHeader(csvFile, csvCols)
+			}
+			if csvErr == nil {
+				csvErr = reg.WriteLastRow(csvFile, csvCols)
+			}
+			if csvErr != nil {
+				readErr = fmt.Errorf("file CSV: %w", csvErr)
+				break
+			}
+		}
+	}
+	if *asJSON {
+		fmt.Println("]")
+	}
+	if reg.Len() == 0 {
+		if readErr == nil {
+			readErr = ctx.Err()
+		}
+		return readErr
+	}
+	if readErr != nil && ctx.Err() == nil {
+		fmt.Fprintf(os.Stderr, "Lettura interrotta dopo %d letture: %v\n", reg.Len(), readErr)
+	}
+	if csvErr != nil {
+		return readErr
+	}
+	if csvFile != nil {
+		var werr error
+		if reg.Columns() > csvCols {
+			// Sensori comparsi dopo la prima lettura: si riscrive il file
+			// completo, con tutte le colonne.
+			if werr = csvFile.Truncate(0); werr == nil {
+				if _, werr = csvFile.Seek(0, 0); werr == nil {
+					werr = reg.WriteCSV(csvFile)
+				}
+			}
+		}
+		if cerr := csvFile.Close(); werr == nil {
 			werr = cerr
 		}
 		if werr != nil {
@@ -566,8 +622,6 @@ func runSensors(args []string) error {
 		}
 	}
 	if *asJSON {
-		b, _ := json.MarshalIndent(snaps, "", "  ")
-		fmt.Println(string(b))
 		return nil
 	}
 	group := ""
@@ -579,13 +633,17 @@ func runSensors(args []string) error {
 			group = st.Group
 			fmt.Printf("\n%s\n", group)
 		}
-		fmt.Printf("  %-46s %10s %10s %10s %10s %s\n", st.Label, sensors.Number(st.Cur), sensors.Number(st.Min), sensors.Number(st.Max), sensors.Number(math.Round(st.Avg()*10)/10), st.Unit)
+		cur := "-" // sparito prima dell'ultima lettura
+		if st.Present {
+			cur = sensors.Number(st.Cur)
+		}
+		fmt.Printf("  %-46s %10s %10s %10s %10s %s\n", st.Label, cur, sensors.Number(st.Min), sensors.Number(st.Max), sensors.Number(math.Round(st.Avg()*10)/10), st.Unit)
 	}
-	fmt.Printf("\n(colonne: attuale, minimo, massimo, media)\n")
+	fmt.Printf("\n(colonne: attuale, minimo, massimo, media; %d letture)\n", reg.Len())
 	for _, x := range last.Missing {
 		fmt.Printf("Non disponibile: %s\n", x)
 	}
-	if *csvPath != "" {
+	if csvFile != nil {
 		fmt.Printf("Registro salvato in %s\n", *csvPath)
 	}
 	return nil

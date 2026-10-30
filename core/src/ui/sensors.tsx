@@ -10,6 +10,7 @@ import {
   HardDrive,
   MemoryStick,
   Network,
+  OctagonAlert,
   Pause,
   Play,
   RotateCcw,
@@ -80,6 +81,12 @@ export const emptySensors = (): SensorsState => ({ stats: {}, order: [], groups:
 
 /** Aggiunge una lettura: aggiorna attuale, minimo, massimo, media, grafici e registro. */
 export function pushSnapshot(s: SensorsState, snap: SensorSnapshot, maxLog = MAX_LOG): SensorsState {
+  // La stessa lettura due volte (l'agente riusa il campione entro mezzo secondo): non conta.
+  if (s.at !== undefined && snap.at === s.at) return s;
+  // Dopo una pausa (o con la finestra nascosta) i grafici mostrano un'interruzione, non una linea continua.
+  const dt = s.at === undefined ? 0 : Date.parse(snap.at) - Date.parse(s.at);
+  const gap = dt > 2500 ? Math.min(HIST, Math.round(dt / 1000) - 1) : 0;
+  const pad = (h: (number | null)[]) => (gap > 0 ? [...h, ...Array<null>(gap).fill(null)] : h);
   const stats = { ...s.stats };
   const order = [...s.order];
   const seen = new Set<string>();
@@ -95,14 +102,14 @@ export function pushSnapshot(s: SensorsState, snap: SensorSnapshot, maxLog = MAX
         order.push(x.id);
         stats[x.id] = { id: x.id, ...meta, cur: x.value, min: x.value, max: x.value, sum: x.value, n: 1, hist: [x.value] };
       } else {
-        stats[x.id] = { ...p, ...meta, cur: x.value, min: Math.min(p.min, x.value), max: Math.max(p.max, x.value), sum: p.sum + x.value, n: p.n + 1, hist: [...p.hist, x.value].slice(-HIST) };
+        stats[x.id] = { ...p, ...meta, cur: x.value, min: Math.min(p.min, x.value), max: Math.max(p.max, x.value), sum: p.sum + x.value, n: p.n + 1, hist: [...pad(p.hist), x.value].slice(-HIST) };
       }
     }
   }
   for (const id of order) {
     if (!seen.has(id)) {
       const p = stats[id];
-      stats[id] = { ...p, hist: [...p.hist, null].slice(-HIST) };
+      stats[id] = { ...p, hist: [...pad(p.hist), null].slice(-HIST) };
     }
   }
   return {
@@ -133,8 +140,8 @@ export function levelOf(x: Pick<SensorReading, 'warn' | 'crit' | 'below'>, v: nu
   return over(x.crit) ? 'crit' : over(x.warn) ? 'warn' : 'ok';
 }
 
-/** Margine per riarmare un avviso: il valore deve tornare oltre la soglia di questo tanto. */
-const hysteresis = (unit: string) => (unit === '°C' ? 2 : unit === '%' ? 3 : 0);
+/** Margine per riarmare un avviso: il valore deve tornare oltre la soglia di questo tanto (2 °C, 3 punti, altrimenti il 15 % della soglia). */
+const hysteresis = (unit: string, threshold: number) => (unit === '°C' ? 2 : unit === '%' ? 3 : Math.abs(threshold) * 0.15);
 
 export interface SensorAlert {
   id: string;
@@ -148,7 +155,7 @@ export interface SensorAlert {
  * valore è tornato sotto la soglia con un margine, per non insistere a ogni
  * oscillazione. Restituisce anche lo stato aggiornato degli avvisi.
  */
-export function nextAlerts(armed: Record<string, Level>, s: SensorsState): { armed: Record<string, Level>; fire: SensorAlert[] } {
+export function nextAlerts(armed: Record<string, Level>, s: SensorsState, limit = 2): { armed: Record<string, Level>; fire: SensorAlert[] } {
   const out = { ...armed };
   const fire: SensorAlert[] = [];
   for (const g of s.groups) {
@@ -158,19 +165,22 @@ export function nextAlerts(armed: Record<string, Level>, s: SensorsState): { arm
       const lvl = levelOf(x, x.cur);
       const prev = out[id] ?? 'ok';
       if (RANK[lvl] > RANK[prev]) {
-        out[id] = lvl;
         if (lvl === 'crit' || x.unit === '°C') {
           fire.push({ id, level: lvl, text: `${lvl === 'crit' ? 'Allarme' : 'Attenzione'}: ${x.group}, ${x.label.toLowerCase()} ${fmtSensor(x.cur, x.unit)}` });
-        }
+        } else out[id] = lvl;
       } else if (RANK[lvl] < RANK[prev]) {
         // Si riarma solo con il margine: il livello calcolato con la soglia spostata deve essere più basso.
-        const h = hysteresis(x.unit) * (x.below ? 1 : -1);
-        const relaxed = levelOf({ warn: x.warn === undefined ? undefined : x.warn + h, crit: x.crit === undefined ? undefined : x.crit + h, below: x.below }, x.cur);
+        const shift = (t?: number) => (t === undefined ? undefined : t + hysteresis(x.unit, t) * (x.below ? 1 : -1));
+        const relaxed = levelOf({ warn: shift(x.warn), crit: shift(x.crit), below: x.below }, x.cur);
         if (RANK[relaxed] < RANK[prev]) out[id] = relaxed;
       }
     }
   }
-  return { armed: out, fire };
+  // Prima gli allarmi; si segnano come avvisati solo quelli mostrati, gli altri arrivano alla lettura dopo.
+  fire.sort((a, b) => RANK[b.level] - RANK[a.level]);
+  const shown = fire.slice(0, limit);
+  for (const f of shown) out[f.id] = f.level;
+  return { armed: out, fire: shown };
 }
 
 const DECIMALS: Record<string, number> = { '%': 1, MHz: 0, '°C': 1, W: 1, V: 3, 'MB/s': 1, 'Mbit/s': 1, ms: 1, GB: 2, MB: 0, Wh: 1, 'giri/min': 0, '/s': 0, ore: 1, '': 0 };
@@ -234,7 +244,8 @@ export function simulateSensors(scan: Scan, t: number, now = Date.UTC(2026, 9, 3
   // Processore
   const threads = pc?.hardware?.cpu?.threads || pc?.cpu?.threads || 8;
   const base = pc?.cpu?.maxMhz || 2400;
-  const tz = laptop ? 46 + 42 * wave + 3 * noise(t, 99) : undefined;
+  // Il portatile si scalda e limita il processore nel primo minuto, poi resta sotto la soglia di attenzione.
+  const tz = laptop ? 46 + (t < 56 ? 42 : 33) * wave + 3 * noise(t, 99) : undefined;
   const passive = tz !== undefined && tz > 82 ? Math.max(70, 100 - (tz - 82) * 4) : 100;
   const cores = Array.from({ length: threads }, (_, i) => {
     const r = noise(t, i);
@@ -297,7 +308,7 @@ export function simulateSensors(scan: Scan, t: number, now = Date.UTC(2026, 9, 3
         { id: `${id}.engine.videodecode`, label: 'Decodifica video', value: r1(12 * noise(t, 72)), unit: '%', detail: true },
       ],
     });
-    missing.push('Temperatura e frequenze della scheda video: il driver non le fornisce a Windows (servono un driver WDDM 2.4 o successivo e il supporto del produttore).');
+    missing.push(`Temperatura e frequenze di ${g.name}: il driver non le fornisce a Windows (servono un driver WDDM 2.4 o successivo e il supporto del produttore).`);
   });
   // Memoria
   if (pc?.memory) {
@@ -399,18 +410,37 @@ const ICONS: Record<SensorKind, LucideIcon> = { cpu: Cpu, thermal: Thermometer, 
 
 type Mode = 'live' | 'demo' | 'off';
 
-/** Sessioni conservate tra un cambio di sezione e l'altro, per sorgente. */
+/** Sessioni conservate tra un cambio di sezione e l'altro, con lo stato degli avvisi; una sola per sorgente. */
 const sessions = new Map<string, SensorsState>();
+const armedBy = new Map<string, Record<string, Level>>();
+
+function sessionFor(key: string): SensorsState {
+  let s = sessions.get(key);
+  if (!s) {
+    // Una nuova analisi o un'altra sorgente: le sessioni precedenti della stessa sorgente non servono più.
+    const mode = key.split('|')[0];
+    for (const k of [...sessions.keys()]) {
+      if (k.split('|')[0] === mode) {
+        sessions.delete(k);
+        armedBy.delete(k);
+      }
+    }
+    s = emptySensors();
+    sessions.set(key, s);
+  }
+  return s;
+}
 
 function useSensorSession(mode: Mode, scan: Scan, paused: boolean, retry: number) {
   const key = `${mode}|${scan.agent.startedAt}|${scan.agent.host ?? ''}`;
   const [state, setState] = useState<SensorsState>(() => sessions.get(key) ?? emptySensors());
   const [error, setError] = useState<string>();
   const toast = useToast();
-  const armed = useRef<Record<string, Level>>({});
+  // La simulazione della demo legge l'analisi da un riferimento: un'analisi aggiornata (per esempio dopo un test) non deve far ripartire le letture.
+  const scanRef = useRef(scan);
+  scanRef.current = scan;
   useEffect(() => {
     setState(sessions.get(key) ?? emptySensors());
-    armed.current = {};
   }, [key]);
   useEffect(() => {
     if (mode === 'off' || paused) return;
@@ -423,14 +453,16 @@ function useSensorSession(mode: Mode, scan: Scan, paused: boolean, retry: number
       busy = true;
       try {
         ctl = new AbortController();
-        const snap = mode === 'live' ? await readSensors(ctl.signal) : simulateSensors(scan, t++, Date.now());
+        const snap = mode === 'live' ? await readSensors(ctl.signal) : simulateSensors(scanRef.current, t++, Date.now());
         if (!alive) return;
-        const next = pushSnapshot(sessions.get(key) ?? emptySensors(), snap);
+        const prev = sessionFor(key);
+        const next = pushSnapshot(prev, snap);
+        if (next === prev) return;
         sessions.set(key, next);
         setState(next);
-        const a = nextAlerts(armed.current, next);
-        armed.current = a.armed;
-        for (const f of a.fire.slice(0, 2)) toast(f.text, f.level === 'crit' ? 'error' : 'warn', 'alert');
+        const a = nextAlerts(armedBy.get(key) ?? {}, next);
+        armedBy.set(key, a.armed);
+        for (const f of a.fire) toast(f.text, f.level === 'crit' ? 'error' : 'warn', 'alert');
       } catch (e) {
         if (!alive) return;
         // Dopo un errore ci si ferma: il pulsante Riprova riparte.
@@ -448,7 +480,7 @@ function useSensorSession(mode: Mode, scan: Scan, paused: boolean, retry: number
       clearInterval(id);
       ctl?.abort();
     };
-  }, [mode, paused, retry, key, scan, toast]);
+  }, [mode, paused, retry, key, toast]);
   const reset = () => {
     const cur = sessions.get(key);
     if (!cur) return;
@@ -493,11 +525,30 @@ function SummaryTiles({ s }: { s: SensorsState }) {
       {tiles.map((x) => (
         <div key={x.k} className="stat">
           <div className="k">{x.k}</div>
-          <div className={`v ${x.lvl === 'ok' ? '' : `c-${x.lvl}`}`}>{x.v}</div>
-          {x.sub && <span className="sub">{x.sub}</span>}
+          <div className={`v ${x.lvl === 'ok' ? '' : `c-${x.lvl}`}`}>
+            {x.lvl !== 'ok' && <LevelIcon lvl={x.lvl} />}
+            {x.v}
+          </div>
+          {x.sub && (
+            <span className="sub" title={x.sub}>
+              {x.sub}
+            </span>
+          )}
         </div>
       ))}
     </div>
+  );
+}
+
+/** Icona e testo per i lettori di schermo: il livello non si affida al solo colore. */
+function LevelIcon({ lvl }: { lvl: Level }) {
+  if (lvl === 'ok') return null;
+  const Icon = lvl === 'crit' ? OctagonAlert : TriangleAlert;
+  return (
+    <>
+      <Icon size={13} aria-hidden className={`c-${lvl} lvl-icon`} />
+      <span className="sr-only">{lvl === 'crit' ? 'allarme: ' : 'attenzione: '}</span>
+    </>
   );
 }
 
@@ -552,14 +603,12 @@ function GroupTable({ g, s, detail, tick }: { g: SensorsState['groups'][number];
                   const lvl = levelOf(x, x.cur);
                   const chartId = `${tableId}-${x.id.replace(/[^a-z0-9]+/gi, '-')}`;
                   const exp = charts.has(x.id);
-                  // Il grafico parte da zero: la potenza della batteria in scarica è negativa e si mostra in valore assoluto.
-                  const neg = x.hist.some((v) => v !== null && v < 0);
                   return (
                     <Fragment key={x.id}>
                       <tr className={lvl === 'ok' ? undefined : `lvl-${lvl}`}>
                         <th scope="row">
                           <button className="sensor-name" aria-expanded={exp} aria-controls={exp ? chartId : undefined} onClick={() => toggle(x.id)} title={exp ? 'Nascondi il grafico' : 'Mostra il grafico'}>
-                            {lvl !== 'ok' && <TriangleAlert size={13} aria-hidden className={`c-${lvl}`} />}
+                            <LevelIcon lvl={lvl} />
                             {x.label}
                           </button>
                         </th>
@@ -571,16 +620,20 @@ function GroupTable({ g, s, detail, tick }: { g: SensorsState['groups'][number];
                       {exp && (
                         <tr className="sensor-chart-row">
                           <td colSpan={5} id={chartId}>
-                            <LiveChart
-                              series={[{ label: x.label, color: 'var(--accent)', samples: neg ? x.hist.map((v) => (v === null ? null : Math.abs(v))) : x.hist }]}
-                              tick={tick}
-                              maxPoints={HIST}
-                              height={150}
-                              unit={x.unit === 'giri/min' ? 'g/min' : x.unit}
-                              floor={0}
-                              fixedMax={x.unit === '%' ? 100 : undefined}
-                              label={`${g.name}, ${x.label}${neg ? ' in valore assoluto' : ''}, ultimi ${HIST} secondi`}
-                            />
+                            {/* Larghezza zero e minimo al 100 %: il grafico segue la cella e non allarga la tabella. */}
+                            <div className="sensor-chart">
+                              <LiveChart
+                                series={[{ label: x.label, color: 'var(--accent)', samples: x.hist }]}
+                                tick={tick}
+                                maxPoints={HIST}
+                                height={150}
+                                unit={x.unit === 'giri/min' ? 'g/min' : x.unit}
+                                floor={0}
+                                fixedMax={x.unit === '%' ? 100 : undefined}
+                                gapMarks={false}
+                                label={`${g.name}, ${x.label}, ultimi ${HIST} secondi`}
+                              />
+                            </div>
                           </td>
                         </tr>
                       )}

@@ -431,6 +431,7 @@ export function LiveChart({
   label = 'Latenza in tempo reale',
   floor = 10,
   fixedMax,
+  gapMarks = true,
 }: {
   series: Series[];
   tick: number;
@@ -445,6 +446,8 @@ export function LiveChart({
   floor?: number;
   /** Fondo scala fisso (per esempio 100 per le percentuali), finché i valori ci stanno. */
   fixedMax?: number;
+  /** Segna in rosso i campioni mancanti (pacchetti persi); se falso restano solo interruzioni della linea. */
+  gapMarks?: boolean;
 }) {
   const [ref, w] = useWidth<HTMLDivElement>();
   const reduce = useReducedMotion();
@@ -456,10 +459,16 @@ export function LiveChart({
   const all = series.flatMap((s) => s.samples.filter((v): v is number => v !== null));
   const top = Math.max(floor, ...all);
   const max = fixedMax !== undefined && top <= fixedMax ? fixedMax : niceCeil(top * 1.15);
+  // Con valori negativi (la potenza di una batteria in scarica) la scala
+  // scende sotto lo zero, che resta segnato.
+  const low = Math.min(0, ...all);
+  const lo = low < 0 ? -niceCeil(-low * 1.15) : 0;
   const len = Math.max(0, ...series.map((s) => s.samples.length));
   const off = maxPoints - len;
   const x = (i: number) => pad.l + (i + off) * step;
-  const y = (v: number) => pad.t + (1 - v / max) * (h - pad.t - pad.b);
+  const y = (v: number) => pad.t + (1 - (v - lo) / (max - lo)) * (h - pad.t - pad.b);
+  const ticks = lo < 0 ? [lo, 0, max] : [0, max / 2, max];
+  const base = y(Math.max(lo, 0));
 
   useEffect(() => {
     if (reduce || !step || tick === 0) {
@@ -486,10 +495,10 @@ export function LiveChart({
               </linearGradient>
             ))}
           </defs>
-          {[0, max / 2, max].map((t) => (
+          {ticks.map((t) => (
             <g key={t}>
-              <line className="grid-line" x1={pad.l} x2={w - pad.r} y1={y(t)} y2={y(t)} strokeDasharray="2 5" />
-              <text x={pad.l - 7} y={y(t) + 4} textAnchor="end">{tickText(t, max)}</text>
+              <line className="grid-line" x1={pad.l} x2={w - pad.r} y1={y(t)} y2={y(t)} strokeDasharray={t === 0 && lo < 0 ? undefined : '2 5'} />
+              <text x={pad.l - 7} y={y(t) + 4} textAnchor="end">{tickText(t, Math.max(max, -lo))}</text>
             </g>
           ))}
           <text x={pad.l - 7} y={h - 4} textAnchor="end">{unit}</text>
@@ -501,7 +510,7 @@ export function LiveChart({
                   <g key={s.label}>
                     {segs.map((seg, k) => {
                       const d = smoothPath(seg);
-                      const area = seg.length > 1 ? `${d}L${seg[seg.length - 1][0]},${h - pad.b}L${seg[0][0]},${h - pad.b}Z` : '';
+                      const area = seg.length > 1 ? `${d}L${seg[seg.length - 1][0]},${base}L${seg[0][0]},${base}Z` : '';
                       return (
                         <g key={k}>
                           {area && <path d={area} fill={`url(#${gid}-a${si})`} />}
@@ -509,9 +518,10 @@ export function LiveChart({
                         </g>
                       );
                     })}
-                    {s.samples.map((v, i) =>
-                      v === null ? <rect key={i} x={x(i) - 1.5} y={h - pad.b - 10} width={3} height={10} rx={1.5} fill="var(--crit)" /> : null,
-                    )}
+                    {gapMarks &&
+                      s.samples.map((v, i) =>
+                        v === null ? <rect key={i} x={x(i) - 1.5} y={h - pad.b - 10} width={3} height={10} rx={1.5} fill="var(--crit)" /> : null,
+                      )}
                     {(() => {
                       const last = s.samples[s.samples.length - 1];
                       if (last === null || last === undefined) return null;

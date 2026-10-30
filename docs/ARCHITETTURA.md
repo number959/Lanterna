@@ -15,7 +15,7 @@ nome, che non compare più all'utente.
             │    wifi.ts        canali, spettro, interferenza, AP della rete              │
             │    report.ts      rapporto testuale                                         │
             │    document.ts    documento stampabile: HTML A4 autonomo                    │
-            │  guides/   66 guide come dati tipizzati, glossario, ricerca                 │
+            │  guides/   67 guide come dati tipizzati, glossario, ricerca                 │
             │  demo/     PC e reti dimostrative Casa e Clinica, simulazioni               │
             │  ui/       interfaccia React (animazioni, suoni, grafici SVG, 10 viste)     │
             └───────────────▲───────────────────────────────▲────────────────────────────┘
@@ -154,7 +154,9 @@ Organizzazione di `core/src/ui/`:
   visibile; per ogni sensore attuale, minimo, massimo, media e gli ultimi 120 secondi per il grafico; registro delle letture fino
   a un'ora per il CSV (punto e virgola, virgola decimale, marca UTF-8). La sessione resta in memoria cambiando sezione, separata
   per sorgente (agente o demo). Avvisi con isteresi: una temperatura sopra l'attenzione o un sensore in allarme, ripetuti solo
-  dopo un rientro con margine (2 °C o 3 punti). Nella demo letture simulate e coerenti con i due PC (il portatile si scalda e
+  dopo un rientro con margine (2 °C, 3 punti o il 15 % della soglia); prima gli allarmi, al massimo due per lettura, e quelli non
+  mostrati arrivano alla lettura dopo. Le pause compaiono nei grafici come interruzioni; una lettura con la stessa ora della
+  precedente si scarta. Nella demo letture simulate e coerenti con i due PC (il portatile si scalda e
   limita il processore; la grafica integrata non ha telemetria). Le funzioni pure sono provate in `test/sensors.test.ts`.
 - `toolbox.tsx`: stato della cassetta condiviso a livello di modulo (una richiesta alla volta, rilettura ogni 400 ms durante un
   download anche cambiando sezione), conferma prima di scaricare, avanzamento, pannello del kit con coda ed esito.

@@ -24,7 +24,7 @@ Della **rete** misura Wi-Fi, router, Internet e DNS.
 
 Funziona in casa come in uno studio, in un'azienda o in una **struttura sanitaria**: riconosce le reti con più access point e
 con dominio, censisce la sottorete, verifica la separazione tra le zone e i servizi critici e guida un'autovalutazione delle
-misure organizzative. Una biblioteca di **66 guide** in italiano spiega come usare il programma, il computer e la rete, dalle
+misure organizzative. Una biblioteca di **67 guide** in italiano spiega come usare il programma, il computer e la rete, dalle
 basi alle reti cliniche.
 
 Il nome nasce dal marchio STARNET: Polaris è la stella polare, quella che indica la direzione. Qui indica cosa sistemare per primo.
@@ -98,7 +98,8 @@ script PowerShell nascosto: nessuna impostazione viene modificata.
   minimo, massimo e media di utilizzo, frequenze e limite di prestazioni del processore, consumi (se il PC espone i contatori
   Energy Meter), zone termiche ACPI, scheda video (utilizzo per motore, memoria e, quando il driver li fornisce, temperatura,
   ventola, potenza, frequenze e tensione), memoria, attività e temperatura dei dischi, rete, batteria e sistema. Grafico di ogni
-  sensore, righe di dettaglio per processore logico, avvisi con suono quando si superano le soglie e registro CSV per Excel.
+  sensore, righe di dettaglio per processore logico, avvisi con suono quando una temperatura supera la soglia di attenzione o
+  un sensore entra in allarme, registro CSV per Excel (da riga di comando scritto riga per riga, anche per ore).
   Ciò che richiede un driver in kernel (temperature, tensioni e ventole di processore e scheda madre) resta a HWiNFO, e Polaris
   lo dice.
 - **Alimentazione**: salute della batteria, piano di alimentazione, driver della scheda video.

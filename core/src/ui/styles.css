@@ -1036,7 +1036,8 @@ a.btn { text-decoration: none; }
 .sensors-head .live-dot { flex: none; }
 .sensors-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .sensors-summary { margin: 4px 0 10px; }
-.sensors-summary .stat .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sensors-summary .stat .sub { overflow-wrap: anywhere; }
+.sensors-summary .stat .v { display: flex; align-items: center; gap: 5px; }
 .sensors-since { font-size: 12.5px; margin: 0 0 6px; }
 .sensor-group { margin-top: 14px; }
 .sensor-group-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin: 0 0 6px; font-size: 13.5px; text-transform: none; letter-spacing: 0; }
@@ -1047,12 +1048,14 @@ a.btn { text-decoration: none; }
 .sensor-group-head .chev { transition: transform 0.2s var(--ease-out); transform: rotate(-90deg); flex: none; }
 .sensor-group-head .chev.open { transform: none; }
 .sensor-table { font-size: 13px; }
-/* Colonne allineate da un dispositivo all'altro, come in un'unica tabella. */
-@media (min-width: 641px) {
+/* Colonne allineate da un dispositivo all'altro, come in un'unica tabella, quando c'è spazio per i valori interi. */
+@media (min-width: 1280px) {
   .sensor-table { table-layout: fixed; }
-  .sensor-table thead th:first-child { width: 40%; }
-  .sensor-table td.num { overflow: hidden; text-overflow: ellipsis; }
+  .sensor-table thead th:first-child { width: 36%; }
+  .sensor-table td.num { white-space: normal; }
 }
+.sensor-chart { width: 0; min-width: 100%; }
+.sensor-name .lvl-icon { flex: none; }
 .sensor-table th, .sensor-table td { padding: 6px 12px; }
 .sensor-table th.num, .sensor-table td.num { text-align: right; }
 .sensor-table tbody th { font: 500 13px/1.4 var(--font); color: var(--text); text-transform: none; letter-spacing: 0; background: none; position: static; white-space: normal; min-width: 180px; }

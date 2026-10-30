@@ -174,13 +174,23 @@ func (s *Sampler) armLocked() {
 	if s.timer != nil {
 		s.timer.Stop()
 	}
-	s.timer = time.AfterFunc(s.idle(), func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if s.src != nil && s.now().Sub(s.used) >= s.idle() {
-			s.closeLocked()
-		}
-	})
+	s.timer = time.AfterFunc(s.idle(), s.onIdle)
+}
+
+// onIdle chiude le fonti se nessuno le legge da un periodo di inattività;
+// altrimenti (letture servite dalla cache dopo l'ultima raccolta) riprogramma
+// il controllo per quando il periodo scadrà.
+func (s *Sampler) onIdle() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.src == nil {
+		return
+	}
+	if since := s.now().Sub(s.used); since < s.idle() {
+		s.timer = time.AfterFunc(s.idle()-since, s.onIdle)
+		return
+	}
+	s.closeLocked()
 }
 
 func (s *Sampler) closeLocked() {

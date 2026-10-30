@@ -209,3 +209,23 @@ func TestSamplerUnavailable(t *testing.T) {
 		t.Fatalf("annullamento: %v", err)
 	}
 }
+
+func TestSamplerIdleAfterCachedRead(t *testing.T) {
+	f := &fakeSource{perf: 100}
+	s := &Sampler{Open: func() (Source, error) { return f, nil }, Sleep: func(context.Context, time.Duration) error { return nil }, Idle: 60 * time.Millisecond, Min: time.Hour}
+	defer s.Close()
+	if _, err := s.Read(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(30 * time.Millisecond)
+	if _, err := s.Read(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 100; i++ {
+		if _, closed := f.state(); closed {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("contatori rimasti aperti dopo una lettura servita dalla cache")
+}

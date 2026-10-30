@@ -150,8 +150,11 @@ func TestBuildThermal(t *testing.T) {
 	if missingHas(s, "Zone termiche") {
 		t.Error("con le zone non deve dire che mancano")
 	}
-	if s := Build(Raw{}); !missingHas(s, "Zone termiche") {
+	if s := Build(Raw{}); !missingHas(s, "non ne dichiara") {
 		t.Errorf("senza zone: %q", s.Missing)
+	}
+	if s := Build(Raw{Counters: map[string]map[string]float64{cTzTemp: {`\_TZ.TZ00`: 0}}}); !missingHas(s, "valori non validi") {
+		t.Errorf("zone a zero: %q", s.Missing)
 	}
 }
 
@@ -161,11 +164,13 @@ func TestBuildGPU(t *testing.T) {
 	s := Build(Raw{
 		Counters: map[string]map[string]float64{
 			cGpuEngine: {
-				"pid_100_" + l + "_phys_0_eng_0_engtype_3D":                  30,
-				"pid_200_" + l + "_phys_0_eng_0_engtype_3D":                  25,
-				"pid_200_" + l + "_phys_0_eng_3_engtype_VideoDecode":         40,
-				"pid_300_" + l + "_phys_0_eng_5_engtype_Copy":                2,
-				"pid_300_" + l + "_phys_0_eng_7_engtype_Compute_1":           1,
+				"pid_100_" + l + "_phys_0_eng_0_engtype_3D":          30,
+				"pid_200_" + l + "_phys_0_eng_0_engtype_3D":          25,
+				"pid_200_" + l + "_phys_0_eng_3_engtype_VideoDecode": 40,
+				"pid_300_" + l + "_phys_0_eng_5_engtype_Copy":        2,
+				"pid_300_" + l + "_phys_0_eng_7_engtype_Compute_1":   1,
+				// Due motori di decodifica: conta il più impegnato, non la somma.
+				"pid_200_" + l + "_phys_0_eng_4_engtype_VideoDecode":         30,
 				"pid_400_luid_0x00000000_0x0000AAAA_phys_0_eng_0_engtype_3D": 3,
 				"pid_500_" + sw + "_phys_0_eng_0_engtype_3D":                 9,
 			},
@@ -217,22 +222,22 @@ func TestBuildGPU(t *testing.T) {
 			t.Error("l'adattatore software non va mostrato")
 		}
 	}
-	if missingHas(s, "scheda video") {
+	if missingHas(s, "il driver non le fornisce") {
 		t.Errorf("con la telemetria non deve dire che manca: %q", s.Missing)
 	}
 	// Driver senza telemetria (o D3DKMT non disponibile): lo dice.
 	s = Build(Raw{Counters: map[string]map[string]float64{cGpuEngine: {"pid_1_" + l + "_phys_0_eng_0_engtype_3D": 5}}, GPUs: []GPU{{LUID: "0x00000000_0x0000d1b8", Name: "Intel(R) UHD Graphics", TempC: nan, TempWarnC: nan, TempMaxC: nan, FanRPM: nan, PowerPct: nan, CoreMHz: nan, MemMHz: nan, VoltageMV: nan}}})
-	if !missingHas(s, "scheda video") || group(t, s, "gpu.0x00000000_0x0000d1b8").Name != "Intel(R) UHD Graphics" {
+	if !missingHas(s, "Temperatura e frequenze di Intel(R) UHD Graphics:") || group(t, s, "gpu.0x00000000_0x0000d1b8").Name != "Intel(R) UHD Graphics" {
 		t.Errorf("senza telemetria: %q", s.Missing)
 	}
 	// Scheda senza telemetria e senza contatori (per esempio il video di una
 	// macchina virtuale): non si mostra, e quindi nessuna nota.
 	s = Build(Raw{GPUs: []GPU{emptyGPU("0x00000000_0x0000abcd", "Microsoft Hyper-V Video", false)}})
-	if missingHas(s, "scheda video") || len(s.Groups) != 0 && s.Groups[0].Kind == "gpu" {
+	if missingHas(s, "il driver non le fornisce") || len(s.Groups) != 0 && s.Groups[0].Kind == "gpu" {
 		t.Errorf("scheda vuota: %q %+v", s.Missing, s.Groups)
 	}
 	s = Build(Raw{Counters: map[string]map[string]float64{cGpuEngine: {"pid_1_" + l + "_phys_0_eng_0_engtype_3D": 5}}, GPUErr: errors.New("no")})
-	if !missingHas(s, "scheda video") {
+	if !missingHas(s, "Temperatura e frequenze di Scheda video 1:") {
 		t.Errorf("D3DKMT non disponibile: %q", s.Missing)
 	}
 }
@@ -268,7 +273,7 @@ func TestBuildMemoryDisksNetwork(t *testing.T) {
 		},
 		Disks: map[string]Disk{
 			"0": {Model: "Samsung SSD 980 1TB", Flash: &yes, TempC: 41},
-			"1": {Model: "WDC WD20EZRZ", Flash: &no, TempC: nan},
+			"1": {Model: "WDC WD20EZRZ", Flash: &no, TempC: nan, NeedsAdmin: true},
 			"2": {Model: "USB", TempC: 58},
 		},
 	})
@@ -317,7 +322,12 @@ func TestBuildMemoryDisksNetwork(t *testing.T) {
 		t.Error("temperatura assente o totale non devono comparire")
 	}
 	if !missingHas(s, "amministratore") {
-		t.Errorf("disco senza temperatura, senza amministratore: %q", s.Missing)
+		t.Errorf("disco SATA senza temperatura, senza amministratore: %q", s.Missing)
+	}
+	// Chiavetta USB o NVMe senza temperatura: nessuna nota sull'amministratore.
+	s2 := Build(Raw{Counters: map[string]map[string]float64{cDiskIdle: {"2 E:": 99}}, Disks: map[string]Disk{"2": {Model: "USB", TempC: nan}, "5": {Model: "Lettore di schede", TempC: nan, NeedsAdmin: true}}})
+	if missingHas(s2, "amministratore") {
+		t.Errorf("nota sull'amministratore per un disco USB o non mostrato: %q", s2.Missing)
 	}
 	nets := 0
 	for _, g := range s.Groups {
@@ -643,5 +653,36 @@ func TestParseStorageTemp(t *testing.T) {
 	}
 	if v := find(t, s, "disk.1.temp"); *v.Warn != 75 || *v.Crit != 80 {
 		t.Errorf("solo la soglia di attenzione: %+v", v)
+	}
+}
+
+func TestMonitorIdleAfterCachedRead(t *testing.T) {
+	f := &fakeSource{load: 1}
+	// Min lunghissimo: la seconda lettura arriva dalla cache.
+	m := &Monitor{Open: func() (Source, error) { return f, nil }, Sleep: func(context.Context, time.Duration) error { return nil }, Idle: 60 * time.Millisecond, Min: time.Hour}
+	defer m.Close()
+	if _, err := m.Read(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(30 * time.Millisecond)
+	if _, err := m.Read(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 100; i++ {
+		if _, closed := f.state(); closed {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("fonti rimaste aperte dopo una lettura servita dalla cache")
+}
+
+func TestNoCounters(t *testing.T) {
+	s := Build(Raw{NoCounters: true, Memory: &Memory{Total: 8 << 30, Avail: 4 << 30, CommitTotal: 5 << 30, CommitLimit: 10 << 30}})
+	if !missingHas(s, "lodctr /R") || find(t, s, "mem.load").Value != 50 {
+		t.Errorf("senza contatori: %q", s.Missing)
+	}
+	if missingHas(Build(Raw{}), "lodctr") {
+		t.Error("nota sui contatori senza motivo")
 	}
 }
