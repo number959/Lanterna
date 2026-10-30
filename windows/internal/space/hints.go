@@ -118,8 +118,10 @@ func hints(root *node, known []fileRec, exts map[string]*typeAcc, rootPath strin
 			var nodes []*node
 			for _, pat := range h.paths(env, drive) {
 				found := findNodes(root, rootPath, pat)
-				if len(found) > 0 {
-					paths = append(paths, pat)
+				// Il percorso com'è scritto sul disco, non come nella
+				// variabile d'ambiente ("C:\windows\WinSxS").
+				for _, n := range found {
+					paths = append(paths, fullPath(n))
 				}
 				nodes = append(nodes, found...)
 			}

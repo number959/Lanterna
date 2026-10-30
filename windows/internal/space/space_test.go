@@ -222,7 +222,8 @@ func TestScan(t *testing.T) {
 			t.Errorf("%s: %+v (atteso %d)", id, h, alloc)
 		}
 	}
-	if h := hint(r, "browser-cache"); h.Path != `%USERPROFILE%\AppData\Local\Google\Chrome\User Data\*\Cache` || h.NodeID != 0 {
+	// Due profili di Chrome: due cartelle, quindi nessun percorso unico da mostrare.
+	if h := hint(r, "browser-cache"); h.Path != "" || h.NodeID != 0 {
 		t.Errorf("cache dei browser: %+v", h)
 	}
 	if h := hint(r, "windows-old"); h.Path != `C:\Windows.old` || h.NodeID == 0 || res.NodePaths[h.NodeID] != `C:\Windows.old` {

@@ -164,7 +164,7 @@ func printSpace(r *scan.SpaceReport, top int) {
 			fmt.Printf("  %-50s %10s%s\n", label, bytesText(h.Alloc), where)
 		}
 		fmt.Println("\nCosa si può liberare e come, senza rischi: nell'interfaccia (PC > Cosa occupa spazio)")
-		fmt.Println("e nella guida \"Spazio su disco\". Polaris non cancella nulla.")
+		fmt.Println("e nella guida \"Cosa occupa spazio\" (Guide > Il computer). Polaris non cancella nulla.")
 	}
 }
 
