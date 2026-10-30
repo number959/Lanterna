@@ -64,6 +64,7 @@ import (
 	"lanterna/internal/infra"
 	"lanterna/internal/scan"
 	"lanterna/internal/sensors"
+	"lanterna/internal/space"
 	"lanterna/internal/tools"
 )
 
@@ -119,6 +120,23 @@ type Server struct {
 	benchCPU     *scan.CPUBench
 	benchDisk    *scan.DiskBench
 	benchFinish  chan struct{}
+
+	// Analisi dello spazio (nil = non disponibile): che cosa occupa
+	// un'unità, su richiesta. Non si sovrappone ai test di velocità, che ne
+	// sarebbero falsati.
+	SpaceScan func(ctx context.Context, root string, opt space.Options) (*space.Result, error)
+	// SpaceOpen apre una cartella (o la cartella di un file) in Esplora file.
+	SpaceOpen func(path string, selectFile bool) error
+
+	spaceMu      sync.Mutex
+	spaceRunning bool
+	spaceDrive   string
+	spaceProg    *space.Progress
+	spaceErr     string
+	spaceCancel  context.CancelFunc
+	spaceLast    *scan.SpaceReport
+	spaceResults map[string]*space.Result
+	spaceFinish  chan struct{}
 
 	// Microsoft Defender (nil = non disponibile): scansioni e aggiornamento
 	// delle firme su richiesta. Non si sovrappongono ai test di velocità.
@@ -392,6 +410,12 @@ func (s *Server) startBench(kind, drive string) error {
 	if defBusy {
 		return errors.New("operazione di Microsoft Defender in corso: il test di velocità ne sarebbe falsato")
 	}
+	s.spaceMu.Lock()
+	spaceBusy := s.spaceRunning
+	s.spaceMu.Unlock()
+	if spaceBusy {
+		return errors.New("analisi dello spazio in corso: il test di velocità ne sarebbe falsato")
+	}
 	timeout := 2 * time.Minute
 	if kind == "disk" {
 		timeout = 3 * time.Minute
@@ -440,6 +464,82 @@ func (s *Server) startBench(kind, drive string) error {
 		}
 	}()
 	return nil
+}
+
+type spaceState struct {
+	Running  bool              `json:"running"`
+	Drive    string            `json:"drive,omitempty"`
+	Progress *space.Progress   `json:"progress,omitempty"`
+	Error    string            `json:"error,omitempty"`
+	Result   *scan.SpaceReport `json:"result,omitempty"`
+}
+
+// startSpace avvia l'analisi dello spazio di un'unità in background. Ordine
+// dei lock: benchMu prima di spaceMu, come in startBench.
+func (s *Server) startSpace(drive string) error {
+	s.benchMu.Lock()
+	defer s.benchMu.Unlock()
+	if s.benchRunning {
+		return errors.New("test di velocità in corso: l'analisi dello spazio ne falserebbe le misure")
+	}
+	s.spaceMu.Lock()
+	defer s.spaceMu.Unlock()
+	if s.spaceRunning {
+		return errors.New("analisi dello spazio già in corso")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	s.spaceRunning, s.spaceDrive, s.spaceErr, s.spaceProg, s.spaceCancel = true, drive, "", nil, cancel
+	s.spaceFinish = make(chan struct{})
+	finish := s.spaceFinish
+	go func() {
+		defer close(finish)
+		defer cancel()
+		opt := space.Options{Progress: func(p space.Progress) {
+			s.spaceMu.Lock()
+			s.spaceProg = &p
+			s.spaceMu.Unlock()
+		}}
+		var res *space.Result
+		var err error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = errors.New("errore interno durante l'analisi dello spazio")
+				}
+			}()
+			res, err = s.SpaceScan(ctx, drive+`\`, opt)
+		}()
+		s.spaceMu.Lock()
+		defer s.spaceMu.Unlock()
+		s.spaceRunning, s.spaceCancel = false, nil
+		switch {
+		case errors.Is(err, context.Canceled):
+			s.spaceErr = "analisi interrotta: i valori sono parziali"
+		case errors.Is(err, context.DeadlineExceeded):
+			s.spaceErr = "analisi interrotta dopo 30 minuti: i valori sono parziali"
+		case err != nil:
+			s.spaceErr = err.Error()
+		}
+		// Anche un'analisi interrotta mostra ciò che ha letto (Partial).
+		if res != nil {
+			if s.spaceResults == nil {
+				s.spaceResults = map[string]*space.Result{}
+			}
+			s.spaceResults[drive] = res
+			s.spaceLast = &res.Report
+		}
+	}()
+	return nil
+}
+
+// WaitSpace attende la fine dell'analisi dello spazio in corso (per i test).
+func (s *Server) WaitSpace() {
+	s.spaceMu.Lock()
+	ch := s.spaceFinish
+	s.spaceMu.Unlock()
+	if ch != nil {
+		<-ch
+	}
 }
 
 type defenderState struct {
@@ -756,6 +856,82 @@ func (s *Server) Handler() http.Handler {
 			cancel()
 		}
 		writeJSON(w, 200, map[string]bool{"stopping": cancel != nil})
+	})
+	mux.HandleFunc("POST /api/space", func(w http.ResponseWriter, r *http.Request) {
+		if s.SpaceScan == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": space.ErrUnavailable.Error()})
+			return
+		}
+		var body struct {
+			Drive string `json:"drive"`
+		}
+		if code, err := readJSON(w, r, &body); err != nil {
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		drive := strings.ToUpper(strings.TrimSpace(body.Drive))
+		if len(drive) != 2 || drive[1] != ':' || drive[0] < 'A' || drive[0] > 'Z' {
+			writeJSON(w, 400, map[string]string{"error": "indicare un'unità, per esempio C:"})
+			return
+		}
+		if err := s.startSpace(drive); err != nil {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"started": true, "drive": drive})
+	})
+	mux.HandleFunc("GET /api/space", func(w http.ResponseWriter, r *http.Request) {
+		s.spaceMu.Lock()
+		st := spaceState{Running: s.spaceRunning, Drive: s.spaceDrive, Progress: s.spaceProg, Error: s.spaceErr, Result: s.spaceLast}
+		s.spaceMu.Unlock()
+		writeJSON(w, 200, st)
+	})
+	mux.HandleFunc("DELETE /api/space", func(w http.ResponseWriter, r *http.Request) {
+		s.spaceMu.Lock()
+		cancel := s.spaceCancel
+		s.spaceMu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		writeJSON(w, 200, map[string]bool{"stopping": cancel != nil})
+	})
+	mux.HandleFunc("POST /api/space/open", func(w http.ResponseWriter, r *http.Request) {
+		if s.SpaceOpen == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": space.ErrUnavailable.Error()})
+			return
+		}
+		var body struct {
+			Drive string `json:"drive"`
+			ID    int    `json:"id"`
+			File  bool   `json:"file"`
+		}
+		if code, err := readJSON(w, r, &body); err != nil {
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		// Si aprono solo cartelle e file dell'ultima analisi, per numero: il
+		// percorso vero resta nell'agente.
+		s.spaceMu.Lock()
+		res := s.spaceResults[strings.ToUpper(body.Drive)]
+		var path string
+		var found bool
+		if res != nil {
+			if body.File {
+				path, found = res.FilePaths[body.ID]
+			} else {
+				path, found = res.NodePaths[body.ID]
+			}
+		}
+		s.spaceMu.Unlock()
+		if !found {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "elemento non trovato: rifare l'analisi"})
+			return
+		}
+		if err := s.SpaceOpen(path, body.File); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Esplora file non si è aperto"})
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"opened": true})
 	})
 	mux.HandleFunc("POST /api/defender", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {

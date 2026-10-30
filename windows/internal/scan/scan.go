@@ -335,6 +335,9 @@ type PcData struct {
 	// Hardware è la scheda tecnica, come in CPU-Z.
 	Hardware *Hardware  `json:"hardware,omitempty"`
 	Bench    *BenchData `json:"bench,omitempty"`
+	// Space è l'analisi di ciò che occupa spazio, un rapporto per unità: si
+	// esegue su richiesta e la unisce l'interfaccia, come i test di velocità.
+	Space []SpaceReport `json:"space,omitempty"`
 	// Notes spiega i limiti della raccolta (dati SMART solo da amministratore...).
 	Notes []string `json:"notes,omitempty"`
 }
@@ -673,3 +676,95 @@ type DiskBench struct {
 
 // Ptr è una scorciatoia per i campi opzionali.
 func Ptr[T any](v T) *T { return &v }
+
+// SpaceReport dice che cosa occupa spazio su un'unità (o in una cartella),
+// come WizTree: cartelle, file più grandi, tipi di file e cartelle note che
+// si possono ripulire. I byte "alloc" sono lo spazio occupato sul disco (i
+// file solo online di OneDrive valgono zero, i collegamenti fisici si
+// contano una volta); "size" è la dimensione dei dati. I percorsi sono
+// mostrati senza nomi utente (%USERPROFILE%, ‹utente N›).
+type SpaceReport struct {
+	Root  string `json:"root"`  // percorso analizzato, per esempio "C:\\"
+	Drive string `json:"drive"` // unità, per esempio "C:"
+	FS    string `json:"fs,omitempty"`
+	// TotalBytes e FreeBytes descrivono l'unità; la differenza tra lo spazio
+	// usato e AllocBytes è ciò che la scansione non vede (metadati del file
+	// system, punti di ripristino, cartelle non leggibili).
+	TotalBytes int64 `json:"totalBytes"`
+	FreeBytes  int64 `json:"freeBytes"`
+	AllocBytes int64 `json:"allocBytes"`
+	SizeBytes  int64 `json:"sizeBytes"`
+	Files      int64 `json:"files"`
+	Dirs       int64 `json:"dirs"`
+	// Denied è il numero di cartelle non leggibili con i permessi di chi usa
+	// Polaris; DeniedPaths ne riporta alcune.
+	Denied      int64    `json:"denied,omitempty"`
+	DeniedPaths []string `json:"deniedPaths,omitempty"`
+	// File solo online (OneDrive e simili): non occupano spazio sul disco.
+	CloudFiles int64 `json:"cloudFiles,omitempty"`
+	CloudBytes int64 `json:"cloudBytes,omitempty"`
+	// LinkedBytes: spazio non contato due volte grazie ai collegamenti fisici
+	// (per esempio tra WinSxS e System32).
+	LinkedBytes int64       `json:"linkedBytes,omitempty"`
+	Tree        *SpaceNode  `json:"tree,omitempty"`
+	TopFiles    []SpaceFile `json:"topFiles,omitempty"`
+	Types       []SpaceType `json:"types,omitempty"`
+	Categories  []SpaceType `json:"categories,omitempty"`
+	Hints       []SpaceHint `json:"hints,omitempty"`
+	StartedAt   string      `json:"startedAt"`
+	DurationMs  int64       `json:"durationMs"`
+	// Partial: analisi interrotta prima della fine.
+	Partial bool `json:"partial,omitempty"`
+}
+
+// SpaceNode è una cartella; i figli sono solo i più grandi, gli altri sono
+// riassunti in More.
+type SpaceNode struct {
+	ID       int          `json:"id"`
+	Name     string       `json:"name"`
+	Path     string       `json:"path"`
+	Alloc    int64        `json:"alloc"`
+	Size     int64        `json:"size"`
+	Files    int64        `json:"files"`
+	Dirs     int64        `json:"dirs,omitempty"`
+	OwnAlloc int64        `json:"ownAlloc,omitempty"` // file direttamente nella cartella
+	OwnFiles int64        `json:"ownFiles,omitempty"`
+	Denied   bool         `json:"denied,omitempty"`
+	Children []*SpaceNode `json:"children,omitempty"`
+	More     *SpaceMore   `json:"more,omitempty"`
+}
+
+// SpaceMore riassume le sottocartelle non mostrate una per una.
+type SpaceMore struct {
+	Dirs  int64 `json:"dirs"`
+	Alloc int64 `json:"alloc"`
+}
+
+// SpaceFile è uno dei file più grandi; ID serve ad aprirne la cartella.
+type SpaceFile struct {
+	ID       int    `json:"id"`
+	Path     string `json:"path"`
+	Alloc    int64  `json:"alloc"`
+	Size     int64  `json:"size"`
+	Modified string `json:"modified,omitempty"`
+	Cloud    bool   `json:"cloud,omitempty"`
+}
+
+// SpaceType raccoglie i file per estensione (".mp4") o per categoria
+// ("video", "image", "audio", "document", "archive", "program",
+// "virtualdisk", "system", "other").
+type SpaceType struct {
+	ID    string `json:"id"`
+	Alloc int64  `json:"alloc"`
+	Files int64  `json:"files"`
+}
+
+// SpaceHint è una cartella o un file noto (file temporanei, Windows.old,
+// Cestino, ibernazione...): il significato e i consigli li dà l'interfaccia.
+type SpaceHint struct {
+	ID     string `json:"id"`
+	Path   string `json:"path,omitempty"`
+	Alloc  int64  `json:"alloc"`
+	Files  int64  `json:"files,omitempty"`
+	NodeID int    `json:"nodeId,omitempty"`
+}

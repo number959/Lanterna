@@ -22,6 +22,7 @@ import (
 	"lanterna/internal/infra"
 	"lanterna/internal/scan"
 	"lanterna/internal/sensors"
+	"lanterna/internal/space"
 	"lanterna/internal/tools"
 	"lanterna/internal/winapi"
 )
@@ -869,5 +870,139 @@ func TestSensorsEndpoint(t *testing.T) {
 	}
 	if r := do(t, h, "GET", "/api/sensors", map[string]string{"Host": "evil.example:8737"}); r.Code != http.StatusForbidden {
 		t.Errorf("host estraneo: %d", r.Code)
+	}
+}
+
+func TestSpaceEndpoint(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	// Senza analizzatore: non disponibile.
+	if r := doBody(t, h, "POST", "/api/space", "application/json", `{"drive":"C:"}`); r.Code != http.StatusNotImplemented {
+		t.Fatalf("non disponibile: %d", r.Code)
+	}
+	release := make(chan struct{})
+	var gotRoot string
+	s.SpaceScan = func(ctx context.Context, root string, opt space.Options) (*space.Result, error) {
+		gotRoot = root
+		opt.Progress(space.Progress{Dirs: 10, Files: 200, Alloc: 1 << 20})
+		rep := scan.SpaceReport{Drive: "C:", Root: `C:\`, Tree: &scan.SpaceNode{ID: 1, Name: `C:\`}}
+		res := &space.Result{Report: rep, NodePaths: map[int]string{1: `C:\`, 2: `C:\Users\mario\Video`}, FilePaths: map[int]string{1: `C:\Users\mario\Video\film.mkv`}}
+		select {
+		case <-release:
+			return res, nil
+		case <-ctx.Done():
+			res.Report.Partial = true
+			return res, ctx.Err()
+		}
+	}
+	var opened []string
+	s.SpaceOpen = func(path string, file bool) error {
+		opened = append(opened, fmt.Sprintf("%s %v", path, file))
+		if strings.Contains(path, "film") && !file {
+			return errors.New("non deve succedere")
+		}
+		return nil
+	}
+	post := func(url, body string) *httptest.ResponseRecorder {
+		return doBody(t, h, "POST", url, "application/json", body)
+	}
+	if r := doBody(t, h, "POST", "/api/space", "text/plain", `{"drive":"C:"}`); r.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("corpo non JSON: %d", r.Code)
+	}
+	for _, body := range []string{`{"drive":"rete"}`, `{"drive":"\\\\server\\share"}`, `{"drive":"1:"}`, `{}`} {
+		if r := post("/api/space", body); r.Code != http.StatusBadRequest {
+			t.Fatalf("%s: %d %s", body, r.Code, r.Body)
+		}
+	}
+	// Prima dell'analisi non si apre nulla.
+	if r := post("/api/space/open", `{"drive":"C:","id":1}`); r.Code != http.StatusNotFound {
+		t.Fatalf("apertura senza analisi: %d", r.Code)
+	}
+	if r := post("/api/space", `{"drive":"c:"}`); r.Code != http.StatusAccepted {
+		t.Fatalf("avvio: %d %s", r.Code, r.Body)
+	}
+	if r := post("/api/space", `{"drive":"D:"}`); r.Code != http.StatusConflict {
+		t.Fatalf("doppio avvio: %d", r.Code)
+	}
+	// Il test di velocità non parte durante l'analisi dello spazio.
+	s.BenchCPU = func(context.Context, bench.Report) (*scan.CPUBench, error) {
+		t.Fatal("test avviato")
+		return nil, nil
+	}
+	if r := post("/api/bench", `{"kind":"cpu"}`); r.Code != http.StatusConflict {
+		t.Fatalf("test durante l'analisi dello spazio: %d %s", r.Code, r.Body)
+	}
+	var st spaceState
+	for i := 0; i < 100 && st.Progress == nil; i++ {
+		_ = json.Unmarshal(do(t, h, "GET", "/api/space", nil).Body.Bytes(), &st)
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !st.Running || st.Drive != "C:" || st.Progress == nil || st.Progress.Files != 200 {
+		t.Fatalf("avanzamento: %+v", st)
+	}
+	close(release)
+	s.WaitSpace()
+	st = spaceState{}
+	_ = json.Unmarshal(do(t, h, "GET", "/api/space", nil).Body.Bytes(), &st)
+	if gotRoot != `C:\` || st.Running || st.Error != "" || st.Result == nil || st.Result.Drive != "C:" {
+		t.Fatalf("risultato: %q %+v", gotRoot, st)
+	}
+	// Il percorso vero non esce mai dall'agente.
+	if strings.Contains(do(t, h, "GET", "/api/space", nil).Body.String(), "mario") {
+		t.Fatal("percorso reale nella risposta")
+	}
+	// Apertura per numero: cartella, file, numero sconosciuto, unità diversa.
+	if r := post("/api/space/open", `{"drive":"c:","id":2}`); r.Code != 200 {
+		t.Fatalf("apri cartella: %d %s", r.Code, r.Body)
+	}
+	if r := post("/api/space/open", `{"drive":"C:","id":1,"file":true}`); r.Code != 200 {
+		t.Fatalf("apri file: %d %s", r.Code, r.Body)
+	}
+	if r := post("/api/space/open", `{"drive":"C:","id":99}`); r.Code != http.StatusNotFound {
+		t.Fatalf("numero sconosciuto: %d", r.Code)
+	}
+	if r := post("/api/space/open", `{"drive":"D:","id":1}`); r.Code != http.StatusNotFound {
+		t.Fatalf("altra unità: %d", r.Code)
+	}
+	if len(opened) != 2 || opened[0] != `C:\Users\mario\Video false` || opened[1] != `C:\Users\mario\Video\film.mkv true` {
+		t.Fatalf("aperture: %q", opened)
+	}
+	s.SpaceOpen = func(string, bool) error { return errors.New(`C:\Users\mario: accesso negato`) }
+	if r := post("/api/space/open", `{"drive":"C:","id":2}`); r.Code != http.StatusInternalServerError || strings.Contains(r.Body.String(), "mario") {
+		t.Fatalf("errore di apertura: %d %s", r.Code, r.Body)
+	}
+	if r := do(t, h, "POST", "/api/space/open", map[string]string{"Origin": "https://evil.example", "Content-Type": "application/json"}); r.Code != http.StatusForbidden {
+		t.Fatalf("apertura da altra origine: %d", r.Code)
+	}
+
+	// Interruzione: errore chiaro, risultato parziale conservato.
+	if r := post("/api/space", `{"drive":"C:"}`); r.Code != http.StatusAccepted {
+		t.Fatalf("secondo avvio: %d", r.Code)
+	}
+	if r := do(t, h, "DELETE", "/api/space", map[string]string{"Origin": "https://evil.example"}); r.Code != http.StatusForbidden {
+		t.Fatalf("DELETE da altra origine: %d", r.Code)
+	}
+	release = make(chan struct{}) // il secondo giro attende l'interruzione
+	if r := do(t, h, "DELETE", "/api/space", nil); r.Code != 200 {
+		t.Fatalf("interruzione: %d", r.Code)
+	}
+	s.WaitSpace()
+	st = spaceState{}
+	_ = json.Unmarshal(do(t, h, "GET", "/api/space", nil).Body.Bytes(), &st)
+	if st.Running || !strings.Contains(st.Error, "parziali") || st.Result == nil || !st.Result.Partial {
+		t.Fatalf("dopo l'interruzione: %+v", st)
+	}
+	// Errore dell'analisi (unità inesistente): messaggio, nessun risultato nuovo.
+	s.SpaceScan = func(context.Context, string, space.Options) (*space.Result, error) {
+		return nil, errors.New("cartella non trovata: Q:\\")
+	}
+	if r := post("/api/space", `{"drive":"Q:"}`); r.Code != http.StatusAccepted {
+		t.Fatalf("avvio Q: %d", r.Code)
+	}
+	s.WaitSpace()
+	st = spaceState{}
+	_ = json.Unmarshal(do(t, h, "GET", "/api/space", nil).Body.Bytes(), &st)
+	if st.Running || !strings.Contains(st.Error, "non trovata") || st.Drive != "Q:" {
+		t.Fatalf("errore: %+v", st)
 	}
 }

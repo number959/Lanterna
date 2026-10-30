@@ -5,6 +5,8 @@
 //	polaris-cli.exe serve [opzioni]    interfaccia nel browser (http://127.0.0.1:8737)
 //	polaris-cli.exe bench cpu|disk     test di velocità del processore o di un'unità
 //	polaris-cli.exe defender ...       stato e scansioni di Microsoft Defender
+//	polaris-cli.exe sensors            monitor dei sensori
+//	polaris-cli.exe space [C:]         cosa occupa spazio su un'unità
 //	polaris-cli.exe version
 //
 // Polaris.exe è compilato come applicazione grafica, polaris-cli.exe per la
@@ -43,6 +45,7 @@ import (
 	"lanterna/internal/scan"
 	"lanterna/internal/sensors"
 	"lanterna/internal/server"
+	"lanterna/internal/space"
 	"lanterna/internal/tools"
 	"lanterna/internal/winapi"
 )
@@ -88,6 +91,11 @@ Uso:
       --all                      anche le righe di dettaglio (core, stati C, motori video)
       --csv FILE                 registra le letture in un file CSV per Excel, riga per riga
       --json                     stampa le letture in JSON
+  polaris-cli space [C:|CARTELLA] cosa occupa spazio (come WizTree): cartelle principali,
+                                 file più grandi, tipi di file, cartelle note di Windows;
+                                 legge solo l'elenco dei file e non cancella nulla
+      --top N                    quanti file più grandi mostrare (predefinito 20)
+      --json                     stampa il risultato completo in JSON
   polaris-cli tools status       versioni portable scaricate (su questo PC e nel kit)
   polaris-cli tools kit [ID...]  prepara il kit per l'uso senza Internet: scarica dai
                                  siti ufficiali e verifica i programmi nella cartella
@@ -133,6 +141,8 @@ func main() {
 		err = runClock(args[1:])
 	case args[0] == "sensors":
 		err = runSensors(args[1:])
+	case args[0] == "space":
+		err = runSpace(args[1:])
 	case args[0] == "version" || args[0] == "--version":
 		eng, e := engine.Load(nil)
 		ev := "non incluso"
@@ -277,6 +287,8 @@ func startServer(port int) (*server.Server, string, error) {
 		KitCheck:      fetcher.KitCheck,
 		CPUClock:      clock.Read,
 		Sensors:       mon.Read,
+		SpaceScan:     space.Scan,
+		SpaceOpen:     space.Open,
 		OpenTool:      func(id, target string) error { return tools.Open(id, target, fetcher) },
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}

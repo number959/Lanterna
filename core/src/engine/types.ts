@@ -369,6 +369,8 @@ export interface PcData {
   /** Scheda tecnica (processore, scheda madre, memoria, firmware), come in CPU-Z. */
   hardware?: Hardware;
   bench?: BenchData;
+  /** Che cosa occupa spazio, un rapporto per unità: su richiesta, unito dall'interfaccia come i test di velocità. */
+  space?: SpaceReport[];
   /** Limiti della raccolta (dati SMART solo da amministratore, PowerShell assente...). */
   notes?: string[];
 }
@@ -803,4 +805,81 @@ export interface Analysis {
   findings: Finding[];
   plan: PlanItem[];
   channels: ChannelAdvice[];
+}
+
+/**
+ * Che cosa occupa spazio su un'unità, come WizTree. "alloc" è lo spazio
+ * occupato sul disco (i file solo online valgono zero, i collegamenti fisici
+ * si contano una volta), "size" la dimensione dei dati. Percorsi senza nomi
+ * utente (%USERPROFILE%, ‹utente N›).
+ */
+export interface SpaceReport {
+  root: string;
+  drive: string;
+  fs?: string;
+  totalBytes: number;
+  freeBytes: number;
+  allocBytes: number;
+  sizeBytes: number;
+  files: number;
+  dirs: number;
+  /** Cartelle non leggibili con i permessi di chi usa Polaris. */
+  denied?: number;
+  deniedPaths?: string[];
+  /** File solo online (OneDrive e simili): non occupano spazio sul disco. */
+  cloudFiles?: number;
+  cloudBytes?: number;
+  /** Spazio non contato due volte grazie ai collegamenti fisici. */
+  linkedBytes?: number;
+  tree?: SpaceNode;
+  topFiles?: SpaceFile[];
+  types?: SpaceType[];
+  categories?: SpaceType[];
+  hints?: SpaceHint[];
+  startedAt: string;
+  durationMs: number;
+  /** Analisi interrotta prima della fine. */
+  partial?: boolean;
+}
+
+export interface SpaceNode {
+  id: number;
+  name: string;
+  path: string;
+  alloc: number;
+  size: number;
+  files: number;
+  dirs?: number;
+  ownAlloc?: number;
+  ownFiles?: number;
+  denied?: boolean;
+  children?: SpaceNode[];
+  /** Sottocartelle non mostrate una per una. */
+  more?: { dirs: number; alloc: number };
+}
+
+export interface SpaceFile {
+  /** Serve ad aprirne la cartella con l'agente. */
+  id: number;
+  path: string;
+  alloc: number;
+  size: number;
+  modified?: string;
+  cloud?: boolean;
+}
+
+/** Per estensione (".mp4") o per categoria (video, image, audio, document, archive, program, virtualdisk, other). */
+export interface SpaceType {
+  id: string;
+  alloc: number;
+  files: number;
+}
+
+/** Cartella o file noto; significato e consigli sono nel catalogo dell'interfaccia. */
+export interface SpaceHint {
+  id: string;
+  path?: string;
+  alloc: number;
+  files?: number;
+  nodeId?: number;
 }
