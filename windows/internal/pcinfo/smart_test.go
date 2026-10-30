@@ -189,3 +189,26 @@ func TestSmartOf(t *testing.T) {
 	}
 	smartOf(pc, nil) // nessuna lettura: niente da fare, nessun panico
 }
+
+func TestTemperatureOf(t *testing.T) {
+	n := 38
+	hot := 250
+	for name, c := range map[string]struct {
+		s    diskSmart
+		want float64
+		ok   bool
+	}{
+		"nvme":         {diskSmart{NVMe: &scan.NVMeHealth{TemperatureC: &n}}, 38, true},
+		"nvme assurda": {diskSmart{NVMe: &scan.NVMeHealth{TemperatureC: &hot}}, 0, false},
+		"ata 194":      {diskSmart{Attrs: []scan.SmartAttr{{ID: 190, Raw: 30}, {ID: 194, Raw: 0x2D0012002A}}}, 42, true},
+		"ata solo 190": {diskSmart{Attrs: []scan.SmartAttr{{ID: 190, Raw: 33}}}, 33, true},
+		"ata senza":    {diskSmart{Attrs: []scan.SmartAttr{{ID: 9, Raw: 1000}}}, 0, false},
+		"194 a zero":   {diskSmart{Attrs: []scan.SmartAttr{{ID: 194, Raw: 0x100}}}, 0, false},
+		"niente":       {diskSmart{}, 0, false},
+	} {
+		got, ok := temperatureOf(c.s)
+		if ok != c.ok || got != c.want {
+			t.Errorf("%s: %v %v, atteso %v %v", name, got, ok, c.want, c.ok)
+		}
+	}
+}

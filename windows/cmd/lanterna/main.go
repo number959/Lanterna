@@ -18,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"maps"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -39,6 +40,7 @@ import (
 	"lanterna/internal/pcinfo"
 	"lanterna/internal/probe"
 	"lanterna/internal/scan"
+	"lanterna/internal/sensors"
 	"lanterna/internal/server"
 	"lanterna/internal/tools"
 	"lanterna/internal/winapi"
@@ -76,6 +78,14 @@ Uso:
   polaris-cli clock              frequenza effettiva dei core in tempo reale (Core Speed),
                                  una lettura al secondo:
       --seconds N                durata in secondi (predefinita 5)
+      --json                     stampa le letture in JSON
+  polaris-cli sensors            monitor dei sensori senza driver (come HWiNFO): utilizzo,
+                                 frequenze, consumi esposti da Windows, zone termiche,
+                                 scheda video, memoria, dischi, rete, batteria; alla fine
+                                 attuale, minimo, massimo e media di ogni sensore
+      --seconds N                durata in secondi, una lettura al secondo (predefinita 10)
+      --all                      anche le righe di dettaglio (core, stati C, motori video)
+      --csv FILE                 registra tutte le letture in un file CSV per Excel
       --json                     stampa le letture in JSON
   polaris-cli tools status       versioni portable scaricate (su questo PC e nel kit)
   polaris-cli tools kit [ID...]  prepara il kit per l'uso senza Internet: scarica dai
@@ -120,6 +130,8 @@ func main() {
 		err = runTools(args[1:])
 	case args[0] == "clock":
 		err = runClock(args[1:])
+	case args[0] == "sensors":
+		err = runSensors(args[1:])
 	case args[0] == "version" || args[0] == "--version":
 		eng, e := engine.Load(nil)
 		ev := "non incluso"
@@ -241,6 +253,7 @@ func startServer(port int) (*server.Server, string, error) {
 	prims := infra.Native()
 	fetcher := newFetcher()
 	clock := cpuclock.New()
+	mon := sensors.New()
 	srv := &server.Server{Collector: c, Web: assets.Web(), Version: version, Ping: c.QuickPing, Infra: &prims, InfraOpt: infra.Prudent,
 		BenchCPU: func(ctx context.Context, r bench.Report) (*scan.CPUBench, error) {
 			return bench.CPU(ctx, cpuOptions(false), r)
@@ -262,6 +275,7 @@ func startServer(port int) (*server.Server, string, error) {
 		FetchKit:      fetcher.FetchKit,
 		KitCheck:      fetcher.KitCheck,
 		CPUClock:      clock.Read,
+		Sensors:       mon.Read,
 		OpenTool:      func(id, target string) error { return tools.Open(id, target, fetcher) },
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
@@ -487,6 +501,92 @@ func runClock(args []string) error {
 	if *asJSON {
 		b, _ := json.MarshalIndent(all, "", "  ")
 		fmt.Println(string(b))
+	}
+	return nil
+}
+
+// runSensors legge i sensori una volta al secondo e alla fine stampa il
+// riepilogo, come le colonne di HWiNFO; con --csv registra ogni lettura.
+func runSensors(args []string) error {
+	fs := flag.NewFlagSet("sensors", flag.ContinueOnError)
+	seconds := fs.Int("seconds", 10, "")
+	all := fs.Bool("all", false, "")
+	asJSON := fs.Bool("json", false, "")
+	csvPath := fs.String("csv", "", "")
+	fs.Usage = func() { fmt.Fprintf(os.Stderr, usage, version) }
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *seconds < 1 || *seconds > 86400 {
+		return errors.New("--seconds deve essere tra 1 e 86400")
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	m := sensors.New()
+	defer m.Close()
+	var reg sensors.Log
+	var snaps []sensors.Snapshot
+	var last sensors.Snapshot
+	if !*asJSON {
+		fmt.Printf("Lettura dei sensori per %d s (Ctrl+C per fermare)...\n", *seconds)
+	}
+	for i := 0; i < *seconds; i++ {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				i = *seconds
+				continue
+			case <-time.After(time.Second):
+			}
+		}
+		snap, err := m.Read(ctx)
+		if err != nil {
+			if ctx.Err() != nil && len(snaps) > 0 {
+				break
+			}
+			return err
+		}
+		last = snap
+		reg.Add(snap)
+		if *asJSON {
+			snaps = append(snaps, snap)
+		}
+	}
+	if *csvPath != "" {
+		f, err := os.Create(*csvPath)
+		if err != nil {
+			return fmt.Errorf("file CSV: %w", err)
+		}
+		werr := reg.WriteCSV(f)
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr != nil {
+			return fmt.Errorf("file CSV: %w", werr)
+		}
+	}
+	if *asJSON {
+		b, _ := json.MarshalIndent(snaps, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	group := ""
+	for _, st := range reg.Stats() {
+		if st.Detail && !*all {
+			continue
+		}
+		if st.Group != group {
+			group = st.Group
+			fmt.Printf("\n%s\n", group)
+		}
+		fmt.Printf("  %-46s %10s %10s %10s %10s %s\n", st.Label, sensors.Number(st.Cur), sensors.Number(st.Min), sensors.Number(st.Max), sensors.Number(math.Round(st.Avg()*10)/10), st.Unit)
+	}
+	fmt.Printf("\n(colonne: attuale, minimo, massimo, media)\n")
+	for _, x := range last.Missing {
+		fmt.Printf("Non disponibile: %s\n", x)
+	}
+	if *csvPath != "" {
+		fmt.Printf("Registro salvato in %s\n", *csvPath)
 	}
 	return nil
 }

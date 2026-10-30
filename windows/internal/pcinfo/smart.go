@@ -136,3 +136,24 @@ type diskSmart struct {
 	Attrs []scan.SmartAttr
 	NVMe  *scan.NVMeHealth
 }
+
+// temperatureOf restituisce la temperatura in °C letta dal disco: dal
+// registro di salute NVMe o dagli attributi SMART 194 e 190 (byte basso del
+// dato grezzo, come nella valutazione dell'interfaccia).
+func temperatureOf(s diskSmart) (float64, bool) {
+	if s.NVMe != nil && s.NVMe.TemperatureC != nil {
+		if t := *s.NVMe.TemperatureC; t > 0 && t < 120 {
+			return float64(t), true
+		}
+	}
+	for _, id := range []int{194, 190} {
+		for _, a := range s.Attrs {
+			if a.ID == id {
+				if t := a.Raw & 0xFF; t > 0 && t < 120 {
+					return float64(t), true
+				}
+			}
+		}
+	}
+	return 0, false
+}

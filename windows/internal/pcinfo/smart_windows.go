@@ -268,3 +268,13 @@ func nvmeHealth(h windows.Handle) *scan.NVMeHealth {
 	}
 	return nil
 }
+
+// DiskTemperature legge la temperatura del disco fisico numero n dai dati
+// SMART (NVMe anche senza amministratore, ATA solo da amministratore).
+func DiskTemperature(n int) (float64, bool) {
+	s, ok := smartDisk(n)
+	if !ok {
+		return 0, false
+	}
+	return temperatureOf(s)
+}

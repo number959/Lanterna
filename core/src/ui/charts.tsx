@@ -341,7 +341,9 @@ export function ChannelLoad({ advice }: { advice: ChannelAdvice }) {
   );
 }
 
-const niceCeil = (v: number) => [5, 10, 20, 30, 50, 80, 100, 150, 200, 300, 500, 800, 1000, 2000, 5000].find((s) => s >= v) ?? Math.ceil(v / 1000) * 1000;
+const niceCeil = (v: number) => [0.5, 1, 2, 5, 10, 20, 30, 50, 80, 100, 150, 200, 300, 500, 800, 1000, 2000, 5000].find((s) => s >= v) ?? Math.ceil(v / 1000) * 1000;
+/** Etichetta di una tacca dell'asse: con i decimali solo per le scale piccole. */
+const tickText = (t: number, max: number) => (max < 10 ? t.toLocaleString('it-IT', { maximumFractionDigits: max < 2 ? 2 : 1 }) : String(Math.round(t)));
 
 type Series = { label: string; color: string; samples: (number | null)[] };
 
@@ -427,6 +429,8 @@ export function LiveChart({
   intervalMs = 1000,
   unit = 'ms',
   label = 'Latenza in tempo reale',
+  floor = 10,
+  fixedMax,
 }: {
   series: Series[];
   tick: number;
@@ -437,6 +441,10 @@ export function LiveChart({
   unit?: string;
   /** Descrizione del grafico per i lettori di schermo. */
   label?: string;
+  /** Valore minimo da cui si calcola il fondo scala. */
+  floor?: number;
+  /** Fondo scala fisso (per esempio 100 per le percentuali), finché i valori ci stanno. */
+  fixedMax?: number;
 }) {
   const [ref, w] = useWidth<HTMLDivElement>();
   const reduce = useReducedMotion();
@@ -446,7 +454,8 @@ export function LiveChart({
   const pad = { l: 40, r: 12, t: 12, b: 22 };
   const step = (w - pad.l - pad.r) / Math.max(1, maxPoints - 1);
   const all = series.flatMap((s) => s.samples.filter((v): v is number => v !== null));
-  const max = niceCeil(Math.max(10, ...all) * 1.15);
+  const top = Math.max(floor, ...all);
+  const max = fixedMax !== undefined && top <= fixedMax ? fixedMax : niceCeil(top * 1.15);
   const len = Math.max(0, ...series.map((s) => s.samples.length));
   const off = maxPoints - len;
   const x = (i: number) => pad.l + (i + off) * step;
@@ -480,7 +489,7 @@ export function LiveChart({
           {[0, max / 2, max].map((t) => (
             <g key={t}>
               <line className="grid-line" x1={pad.l} x2={w - pad.r} y1={y(t)} y2={y(t)} strokeDasharray="2 5" />
-              <text x={pad.l - 7} y={y(t) + 4} textAnchor="end">{Math.round(t)}</text>
+              <text x={pad.l - 7} y={y(t) + 4} textAnchor="end">{tickText(t, max)}</text>
             </g>
           ))}
           <text x={pad.l - 7} y={h - 4} textAnchor="end">{unit}</text>

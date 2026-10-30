@@ -289,6 +289,46 @@ export async function cpuClock(signal?: AbortSignal): Promise<CpuClockSample> {
   return (await r.json()) as CpuClockSample;
 }
 
+/** Un sensore del monitor (come una riga di HWiNFO). */
+export interface SensorReading {
+  /** Stabile da una lettura all'altra. */
+  id: string;
+  label: string;
+  value: number;
+  /** "%", "MHz", "°C", "W", "V", "MB/s", "Mbit/s", "ms", "GB", "MB", "Wh", "giri/min", "/s", "ore" o vuota. */
+  unit: string;
+  /** Soglie di attenzione e di allarme; con below valgono verso il basso. */
+  warn?: number;
+  crit?: number;
+  below?: boolean;
+  /** Riga di dettaglio, nascosta finché non si chiede di vederla. */
+  detail?: boolean;
+}
+
+export type SensorKind = 'cpu' | 'thermal' | 'gpu' | 'memory' | 'disk' | 'network' | 'battery' | 'system';
+
+export interface SensorGroup {
+  id: string;
+  kind: SensorKind;
+  name: string;
+  sub?: string;
+  sensors: SensorReading[];
+}
+
+export interface SensorSnapshot {
+  at: string;
+  groups: SensorGroup[];
+  /** Ciò che su questo PC non si legge, in parole semplici. */
+  missing?: string[];
+}
+
+/** Legge i sensori dall'agente (contatori di Windows, driver video, batteria, SMART). */
+export async function readSensors(signal?: AbortSignal): Promise<SensorSnapshot> {
+  const r = await fetch('api/sensors', { cache: 'no-store', signal });
+  if (!r.ok) throw await errorOf(r);
+  return (await r.json()) as SensorSnapshot;
+}
+
 /** Scarica dal sito ufficiale la versione portable e ne verifica la firma (in background). */
 export const fetchTool = (tool: string) => postJson<{ started: boolean }>('api/tools/fetch', { tool });
 

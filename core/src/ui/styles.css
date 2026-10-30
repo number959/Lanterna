@@ -1031,6 +1031,49 @@ a.btn { text-decoration: none; }
   .clock-big b { font-size: 38px; }
 }
 
+/* Sensori in tempo reale (come HWiNFO) */
+.sensors-head { margin-bottom: 10px; }
+.sensors-head .live-dot { flex: none; }
+.sensors-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.sensors-summary { margin: 4px 0 10px; }
+.sensors-summary .stat .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sensors-since { font-size: 12.5px; margin: 0 0 6px; }
+.sensor-group { margin-top: 14px; }
+.sensor-group-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin: 0 0 6px; font-size: 13.5px; text-transform: none; letter-spacing: 0; }
+.card .sensor-group-head { color: var(--text); font-family: var(--font); font-size: 13.5px; text-transform: none; letter-spacing: 0; }
+.sensor-group-head .link-btn { color: var(--text); font-weight: 650; min-width: 0; }
+.sensor-group-head .link-btn span { overflow-wrap: anywhere; }
+.sensor-group-head .faint { font-weight: 500; font-size: 12.5px; }
+.sensor-group-head .chev { transition: transform 0.2s var(--ease-out); transform: rotate(-90deg); flex: none; }
+.sensor-group-head .chev.open { transform: none; }
+.sensor-table { font-size: 13px; }
+/* Colonne allineate da un dispositivo all'altro, come in un'unica tabella. */
+@media (min-width: 641px) {
+  .sensor-table { table-layout: fixed; }
+  .sensor-table thead th:first-child { width: 40%; }
+  .sensor-table td.num { overflow: hidden; text-overflow: ellipsis; }
+}
+.sensor-table th, .sensor-table td { padding: 6px 12px; }
+.sensor-table th.num, .sensor-table td.num { text-align: right; }
+.sensor-table tbody th { font: 500 13px/1.4 var(--font); color: var(--text); text-transform: none; letter-spacing: 0; background: none; position: static; white-space: normal; min-width: 180px; }
+.sensor-name { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; }
+.sensor-name:hover { color: var(--accent-text); }
+.sensor-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sensor-name[aria-expanded="true"] { color: var(--accent-text); font-weight: 600; }
+.sensor-table tr.lvl-warn { background: var(--warn-bg); }
+.sensor-table tr.lvl-crit { background: var(--crit-bg); }
+.sensor-chart-row td { padding: 6px 10px 10px; white-space: normal; background: var(--surface-2); }
+.sensor-hidden { font-size: 12px; margin: 5px 2px 0; }
+.sensors-missing ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-2); display: grid; gap: 4px; max-width: 92ch; }
+@media (prefers-reduced-motion: reduce) {
+  .sensor-group-head .chev { transition: none; }
+}
+@media (max-width: 640px) {
+  .sensor-table th, .sensor-table td { padding: 6px 8px; }
+  .sensor-table tbody th { min-width: 120px; font-size: 12.5px; }
+  .sensors-actions .btn.small { padding: 6px 9px; }
+}
+
 /* Kit per i PC senza Internet */
 .kit-card { margin-top: 14px; }
 .kit-card .disk-title .ico { color: var(--accent-text); }

@@ -27,7 +27,7 @@ degli antivirus), quindi quei dati restano ai programmi dedicati.
 | Oggi si scarica | Alternativa | Licenza | Proposta | Limiti |
 | --- | --- | --- | --- | --- |
 | **CPU-Z** (scheda tecnica) | già nativo: scheda tecnica e velocità dei core in tempo reale; in più **libcpuid** (tabelle per riconoscere il nome in codice del processore) e **pci.ids** (nomi di chipset e dispositivi PCI) | libcpuid: BSD-2-Clause; pci.ids: GPL-2.0-or-later **oppure** BSD-3-Clause, a scelta | nativo: nome in codice del processore e del chipset; dettagli SMBIOS (memoria, scheda madre) letti con `GetSystemFirmwareTable` secondo la specifica DMTF pubblica | timing SPD della memoria, tensioni e clock misurati richiedono un driver |
-| **HWiNFO** (sensori) | **LibreHardwareMonitor** (libreria e programma per sensori) | MPL-2.0; usa un driver in kernel (PawnIO, GPL-2.0-or-later con eccezione) | nativo: monitor delle prestazioni con i contatori di Windows (uso della GPU, dischi, rete), come per la velocità dei core; temperature dei dischi già da SMART | temperature e tensioni di CPU e scheda madre solo con un driver: integrare LibreHardwareMonitor significherebbe portare in Polaris un driver, contro le sue regole |
+| **HWiNFO** (sensori) | **LibreHardwareMonitor** (libreria e programma per sensori) | MPL-2.0; usa un driver in kernel (PawnIO, GPL-2.0-or-later con eccezione) | **fatto nella 0.8.0**, nativo: Computer > Sensori, con utilizzo, frequenze e limite di prestazioni del processore, consumi RAPL dove Windows li espone (Energy Meter), zone termiche ACPI, scheda video (utilizzo per motore, memoria e, dal driver WDDM 2.4+, temperatura, ventola, potenza, frequenze, tensione), memoria, dischi con la temperatura SMART, rete e batteria; minimo, massimo, media, avvisi e CSV | temperature e tensioni di CPU e scheda madre e ventole della scheda madre solo con un driver: integrare LibreHardwareMonitor significherebbe portare in Polaris un driver, contro le sue regole; per quelle resta HWiNFO |
 | **Process Explorer** | **System Informer** (successore di Process Hacker) | MIT | includibile nella cartella `strumenti`; oppure nativo: processi con firma digitale verificata e connessioni di rete, in sola lettura | System Informer usa un proprio driver in kernel e alcuni antivirus lo segnalano come strumento sensibile (da verificare prima di includerlo) |
 | **Autoruns** | **osquery** come riferimento (tabelle per avvio, attività pianificate, servizi, sottoscrizioni WMI) | Apache-2.0 / GPL-2.0, a scelta | nativo: estendere la sezione Avvio con attività pianificate, servizi, driver, sottoscrizioni WMI ed estensioni dei browser, in sola lettura | osquery è un agente pesante: conviene usarlo come elenco di cosa controllare, non includerlo |
 | **WizTree** (spazio su disco) | **WinDirStat**; **gdu** (analizzatore in Go) | WinDirStat: GPL-3.0-or-later; gdu: MIT | nativo: "Cosa occupa spazio" con le cartelle più grandi del disco (codice proprio o la libreria di gdu); in alternativa WinDirStat incluso nella cartella `strumenti` (versione portable, con licenza e indicazione dei sorgenti) | senza leggere direttamente la tabella dei file di NTFS la scansione è più lenta di WizTree (minuti invece di secondi sui dischi grandi) |
@@ -42,13 +42,15 @@ In ordine di utilità rispetto al lavoro:
 2. **Processi con firma e connessioni**, nativo: copre l'uso diagnostico più comune di Process Explorer.
 3. **Avvio esteso** (attività pianificate, servizi, driver, sottoscrizioni WMI, estensioni dei browser), nativo: copre gran parte
    di Autoruns ed è utile anche per la sicurezza.
-4. **Monitor delle prestazioni** con i contatori di Windows (GPU, dischi, rete): riusa l'infrastruttura della velocità dei core.
+4. ~~**Monitor delle prestazioni** con i contatori di Windows (GPU, dischi, rete)~~: fatto nella 0.8.0 come monitor dei
+   sensori, che riusa l'infrastruttura della velocità dei core.
 5. **Nome in codice del processore e del chipset** (libcpuid, pci.ids): piccolo, migliora la scheda tecnica.
 6. **System Informer e WinDirStat nella cartella `strumenti`**, dopo aver verificato driver e segnalazioni degli antivirus.
 7. **Minidump nativi**: il più impegnativo; BlueScreenView incluso copre già il bisogno.
 
-Con i punti 1-4 i download restano necessari solo per i sensori di temperatura e tensione (HWiNFO o LibreHardwareMonitor) e per
-un secondo parere antivirus (Safety Scanner o ESET), cioè proprio dove servirebbe un driver o un motore antivirus completo.
+Con i punti 1-4 i download restano necessari solo per le temperature, le tensioni e le ventole di processore e scheda madre
+(HWiNFO o LibreHardwareMonitor) e per un secondo parere antivirus (Safety Scanner o ESET), cioè proprio dove servirebbe un driver
+o un motore antivirus completo.
 
 ## Fonti
 

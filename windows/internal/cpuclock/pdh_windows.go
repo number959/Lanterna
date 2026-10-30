@@ -3,36 +3,13 @@
 package cpuclock
 
 import (
+	"errors"
 	"fmt"
 	"math"
-	"unsafe"
 
-	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
-)
 
-var (
-	pdh                              = windows.NewLazySystemDLL("pdh.dll")
-	procPdhOpenQueryW                = pdh.NewProc("PdhOpenQueryW")
-	procPdhAddEnglishCounterW        = pdh.NewProc("PdhAddEnglishCounterW")
-	procPdhCollectQueryData          = pdh.NewProc("PdhCollectQueryData")
-	procPdhGetFormattedCounterArrayW = pdh.NewProc("PdhGetFormattedCounterArrayW")
-	procPdhCloseQuery                = pdh.NewProc("PdhCloseQuery")
-)
-
-const (
-	pdhFmtDouble        = 0x00000200
-	pdhFmtNoCap100      = 0x00008000 // le prestazioni superano 100 % in turbo
-	pdhMoreData         = 0x800007D2
-	pdhCstatusValidData = 0x00000000
-	pdhCstatusNewData   = 0x00000001
-
-	// PDH_FMT_COUNTERVALUE_ITEM_W: puntatore al nome, poi PDH_FMT_COUNTERVALUE
-	// (CStatus a 4 byte e un'unione da 8 byte allineata a 8). Sono 24 byte con
-	// lo stato a +8 e il valore a +16 su 386, amd64 e arm64.
-	itemSize  = 24
-	statusOff = 8
-	doubleOff = 16
+	"lanterna/internal/pdh"
 )
 
 // Percorsi in inglese: PdhAddEnglishCounterW li accetta con Windows in
@@ -44,12 +21,8 @@ const (
 )
 
 type pdhSource struct {
-	query            uintptr
-	perf, freq, load uintptr
-}
-
-func pdhErr(op string, r uintptr) error {
-	return fmt.Errorf("%s: errore PDH 0x%08X", op, uint32(r))
+	q                *pdh.Query
+	perf, freq, load pdh.Counter
 }
 
 // New prepara la lettura della frequenza, con la frequenza nominale scritta
@@ -73,53 +46,38 @@ func registryMHz() float64 {
 
 // Open apre i contatori delle prestazioni del processore.
 func Open() (Source, error) {
-	if err := pdh.Load(); err != nil {
+	q, err := pdh.Open()
+	if errors.Is(err, pdh.ErrUnavailable) {
 		return nil, ErrUnavailable
 	}
-	var q uintptr
-	if r, _, _ := procPdhOpenQueryW.Call(0, 0, uintptr(unsafe.Pointer(&q))); r != 0 {
-		return nil, pdhErr("PdhOpenQuery", r)
+	if err != nil {
+		return nil, err
 	}
-	s := &pdhSource{query: q}
-	add := func(path string, h *uintptr) error {
-		p, err := windows.UTF16PtrFromString(path)
-		if err != nil {
-			return err
-		}
-		if r, _, _ := procPdhAddEnglishCounterW.Call(q, uintptr(unsafe.Pointer(p)), 0, uintptr(unsafe.Pointer(h))); r != 0 {
-			return pdhErr("PdhAddEnglishCounter", r)
-		}
-		return nil
-	}
-	if err := add(pathPerf, &s.perf); err != nil {
-		s.Close()
+	s := &pdhSource{q: q}
+	if s.perf, err = q.Add(pathPerf); err != nil {
+		q.Close()
 		return nil, fmt.Errorf("%w (%v)", ErrUnavailable, err)
 	}
 	// Senza la frequenza nominale per istanza si usa quella del registro.
-	if add(pathFreq, &s.freq) != nil {
+	if s.freq, err = q.Add(pathFreq); err != nil {
 		s.freq = 0
 	}
 	// Il carico è facoltativo.
-	if add(pathLoad, &s.load) != nil {
+	if s.load, err = q.Add(pathLoad); err != nil {
 		s.load = 0
 	}
 	return s, nil
 }
 
-func (s *pdhSource) Collect() error {
-	if r, _, _ := procPdhCollectQueryData.Call(s.query); r != 0 {
-		return pdhErr("PdhCollectQueryData", r)
-	}
-	return nil
-}
+func (s *pdhSource) Collect() error { return s.q.Collect() }
 
 func (s *pdhSource) Read() (map[string]Reading, error) {
 	out := map[string]Reading{}
-	put := func(h uintptr, set func(*Reading, float64)) error {
-		if h == 0 {
+	put := func(c pdh.Counter, set func(*Reading, float64)) error {
+		if c == 0 {
 			return nil
 		}
-		vals, err := counterArray(h)
+		vals, err := s.q.Values(c)
 		if err != nil {
 			return err
 		}
@@ -141,42 +99,4 @@ func (s *pdhSource) Read() (map[string]Reading, error) {
 	return out, nil
 }
 
-func (s *pdhSource) Close() {
-	if s.query != 0 {
-		procPdhCloseQuery.Call(s.query)
-		s.query = 0
-	}
-}
-
-// counterArray legge tutte le istanze di un contatore con il carattere jolly.
-func counterArray(h uintptr) (map[string]float64, error) {
-	const format = pdhFmtDouble | pdhFmtNoCap100
-	var size, count uint32
-	r, _, _ := procPdhGetFormattedCounterArrayW.Call(h, format, uintptr(unsafe.Pointer(&size)), uintptr(unsafe.Pointer(&count)), 0)
-	if uint32(r) != pdhMoreData {
-		return nil, pdhErr("PdhGetFormattedCounterArray", r)
-	}
-	if size == 0 || count == 0 {
-		return map[string]float64{}, nil
-	}
-	buf := make([]byte, size)
-	r, _, _ = procPdhGetFormattedCounterArrayW.Call(h, format, uintptr(unsafe.Pointer(&size)), uintptr(unsafe.Pointer(&count)), uintptr(unsafe.Pointer(&buf[0])))
-	if r != 0 {
-		return nil, pdhErr("PdhGetFormattedCounterArray", r)
-	}
-	out := make(map[string]float64, count)
-	for k := uint32(0); k < count; k++ {
-		off := int(k) * itemSize
-		if off+itemSize > len(buf) {
-			break
-		}
-		item := unsafe.Pointer(&buf[off])
-		// I nomi stanno nello stesso buffer, dopo gli elementi.
-		name := windows.UTF16PtrToString(*(**uint16)(item))
-		switch *(*uint32)(unsafe.Add(item, statusOff)) {
-		case pdhCstatusValidData, pdhCstatusNewData:
-			out[name] = *(*float64)(unsafe.Add(item, doubleOff))
-		}
-	}
-	return out, nil
-}
+func (s *pdhSource) Close() { s.q.Close() }

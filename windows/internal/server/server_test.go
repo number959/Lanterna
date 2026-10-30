@@ -21,6 +21,7 @@ import (
 	"lanterna/internal/defender"
 	"lanterna/internal/infra"
 	"lanterna/internal/scan"
+	"lanterna/internal/sensors"
 	"lanterna/internal/tools"
 	"lanterna/internal/winapi"
 )
@@ -832,6 +833,41 @@ func TestCPUClockEndpoint(t *testing.T) {
 	}
 	// Host estraneo: rifiutato come ogni altra API.
 	if r := do(t, h, "GET", "/api/cpu/clock", map[string]string{"Host": "evil.example:8737"}); r.Code != http.StatusForbidden {
+		t.Errorf("host estraneo: %d", r.Code)
+	}
+}
+
+func TestSensorsEndpoint(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	if r := do(t, h, "GET", "/api/sensors", nil); r.Code != http.StatusNotImplemented {
+		t.Fatalf("senza monitor: %d", r.Code)
+	}
+	at := time.Date(2026, 10, 30, 9, 30, 0, 0, time.UTC)
+	var calls int
+	s.Sensors = func(context.Context) (sensors.Snapshot, error) {
+		calls++
+		switch calls {
+		case 1:
+			warn := 85.0
+			return sensors.Snapshot{At: at, Groups: []sensors.Group{{ID: "gpu.0x0_0x1", Kind: "gpu", Name: "GPU", Sensors: []sensors.Sensor{{ID: "gpu.0x0_0x1.temp", Label: "Temperatura", Value: 61.5, Unit: "°C", Warn: &warn}}}}, Missing: []string{"x"}}, nil
+		case 2:
+			return sensors.Snapshot{}, fmt.Errorf("%w (PDH)", sensors.ErrUnavailable)
+		default:
+			return sensors.Snapshot{}, errors.New("PdhCollectQueryData: errore PDH 0x800007D5")
+		}
+	}
+	r := do(t, h, "GET", "/api/sensors", nil)
+	if r.Code != 200 || r.Body.String() != `{"at":"2026-10-30T09:30:00Z","groups":[{"id":"gpu.0x0_0x1","kind":"gpu","name":"GPU","sensors":[{"id":"gpu.0x0_0x1.temp","label":"Temperatura","value":61.5,"unit":"°C","warn":85}]}],"missing":["x"]}`+"\n" {
+		t.Fatalf("lettura: %d %s", r.Code, r.Body)
+	}
+	if r := do(t, h, "GET", "/api/sensors", nil); r.Code != http.StatusNotImplemented {
+		t.Errorf("fonti assenti: %d %s", r.Code, r.Body)
+	}
+	if r := do(t, h, "GET", "/api/sensors", nil); r.Code != http.StatusServiceUnavailable || !strings.Contains(r.Body.String(), "0x800007D5") {
+		t.Errorf("errore di lettura: %d %s", r.Code, r.Body)
+	}
+	if r := do(t, h, "GET", "/api/sensors", map[string]string{"Host": "evil.example:8737"}); r.Code != http.StatusForbidden {
 		t.Errorf("host estraneo: %d", r.Code)
 	}
 }

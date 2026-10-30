@@ -53,6 +53,7 @@ import { useWidth } from './hooks';
 import { ToolShortcut, Toolbox } from './toolbox';
 import { Anim } from './anim';
 import { CoreClock } from './clock';
+import { SensorsCard } from './sensors';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -61,7 +62,7 @@ import type { ViewProps } from './views';
 // vede è letto in sola lettura durante l'analisi; i test di velocità partono
 // solo su richiesta e, senza agente, sono simulati e dichiarati come tali.
 
-const PC_GUIDES = ['pc-come-funziona', 'dischi-hdd-ssd', 'salute-dischi-smart', 'test-velocita', 'scheda-tecnica', 'pc-lento-metodo'];
+const PC_GUIDES = ['pc-come-funziona', 'dischi-hdd-ssd', 'salute-dischi-smart', 'test-velocita', 'scheda-tecnica', 'sensori', 'pc-lento-metodo'];
 
 const gb = (v: number) => `${fmtNum(v, v < 10 ? 1 : 0)} GB`;
 const mbs = (v: number) => `${fmtNum(v, v < 10 ? 1 : 0)} MB/s`;
@@ -153,6 +154,13 @@ export function PcView(props: ViewProps) {
       {pc?.hardware && (
         <Section title="Scheda tecnica">
           <HardwareCard pc={pc} live={props.live} source={props.source} />
+        </Section>
+      )}
+
+      {pc && (
+        <Section title="Sensori">
+          <SensorsCard scan={scan} live={props.live} source={props.source} />
+          <ToolShortcut id="hwinfo" live={props.live} text="per temperature, tensioni e ventole di processore e scheda madre, che richiedono un driver" />
         </Section>
       )}
 

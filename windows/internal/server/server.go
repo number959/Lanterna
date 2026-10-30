@@ -63,6 +63,7 @@ import (
 	"lanterna/internal/defender"
 	"lanterna/internal/infra"
 	"lanterna/internal/scan"
+	"lanterna/internal/sensors"
 	"lanterna/internal/tools"
 )
 
@@ -82,6 +83,8 @@ type Server struct {
 	Ping func(ctx context.Context, ip string, tcpPorts []int, preferTCP bool) *float64
 	// CPUClock legge la frequenza effettiva dei core (nil: non disponibile).
 	CPUClock func(ctx context.Context) (cpuclock.Sample, error)
+	// Sensors legge il monitor dei sensori (nil: non disponibile).
+	Sensors func(ctx context.Context) (sensors.Snapshot, error)
 
 	// Infra abilita inventario e verifiche di raggiungibilità (nil = non disponibili).
 	Infra    *infra.Prims
@@ -591,6 +594,24 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		writeJSON(w, 200, smp)
+	})
+	mux.HandleFunc("GET /api/sensors", func(w http.ResponseWriter, r *http.Request) {
+		if s.Sensors == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": sensors.ErrUnavailable.Error()})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		snap, err := s.Sensors(ctx)
+		if err != nil {
+			code := http.StatusServiceUnavailable
+			if errors.Is(err, sensors.ErrUnavailable) {
+				code = http.StatusNotImplemented
+			}
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, snap)
 	})
 	mux.HandleFunc("POST /api/inventory", func(w http.ResponseWriter, r *http.Request) {
 		if s.Infra == nil {

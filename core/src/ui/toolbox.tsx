@@ -651,7 +651,9 @@ export function ToolShortcut({ id, live, text }: { id: string; live: boolean; te
   const t = TOOLS.find((x) => x.id === id);
   const inc = found.bundled[id];
   const included = !!inc && !inc.problem;
-  if (!live || !t || (!included && !found.installed[id])) return null;
+  const dl = found.portable[id];
+  const downloaded = !!dl && !dl.problem && !dl.expired;
+  if (!live || !t || (!included && !downloaded && !found.installed[id])) return null;
   return (
     <m.div className="tool-shortcut" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
       <Anim kind="draw">
@@ -659,7 +661,7 @@ export function ToolShortcut({ id, live, text }: { id: string; live: boolean; te
       </Anim>
       <span>
         <b>{t.name}</b> {text}
-        {included ? ` · incluso in Polaris ${inc.version}` : ' · installato su questo PC'}
+        {included ? ` · incluso in Polaris ${inc.version}` : downloaded ? ` · ${dl.kit ? 'nel kit' : 'scaricato'} dal sito ufficiale${dl.version ? `, versione ${dl.version}` : ''}` : ' · installato su questo PC'}
       </span>
       <button className="btn small" onClick={() => open(id, 'app', t.name)}>
         <AppWindow size={15} aria-hidden /> Apri {t.name}

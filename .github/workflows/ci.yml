@@ -143,6 +143,47 @@ jobs:
             "API: $($a.mhz) MHz alle $($a.at), poi $($b.mhz) MHz alle $($b.at)"
             if (-not $b.mhz -or $a.at -eq $b.at) { throw "letture via API non aggiornate" }
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+      - name: Sensori senza driver (come HWiNFO)
+        timeout-minutes: 4
+        run: |
+          $s = @(./polaris-cli.exe sensors --seconds 3 --json | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0) { throw "sensors fallito" }
+          if ($s.Count -ne 3) { throw "attese 3 letture, ottenute $($s.Count)" }
+          $last = $s[-1]
+          foreach ($g in $last.groups) {
+            $vals = ($g.sensors | Where-Object { -not $_.detail } | ForEach-Object { "$($_.label) $($_.value) $($_.unit)".Trim() }) -join '; '
+            $sub = if ($g.sub) { " ($($g.sub))" } else { '' }
+            "$($g.kind.PadRight(8)) $($g.name)${sub}: $vals"
+          }
+          "Non disponibile su questo PC:"
+          $last.missing | ForEach-Object { "  - $_" }
+          $kinds = @($last.groups | ForEach-Object { $_.kind })
+          foreach ($k in 'cpu', 'memory', 'disk', 'system') { if ($kinds -notcontains $k) { throw "manca il gruppo $k" } }
+          $cpu = $last.groups | Where-Object { $_.kind -eq 'cpu' }
+          $ids = @($cpu.sensors | ForEach-Object { $_.id })
+          foreach ($id in 'cpu.usage', 'cpu.clock', 'cpu.maxclock') { if ($ids -notcontains $id) { throw "manca il sensore $id" } }
+          $cores = @($cpu.sensors | Where-Object { $_.id -like 'cpu.core.*.usage' }).Count
+          if ($cores -ne [Environment]::ProcessorCount) { throw "processori logici: $cores invece di $([Environment]::ProcessorCount)" }
+          $mem = ($last.groups | Where-Object { $_.kind -eq 'memory' }).sensors | Where-Object { $_.id -eq 'mem.load' }
+          if (-not $mem -or $mem.value -le 0 -or $mem.value -gt 100) { throw "memoria non letta" }
+          $disk = @($last.groups | Where-Object { $_.kind -eq 'disk' -and $_.sub -match [regex]::Escape($env:SystemDrive) })
+          if (-not $disk -or -not ($disk[0].sensors | Where-Object { $_.id -like '*.activity' })) { throw "disco di sistema senza attività" }
+          if (-not ($last.missing -match 'driver in kernel')) { throw "manca la nota sui sensori che richiedono un driver" }
+          ./polaris-cli.exe sensors --seconds 3 --all --csv sensori.csv
+          if ($LASTEXITCODE -ne 0) { throw "sensors con il registro CSV fallito" }
+          $csv = Get-Content sensori.csv -Encoding UTF8
+          if ($csv.Count -ne 4) { throw "righe del CSV: $($csv.Count) invece di 4" }
+          if ($csv[0] -notmatch '^\uFEFF?Data e ora;' -or $csv[1] -notmatch '^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d;') { throw "CSV non valido: $($csv[0].Substring(0, [Math]::Min(120, $csv[0].Length)))" }
+          "CSV: $(($csv[0] -split ';').Count - 1) colonne, $($csv.Count - 1) letture"
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve', '--port', '8743' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $a = Invoke-RestMethod http://127.0.0.1:8743/api/sensors
+            Start-Sleep 1
+            $b = Invoke-RestMethod http://127.0.0.1:8743/api/sensors
+            "API: $($a.groups.Count) gruppi alle $($a.at), poi $($b.groups.Count) alle $($b.at)"
+            if ($a.at -eq $b.at -or $b.groups.Count -lt 3) { throw "letture via API non aggiornate" }
+          } finally { Stop-Process $p -ErrorAction SilentlyContinue }
       - name: Test di velocità da riga di comando
         run: |
           $c = ./polaris-cli.exe bench cpu --quick --json | ConvertFrom-Json

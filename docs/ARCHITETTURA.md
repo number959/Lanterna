@@ -33,7 +33,9 @@ nome, che non compare più all'utente.
    │   infra/   inventario e verifiche su richiesta, ritmo prudente          │
    │   pcinfo/  dati del computer: API native + uno script PowerShell        │
    │   bench/   test di velocità di processore e dischi, su richiesta        │
+   │   pdh/     contatori delle prestazioni di Windows (nomi inglesi)       │
    │   cpuclock/ velocità dei core in tempo reale dai contatori PDH          │
+   │   sensors/ monitor dei sensori senza driver: PDH, D3DKMT, batteria     │
    │   defender/ Microsoft Defender: stato, minacce, scansioni a richiesta   │
    │   tools/   cassetta degli attrezzi: inclusi, scaricati, kit, lista bianca │
    │   winps/   avvio di Windows PowerShell senza moduli ereditati           │
@@ -148,6 +150,12 @@ Organizzazione di `core/src/ui/`:
   in stampa nasconde tutto tranne il documento.
 - `clock.tsx`: velocità dei core in tempo reale nella scheda tecnica. Una lettura al secondo solo mentre il riquadro è montato e la
   pagina visibile; pausa; dopo un errore le letture si fermano fino a Riprova; nella demo valori simulati e dichiarati.
+- `sensors.tsx`: monitor dei sensori come HWiNFO. Una lettura al secondo mentre la sezione Computer è montata e la pagina
+  visibile; per ogni sensore attuale, minimo, massimo, media e gli ultimi 120 secondi per il grafico; registro delle letture fino
+  a un'ora per il CSV (punto e virgola, virgola decimale, marca UTF-8). La sessione resta in memoria cambiando sezione, separata
+  per sorgente (agente o demo). Avvisi con isteresi: una temperatura sopra l'attenzione o un sensore in allarme, ripetuti solo
+  dopo un rientro con margine (2 °C o 3 punti). Nella demo letture simulate e coerenti con i due PC (il portatile si scalda e
+  limita il processore; la grafica integrata non ha telemetria). Le funzioni pure sono provate in `test/sensors.test.ts`.
 - `toolbox.tsx`: stato della cassetta condiviso a livello di modulo (una richiesta alla volta, rilettura ogni 400 ms durante un
   download anche cambiando sezione), conferma prima di scaricare, avanzamento, pannello del kit con coda ed esito.
 - `monitor.ts`: la sessione del monitor appartiene all'App e continua fra le sezioni; riepilogo dell'intera sessione (media, 95°
@@ -189,6 +197,7 @@ rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFIC
 | Versioni portable (su richiesta) | `tools.Fetcher`: download https con il proxy di sistema, host ammessi controllati a ogni rimando, cookie (i mirror di SourceForge li usano), fino a 3 tentativi; limite di dimensione, risposte HTML scartate; estrazione dello zip con `filepath.IsLocal` e limite totale; impronta SHA-256 dell'archivio per le versioni fissate; firma Authenticode (`Get-AuthenticodeSignature`: stato `Valid` e nome del firmatario uguale a quello atteso) al download e prima di ogni avvio | in `%LOCALAPPDATA%\STARNET Polaris\strumenti\<id>` con `polaris.json` (impronta dell'eseguibile, versione, firmatario, data, indirizzo); l'impronta si ricalcola solo se cambiano dimensione o data del file; Safety Scanner scade dopo 10 giorni |
 | Kit per i PC senza Internet (su richiesta) | lo stesso `Fetcher` scrive in `strumenti-scaricati` accanto all'exe (con un LEGGIMI); `Find` cerca nella cartella del PC e nel kit e preferisce la prima copia integra, prima quella del PC | la cartella deve essere scrivibile (verifica prima di partire, messaggi senza percorsi); sui PC senza rete valgono le stesse verifiche: impronta registrata e firma |
 | Velocità dei core (dal vivo) | PDH con `PdhAddEnglishCounterW` (nomi uguali in ogni lingua): `\Processor Information(*)\% Processor Performance`, `Processor Frequency` e `% Processor Time`, letti con `PdhGetFormattedCounterArrayW` e `PDH_FMT_NOCAP100` (il turbo supera il 100 %); frequenza di un core = nominale × prestazioni / 100, media dall'istanza `_Total` come Gestione attività | i contatori si aprono alla prima lettura (due raccolte a 250 ms), letture ravvicinate condividono il campione, chiusura dopo un minuto senza letture; nominale di riserva da `~MHz` nel registro; bus nominale da SMBIOS (`Win32_Processor.ExternalClock`); nessun driver |
+| Sensori (dal vivo) | una sola query PDH con i contatori di `Processor Information` (utilizzo, utilità, prestazioni, frequenza, `% Performance Limit`, stati C, interrupt e DPC), `Energy Meter` (potenza RAPL in mW, se c'è), `Thermal Zone Information` (kelvin e decimi di kelvin, limite passivo), `GPU Engine` e `GPU Adapter Memory` (utilizzo per motore sommato sui processi, poi il motore più impegnato, come Gestione attività), `PhysicalDisk`, `Network Interface`, `Memory`, `Paging File` e `System`; i contatori senza carattere jolly si leggono con `PdhGetFormattedCounterValue`. Scheda video da gdi32: `D3DKMTEnumAdapters2`, `D3DKMTQueryAdapterInfo` con `KMTQAITYPE_ADAPTERTYPE` (si saltano gli adattatori software), `DRIVERVERSION` (≥ WDDM 2.4), `NODEMETADATA` (motore 3D), `ADAPTERPERFDATA` (temperatura in decimi di °C, ventola, potenza in decimi di punto percentuale, frequenza della memoria), `NODEPERFDATA` (frequenza e tensione) e `ADAPTERPERFDATA_CAPS` (soglie). Batteria con le IOCTL della classe batteria (`CM_Get_Device_Interface_List`, `IOCTL_BATTERY_QUERY_TAG`, `QUERY_INFORMATION`, `QUERY_STATUS`), solo batterie di sistema. Memoria con `GlobalMemoryStatusEx`; modello e tipo dei dischi con `IOCTL_STORAGE_QUERY_PROPERTY` senza diritti; temperatura dei dischi dai dati SMART ogni 30 secondi in un goroutine | come per la velocità dei core: apertura alla prima lettura (due raccolte a 500 ms), letture ravvicinate condividono il campione, chiusura di contatori, schede video e goroutine dopo un minuto senza letture; ciò che manca su un PC finisce in `missing`; nessun driver |
 | Test del processore (su richiesta) | `compress/flate` su un testo sintetico deterministico: 3 s con un thread, 20 s con tutti, campioni al secondo | punta = migliore media su 3 s nella prima metà; finale = media dell'ultimo quarto |
 | Test del disco (su richiesta) | `CreateFile` con `FILE_FLAG_NO_BUFFERING`, `FILE_FLAG_DELETE_ON_CLOSE` e `FILE_FLAG_OVERLAPPED`; ogni richiesta in coda è una goroutine con la sua `OVERLAPPED` e il suo evento (`GetOverlappedResult`); profilo di CrystalDiskMark: SEQ1M Q8T1, SEQ1M Q1T1, RND4K Q32T1, RND4K Q1T1, 4 s per misura | file fino a 1 GiB (o ciò che si scrive in 15 s), almeno 2 GiB lasciati liberi, buffer allineati a 4 KiB e dati non comprimibili |
 
@@ -199,7 +208,7 @@ PowerShell 7 la eredita con i moduli di PowerShell 7 in testa, e Windows PowerSh
 script si aggiunge la prima riga scritta da PowerShell.
 
 Modalità del programma: `Polaris.exe` (finestra), `report` (anche `--html`), `serve`, `bench cpu`, `bench disk`,
-`defender status|quick|full|update`, `tools status|kit` e `clock`. La finestra usa WebView2; se il runtime manca (o non
+`defender status|quick|full|update`, `tools status|kit`, `clock` e `sensors` (anche `--csv`). La finestra usa WebView2; se il runtime manca (o non
 funziona) STARNET Polaris lo dice con un messaggio e apre l'interfaccia nel browser predefinito. `Polaris.exe` è compilato come
 applicazione grafica e si aggancia alla console del prompt quando riceve un comando; `polaris-cli.exe` è la stessa cosa compilata
 per la console, comoda negli script.
@@ -224,6 +233,7 @@ per la console, comoda negli script.
 | `GET /api/defender` | operazione in corso, eventuale errore ed esito dell'ultima (con stato e minacce riletti) |
 | `DELETE /api/defender` | interrompe la scansione in corso |
 | `GET /api/cpu/clock` | frequenza effettiva dei core in questo istante: media, core più veloce, nominale, percentuale, carico e valori per processore logico; `501` se i contatori non esistono, `503` se la lettura non riesce |
+| `GET /api/sensors` | lettura di tutti i sensori: `at`, `groups` (per dispositivo: `id`, `kind`, `name`, `sub`, `sensors` con `id` stabile, `label`, `value`, `unit`, soglie `warn` e `crit`, `below` per le soglie verso il basso, `detail` per le righe di dettaglio) e `missing` (ciò che su questo PC non si legge); `501` se le fonti non esistono, `503` se la lettura non riesce |
 | `GET /api/tools` | programmi della cassetta installati (`installed`), inclusi nel pacchetto (`bundled`) e scaricati (`portable`, con `kit` per le copie del kit e `expired` per quelle scadute), con `problem` se l'eseguibile non è quello verificato; programmi scaricabili su questo PC (`fetchable`), disponibilità del kit (`kit`) e download in corso o concluso (`fetch`: programma, byte, totale, errore; per il kit anche `queue`, `ready` e `failed`). Mai percorsi |
 | `POST /api/tools/fetch` | corpo `{"tool": "<id>"}`: `202` avvia il download della versione portable; `404` fuori catalogo, `400` se il programma non ha una versione portable per questo PC, `409` se c'è già un download, `501` se l'agente non scarica |
 | `POST /api/tools/kit` | corpo `{"tools": ["<id>", ...]}`: `202` avvia la preparazione del kit (duplicati ignorati); `404` e `400` come sopra, `400` con elenco vuoto, `422` se la cartella di Polaris non è scrivibile, `409` se c'è già un download |

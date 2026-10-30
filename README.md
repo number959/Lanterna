@@ -94,6 +94,13 @@ script PowerShell nascosto: nessuna impostazione viene modificata.
   core come in Gestione attività, core più veloce, percentuale rispetto alla base con il turbo, massima della sessione, carico),
   grafico dell'ultimo minuto e una barra per processore logico. I valori vengono dai contatori delle prestazioni di Windows, senza
   driver; bus e moltiplicatore sono quelli nominali dichiarati dal firmware.
+- **Sensori in tempo reale**, come la finestra dei sensori di HWiNFO ma senza driver: una lettura al secondo con valore attuale,
+  minimo, massimo e media di utilizzo, frequenze e limite di prestazioni del processore, consumi (se il PC espone i contatori
+  Energy Meter), zone termiche ACPI, scheda video (utilizzo per motore, memoria e, quando il driver li fornisce, temperatura,
+  ventola, potenza, frequenze e tensione), memoria, attività e temperatura dei dischi, rete, batteria e sistema. Grafico di ogni
+  sensore, righe di dettaglio per processore logico, avvisi con suono quando si superano le soglie e registro CSV per Excel.
+  Ciò che richiede un driver in kernel (temperature, tensioni e ventole di processore e scheda madre) resta a HWiNFO, e Polaris
+  lo dice.
 - **Alimentazione**: salute della batteria, piano di alimentazione, driver della scheda video.
 - **Test di velocità** (solo su richiesta): il processore comprime dati con un thread e con tutti per circa 25 secondi e rivela
   il calo dovuto a calore o limiti di potenza; il disco scrive e rilegge un file temporaneo fino a 1 GB senza cache di Windows
@@ -183,10 +190,10 @@ Senza agente, le due reti dimostrative (*Casa* e *Clinica*) mostrano tutte le fu
 
 ![Guide](docs/img/guide.webp)
 
-66 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
-complesse e sanità, diagnosi), un glossario di 192 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
+67 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
+complesse e sanità, diagnosi), un glossario di 199 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
 d'uso parte dai primi passi e arriva alla riga di comando e alla cassetta degli attrezzi; il capitolo sul computer spiega
-componenti, scheda tecnica, dischi HDD e SSD, attributi SMART, test di velocità, memoria, avvio, aggiornamenti, antivirus e
+componenti, scheda tecnica, sensori in tempo reale, dischi HDD e SSD, attributi SMART, test di velocità, memoria, avvio, aggiornamenti, antivirus e
 Microsoft Defender, registro eventi, batteria e il metodo per un PC lento. Le date di supporto di
 Windows citate sono quelle note a metà 2026 e vanno verificate sul sito Microsoft. Ogni valore misurato e ogni azione del piano rimandano
 alla guida che li spiega; sette diagrammi animati illustrano livelli, sottoreti, DHCP, canali, roaming, VLAN e zone di una rete
@@ -224,11 +231,13 @@ polaris-cli report --html --out stato-pc.html   documento stampabile sullo stato
 polaris-cli tools kit               kit per i PC senza Internet in strumenti-scaricati (--all: anche Safety Scanner)
 polaris-cli tools status            programmi scaricati, sul PC e nel kit
 polaris-cli clock                   velocità dei core in tempo reale (--seconds N, --json)
+polaris-cli sensors --seconds 600 --csv sensori.csv   sensori come HWiNFO, con registro per Excel (--all, --json)
 ```
 
 Su Windows 11 24H2 e successivi la lettura delle reti Wi-Fi richiede il permesso di posizione per le app desktop: Polaris lo
 rileva e spiega come attivarlo. Non servono privilegi di amministratore; avviando Polaris come amministratore compaiono anche
-attributi SMART, registro NVMe, temperatura, usura ed errori dei dischi.
+attributi SMART, registro NVMe, temperatura, usura ed errori dei dischi (e la temperatura dei dischi SATA nel monitor dei
+sensori).
 
 ## Sviluppo
 
