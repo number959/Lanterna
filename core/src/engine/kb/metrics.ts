@@ -707,6 +707,19 @@ const list: Metric[] = [
     limits: 'Punti di ripristino, file di ibernazione e file di paging occupano spazio che non compare nelle cartelle.',
   },
   {
+    id: 'pc.spacereclaim',
+    label: 'Spazio recuperabile',
+    category: 'pc',
+    unit: 'GB',
+    what: 'Lo spazio che l\'analisi "Cosa occupa spazio" ha trovato in cartelle che Windows sa ripulire da solo o con i suoi strumenti: file temporanei, download degli aggiornamenti, installazione precedente (Windows.old), cache dei browser, segnalazioni e dump degli errori.',
+    scale: [
+      { range: 'meno di 5 GB', severity: 'ok', meaning: 'Poco da recuperare senza toccare i dati.' },
+      { range: '5 GB o più', severity: 'info', meaning: 'Si libera spazio con Impostazioni > Archiviazione o Pulizia disco.' },
+    ],
+    why: 'Sono file che non servono più o che si ricreano da soli: liberarli è il modo più sicuro di recuperare spazio, prima di toccare documenti, foto e programmi.',
+    limits: 'È una stima: Windows può tenere alcuni file (aggiornamenti in attesa, file in uso) finché non li considera superati. WinSxS, file di paging, cache di Windows Installer e dei pacchetti non sono contati perché non vanno toccati; download, OneDrive e Cestino sono indicati a parte, perché sono dati personali.',
+  },
+  {
     id: 'pc.startup',
     label: 'Programmi all\'avvio',
     category: 'pc',

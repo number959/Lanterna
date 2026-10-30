@@ -197,6 +197,60 @@ jobs:
             "API: $($a.groups.Count) gruppi alle $($a.at), poi $($b.groups.Count) alle $($b.at)"
             if ($a.at -eq $b.at -or $b.groups.Count -lt 3) { throw "letture via API non aggiornate" }
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+      - name: Cosa occupa spazio (come WizTree)
+        timeout-minutes: 25
+        run: |
+          # Cartella di Windows: i file di WinSxS e System32 con più nomi (collegamenti fisici) si contano una volta.
+          $w = ./polaris-cli.exe space $env:SystemRoot --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "space sulla cartella di Windows fallito" }
+          "Windows: $([math]::Round($w.allocBytes / 1e9, 2)) GB in $($w.files) file e $($w.dirs) cartelle, $($w.durationMs) ms; collegamenti fisici contati una volta $([math]::Round($w.linkedBytes / 1e9, 2)) GB; non leggibili $($w.denied)"
+          if ($w.files -lt 10000 -or $w.allocBytes -le 0) { throw "cartella di Windows letta male" }
+          if ($w.linkedBytes -le 0) { throw "nessun collegamento fisico contato una volta (WinSxS/System32)" }
+          if (@($w.hints | ForEach-Object { $_.id }) -notcontains 'winsxs') { throw "manca WinSxS tra le cartelle note" }
+          # Stesso numero di file di .NET nella cartella System32 (senza sottocartelle).
+          $s32 = $w.tree.children | Where-Object { $_.name -eq 'System32' }
+          $net = [System.IO.Directory]::GetFiles("$env:SystemRoot\System32").Count
+          "System32: $($s32.ownFiles) file letti da Polaris, $net da .NET"
+          if (-not $s32 -or [math]::Abs($s32.ownFiles - $net) -gt [math]::Max(5, $net * 0.01)) { throw "conteggio dei file di System32 diverso da .NET" }
+          ./polaris-cli.exe space $env:SystemRoot --top 5
+          if ($LASTEXITCODE -ne 0) { throw "space in testo fallito" }
+
+          # Unità intera: durata, totali coerenti con lo spazio occupato del volume, niente nome utente nei percorsi.
+          $raw = ./polaris-cli.exe space $env:SystemDrive --json | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "space sull'unità di sistema fallito" }
+          $c = $raw | ConvertFrom-Json
+          $used = $c.totalBytes - $c.freeBytes
+          "Unità $($c.drive) ($($c.fs)): $([math]::Round($c.allocBytes / 1e9, 1)) GB in $($c.files) file e $($c.dirs) cartelle, $([math]::Round($c.durationMs / 1000, 1)) s; occupato sul volume $([math]::Round($used / 1e9, 1)) GB; non leggibili $($c.denied); solo online $($c.cloudFiles)"
+          "Cartelle note: $((@($c.hints) | ForEach-Object { "$($_.id) $([math]::Round($_.alloc / 1e9, 2)) GB" }) -join '; ')"
+          "File più grandi: $((@($c.topFiles) | Select-Object -First 5 | ForEach-Object { "$($_.path) $([math]::Round($_.alloc / 1e9, 2)) GB" }) -join '; ')"
+          if ($c.allocBytes -le 0 -or $c.allocBytes -gt $used * 1.02) { throw "spazio letto incoerente con il volume" }
+          if ($c.allocBytes -lt $used * 0.5) { throw "letto meno della metà dello spazio occupato" }
+          if ($c.tree.id -ne 1 -or @($c.tree.children).Count -lt 3) { throw "albero delle cartelle mancante" }
+          if ($raw -match [regex]::Escape($env:USERNAME)) { throw "nome utente nei percorsi" }
+          if (@($c.hints | ForEach-Object { $_.id }) -notcontains 'pagefile' -and -not (Test-Path "$env:SystemDrive\pagefile.sys")) { "Nessun file di paging su $env:SystemDrive" }
+
+          # API: analisi di un'altra unità in background, interruzione, apertura solo per numero.
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve', '--port', '8744' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $h = @{ Origin = 'http://127.0.0.1:8744' }
+            $drive = if (Test-Path 'D:\') { 'D:' } else { $env:SystemDrive }
+            $r = Invoke-RestMethod -Method Post http://127.0.0.1:8744/api/space -Headers $h -ContentType 'application/json' -Body (@{ drive = $drive } | ConvertTo-Json)
+            if (-not $r.started) { throw "analisi non avviata" }
+            do { Start-Sleep 1; $st = Invoke-RestMethod http://127.0.0.1:8744/api/space } while ($st.running)
+            if ($st.error -or -not $st.result -or $st.result.drive -ne $drive) { throw "analisi di $drive via API: $($st.error)" }
+            "API: $drive $([math]::Round($st.result.allocBytes / 1e9, 1)) GB in $($st.result.files) file, $($st.result.durationMs) ms"
+            try {
+              Invoke-RestMethod -Method Post http://127.0.0.1:8744/api/space/open -Headers $h -ContentType 'application/json' -Body (@{ drive = $drive; id = 999999 } | ConvertTo-Json) | Out-Null
+              throw "apertura di un elemento sconosciuto accettata"
+            } catch { if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw } }
+            $null = Invoke-RestMethod -Method Post http://127.0.0.1:8744/api/space -Headers $h -ContentType 'application/json' -Body (@{ drive = $env:SystemDrive } | ConvertTo-Json)
+            Start-Sleep -Milliseconds 700
+            $null = Invoke-RestMethod -Method Delete http://127.0.0.1:8744/api/space -Headers $h
+            do { Start-Sleep 1; $st = Invoke-RestMethod http://127.0.0.1:8744/api/space } while ($st.running)
+            "Interruzione: $($st.error); parziale=$($st.result.partial), $($st.result.files) file letti"
+            if ($st.error -notmatch 'parziali' -or -not $st.result.partial) { throw "interruzione non gestita" }
+          } finally { Stop-Process $p -ErrorAction SilentlyContinue }
       - name: Test di velocità da riga di comando
         run: |
           $c = ./polaris-cli.exe bench cpu --quick --json | ConvertFrom-Json

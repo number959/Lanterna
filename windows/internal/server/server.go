@@ -488,7 +488,9 @@ func (s *Server) startSpace(drive string) error {
 		return errors.New("analisi dello spazio già in corso")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	s.spaceRunning, s.spaceDrive, s.spaceErr, s.spaceProg, s.spaceCancel = true, drive, "", nil, cancel
+	// Il risultato precedente resta nell'interfaccia: qui si toglie, così a
+	// fine analisi c'è solo quello nuovo (o nessuno, se è fallita).
+	s.spaceRunning, s.spaceDrive, s.spaceErr, s.spaceProg, s.spaceCancel, s.spaceLast = true, drive, "", nil, cancel, nil
 	s.spaceFinish = make(chan struct{})
 	finish := s.spaceFinish
 	go func() {

@@ -54,6 +54,7 @@ import { ToolShortcut, Toolbox } from './toolbox';
 import { Anim } from './anim';
 import { CoreClock } from './clock';
 import { SensorsCard } from './sensors';
+import { SpaceCard, useSpaceRun } from './space';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -62,7 +63,7 @@ import type { ViewProps } from './views';
 // vede è letto in sola lettura durante l'analisi; i test di velocità partono
 // solo su richiesta e, senza agente, sono simulati e dichiarati come tali.
 
-const PC_GUIDES = ['pc-come-funziona', 'dischi-hdd-ssd', 'salute-dischi-smart', 'test-velocita', 'scheda-tecnica', 'sensori', 'pc-lento-metodo'];
+const PC_GUIDES = ['pc-come-funziona', 'dischi-hdd-ssd', 'salute-dischi-smart', 'spazio-disco', 'test-velocita', 'scheda-tecnica', 'sensori', 'pc-lento-metodo'];
 
 const gb = (v: number) => `${fmtNum(v, v < 10 ? 1 : 0)} GB`;
 const mbs = (v: number) => `${fmtNum(v, v < 10 ? 1 : 0)} MB/s`;
@@ -124,6 +125,11 @@ export function PcView(props: ViewProps) {
           <ToolShortcut id="crystaldiskinfo" live={props.live} text="per una seconda opinione: cronologia dei valori SMART e avviso continuo dalla barra delle applicazioni" />
         </Section>
       )}
+
+      <Section title="Cosa occupa spazio">
+        <SpaceCard {...props} />
+        <ToolShortcut id="wiztree" live={props.live} text="per l'elenco di ogni singolo file e, da amministratore, la lettura diretta della tabella dei file di NTFS" />
+      </Section>
 
       <Section title="Test di velocità">
         <BenchCard {...props} />
@@ -903,7 +909,9 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
   const lowSpace = vol ? vol.freeGB < 2.2 : false;
   // Un'operazione di Defender in corso falserebbe le misure: il server rifiuterebbe il test.
   const defRun = useDefenderRun();
-  const busy = !!run || !!defRun;
+  // Anche l'analisi dello spazio legge il disco: le misure sarebbero falsate.
+  const spaceBusy = useSpaceRun();
+  const busy = !!run || !!defRun || !!spaceBusy;
   const cpuHist = hist.cpu.filter((h) => h.startedAt !== cpu?.startedAt).slice(0, 4);
   const diskHist = hist.disk.filter((h) => h.drive.toUpperCase() === drive.toUpperCase() && h.startedAt !== diskRes?.startedAt).slice(0, 4);
 

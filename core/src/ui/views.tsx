@@ -25,7 +25,7 @@ import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apCount, ownRadios, phyLabel, primaryAdapter, secFamily } from '../engine';
-import type { Analysis, AnswerValue, Band, Bss, Category, CpuBench, DiskBench, InfraData, PcData, Scan, Severity } from '../engine';
+import type { Analysis, AnswerValue, Band, Bss, Category, CpuBench, DiskBench, InfraData, PcData, Scan, Severity, SpaceReport } from '../engine';
 import { download, openTool } from './api';
 import { ACTION_TOOLS, WINDOWS_TOOLS } from '../tools';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
@@ -69,6 +69,8 @@ export interface ViewProps {
   setInfra: (patch: Partial<InfraData>) => void;
   /** Unisce al rapporto il risultato di un test di velocità. */
   addBench: (r: { cpu?: CpuBench; disk?: DiskBench }) => void;
+  /** Unisce al rapporto un'analisi dello spazio (una per unità, la più recente). */
+  addSpace: (r: SpaceReport) => void;
   /** Aggiorna parti dei dati del computer (per esempio lo stato di Defender dopo una scansione). */
   patchPc: (p: Partial<PcData>) => void;
   assessment: AssessmentState;

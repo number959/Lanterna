@@ -5,6 +5,7 @@ import { fmt, thousands } from './fmt';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 import { dateIt } from './pc';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
+import { pctText, sizeText, SPACE_CATEGORY_LABEL, SPACE_HINTS, SPACE_RISK_LABEL, unattributedBytes } from './space';
 import type { Analysis, EventKind, Finding, Scan, Severity } from './types';
 
 // Documento stampabile ed esportabile sullo stato del PC (e della rete): HTML
@@ -301,6 +302,34 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
       );
     }
     out.push(`<section><h2>Test di velocità</h2>${parts.join('')}</section>`);
+  }
+
+  // Cosa occupa spazio: totali, categorie e cartelle note di Windows. Niente
+  // nomi di file o di cartelle personali: il documento si consegna.
+  const spaces = pc?.space ?? [];
+  if (spaces.length) {
+    const parts = spaces.map((r) => {
+      const cats = (r.categories ?? []).filter((c) => c.alloc > 0).slice(0, 6);
+      const hints = (r.hints ?? []).filter((h) => h.alloc >= 1e8);
+      const un = unattributedBytes(r);
+      const note = [
+        r.linkedBytes ? `${sizeText(r.linkedBytes)} di collegamenti fisici contati una volta` : '',
+        r.cloudFiles ? `${thousands(r.cloudFiles)} file solo online esclusi` : '',
+        r.denied ? `${thousands(r.denied)} cartelle non leggibili` : '',
+        un > 0 ? `${sizeText(un)} non attribuiti a file leggibili` : '',
+      ].filter(Boolean);
+      return (
+        `<h3>Unità ${esc(r.drive)}, analisi del ${dateIt(r.startedAt)}${r.partial ? ' (interrotta: valori parziali)' : ''}</h3>` +
+        `<p>${sizeText(r.allocBytes)} in ${thousands(r.files)} file e ${thousands(r.dirs)} cartelle${r.totalBytes > 0 ? `; liberi ${sizeText(r.freeBytes)} su ${sizeText(r.totalBytes)}` : ''}.${note.length ? ` <span class="pd-small">${esc(note.join('; '))}.</span>` : ''}</p>` +
+        (cats.length ? `<p class="pd-small">Per tipo: ${cats.map((c) => `${esc(SPACE_CATEGORY_LABEL[c.id] ?? c.id)} ${sizeText(c.alloc)} (${pctText(c.alloc, r.allocBytes)})`).join(', ')}.</p>` : '') +
+        (hints.length
+          ? `<table class="pd-table"><thead><tr><th>Cartella o file noto</th><th class="pd-num">Spazio</th><th>Cosa fare</th></tr></thead><tbody>${hints
+              .map((h) => `<tr><td>${esc(SPACE_HINTS[h.id]?.label ?? h.id)}</td><td class="pd-num">${sizeText(h.alloc)}</td><td>${esc(SPACE_HINTS[h.id] ? SPACE_RISK_LABEL[SPACE_HINTS[h.id].risk] : '')}</td></tr>`)
+              .join('')}</tbody></table>`
+          : '')
+      );
+    });
+    out.push(`<section><h2>Cosa occupa spazio</h2>${parts.join('')}</section>`);
   }
 
   // Piano d'azione con le caselle da spuntare a mano.

@@ -54,7 +54,7 @@ export const uso: Guide[] = [
     blocks: [
       { t: 'table', head: ['Tasto', 'Sezione', 'Che cosa mostra', 'Quando usarla'], rows: [
         ['1', 'Panoramica', 'punteggio, aree, problemi principali, prime azioni', 'sempre, come punto di partenza'],
-        ['2', 'Computer', 'sistema, dischi con SMART, spazio, test di velocità, antivirus, avvio, processi, eventi, scheda tecnica con la velocità dei core in tempo reale, sensori in tempo reale come HWiNFO, cassetta degli attrezzi', 'PC lento o instabile, dischi sospetti, surriscaldamento, controllo periodico'],
+        ['2', 'Computer', 'sistema, dischi con SMART, spazio, cosa occupa spazio, test di velocità, antivirus, avvio, processi, eventi, scheda tecnica con la velocità dei core in tempo reale, sensori in tempo reale come HWiNFO, cassetta degli attrezzi', 'PC lento o instabile, dischi sospetti, surriscaldamento, controllo periodico'],
         ['3', 'Wi-Fi', 'segnale, canali, reti vicine, access point della tua rete', 'Wi-Fi lento, instabile o con poca copertura'],
         ['4', 'Rete locale', 'scheda di rete, indirizzi, router, dispositivi visti', 'problemi di collegamento o di indirizzi'],
         ['5', 'Internet e DNS', 'latenza, perdite, percorso, MTU, DNS, siti web', 'Internet lento, siti che non si aprono'],
@@ -121,13 +121,14 @@ export const uso: Guide[] = [
     title: 'Strumenti avanzati: test, antivirus, cassetta degli attrezzi, monitor e infrastruttura',
     summary: 'Gli strumenti che partono solo su richiesta: test di velocità, scansioni di Microsoft Defender, cassetta degli attrezzi con programmi inclusi, versioni portable scaricate dal sito ufficiale e kit per i PC senza Internet, monitor continuo, inventario della sottorete, verifiche di segmentazione e autovalutazione.',
     level: 'intermedio',
-    tags: ['strumenti', 'test di velocità', 'benchmark', 'monitor', 'ping continuo', 'interruzioni', 'inventario', 'segmentazione', 'verifiche', 'autovalutazione', 'amministratore', 'autorizzazione', 'defender', 'scansione', 'cassetta degli attrezzi', 'crystaldiskinfo', 'crystaldiskmark', 'bluescreenview', 'programmi inclusi', 'portable', 'scaricare', 'firma digitale', 'cpu-z', 'hwinfo', 'sensori', 'kit', 'senza internet', 'chiavetta', 'offline'],
+    tags: ['strumenti', 'test di velocità', 'benchmark', 'monitor', 'ping continuo', 'interruzioni', 'inventario', 'segmentazione', 'verifiche', 'autovalutazione', 'amministratore', 'autorizzazione', 'defender', 'scansione', 'cassetta degli attrezzi', 'crystaldiskinfo', 'crystaldiskmark', 'bluescreenview', 'programmi inclusi', 'portable', 'scaricare', 'firma digitale', 'cpu-z', 'hwinfo', 'sensori', 'spazio', 'wiztree', 'kit', 'senza internet', 'chiavetta', 'offline'],
     blocks: [
       { t: 'p', text: 'Oltre all\'analisi automatica, Polaris offre strumenti che generano più carico sul PC o più traffico in rete. Per questo partono solo quando li avvii, e alcuni chiedono una conferma esplicita.' },
       { t: 'table', head: ['Strumento', 'Dove', 'Che cosa fa', 'Conferma'], rows: [
         ['test del processore', 'Computer', 'circa 25 secondi di calcolo con un thread e con tutti', 'no'],
         ['test del disco', 'Computer', 'scrive e rilegge un file temporaneo fino a 1 GB, cancellato alla fine', 'sì'],
         ['scansioni di Defender', 'Computer > Antivirus', 'scansione rapida o completa e aggiornamento delle firme, con lo strumento ufficiale di Microsoft', 'sì, per la scansione completa'],
+        ['cosa occupa spazio', 'Computer > Cosa occupa spazio', 'legge l\'elenco di file e cartelle di un\'unità con lo spazio occupato, mappa a riquadri, file più grandi, tipi di file e cartelle note di Windows con i consigli; non apre i file e non cancella nulla', 'no'],
         ['sensori in tempo reale', 'Computer > Sensori', 'una lettura al secondo di utilizzo, frequenze, consumi, temperature e attività, con minimo, massimo, media e registro CSV; legge e basta, solo mentre la sezione è aperta', 'no'],
         ['cassetta degli attrezzi', 'Computer', 'apre strumenti di Windows, i programmi inclusi in Polaris, quelli scaricati dal sito ufficiale e quelli già installati, o il loro sito ufficiale', 'sì, prima di scaricare'],
         ['kit senza Internet', 'Computer > Cassetta degli attrezzi', 'scarica i programmi scelti nella cartella strumenti-scaricati accanto a Polaris, da portare su una chiavetta', 'scegli tu i programmi'],
@@ -174,7 +175,7 @@ export const uso: Guide[] = [
     title: 'La riga di comando (polaris-cli)',
     summary: 'I comandi di polaris-cli.exe per rapporti e documento stampabile, interfaccia nel browser, test di velocità, Microsoft Defender e kit per i PC senza Internet, con esempi per raccogliere rapporti da più PC.',
     level: 'avanzato',
-    tags: ['riga di comando', 'cli', 'polaris-cli', 'prompt dei comandi', 'powershell', 'report', 'json', 'html', 'documento', 'serve', 'bench', 'tools', 'kit', 'senza internet', 'script', 'automazione', 'utilità di pianificazione', 'codici di uscita'],
+    tags: ['riga di comando', 'cli', 'polaris-cli', 'prompt dei comandi', 'powershell', 'report', 'json', 'html', 'documento', 'serve', 'bench', 'space', 'spazio', 'tools', 'kit', 'senza internet', 'script', 'automazione', 'utilità di pianificazione', 'codici di uscita'],
     blocks: [
       { t: 'p', text: 'Nella cartella del programma, accanto a Polaris.exe, c\'è **polaris-cli.exe**: accetta gli stessi comandi ma scrive nella console, utile per script, assistenza remota e raccolta di rapporti.' },
       { t: 'table', head: ['Comando', 'Che cosa fa'], rows: [
@@ -194,12 +195,13 @@ export const uso: Guide[] = [
         ['`polaris-cli defender update`', 'aggiornamento delle firme; con `--json` il risultato in JSON'],
         ['`polaris-cli clock`', 'frequenza effettiva dei core una volta al secondo (Core Speed); `--seconds N` per la durata, `--json` per i dati'],
         ['`polaris-cli sensors`', 'monitor dei sensori senza driver (come HWiNFO): una lettura al secondo e, alla fine, attuale, minimo, massimo e media di ogni sensore; `--seconds N` per la durata (predefinita 10, fino a 24 ore), `--all` per le righe di dettaglio, `--csv FILE` per il registro da aprire con Excel, scritto riga per riga, `--json` per i dati (vedi [[sensori]])'],
+        ['`polaris-cli space [C:|CARTELLA]`', 'cosa occupa spazio (come WizTree): cartelle principali, file più grandi, tipi di file, cartelle note; `--top N` file più grandi da mostrare (predefinito 20, fino a 100), `--json` per il risultato completo (vedi [[spazio-disco]])'],
         ['`polaris-cli tools status`', 'versioni portable scaricate, sul PC e nel kit, con versione, firma e data'],
         ['`polaris-cli tools kit`', 'prepara il kit per i PC senza Internet nella cartella strumenti-scaricati; si possono indicare i programmi, per esempio `tools kit cpu-z autoruns`'],
         ['`--all` con tools kit', 'aggiunge Microsoft Safety Scanner (circa 230 MB, scade dopo 10 giorni)'],
         ['`polaris-cli version`', 'versione del programma, del motore e di WebView2'],
       ] },
-      { t: 'code', caption: 'Esempi (Prompt dei comandi, nella cartella del programma)', text: 'polaris-cli report --quick\npolaris-cli report --verbose --out rapporto.txt\npolaris-cli report --json --out C:\\Rapporti\\%COMPUTERNAME%.json\npolaris-cli report --input C:\\Rapporti\\PC-07.json --verbose\npolaris-cli bench disk --drive D: --json\npolaris-cli report --html --out stato-pc.html\npolaris-cli sensors --seconds 600 --csv sensori.csv\npolaris-cli tools kit' },
+      { t: 'code', caption: 'Esempi (Prompt dei comandi, nella cartella del programma)', text: 'polaris-cli report --quick\npolaris-cli report --verbose --out rapporto.txt\npolaris-cli report --json --out C:\\Rapporti\\%COMPUTERNAME%.json\npolaris-cli report --input C:\\Rapporti\\PC-07.json --verbose\npolaris-cli bench disk --drive D: --json\npolaris-cli report --html --out stato-pc.html\npolaris-cli sensors --seconds 600 --csv sensori.csv\npolaris-cli space C: --top 30\npolaris-cli tools kit' },
       { t: 'p', text: 'Per raccogliere un rapporto alla settimana da un PC si può creare un\'attività nell\'Utilità di pianificazione (`taskschd.msc`) che esegue polaris-cli.exe con gli argomenti `report --json --out` seguiti dal percorso del file. Il file viene sovrascritto a ogni esecuzione: per conservare lo storico usa percorsi diversi o copia i file altrove.' },
       { t: 'table', caption: 'Codici di uscita', head: ['Codice', 'Significato'], rows: [
         ['0', 'comando completato'],

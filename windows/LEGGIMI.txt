@@ -21,7 +21,13 @@ COSA FA
   (se il PC li espone), zone termiche, scheda video (temperatura e ventola
   quando il driver le fornisce), memoria, dischi, rete e batteria, con
   avvisi e registro CSV. Temperature, tensioni e ventole di processore e
-  scheda madre richiedono un driver: per quelle c'e' HWiNFO. Su richiesta
+  scheda madre richiedono un driver: per quelle c'e' HWiNFO. "Cosa occupa
+  spazio", come WizTree ma senza installare nulla, legge su richiesta
+  l'elenco di file e cartelle di un'unita' (senza aprire i file e senza
+  cancellare nulla) e mostra mappa delle cartelle, file piu' grandi, tipi
+  di file e cartelle note di Windows con il modo sicuro di liberare spazio;
+  i file di Windows con piu' nomi si contano una volta, i file solo online
+  di OneDrive non si scaricano. Su richiesta
   esegue test di velocita' del processore e dei dischi (profilo di
   CrystalDiskMark) e scansioni di
   Microsoft Defender. La cassetta degli attrezzi apre gli strumenti di
@@ -37,7 +43,7 @@ COSA FA
   (802.11k/v/r), gli AP sullo stesso canale e il PC agganciato a un AP lontano;
   riconosce le reti con dominio. La sezione Infrastruttura censisce la
   sottorete, verifica la separazione tra le zone e i servizi critici e guida
-  un'autovalutazione delle misure organizzative. 67 guide spiegano come si
+  un'autovalutazione delle misure organizzative. 68 guide spiegano come si
   usa il programma, il computer e la rete, dalle basi alle reti cliniche.
 
 REQUISITI
@@ -89,6 +95,9 @@ RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
                                       le righe di dettaglio, --csv FILE per il
                                       registro da aprire con Excel, scritto
                                       riga per riga, --json)
+  polaris-cli space C:                cosa occupa spazio, come WizTree: anche
+                                      una cartella; --top N per i file piu'
+                                      grandi (predefinito 20), --json
 
 STRUMENTI INCLUSI
   Nella cartella strumenti ci sono CrystalDiskInfo 9.9.2 e CrystalDiskMark

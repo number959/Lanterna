@@ -1002,7 +1002,7 @@ func TestSpaceEndpoint(t *testing.T) {
 	s.WaitSpace()
 	st = spaceState{}
 	_ = json.Unmarshal(do(t, h, "GET", "/api/space", nil).Body.Bytes(), &st)
-	if st.Running || !strings.Contains(st.Error, "non trovata") || st.Drive != "Q:" {
+	if st.Running || !strings.Contains(st.Error, "non trovata") || st.Drive != "Q:" || st.Result != nil {
 		t.Fatalf("errore: %+v", st)
 	}
 }

@@ -2,7 +2,8 @@ import { fmt, more, num, thousands } from './fmt';
 import { analyzeDefender } from './defender';
 import { analyzeHardware } from './hardware';
 import { bytesText, diskStatus, isFlashDisk } from './smart';
-import type { DiskBench, EventGroup, EventKind, Finding, PcData, PhysicalDisk, PlanKind, Scan, Severity } from './types';
+import { reclaimableBytes, sizeText, SPACE_HINTS } from './space';
+import type { DiskBench, EventGroup, EventKind, Finding, PcData, PhysicalDisk, PlanKind, Scan, Severity, SpaceReport } from './types';
 
 // Analisi del computer: sistema e supporto di Windows, memoria, dischi e loro
 // salute, spazio, avvio, eventi del registro di sistema, sicurezza, batteria,
@@ -357,6 +358,9 @@ function analyzeDisks(scan: Scan, pc: PcData, add: Add) {
           ? 'info'
           : 'ok';
     const disk = disks.find((d) => d.id !== undefined && d.id === vol.disk);
+    // Con l'analisi delle cartelle si dice anche dove sta lo spazio.
+    const rep = (pc.space ?? []).find((r) => r.drive.toUpperCase() === vol.letter.toUpperCase());
+    const where = rep && sev !== 'ok' ? biggestHints(rep, 3) : '';
     add({
       id: `pc.space.${vol.letter.replace(':', '')}`,
       metric: 'pc.space',
@@ -373,10 +377,68 @@ function analyzeDisks(scan: Scan, pc: PcData, add: Add) {
               ? 'Spazio quasi esaurito sull\'unità di Windows: aggiornamenti che non si installano, programmi che si bloccano, file temporanei e di paging senza posto.'
               : 'Spazio scarso sull\'unità di Windows: gli aggiornamenti di funzionalità richiedono circa 20 GB liberi e il sistema rallenta quando l\'unità è quasi piena.'
             : 'Unità quasi piena: i nuovi file non troveranno posto.') +
-        (sev !== 'ok' && disk && isFlash(disk) ? ' Un SSD quasi pieno è anche più lento in scrittura, perché ha meno spazio per riorganizzare i dati.' : ''),
-      actions: sev === 'ok' ? [] : ['free-disk-space'],
+        (sev !== 'ok' && disk && isFlash(disk) ? ' Un SSD quasi pieno è anche più lento in scrittura, perché ha meno spazio per riorganizzare i dati.' : '') +
+        (where ? ` Dall'analisi delle cartelle: ${where}.` : ''),
+      actions: sev === 'ok' ? [] : rep ? spaceActions(rep, ['free-disk-space']) : ['space-analysis', 'free-disk-space'],
     });
   }
+  for (const rep of pc.space ?? []) analyzeSpace(rep, add);
+}
+
+// ---------------------------------------------------------------- Cosa occupa spazio
+
+const GB = 1e9;
+const hintSum = (r: SpaceReport, pred: (id: string) => boolean) => (r.hints ?? []).filter((h) => pred(h.id)).reduce((s, h) => s + h.alloc, 0);
+const hintOf = (r: SpaceReport, id: string) => (r.hints ?? []).find((h) => h.id === id);
+
+/** Le cartelle note più grandi tra quelle su cui si può intervenire: "Cartella Download 24,3 GB, Windows.old 20,4 GB". */
+function biggestHints(r: SpaceReport, n: number): string {
+  return (r.hints ?? [])
+    .filter((h) => {
+      const risk = SPACE_HINTS[h.id]?.risk;
+      return (risk === 'tool' || risk === 'review') && h.alloc >= 0.5 * GB;
+    })
+    .slice(0, n)
+    .map((h) => `${SPACE_HINTS[h.id].label} ${sizeText(h.alloc)}`)
+    .join(', ');
+}
+
+/** Azioni mirate a ciò che l'analisi ha trovato, dopo quelle indicate. */
+function spaceActions(r: SpaceReport, base: string[] = []): string[] {
+  const out = [...base];
+  const push = (id: string) => {
+    if (!out.includes(id)) out.push(id);
+  };
+  if ((hintOf(r, 'windows-old')?.alloc ?? 0) >= GB) out.unshift('remove-windows-old');
+  if (hintSum(r, (id) => SPACE_HINTS[id]?.risk === 'tool' && id !== 'windows-old') >= GB) push('free-disk-space');
+  if (hintSum(r, (id) => id === 'downloads' || id === 'recycle-bin' || id === 'onedrive') >= 5 * GB) push('review-large-files');
+  if ((hintOf(r, 'virtual-disks')?.alloc ?? 0) >= 10 * GB) push('compact-virtual-disks');
+  return out;
+}
+
+function analyzeSpace(r: SpaceReport, add: Add) {
+  const reclaim = reclaimableBytes(r);
+  const tool = (r.hints ?? []).filter((h) => SPACE_HINTS[h.id]?.risk === 'tool' && h.alloc >= 0.1 * GB);
+  const review = (r.hints ?? []).filter((h) => SPACE_HINTS[h.id]?.risk === 'review' && h.alloc >= GB);
+  const sev: Severity = reclaim >= 5 * GB ? 'info' : 'ok';
+  const list = (hs: typeof tool) => hs.map((h) => `${SPACE_HINTS[h.id].label} ${sizeText(h.alloc)}`).join(', ');
+  const drive = r.drive.toUpperCase();
+  add({
+    id: `pc.spacereclaim.${drive.replace(':', '')}`,
+    metric: 'pc.spacereclaim',
+    category: 'pc',
+    title: `Spazio recuperabile (${drive})`,
+    value: `${reclaim > 0 ? `circa ${sizeText(reclaim)}` : 'nulla di rilevante'}${r.partial ? ' (analisi parziale)' : ''}`,
+    numeric: Math.round((reclaim / GB) * 10) / 10,
+    severity: sev,
+    verdict:
+      (tool.length
+        ? `Si libera con gli strumenti di Windows, senza toccare i documenti: ${list(tool)}.`
+        : 'Nessuna cartella di file temporanei, aggiornamenti o installazioni precedenti di dimensioni rilevanti.') +
+      (review.length ? ` Da rivedere a mano, perché sono dati personali: ${list(review)}.` : '') +
+      ` Analisi del ${dateIt(r.startedAt)}: ${sizeText(r.allocBytes)} in ${thousands(r.files)} file.`,
+    actions: sev === 'ok' && !review.length ? [] : spaceActions(r),
+  });
 }
 
 // ---------------------------------------------------------------- Avvio

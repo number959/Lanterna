@@ -1,13 +1,43 @@
 import { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from '../engine/pc';
+import { SPACE_HINTS, SPACE_RISK_LABEL } from '../engine/space';
+import type { SpaceRisk } from '../engine/space';
 import type { Guide } from './types';
 
-// Capitolo — Il computer: come funziona, dischi e loro salute, test di
-// velocità, memoria, avvio, aggiornamenti, registro eventi, batteria e il
-// metodo per un PC lento. Le date di supporto e i codici di arresto vengono
-// dal motore, così guida e giudizi non possono divergere.
+// Capitolo — Il computer: come funziona, dischi e loro salute, cosa occupa
+// spazio, test di velocità, memoria, avvio, aggiornamenti, registro eventi,
+// batteria e il metodo per un PC lento. Le date di supporto, i codici di
+// arresto e le spiegazioni delle cartelle note vengono dal motore, così guida
+// e giudizi non possono divergere.
 
 const win11Rows = Object.entries(WIN11_EOS).map(([v, d]) => [v, dateIt(d.home), dateIt(d.ent)]);
 const bugcheckRows = Object.entries(BUGCHECKS).map(([code, [name, meaning]]) => [`\`${code}\``, name, meaning]);
+
+// Dove l'agente cerca le cartelle e i file noti (con Windows sull'unità C:).
+const SPACE_PATHS: Record<string, string> = {
+  'temp-user': '`%TEMP%`, la cartella temporanea dell\'utente',
+  'temp-windows': '`C:\\Windows\\Temp`',
+  'update-cache': '`C:\\Windows\\SoftwareDistribution\\Download`',
+  'delivery-optimization': 'sull\'unità di sistema; Polaris la cerca in `C:\\Windows\\ServiceProfiles\\NetworkService\\AppData\\Local\\Microsoft\\Windows\\DeliveryOptimization`, un percorso che Microsoft non documenta (da verificare)',
+  'windows-old': '`C:\\Windows.old`',
+  'upgrade-files': '`C:\\$WINDOWS.~BT`, `C:\\$Windows.~WS`',
+  'recycle-bin': '`$Recycle.Bin` nella radice dell\'unità',
+  winsxs: '`C:\\Windows\\WinSxS`',
+  installer: '`C:\\Windows\\Installer`',
+  'error-reports': '`C:\\ProgramData\\Microsoft\\Windows\\WER`',
+  'crash-dumps': '`C:\\Windows\\MEMORY.DMP`, `C:\\Windows\\Minidump`, `C:\\Windows\\LiveKernelReports`, `%LOCALAPPDATA%\\CrashDumps`',
+  'browser-cache': 'le cartelle della cache dei profili di Edge, Chrome e Firefox, in `%LOCALAPPDATA%`',
+  'package-cache': '`C:\\ProgramData\\Package Cache`',
+  downloads: '`%USERPROFILE%\\Downloads`',
+  onedrive: 'la cartella di OneDrive (`%OneDrive%`)',
+  hibernation: '`C:\\hiberfil.sys`',
+  pagefile: '`C:\\pagefile.sys`, `C:\\swapfile.sys`',
+  'virtual-disks': 'file `.vhdx`, `.vhd`, `.avhdx`, `.vmdk`, `.vdi`, `.qcow2`, ovunque si trovino',
+};
+const SPACE_HEAD = ['Cartella o file', 'Dove si trova', 'Che cos\'è', 'Che cosa fare'];
+const spaceRows = (risk: SpaceRisk) =>
+  Object.entries(SPACE_HINTS)
+    .filter(([, h]) => h.risk === risk)
+    .map(([id, h]) => [h.label, SPACE_PATHS[id] ?? '—', h.what, h.how]);
 
 export const pc: Guide[] = [
   {
@@ -89,7 +119,7 @@ export const pc: Guide[] = [
       { t: 'p', text: 'Due osservazioni importanti. La velocità sequenziale dichiarata si ottiene con molte richieste in parallelo e su disco vuoto: nell\'uso quotidiano conta molto di più la lettura casuale. E proprio lì la differenza tra un HDD e qualunque SSD è enorme, mentre tra un SSD SATA e un NVMe è modesta: per un PC lento con disco meccanico anche un SSD SATA è un salto di qualità.' },
       { t: 'note', kind: 'warn', title: 'M.2 non vuol dire NVMe', text: 'M.2 è il formato del connettore, non l\'interfaccia: esistono SSD M.2 SATA e M.2 NVMe, e non tutti gli slot accettano entrambi. Prima di acquistare verifica sul manuale del PC o della scheda madre quale tipo è supportato.' },
       { t: 'h', text: 'Lo spazio libero' },
-      { t: 'p', text: 'Sull\'unità di Windows lo spazio serve a file temporanei, file di paging, punti di ripristino e soprattutto agli aggiornamenti di funzionalità, che richiedono circa 20 GB liberi. Polaris avvisa sotto i 15 GB o il 10 % e segnala come critico il caso sotto i 5 GB o il 5 %. Per liberare spazio senza rischi: Impostazioni > Sistema > Archiviazione > File temporanei, e Sensore memoria per farlo in automatico.' },
+      { t: 'p', text: 'Sull\'unità di Windows lo spazio serve a file temporanei, file di paging, punti di ripristino e soprattutto agli aggiornamenti di funzionalità, che richiedono circa 20 GB liberi. Polaris avvisa sotto i 15 GB o il 10 % e segnala come critico il caso sotto i 5 GB o il 5 %. Per liberare spazio senza rischi: Impostazioni > Sistema > Archiviazione > File temporanei, e Sensore memoria per farlo in automatico. Che cosa occupa lo spazio lo dice l\'analisi descritta in [[spazio-disco]].' },
       { t: 'note', kind: 'tip', title: 'Che disco ho?', text: 'Gestione attività > Prestazioni mostra per ogni disco il tipo (SSD o HDD); Polaris lo indica nella sezione Computer insieme all\'interfaccia (SATA, NVMe, USB). Per una prova pratica della velocità c\'è il test del disco (vedi [[test-velocita]]).' },
     ],
   },
@@ -157,6 +187,79 @@ export const pc: Guide[] = [
       ] },
       { t: 'note', kind: 'warn', title: 'SMART non prevede tutto', text: 'Molti guasti, soprattutto elettronici, arrivano senza alcun preavviso: un disco "integro" non è una garanzia. La vera protezione è il backup, con la regola 3-2-1: tre copie dei dati, su due supporti diversi, una delle quali fuori sede o scollegata (vedi [[backup-continuita]]).' },
       { t: 'code', caption: 'PowerShell come amministratore: gli stessi dati che legge Polaris', text: 'Get-PhysicalDisk | Format-Table FriendlyName, MediaType, BusType, HealthStatus\nGet-PhysicalDisk | Get-StorageReliabilityCounter |\n  Format-Table DeviceId, Temperature, Wear, PowerOnHours, ReadErrorsUncorrected, WriteErrorsUncorrected' },
+    ],
+  },
+  {
+    id: 'spazio-disco',
+    chapter: 'pc',
+    title: 'Cosa occupa spazio: analisi del disco e pulizia sicura',
+    summary: 'Come Polaris trova che cosa riempie un\'unità, come WizTree ma senza aprire i file: spazio occupato e dimensione, collegamenti fisici, file solo online di OneDrive, cartelle non leggibili, la mappa a riquadri, le cartelle note di Windows con che cosa fare e come liberare spazio senza rischi.',
+    level: 'intermedio',
+    metrics: ['pc.spacereclaim', 'pc.space'],
+    actions: ['space-analysis', 'free-disk-space', 'remove-windows-old', 'review-large-files', 'compact-virtual-disks'],
+    tags: ['spazio', 'cosa occupa spazio', 'disco pieno', 'unità piena', 'spazio libero', 'spazio recuperabile', 'liberare spazio', 'pulizia', 'wiztree', 'windirstat', 'treemap', 'mappa a riquadri', 'cartelle', 'file più grandi', 'tipi di file', 'estensioni', 'spazio allocato', 'dimensioni su disco', 'cluster', 'collegamenti fisici', 'hard link', 'giunzioni', 'collegamenti simbolici', 'windows.old', 'winsxs', 'dism', 'resetbase', 'file temporanei', 'temp', 'softwaredistribution', 'ottimizzazione recapito', 'cestino', 'download', 'onedrive', 'file solo online', 'libera spazio', 'hiberfil', 'ibernazione', 'pagefile', 'file di paging', 'windows installer', 'package cache', 'dischi virtuali', 'vhdx', 'sensore memoria', 'pulizia disco', 'cleanmgr', 'non attribuito', 'non leggibile', 'copie shadow', 'punti di ripristino', 'amministratore', 'gb', 'polaris-cli space'],
+    blocks: [
+      { t: 'p', text: 'Quando un\'unità si riempie la domanda è sempre la stessa: che cosa occupa tutto quello spazio? Nella sezione Computer il riquadro **Cosa occupa spazio** risponde come WizTree: cartelle e file più grandi, tipi di file e cartelle note di Windows, con il modo sicuro di recuperare spazio. Polaris legge e basta: non apre i file, non ne legge il contenuto e non cancella nulla. La salute del disco è un altro argomento (vedi [[salute-dischi-smart]]).' },
+      { t: 'h', text: 'Che cosa fa l\'analisi' },
+      { t: 'p', text: 'Polaris legge l\'elenco di file e cartelle dell\'unità, con più letture in parallelo: per ogni cartella chiede a Windows le voci con `GetFileInformationByHandleEx` nel formato `FILE_ID_BOTH_DIR_INFO`, 64 KB per chiamata, ciascuna con nome, dimensione, spazio occupato, attributi, data di modifica e numero del file. Su un SSD dura da qualche secondo a qualche minuto, secondo il numero di file (valori indicativi). **Interrompi** la ferma lasciando i valori letti, dichiarati come parziali; mentre è in corso i test di velocità non partono. Nella demo l\'analisi è simulata e lo dichiara.' },
+      { t: 'p', text: 'Il risultato entra nel rapporto. La scheda **Spazio recuperabile** somma ciò che si libera con gli strumenti di Windows senza toccare i tuoi file: sotto i 5 GB c\'è poco da recuperare, da 5 GB in su Polaris lo segnala come consiglio. Con lo spazio libero scarso, la scheda dello spazio libero indica anche le cartelle più grandi su cui intervenire (soglie in [[dischi-hdd-ssd]]).' },
+      { t: 'h', text: 'Perché i numeri non coincidono con Esplora file' },
+      { t: 'list', items: [
+        '**Spazio occupato, non dimensione**: Polaris conta lo spazio allocato sul disco, che può differire dalla dimensione del file. Lo spazio si assegna a blocchi interi (cluster), i file compressi da NTFS occupano meno, quelli sparsi solo le parti scritte. In Esplora file, Proprietà lo chiama "Dimensioni su disco".',
+        '**Collegamenti fisici**: molti file di Windows, in WinSxS e System32, hanno più di un nome (hard link) ma sono sul disco una volta sola. Esplora file li conta a ogni nome, e per questo WinSxS vi sembra enorme; Polaris, nella cartella di Windows, riconosce i file dal loro numero e conta ciascuno una volta, nella cartella che viene prima in ordine alfabetico. Una nota dice quanto spazio non è stato contato due volte.',
+        '**File solo online**: i file su richiesta di OneDrive non scaricati compaiono nelle cartelle ma sul disco occupano quasi nulla. Polaris li conta a parte e non li apre mai, quindi non ne scarica nessuno; leggere una cartella di OneDrive mai elencata prima può però far contattare la rete per avere i nomi dei file, non il contenuto.',
+        '**Giunzioni e collegamenti simbolici** non vengono seguiti: nessuna cartella si conta due volte e l\'analisi non gira in tondo.',
+        '**Unità di misura**: Polaris usa unità decimali come nel resto del programma (1 GB = 1.000.000.000 byte); Esplora file usa potenze di 1024 e per gli stessi byte mostra numeri circa il 7 % più piccoli: 500 GB di Polaris sono circa 466 GB in Esplora file.',
+      ] },
+      { t: 'h', text: 'Cartelle non leggibili e spazio non attribuito' },
+      { t: 'p', text: 'Polaris rispetta i permessi: senza i diritti di amministratore alcune cartelle non si leggono, per esempio System Volume Information o le cartelle degli altri utenti. Le conta, ne dà qualche esempio e nella tabella le segna come **non leggibile** o **in parte non leggibile**; avviando Polaris come amministratore se ne leggono di più. Lo **spazio non attribuito** è lo spazio occupato che l\'analisi non ha trovato nei file leggibili: cartelle protette, punti di ripristino e copie shadow, metadati del file system. Compare solo analizzando un\'intera unità e solo sopra l\'1 % del disco.' },
+      { t: 'h', text: 'Come si legge il risultato' },
+      { t: 'p', text: 'In alto la barra dell\'unità divide lo spazio in **file letti**, **non attribuito** e **libero**; sotto ci sono le statistiche (spazio occupato dai file, spazio libero, file, cartelle e quanto **si libera con Windows**) e le note su collegamenti fisici, file solo online, cartelle non leggibili e spazio non attribuito. Poi quattro viste:' },
+      { t: 'table', head: ['Vista', 'Che cosa mostra'], rows: [
+        ['Cartelle', 'la mappa a riquadri e la tabella delle cartelle con spazio, quota e numero di file; con l\'agente **Apri** apre la cartella in Esplora file'],
+        ['File più grandi', 'percorso, spazio e data di modifica; con l\'agente **Mostra** apre la cartella con il file selezionato'],
+        ['Tipi di file', 'lo spazio per categoria (video, immagini, documenti, archivi, programmi, dischi virtuali...) e le estensioni che occupano di più'],
+        ['Cartelle note', 'le cartelle di Windows riconosciute, in quattro gruppi: **Si libera con Windows**, **Da rivedere**, **Da impostazione**, **Non toccare**'],
+      ] },
+      { t: 'p', text: 'Nella **mappa a riquadri** l\'area di ogni riquadro è proporzionale allo spazio occupato. Un clic su un riquadro entra nella cartella; il percorso sopra la mappa riporta indietro. I riquadri tratteggiati non sono cartelle: **File nella cartella** raccoglie i file che stanno direttamente lì, **Altre N cartelle** riassume le cartelle più piccole.' },
+      { t: 'h', text: 'Le cartelle note di Windows' },
+      { t: 'p', text: 'Spiegazioni e consigli sono quelli che Polaris mostra nella vista Cartelle note; i percorsi sono quelli tipici, con Windows sull\'unità C:.' },
+      { t: 'table', caption: `${SPACE_RISK_LABEL.tool}: file che non servono più o si ricreano da soli`, head: SPACE_HEAD, rows: spaceRows('tool') },
+      { t: 'table', caption: `${SPACE_RISK_LABEL.review}: sono dati tuoi, decidi tu che cosa tenere`, head: SPACE_HEAD, rows: spaceRows('review') },
+      { t: 'table', caption: `${SPACE_RISK_LABEL.setting}: si riducono cambiando un'impostazione`, head: SPACE_HEAD, rows: spaceRows('setting') },
+      { t: 'table', caption: `${SPACE_RISK_LABEL.keep}: servono a Windows e ai programmi`, head: SPACE_HEAD, rows: spaceRows('keep') },
+      { t: 'h', text: 'Da sapere prima di intervenire' },
+      { t: 'list', items: [
+        '**Windows.old**: Windows la elimina da solo 10 giorni dopo l\'aggiornamento; il periodo si cambia da 2 a 60 giorni con `DISM /Online /Set-OSUninstallWindow /Value:<giorni>` (da amministratore).',
+        '**File temporanei**: quelli non modificati da più di una settimana in genere si possono eliminare senza problemi.',
+        '**Ottimizzazione recapito**: con le impostazioni predefinite i file restano al massimo 3 giorni e la cache usa al massimo il 20 % dello spazio disponibile; Microsoft documenta solo che sta sull\'unità di sistema.',
+        '**Cestino**: Sensore memoria, quando è attivo, elimina di norma gli elementi nel Cestino da più di 30 giorni.',
+        '**hiberfil.sys**: `powercfg /h /type reduced` mantiene l\'avvio rapido ma non l\'ibernazione; `powercfg /h off` toglie entrambi (vedi [[avvio-processi]]).',
+      ] },
+      { t: 'code', caption: 'WinSxS, Prompt dei comandi come amministratore', text: 'Dism.exe /Online /Cleanup-Image /AnalyzeComponentStore\n:: mostra la dimensione reale dell\'archivio dei componenti\nDism.exe /Online /Cleanup-Image /StartComponentCleanup\n:: avvia la pulizia dei componenti' },
+      { t: 'note', kind: 'warn', title: 'Da non cancellare a mano', text: 'pagefile.sys, WinSxS, `C:\\Windows\\Installer` e `C:\\ProgramData\\Package Cache` non si toccano da Esplora file. E `/ResetBase`, aggiunto a `/StartComponentCleanup`, recupera altro spazio ma impedisce di disinstallare gli aggiornamenti già installati.' },
+      { t: 'h', text: 'Come liberare spazio senza rischi' },
+      { t: 'list', ordered: true, items: [
+        '**Analizza** l\'unità: spesso poche voci occupano gran parte dello spazio.',
+        '**Impostazioni > Sistema > Archiviazione > File temporanei**, e nella stessa pagina **Sensore memoria** per pulire in automatico.',
+        '**Windows.old**, se il PC funziona bene e non ti serve tornare indietro: File temporanei > Installazioni precedenti di Windows. Non si può annullare.',
+        '**Download, video e Cestino**, rivisti a mano: sposta foto e video su un disco esterno o nel cloud tenendone due copie (vedi [[backup-continuita]]) e svuota il Cestino solo dopo averlo controllato.',
+        '**OneDrive**: tasto destro > **Libera spazio** sui file che usi di rado; non cancellarli, sparirebbero anche dal cloud.',
+        '**Programmi** che non usi: disinstallali da Impostazioni > App > App installate.',
+        '**Solo alla fine le impostazioni**, come l\'ibernazione; il file di paging lascialo gestire a Windows (vedi [[memoria-processore]]).',
+      ] },
+      { t: 'p', text: 'Poi ripeti l\'analisi per vedere quanto hai recuperato: sull\'unità di Windows lo spazio libero conta anche per la velocità (vedi [[pc-lento-metodo]]). Dalla riga di comando la stessa analisi è `polaris-cli space [C:|cartella] [--top N] [--json]`: `--top` sceglie quanti file più grandi mostrare (predefinito 20, fino a 100), `--json` dà il risultato completo (vedi [[riga-di-comando]]).' },
+      { t: 'h', text: 'Limiti' },
+      { t: 'list', items: [
+        'i flussi di dati alternativi di NTFS non vengono contati;',
+        'per i file in corso di scrittura la dimensione nell\'elenco della cartella può essere leggermente indietro;',
+        'i file compressi da Windows con WOF (per esempio CompactOS) possono risultare con uno spazio occupato diverso da quello compresso;',
+        'i collegamenti fisici si riconoscono solo nella cartella di Windows;',
+        'l\'analisi è una fotografia del momento;',
+        'menu e voci di Windows possono cambiare tra le versioni: le indicazioni sono generali, non una garanzia.',
+      ] },
+      { t: 'h', text: 'Polaris, WizTree e WinDirStat' },
+      { t: 'p', text: '**WizTree**, avviato come amministratore, legge direttamente la tabella dei file di NTFS (MFT): sui dischi molto grandi è più veloce ed elenca ogni file. Polaris legge le cartelle con i permessi di chi lo usa: è più lento, ma funziona su ogni file system e non richiede di essere amministratore; nel risultato tiene le cartelle principali e i 100 file più grandi. **WinDirStat** è l\'alternativa open source. Entrambi sono nella Cassetta degli attrezzi; WizTree è gratuito solo per uso personale.' },
     ],
   },
   {
@@ -580,7 +683,7 @@ export const pc: Guide[] = [
       { t: 'list', ordered: true, items: [
         '**Salute dei dischi**: un disco che si sta guastando rallenta tutto e rischia i dati. Se non è integro, questa è la priorità (vedi [[salute-dischi-smart]]).',
         '**Disco di Windows**: se è un disco meccanico, passare a un SSD è il miglioramento più efficace (vedi [[dischi-hdd-ssd]]).',
-        '**Spazio libero** sull\'unità di Windows: sotto i 15 GB aggiornamenti e sistema soffrono.',
+        '**Spazio libero** sull\'unità di Windows: sotto i 15 GB aggiornamenti e sistema soffrono (vedi [[spazio-disco]]).',
         '**Memoria in uso**: sotto il 10 % disponibile Windows usa il disco al posto della RAM (vedi [[memoria-processore]]).',
         '**Carico del processore e processi**: un programma che occupa la CPU rallenta tutti gli altri.',
         '**Programmi all\'avvio** e **tempo dall\'ultimo riavvio** (vedi [[avvio-processi]]).',

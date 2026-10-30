@@ -1,4 +1,4 @@
-import type { CpuBench, DefenderInfo, DiskBench, Inventory, ReachData, ReachTarget, Scan, Threat } from '../engine';
+import type { CpuBench, DefenderInfo, DiskBench, Inventory, ReachData, ReachTarget, Scan, SpaceReport, Threat } from '../engine';
 
 // Comunicazione con l'agente locale (Polaris.exe serve / finestra).
 // L'interfaccia è servita dallo stesso agente, quindi i percorsi sono relativi.
@@ -170,6 +170,53 @@ export async function runBench(req: BenchRequest, onProgress: (st: BenchState) =
     }
   }
 }
+
+// ---- Cosa occupa spazio: legge l'elenco dei file di un'unità, su richiesta.
+
+export interface SpaceProgress {
+  dirs: number;
+  files: number;
+  alloc: number;
+  elapsedMs: number;
+}
+
+export interface SpaceState {
+  running: boolean;
+  drive?: string;
+  progress?: SpaceProgress;
+  error?: string;
+  /** Ultima analisi (anche interrotta: partial). */
+  result?: SpaceReport;
+}
+
+export const spaceStatus = () => getJson<SpaceState>('api/space');
+
+/** Interrompe l'analisi in corso: resta il risultato parziale. */
+export async function stopSpace(): Promise<void> {
+  const r = await fetch('api/space', { method: 'DELETE', cache: 'no-store' });
+  if (!r.ok) throw await errorOf(r);
+}
+
+/**
+ * Avvia l'analisi dello spazio di un'unità e ne attende la fine; un'analisi
+ * interrotta restituisce comunque i valori letti fino a quel momento.
+ */
+export async function runSpace(drive: string, onProgress: (st: SpaceState) => void, opts: { resume?: boolean } = {}): Promise<{ report: SpaceReport; error?: string }> {
+  if (!opts.resume) await postJson<{ started: boolean }>('api/space', { drive });
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 400));
+    const st = await spaceStatus();
+    onProgress(st);
+    if (!st.running) {
+      // L'agente toglie il risultato precedente all'avvio: questo è il nuovo.
+      if (!st.result) throw new Error(st.error || 'Analisi terminata senza risultato');
+      return { report: st.result, error: st.error };
+    }
+  }
+}
+
+/** Apre in Esplora file una cartella (o la cartella di un file, selezionandolo) dell'ultima analisi. */
+export const openSpaceItem = (drive: string, id: number, file = false) => postJson<{ opened: boolean }>('api/space/open', { drive, id, file });
 
 // ---- Microsoft Defender: scansioni e aggiornamento delle firme su richiesta.
 

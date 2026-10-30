@@ -12,7 +12,7 @@ valore**: per ciascuna misura dice cos'è, come si legge, quanto è grave e cosa
 confluiscono in un piano unico, ordinato per gravità, impatto e facilità.
 
 Del **computer** controlla versione e supporto di Windows, memoria, **salute dei dischi HDD e SSD** (attributi SMART e registro
-NVMe come in CrystalDiskInfo, usura, temperatura, errori), spazio, programmi all'avvio, processi, spegnimenti imprevisti,
+NVMe come in CrystalDiskInfo, usura, temperatura, errori), **cosa occupa spazio** come WizTree, programmi all'avvio, processi, spegnimenti imprevisti,
 schermate blu, **Microsoft Defender** (protezione, minacce e scansioni su richiesta), aggiornamenti e batteria; compila la
 **scheda tecnica** come CPU-Z, con la **velocità dei core in tempo reale**, e offre **test di velocità** del processore e dei dischi,
 questi con il profilo di CrystalDiskMark.
@@ -24,7 +24,7 @@ Della **rete** misura Wi-Fi, router, Internet e DNS.
 
 Funziona in casa come in uno studio, in un'azienda o in una **struttura sanitaria**: riconosce le reti con più access point e
 con dominio, censisce la sottorete, verifica la separazione tra le zone e i servizi critici e guida un'autovalutazione delle
-misure organizzative. Una biblioteca di **67 guide** in italiano spiega come usare il programma, il computer e la rete, dalle
+misure organizzative. Una biblioteca di **68 guide** in italiano spiega come usare il programma, il computer e la rete, dalle
 basi alle reti cliniche.
 
 Il nome nasce dal marchio STARNET: Polaris è la stella polare, quella che indica la direzione. Qui indica cosa sistemare per primo.
@@ -102,6 +102,16 @@ script PowerShell nascosto: nessuna impostazione viene modificata.
   un sensore entra in allarme, registro CSV per Excel (da riga di comando scritto riga per riga, anche per ore).
   Ciò che richiede un driver in kernel (temperature, tensioni e ventole di processore e scheda madre) resta a HWiNFO, e Polaris
   lo dice.
+- **Cosa occupa spazio**, come WizTree ma senza installare nulla: su richiesta legge l'elenco di file e cartelle di un'unità
+  (decine o centinaia di voci per chiamata con `GetFileInformationByHandleEx`, in parallelo), senza aprire i file e senza
+  cancellare nulla. Mostra la barra dell'unità, una mappa a riquadri navigabile, la tabella delle cartelle con "Apri in Esplora
+  file", i 100 file più grandi, i tipi di file e le cartelle note di Windows (file temporanei, Windows.old, aggiornamenti, cache
+  dei browser, Cestino, WinSxS, ibernazione, dischi virtuali...) divise in "si libera con Windows", "da rivedere", "da
+  impostazione" e "non toccare", ognuna con il modo sicuro di recuperare spazio. Conta lo spazio occupato davvero sul disco, i
+  file di Windows con più nomi (collegamenti fisici tra WinSxS e System32) una volta sola e i file solo online di OneDrive a
+  parte, senza scaricarli; non segue giunzioni e link simbolici; dice quanto spazio non si vede dai file leggibili. Nei percorsi
+  il profilo diventa `%USERPROFILE%` e gli altri utenti `‹utente N›`. Il motore stima lo spazio recuperabile e aggiunge al piano
+  le azioni mirate (rimuovere Windows.old, liberare i file temporanei, rivedere i download, compattare i dischi virtuali).
 - **Alimentazione**: salute della batteria, piano di alimentazione, driver della scheda video.
 - **Test di velocità** (solo su richiesta): il processore comprime dati con un thread e con tutti per circa 25 secondi e rivela
   il calo dovuto a calore o limiti di potenza; il disco scrive e rilegge un file temporaneo fino a 1 GB senza cache di Windows
@@ -148,11 +158,15 @@ serie.
 | --- |
 | ![Sensori in tempo reale](docs/img/sensori.webp) |
 
+| Cosa occupa spazio (demo: C: quasi pieno per Windows.old, download e video) |
+| --- |
+| ![Cosa occupa spazio](docs/img/spazio.webp) |
+
 ## Cosa misura
 
 | Area | Misure |
 | --- | --- |
-| Computer | versione e supporto di Windows, RAM installata e in uso, carico del processore e processi, velocità dei core in tempo reale, salute dei dischi (stato, attributi SMART, registro NVMe, usura, temperatura, errori), tipo del disco di sistema, spazio per volume, programmi all'avvio, riavvio e riavvii in sospeso, spegnimenti imprevisti, schermate blu, errori hardware e di disco nel registro, antivirus e Microsoft Defender (protezione, firme, scansioni, minacce), ultimo aggiornamento, batteria, piano di alimentazione, driver video, scheda tecnica (processore, memoria e canali, scheda madre, firmware, Secure Boot, TPM, video) |
+| Computer | versione e supporto di Windows, RAM installata e in uso, carico del processore e processi, velocità dei core in tempo reale, salute dei dischi (stato, attributi SMART, registro NVMe, usura, temperatura, errori), tipo del disco di sistema, spazio per volume, cosa occupa spazio (cartelle, file più grandi, tipi di file, cartelle note di Windows, spazio recuperabile), programmi all'avvio, riavvio e riavvii in sospeso, spegnimenti imprevisti, schermate blu, errori hardware e di disco nel registro, antivirus e Microsoft Defender (protezione, firme, scansioni, minacce), ultimo aggiornamento, batteria, piano di alimentazione, driver video, scheda tecnica (processore, memoria e canali, scheda madre, firmware, Secure Boot, TPM, video) |
 | Test di velocità (su richiesta) | processore con un thread e con tutti, punta e velocità mantenuta; disco con il profilo di CrystalDiskMark (SEQ1M Q8T1, SEQ1M Q1T1, RND4K Q32T1, RND4K Q1T1), in MB/s e IOPS |
 | Antivirus (su richiesta) | scansione rapida o completa e aggiornamento delle firme di Microsoft Defender |
 | Wi-Fi | potenza in dBm, qualità, velocità radio, banda, standard (Wi-Fi 4…7), larghezza di canale, reti sullo stesso canale, canali 2,4 GHz sovrapposti, carico dichiarato dall'access point (BSS Load), sicurezza (WPA2/WPA3 Personal ed Enterprise, TKIP, PMF, WPS), canale consigliato per 2,4 e 5 GHz |
@@ -195,10 +209,10 @@ Senza agente, le due reti dimostrative (*Casa* e *Clinica*) mostrano tutte le fu
 
 ![Guide](docs/img/guide.webp)
 
-67 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
-complesse e sanità, diagnosi), un glossario di 199 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
+68 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
+complesse e sanità, diagnosi), un glossario di 208 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
 d'uso parte dai primi passi e arriva alla riga di comando e alla cassetta degli attrezzi; il capitolo sul computer spiega
-componenti, scheda tecnica, sensori in tempo reale, dischi HDD e SSD, attributi SMART, test di velocità, memoria, avvio, aggiornamenti, antivirus e
+componenti, scheda tecnica, sensori in tempo reale, dischi HDD e SSD, attributi SMART, cosa occupa spazio e come liberarlo, test di velocità, memoria, avvio, aggiornamenti, antivirus e
 Microsoft Defender, registro eventi, batteria e il metodo per un PC lento. Le date di supporto di
 Windows citate sono quelle note a metà 2026 e vanno verificate sul sito Microsoft. Ogni valore misurato e ogni azione del piano rimandano
 alla guida che li spiega; sette diagrammi animati illustrano livelli, sottoreti, DHCP, canali, roaming, VLAN e zone di una rete
@@ -237,6 +251,7 @@ polaris-cli tools kit               kit per i PC senza Internet in strumenti-sca
 polaris-cli tools status            programmi scaricati, sul PC e nel kit
 polaris-cli clock                   velocità dei core in tempo reale (--seconds N, --json)
 polaris-cli sensors --seconds 600 --csv sensori.csv   sensori come HWiNFO, con registro per Excel (--all, --json)
+polaris-cli space C: --top 30       cosa occupa spazio, come WizTree (anche una cartella; --json)
 ```
 
 Su Windows 11 24H2 e successivi la lettura delle reti Wi-Fi richiede il permesso di posizione per le app desktop: Polaris lo

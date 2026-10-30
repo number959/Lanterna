@@ -14,4 +14,6 @@ export { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smar
 export type { AttrState, DiskSignal, DiskStatus } from './smart';
 export { cacheText, channelMode, channelOf, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 export type { ChannelMode } from './hardware';
+export { pctText, reclaimableBytes, sizeText, spaceHintLabel, spaceLine, SPACE_CATEGORY_LABEL, SPACE_HINTS, SPACE_RISK_LABEL, unattributedBytes } from './space';
+export type { SpaceHintInfo, SpaceRisk } from './space';
 export { THREAT_SEVERITY, THREAT_STATUS, unresolved as unresolvedThreat } from './defender';

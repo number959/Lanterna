@@ -1202,6 +1202,100 @@ a.btn { text-decoration: none; }
 .how-to { font-size: 12.5px; }
 .mobile-only { display: none; }
 
+/* ---------- Cosa occupa spazio (space.tsx) ----------
+   Un solo colore (l'accento) a due intensità per cartelle e sottocartelle;
+   tratteggio grigio per le voci riassunte (file nella cartella, cartelle
+   piccole) e per lo spazio non attribuito. Testi sempre nei colori del testo. */
+.space-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.space-controls .bench-drive { margin: 0; flex: 1 1 300px; }
+.space-live { display: inline-flex; align-items: center; gap: 8px; }
+.space-error { display: flex; align-items: center; gap: 8px; color: var(--crit); font-size: 13.5px; margin: 12px 0 0; }
+.space-result { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+.space-result > * { min-width: 0; }
+.space-drive { margin: 0; display: grid; gap: 8px; }
+.db-bar { display: flex; gap: 2px; height: 14px; border-radius: 7px; overflow: hidden; background: var(--surface-3); }
+.db-bar span { display: block; flex-basis: 0; min-width: 3px; transform-origin: left center; }
+.db-files { background: var(--accent); }
+.db-other { background: repeating-linear-gradient(45deg, color-mix(in oklab, var(--text-3) 50%, transparent) 0 2px, transparent 2px 6px), color-mix(in oklab, var(--text-3) 16%, var(--surface)); }
+.db-free { background: var(--surface-3); }
+.db-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--text-2); }
+.db-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 3px; border: 1px solid var(--line-strong); }
+.db-legend b { color: var(--text); font-weight: 650; }
+.space-notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; color: var(--text-2); }
+.space-notes li { display: flex; gap: 8px; align-items: flex-start; line-height: 1.45; }
+.space-notes svg { flex: none; margin-top: 2px; color: var(--accent-text); }
+.space-tabs { margin-top: 2px; overflow-x: auto; padding-bottom: 2px; }
+.space-tabs .seg { width: max-content; }
+.space-tabs .seg button { white-space: nowrap; }
+.space-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13.5px; margin-bottom: 10px; }
+.space-crumb { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.space-crumb svg { color: var(--text-3); flex: none; }
+.space-crumb-size { margin-left: auto; font-size: 12.5px; }
+.treemap-wrap { position: relative; margin-bottom: 14px; }
+.treemap { position: relative; border-radius: var(--radius-s); overflow: hidden; background: var(--surface-2); border: 1px solid var(--line); }
+.treemap-layer { position: absolute; inset: 0; }
+.tm-tile { position: absolute; display: block; padding: 0; margin: 0; border: 0; border-radius: 6px; background: color-mix(in oklab, var(--accent) 18%, var(--surface)); color: var(--text); font: inherit; text-align: left; overflow: hidden; transition: box-shadow 0.15s, background-color 0.15s; }
+.tm-tile.tm-drill { cursor: pointer; }
+.tm-tile.tm-drill:hover { background: color-mix(in oklab, var(--accent) 24%, var(--surface)); }
+.tm-tile:hover, .tm-tile:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); outline: none; }
+.tm-sub { position: absolute; border-radius: 4px; background: color-mix(in oklab, var(--accent) 34%, var(--surface)); overflow: hidden; }
+.tm-sub.tm-dir { cursor: pointer; }
+.tm-sub:hover { box-shadow: inset 0 0 0 2px var(--accent-text); }
+.tm-own, .tm-more { background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--text-3) 22%, transparent) 0 2px, transparent 2px 7px), color-mix(in oklab, var(--text-3) 10%, var(--surface)); }
+.tm-label { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; padding: 6px 8px 0; font-size: 12.5px; line-height: 1.3; pointer-events: none; }
+.tm-name { display: block; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 100%; }
+.tm-name svg { vertical-align: -1px; margin-right: 3px; }
+.tm-size { color: var(--text-2); font-family: var(--mono); font-size: 11.5px; white-space: nowrap; margin-left: auto; }
+.tm-sub-label { position: absolute; left: 5px; top: 3px; right: 4px; font-size: 11px; color: var(--text); opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.treemap-tip { position: absolute; z-index: 3; display: grid; gap: 2px; padding: 9px 11px; font-size: 12.5px; line-height: 1.4; border-radius: var(--radius-xs); background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); box-shadow: var(--shadow-2); pointer-events: none; }
+.treemap-tip .mono { font-size: 11px; overflow-wrap: anywhere; }
+.space-bar { display: inline-block; width: 90px; height: 7px; border-radius: 7px; background: var(--surface-3); overflow: hidden; flex: none; }
+.space-bar i { display: block; height: 100%; background: var(--accent); border-radius: inherit; transform-origin: left center; transition: transform 0.4s var(--ease-out); }
+.space-size { display: inline-flex; align-items: center; gap: 10px; }
+.space-table td { vertical-align: middle; }
+.space-name { white-space: normal; min-width: 160px; }
+.space-name .link-btn { font-weight: 600; }
+.space-name .tag { margin-left: 8px; }
+.space-pseudo td { color: var(--text-2); }
+.space-file { white-space: normal; min-width: 220px; max-width: 520px; }
+.space-file b { display: block; overflow-wrap: anywhere; }
+.space-file .mono { display: block; font-size: 11.5px; overflow-wrap: anywhere; }
+.space-file .tag { margin-top: 4px; }
+.space-h3 { font: 650 14px/1.4 var(--font); margin: 0 0 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.space-h3 .faint { font-weight: 400; font-size: 13px; }
+.space-cats { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.space-cats li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 140px) 76px 54px; gap: 10px; align-items: center; font-size: 13.5px; }
+.space-cats .space-bar { width: 100%; }
+.sc-size, .sc-pct { text-align: right; font-size: 12.5px; }
+.space-hints { display: grid; gap: 18px; }
+.space-hints-note { font-size: 12.5px; margin: 0; }
+.space-hint-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 10px; align-items: start; }
+.space-hint-head { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.space-hint-head .space-h3 { margin: 0; }
+.space-hint-head p { margin: 0; font-size: 13px; }
+.space-hint { border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface-2); padding: 12px 14px; display: grid; gap: 6px; font-size: 13.5px; }
+.space-hint p { margin: 0; color: var(--text-2); line-height: 1.5; }
+.space-hint p b { color: var(--text); }
+.space-hint .chip-actions { margin-top: 4px; }
+.sh-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.sh-head .mono { font-weight: 650; }
+.sh-path { font-size: 11.5px; overflow-wrap: anywhere; }
+.tag.risk-tool { color: var(--ok); border-color: var(--ok-line); background: var(--ok-bg); }
+.tag.risk-review { color: var(--info); border-color: var(--info-line); background: var(--info-bg); }
+.tag.risk-setting { color: var(--accent-text); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.tag.risk-keep { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
+@media (max-width: 640px) {
+  .space-bar { width: 52px; }
+  .space-cats li { grid-template-columns: minmax(0, 1fr) 70px 48px; }
+  .space-cats li .space-bar { display: none; }
+  .space-crumb-size { margin-left: 0; width: 100%; }
+  .tm-label { padding: 4px 6px 0; font-size: 11.5px; }
+}
+@media (forced-colors: active) {
+  .tm-tile, .tm-sub, .db-bar span, .space-bar { border: 1px solid CanvasText; }
+  .tm-tile:hover, .tm-tile:focus-visible { outline: 2px solid Highlight; }
+}
+
 /* ---------- Transizione del tema ---------- */
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 

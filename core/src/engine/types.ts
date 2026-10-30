@@ -868,14 +868,14 @@ export interface SpaceFile {
   cloud?: boolean;
 }
 
-/** Per estensione (".mp4") o per categoria (video, image, audio, document, archive, program, virtualdisk, other). */
+/** Per estensione (".mp4") o per categoria (video, image, audio, document, archive, program, virtualdisk, system, other). */
 export interface SpaceType {
   id: string;
   alloc: number;
   files: number;
 }
 
-/** Cartella o file noto; significato e consigli sono nel catalogo dell'interfaccia. */
+/** Cartella o file noto; significato e consigli sono nel catalogo SPACE_HINTS (engine/space.ts). */
 export interface SpaceHint {
   id: string;
   path?: string;

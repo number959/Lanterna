@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 ARCH=${ARCH:-amd64}
-VERSION=${VERSION:-0.8.0+$(git rev-parse --short HEAD 2>/dev/null || echo dev)}
+VERSION=${VERSION:-0.9.0+$(git rev-parse --short HEAD 2>/dev/null || echo dev)}
 export GOTOOLCHAIN=${GOTOOLCHAIN:-local}
 
 echo "==> Nucleo web (interfaccia + motore di analisi)"

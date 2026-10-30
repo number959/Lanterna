@@ -14,7 +14,7 @@ export type * from './types';
 
 export const CHAPTERS: Chapter[] = [
   { id: 'uso', title: 'Usare STARNET Polaris', summary: 'Primi passi, le sezioni del programma, piano d\'azione ed esportazioni, strumenti avanzati, riga di comando e domande frequenti.' },
-  { id: 'pc', title: 'Il computer', summary: 'Come funziona un PC, dischi HDD e SSD e la loro salute, test di velocità, memoria, avvio, aggiornamenti, registro eventi, batteria e il metodo per un PC lento.' },
+  { id: 'pc', title: 'Il computer', summary: 'Come funziona un PC, dischi HDD e SSD e la loro salute, cosa occupa spazio e come liberarlo, test di velocità, memoria, avvio, aggiornamenti, registro eventi, batteria e il metodo per un PC lento.' },
   { id: 'fondamenti', title: 'Fondamenti', summary: 'Come funziona una rete: livelli, indirizzi, DHCP, DNS, instradamento, porte, IPv6 e le misure di qualità.' },
   { id: 'wifi', title: 'Wi-Fi', summary: 'Segnale, bande e canali, standard, sicurezza, progettazione, roaming, più access point e interferenze.' },
   { id: 'cablata', title: 'Rete cablata', summary: 'Cavi e fibra, switch e VLAN, anelli e ridondanza, PoE, architettura di una rete aziendale.' },
