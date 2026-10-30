@@ -175,6 +175,19 @@ jobs:
           if ($csv.Count -ne 4) { throw "righe del CSV: $($csv.Count) invece di 4" }
           if ($csv[0] -notmatch '^\uFEFF?Data e ora;' -or $csv[1] -notmatch '^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d;') { throw "CSV non valido: $($csv[0].Substring(0, [Math]::Min(120, $csv[0].Length)))" }
           "CSV: $(($csv[0] -split ';').Count - 1) colonne, $($csv.Count - 1) letture"
+          # Windows senza risorse in inglese: gli insiemi di contatori della versione 2 (Processor Information e altri) si
+          # trovano solo con i nomi localizzati. Qui la traduzione si forza anche su questo Windows in inglese.
+          $env:POLARIS_PDH_LOCALIZED = '1'
+          try {
+            $f = @(./polaris-cli.exe sensors --seconds 2 --json | ConvertFrom-Json)
+            if ($LASTEXITCODE -ne 0) { throw "sensors con la traduzione dei nomi forzata fallito" }
+            $fcpu = ($f[-1].groups | Where-Object { $_.kind -eq 'cpu' }).sensors
+            $fclock = $fcpu | Where-Object { $_.id -eq 'cpu.clock' }
+            if (-not $fclock) { throw "con la traduzione dei nomi forzata manca la frequenza (Processor Information)" }
+            $k = ./polaris-cli.exe clock --seconds 1 --json | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or -not $k[0].mhz) { throw "clock con la traduzione dei nomi forzata fallito" }
+            "Traduzione dei nomi forzata: $(@($f[-1].groups).Count) gruppi ($((@($f[-1].groups) | ForEach-Object { $_.kind }) -join ', ')), frequenza $($fclock.value) MHz; clock $($k[0].mhz) MHz"
+          } finally { Remove-Item Env:POLARIS_PDH_LOCALIZED }
           $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve', '--port', '8743' -PassThru -NoNewWindow
           try {
             Start-Sleep 2

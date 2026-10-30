@@ -176,6 +176,8 @@ type Disk struct {
 	Flash *bool
 	// TempC: NaN se non letta.
 	TempC float64
+	// WarnC e CritC: soglie dichiarate dal disco (NaN se non le dichiara).
+	WarnC, CritC float64
 }
 
 // Raw è una lettura grezza di tutte le fonti.
@@ -679,6 +681,15 @@ func diskGroups(r Raw) (groups []Group, noTemp bool) {
 				warn, crit = 70, 80
 			} else if d.Flash != nil {
 				warn, crit = 55, 60
+			}
+			// Le soglie dichiarate dal disco, se plausibili, valgono di più.
+			if ok(d.WarnC) && d.WarnC >= 40 && d.WarnC < 120 {
+				warn = d.WarnC
+				if ok(d.CritC) && d.CritC > warn && d.CritC < 130 {
+					crit = d.CritC
+				} else if crit <= warn {
+					crit = warn + 5
+				}
 			}
 			b.add(Sensor{ID: pre + "temp", Label: "Temperatura", Value: round(d.TempC, 0), Unit: "°C", Warn: pf(warn), Crit: pf(crit)})
 		} else {

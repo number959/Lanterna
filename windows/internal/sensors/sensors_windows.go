@@ -177,9 +177,16 @@ func (w *diskWatcher) refresh() {
 		}
 		var n int
 		fmt.Sscan(id, &n)
-		t, ok := pcinfo.DiskTemperature(n)
+		// Prima la temperatura che Windows dà senza diritti (con le soglie
+		// del disco), poi i dati SMART.
+		t, warn, crit, ok := storageTemp(n)
+		if !ok {
+			warn, crit = nan, nan
+			t, ok = pcinfo.DiskTemperature(n)
+		}
 		w.mu.Lock()
 		d := w.disks[id]
+		d.WarnC, d.CritC = warn, crit
 		if ok {
 			d.TempC = t
 		} else {
@@ -232,6 +239,29 @@ func diskInfo(n int) (Disk, bool) {
 		}
 	}
 	return d, true
+}
+
+// storageTemp legge StorageDeviceTemperatureProperty con un handle senza
+// diritti di accesso: funziona con gli NVMe del driver di Windows; gli altri
+// dischi di solito non rispondono e si passa ai dati SMART.
+func storageTemp(n int) (temp, warn, crit float64, valid bool) {
+	p, err := windows.UTF16PtrFromString(fmt.Sprintf(`\\.\PhysicalDrive%d`, n))
+	if err != nil {
+		return nan, nan, nan, false
+	}
+	h, err := windows.CreateFile(p, 0, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, 0, 0)
+	if err != nil {
+		return nan, nan, nan, false
+	}
+	defer windows.CloseHandle(h)
+	out := make([]byte, 24+16*16)
+	var q [12]byte
+	binary.LittleEndian.PutUint32(q[0:], storageDeviceTemperatureProperty)
+	var got uint32
+	if windows.DeviceIoControl(h, ioctlStorageQueryProperty, &q[0], uint32(len(q)), &out[0], uint32(len(out)), &got, nil) != nil {
+		return nan, nan, nan, false
+	}
+	return parseStorageTemp(out[:min(int(got), len(out))])
 }
 
 func queryProperty(h windows.Handle, id uint32, out []byte) bool {

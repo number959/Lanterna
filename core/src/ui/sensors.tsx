@@ -688,7 +688,7 @@ export function SensorsCard({ scan, live, source }: { scan: Scan; live: boolean;
       )}
       <p className="faint clock-note">
         Come HWiNFO, ma senza driver: Polaris legge i contatori delle prestazioni di Windows (gli stessi di Gestione attività), i dati che il driver video
-        fornisce a Windows, lo stato della batteria e, ogni 30 secondi, la temperatura dei dischi dai dati SMART. Le zone termiche sono dichiarate dal
+        fornisce a Windows, lo stato della batteria e, ogni 30 secondi, la temperatura dei dischi (da Windows o dai dati SMART). Le zone termiche sono dichiarate dal
         firmware e non sempre seguono il processore.
       </p>
     </m.section>

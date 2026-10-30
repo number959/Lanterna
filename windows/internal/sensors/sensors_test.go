@@ -596,3 +596,52 @@ func TestGPUPerfData(t *testing.T) {
 		t.Errorf("valori inventati: %+v", z)
 	}
 }
+
+func TestParseStorageTemp(t *testing.T) {
+	desc := func(crit, warn int16, entries ...[3]int16) []byte {
+		b := make([]byte, 24+16*len(entries))
+		put16 := func(off int, v int16) { b[off], b[off+1] = byte(uint16(v)), byte(uint16(v)>>8) }
+		b[4] = byte(len(b))
+		put16(8, crit)
+		put16(10, warn)
+		put16(12, int16(len(entries)))
+		for i, e := range entries {
+			put16(24+16*i, e[0])
+			put16(26+16*i, e[1])
+			put16(28+16*i, e[2])
+		}
+		return b
+	}
+	// Samsung 990 PRO come in una lettura reale: composita a 48 °C, un
+	// sensore non implementato (0 °C con soglia 0), soglie 82 e 85.
+	temp, warn, crit, valid := parseStorageTemp(desc(85, 82, [3]int16{0, 48, 82}, [3]int16{1, 0, 0}))
+	if !valid || temp != 48 || warn != 82 || crit != 85 {
+		t.Fatalf("990 PRO: %v %v %v %v", temp, warn, crit, valid)
+	}
+	// Composita non riportata: vale il primo sensore plausibile; soglie assenti.
+	temp, warn, crit, valid = parseStorageTemp(desc(tempNotReported, 0, [3]int16{0, tempNotReported, 0}, [3]int16{2, 39, 70}))
+	if !valid || temp != 39 || ok(warn) || ok(crit) {
+		t.Fatalf("sensore 2: %v %v %v %v", temp, warn, crit, valid)
+	}
+	// Indice assurdo, valori fuori misura, buffer corti o vuoti.
+	for name, b := range map[string][]byte{
+		"indice assurdo": desc(85, 82, [3]int16{0xFEE, 40, 1}),
+		"fuori misura":   desc(85, 82, [3]int16{0, 300, 1}),
+		"nessuna voce":   desc(85, 82),
+		"troncato":       desc(85, 82, [3]int16{0, 40, 70})[:30],
+		"vuoto":          nil,
+	} {
+		if _, _, _, valid := parseStorageTemp(b); valid {
+			t.Errorf("%s: temperatura inventata", name)
+		}
+	}
+	// Le soglie del disco sostituiscono quelle generali.
+	yes := true
+	s := Build(Raw{Disks: map[string]Disk{"0": {Model: "Samsung SSD 990 PRO 1TB", Flash: &yes, TempC: 48, WarnC: 82, CritC: 85}, "1": {Model: "X", Flash: &yes, TempC: 50, WarnC: 75, CritC: nan}}})
+	if v := find(t, s, "disk.0.temp"); *v.Warn != 82 || *v.Crit != 85 {
+		t.Errorf("soglie del disco: %+v", v)
+	}
+	if v := find(t, s, "disk.1.temp"); *v.Warn != 75 || *v.Crit != 80 {
+		t.Errorf("solo la soglia di attenzione: %+v", v)
+	}
+}

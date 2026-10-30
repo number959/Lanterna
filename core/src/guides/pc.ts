@@ -314,7 +314,7 @@ export const pc: Guide[] = [
     actions: [],
     tags: ['hwinfo', 'sensori', 'monitor', 'temperatura', 'temperature', 'surriscaldamento', 'throttling', 'limitazione termica', 'limite di prestazioni', 'consumo', 'potenza', 'watt', 'rapl', 'energy meter', 'zona termica', 'acpi', 'gpu', 'scheda video', 'ventola', 'giri', 'tensione', 'wddm', 'memoria impegnata', 'file di paging', 'attività del disco', 'tempo di risposta', 'latenza del disco', 'rete', 'mbit/s', 'batteria', 'usura', 'csv', 'registro', 'log', 'minimo', 'massimo', 'media', 'stati c', 'c-state', 'dpc', 'interrupt', 'gestione attività'],
     blocks: [
-      { t: 'p', text: 'Nella sezione Computer, sotto la scheda tecnica, il riquadro **Sensori in tempo reale** fa ciò che fa la finestra dei sensori di HWiNFO: una lettura al secondo di tutto ciò che il PC espone, con il valore attuale, il minimo, il massimo e la media. Polaris legge solo ciò che Windows mette a disposizione senza driver: i contatori delle prestazioni (gli stessi di Gestione attività), i dati che il driver video fornisce a Windows, lo stato della batteria e, ogni 30 secondi, la temperatura dei dischi dai dati SMART.' },
+      { t: 'p', text: 'Nella sezione Computer, sotto la scheda tecnica, il riquadro **Sensori in tempo reale** fa ciò che fa la finestra dei sensori di HWiNFO: una lettura al secondo di tutto ciò che il PC espone, con il valore attuale, il minimo, il massimo e la media. Polaris legge solo ciò che Windows mette a disposizione senza driver: i contatori delle prestazioni (gli stessi di Gestione attività), i dati che il driver video fornisce a Windows, lo stato della batteria e, ogni 30 secondi, la temperatura dei dischi (da Windows o dai dati SMART).' },
       { t: 'p', text: 'La lettura procede mentre la sezione Computer è aperta e la finestra è in primo piano; se passi a un\'altra sezione e torni, i valori raccolti restano. Nella demo i sensori sono simulati e lo dichiarano.' },
       { t: 'h', text: 'Come si legge la tabella' },
       { t: 'list', items: [
@@ -346,7 +346,7 @@ export const pc: Guide[] = [
       { t: 'list', items: [
         '**Memoria fisica in uso** e **memoria impegnata sul limite**: la seconda è la più importante. Quando si avvicina al 100 % compaiono gli errori di memoria insufficiente; se resta alta va aggiunta RAM o vanno chiusi programmi (vedi [[memoria-processore]]).',
         '**Attività del disco**: la quota di tempo in cui il disco ha richieste da servire. Al 100 % per minuti, con il **tempo di risposta** alto, il disco è il collo di bottiglia del PC: per un SSD il tempo tipico è sotto qualche millisecondo, per un disco meccanico qualche decina; oltre 100 ms di media il PC si blocca a scatti (valori indicativi).',
-        '**Temperatura dei dischi**: dai dati SMART, ogni 30 secondi. Per i dischi SATA serve avviare Polaris come amministratore; mentre il monitor è aperto la lettura tiene sveglio un disco meccanico che altrimenti si fermerebbe.',
+        '**Temperatura dei dischi**: ogni 30 secondi. Per gli NVMe la fornisce Windows anche senza permessi di amministratore, insieme alle soglie dichiarate dal disco; per gli altri dischi viene dai dati SMART, e per i SATA serve avviare Polaris come amministratore. Mentre il monitor è aperto la lettura può tenere sveglio un disco meccanico che altrimenti si fermerebbe.',
         '**Rete**: ricezione e invio di ogni scheda in Mbit/s, la stessa unità della velocità della connessione Internet.',
       ] },
       { t: 'h', text: 'La batteria' },
@@ -354,7 +354,7 @@ export const pc: Guide[] = [
       { t: 'h', text: 'Soglie usate per i colori' },
       { t: 'table', head: ['Sensore', 'Attenzione', 'Allarme'], rows: [
         ['Temperatura della scheda video', 'la soglia di rallentamento dichiarata dal driver, altrimenti 85 °C', 'il massimo dichiarato dal driver, altrimenti 95 °C'],
-        ['Temperatura di SSD e NVMe', '70 °C', '80 °C'],
+        ['Temperatura di SSD e NVMe', 'la soglia dichiarata dal disco, altrimenti 70 °C', 'il limite critico dichiarato dal disco, altrimenti 80 °C'],
         ['Temperatura dei dischi meccanici', '55 °C', '60 °C'],
         ['Zone termiche', '85 °C', '95 °C'],
         ['Memoria fisica e memoria impegnata', '85 %', '95 %'],

@@ -13,6 +13,7 @@ var (
 	dll                              = windows.NewLazySystemDLL("pdh.dll")
 	procPdhOpenQueryW                = dll.NewProc("PdhOpenQueryW")
 	procPdhAddEnglishCounterW        = dll.NewProc("PdhAddEnglishCounterW")
+	procPdhAddCounterW               = dll.NewProc("PdhAddCounterW")
 	procPdhCollectQueryData          = dll.NewProc("PdhCollectQueryData")
 	procPdhGetFormattedCounterArrayW = dll.NewProc("PdhGetFormattedCounterArrayW")
 	procPdhGetFormattedCounterValue  = dll.NewProc("PdhGetFormattedCounterValue")
@@ -54,15 +55,33 @@ func Open() (*Query, error) {
 }
 
 // Add aggiunge un contatore per percorso inglese, per esempio
-// `\Processor Information(*)\% Processor Time`.
+// `\Processor Information(*)\% Processor Time`. Se Windows non trova il nome
+// inglese (insiemi della versione 2 su un Windows senza risorse in inglese)
+// riprova con i nomi localizzati.
 func (q *Query) Add(path string) (Counter, error) {
+	var err error = &Error{"PdhAddEnglishCounter", CstatusNoObject}
+	if !forceLocalized {
+		var c Counter
+		if c, err = q.add(procPdhAddEnglishCounterW, "PdhAddEnglishCounter", path); err == nil || !Missing(err) {
+			return c, err
+		}
+	}
+	for _, p := range localized.paths(path) {
+		if c, e := q.add(procPdhAddCounterW, "PdhAddCounter", p); e == nil {
+			return c, nil
+		}
+	}
+	return 0, err
+}
+
+func (q *Query) add(proc *windows.LazyProc, op, path string) (Counter, error) {
 	p, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return 0, err
 	}
 	var c uintptr
-	if r, _, _ := procPdhAddEnglishCounterW.Call(q.h, uintptr(unsafe.Pointer(p)), 0, uintptr(unsafe.Pointer(&c))); r != 0 {
-		return 0, &Error{"PdhAddEnglishCounter", uint32(r)}
+	if r, _, _ := proc.Call(q.h, uintptr(unsafe.Pointer(p)), 0, uintptr(unsafe.Pointer(&c))); r != 0 {
+		return 0, &Error{op, uint32(r)}
 	}
 	q.wild[Counter(c)] = strings.Contains(path, "(*)")
 	return Counter(c), nil
