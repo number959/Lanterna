@@ -617,3 +617,67 @@ AMD EPYC 7763 (2 core, 4 thread), eseguito come amministratore. Tutti i passi ve
   nominali diverse), bus e moltiplicatore dichiarati da un firmware vero e portatili a batteria vanno provati su PC fisici.
 - **Suoni.** Verificati con un contesto audio finto; l'ascolto reale dentro WebView2 resta da provare su un PC.
 - **Licenze.** Le condizioni sono riportate come lette nei testi originali; non sono una consulenza legale.
+
+## 12. Versione 0.8.0: monitor dei sensori senza driver, come HWiNFO
+
+**Cosa è nuovo.**
+- **Agente.**
+  - `pdh`: lettura dei contatori delle prestazioni di Windows estratta in un pacchetto comune (anche per la velocità dei core).
+    I contatori senza carattere jolly si leggono con `PdhGetFormattedCounterValue`. Sui Windows senza risorse in inglese i nomi
+    degli insiemi della versione 2 si traducono con `PerfEnumerateCounterSet` e `PerfQueryCounterSetRegistrationInfo`.
+  - `sensors`: processore (utilizzo, utilità, frequenze, limite di prestazioni, stati C, interrupt e DPC, consumi RAPL dove
+    Windows espone Energy Meter), zone termiche ACPI, scheda video (utilizzo per motore e memoria dai contatori; temperatura,
+    ventola, potenza, frequenze e tensione dal driver con D3DKMT), memoria, dischi (attività, velocità, tempo di risposta,
+    temperatura da Windows o da SMART ogni 30 secondi), rete, batteria (IOCTL della classe batteria) e sistema; ciò che manca
+    su un PC finisce in un elenco di note.
+  - API `GET /api/sensors`; comando `polaris-cli sensors` con riepilogo (attuale, minimo, massimo, media), `--all`, `--csv`
+    scritto riga per riga e `--json` stampato man mano.
+- **Interfaccia.** Riquadro Computer > Sensori: riquadri di sintesi, una tabella per dispositivo con attuale, minimo, massimo e
+  media, grafico di ogni sensore, righe di dettaglio, pausa, azzeramento, CSV per Excel, avvisi con suono e isteresi, demo
+  simulata e dichiarata. La scorciatoia verso HWiNFO compare anche quando HWiNFO è stato scaricato da Polaris.
+- **Guide.** 67 guide (nuova: "Sensori in tempo reale") e 199 voci di glossario (nuove: Limite di prestazioni, Zona termica
+  ACPI, RAPL, Stati C, DPC, WDDM, HWiNFO).
+
+**Fonti delle interfacce di Windows**, verificate il 30/10/2026 prima di scrivere il codice:
+- **Scheda video (D3DKMT).** Valori di `KMTQUERYADAPTERINFOTYPE` (8, 13, 15, 25, 61, 62, 63), strutture e unità (temperatura
+  in decimi di °C, potenza in decimi di punto percentuale, frequenze in Hz, tensione in mV) confermati da due copie
+  indipendenti delle intestazioni Microsoft (libdxg e le intestazioni incluse in System Informer, con licenza MIT), dalle
+  associazioni windows-rs e dall'intestazione di Wine compilata per x86, x64 e ARM64. La pagina di Microsoft Learn elenca i
+  valori senza numeri e salta il 14: numerarla per posizione darebbe valori sbagliati.
+- **Batteria.** Codici IOCTL, strutture, valori "sconosciuto" e unità confermati da intestazioni mingw-w64, ReactOS e
+  windows-sys; filtro delle batterie di sistema come nell'esempio di Microsoft.
+- **Temperatura dei dischi.** `StorageDeviceTemperatureProperty` = 52 e strutture verificate con asserzioni compilate sulle
+  intestazioni mingw-w64 per tre architetture.
+- **Contatori.** Nomi, unità e tipi dalla documentazione di Microsoft; **Energy Meter** (potenza in milliwatt) ha una sola fonte,
+  codice di terze parti: va verificato su un PC che lo espone.
+- **Windows senza inglese.** Il fallimento di `PdhAddEnglishCounterW` sugli insiemi della versione 2 è documentato e riprodotto
+  su Windows 11 in tedesco dal progetto windows_exporter (PR 2709, ottobre 2026), che usa lo stesso rimedio.
+
+**Test automatici.**
+
+| Insieme | Esito |
+| --- | --- |
+| Motore, guide, interfaccia (vitest) | 189 test superati, tra cui: attuale, minimo, massimo e media, grafici e registro; azzeramento; soglie verso l'alto e verso il basso; avvisi una volta sola, riarmo con margine anche sul tempo di risposta, allarmi prima degli avvisi e rinvio di quelli in eccesso; pause come interruzioni e letture ripetute scartate; CSV con marca UTF-8, punto e virgola, virgola decimale e testi resi sicuri; simulazione della demo coerente con i due PC |
+| Agente (Go, anche con `-race`) | 164 test superati, tra cui: costruzione dei gruppi da letture finte (processore e core, potenza RAPL, zone in kelvin e decimi, GPU con più processi e più motori dello stesso tipo, LUID, schede software escluse, memoria, istanze dei dischi, rete senza interfacce virtuali, batteria, sistema); note su ciò che manca; decodifica di batteria, telemetria GPU e temperatura dei dischi da buffer costruiti byte per byte; traduzione dei nomi dei contatori con un registro finto; registro e CSV scritto man mano; chiusura per inattività anche dopo una lettura servita dalla cache (difetto presente anche nella velocità dei core, corretto); API `/api/sensors` con `200`, `501` e `503` |
+| `go vet` (Windows amd64, 386 e arm64), `gofmt`, `tsc` | nessun problema nei pacchetti nuovi; `vet` a 32 bit segnala ancora le costanti di `pcinfo`, codice precedente |
+
+**Revisione indipendente.** Tre revisori (agente Go, interfaccia, testi e documentazione) e un secondo revisore per ogni area,
+che ha ricontrollato ogni rilievo sul codice: 33 rilievi (alcuni sono lo stesso difetto visto da due aree), 29 confermati e
+corretti, 4 scartati (risveglio dei dischi meccanici, già detto nella guida; differenza tra le due simulazioni della demo;
+minuscole negli avvisi; descrizione di HWiNFO nel glossario). I principali: fonti che restavano
+aperte dopo l'ultima lettura servita dalla cache; registro CSV scritto solo alla fine (perso se il PC si bloccava); nota
+sull'amministratore mostrata anche per chiavette USB e dischi virtuali; utilizzo della GPU sommato tra motori dello stesso tipo;
+livelli di attenzione e allarme indicati solo dal colore; valori troncati nella tabella tra 641 e 1279 px.
+
+**Interfaccia**, Chromium 141 sulla build di produzione, axe-core (WCAG 2.1 A/AA e buone pratiche):
+- monitor nella demo: portatile di casa in tema scuro, ambulatorio in tema chiaro, telefono a 390 px senza scorrimento
+  orizzontale della pagina; dettagli, grafico, gruppi chiusi e riaperti, pausa (nessuna lettura in più), azzeramento, CSV
+  scaricato e controllato, valori conservati cambiando sezione;
+- agente simulato: avviso "Attenzione" con suono quando la temperatura della GPU supera la soglia, riga evidenziata con icona,
+  errore `501` con il motivo e Riprova, nessuna lettura dopo l'errore;
+- **0 violazioni** sul monitor in tutti gli stati e nell'audit completo delle 10 sezioni × 2 temi × desktop e telefono.
+
+**Exe sotto Wine 9.0.** Wine non implementa `PdhGetFormattedCounterArrayW`: la prima versione si fermava con "unimplemented
+function". Ora i contatori senza carattere jolly si leggono uno per uno e quelli che mancano si saltano: `polaris-cli sensors`
+mostra memoria e tempo dall'avvio con le note su ciò che manca, il JSON è valido, un percorso CSV sbagliato si segnala subito e
+il registro si scrive riga per riga.
