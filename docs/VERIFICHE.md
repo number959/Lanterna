@@ -723,3 +723,113 @@ thread, eseguito come amministratore; tutte le run dalla 29 alla 34 verdi.
   un PC con dischi veri.
 - **Ciò che richiede un driver** (temperature e tensioni di processore e scheda madre, ventole) resta escluso per scelta: per
   quei valori c'è HWiNFO.
+
+## 13. Versione 0.9.0: "Cosa occupa spazio", l'analisi dello spazio come WizTree
+
+**Cosa è nuovo.**
+- **Agente.** Pacchetto `space`: legge l'elenco delle cartelle di un'unità con `GetFileInformationByHandleEx`
+  (`FileIdBothDirectoryInfo`, 64 KB per chiamata, otto lettori in parallelo), senza aprire i file e senza cancellare nulla.
+  Spazio allocato e dimensione dei dati, collegamenti fisici della cartella di Windows contati una volta, giunzioni e link
+  simbolici non seguiti, file solo online di OneDrive contati a parte e mai aperti, cartelle non leggibili ed errori del disco
+  distinti; albero ridotto alle 1500 cartelle più grandi, 100 file più grandi, tipi e categorie, cartelle note di Windows.
+  Percorsi senza nomi utente, indirizzi e-mail e SID. API `POST/GET/DELETE /api/space` e `POST /api/space/open` (apre in
+  Esplora file solo elementi dell'ultima analisi, per numero); comando `polaris-cli space [C:|cartella] [--top N] [--json]`.
+- **Interfaccia.** Computer > Cosa occupa spazio: barra dell'unità, mappa a riquadri a due livelli navigabile anche da
+  tastiera, tabella delle cartelle con "Apri", file più grandi con "Mostra", tipi di file, cartelle note in cinque gruppi (si
+  libera con Windows, si libera dal programma, da rivedere, da impostazione, non toccare) con cosa sono e come liberarle. Demo
+  simulata e dichiarata per il portatile di casa (C: quasi pieno) e per l'ambulatorio (C: e archivio D:).
+- **Motore 1.3.0.** Misura "Spazio recuperabile" per unità; lo spazio libero scarso dice dove sta lo spazio; azioni nuove
+  (scoprire cosa occupa spazio, rimuovere Windows.old, rivedere download e file grandi, compattare i dischi virtuali); sezione
+  nel documento stampabile con totali, tipi e cartelle note, senza nomi di file o di cartelle personali.
+- **Guide.** 68 guide (nuova: "Cosa occupa spazio: analisi del disco e pulizia sicura") e 208 voci di glossario (nuove:
+  Spazio allocato, Collegamento fisico, File solo online, WinSxS, Windows.old, hiberfil.sys, pagefile.sys, Mappa a riquadri,
+  Sensore memoria).
+
+**Fonti delle interfacce di Windows**, verificate il 30/10/2026 prima di scrivere il codice:
+- **Struttura `FILE_ID_BOTH_DIR_INFO`.** Scostamenti (0 prossima voce, 24 ultima scrittura, 40 dimensione, 48 spazio
+  allocato, 56 attributi, 60 lunghezza del nome, 64 `EaSize`, 96 numero del file, 104 nome) confermati compilando `offsetof`
+  sulle intestazioni mingw-w64 con gcc e clang per 386, amd64 e arm64 e confrontati con MS-FSCC; uguali sulle tre
+  architetture. La copia interna di Go dichiara `ShortNameLength` a 32 bit (sposta `ShortName`, che Polaris non legge): per
+  questo le voci si leggono a scostamenti fissi dal buffer e non con una struttura Go. `EaSize` contiene il tag di reparse
+  quando c'è l'attributo, come in `os.ReadDir`.
+- **Protocollo.** Fine con `ERROR_NO_MORE_FILES`; la prima lettura della radice di un'unità vuota risponde
+  `ERROR_FILE_NOT_FOUND` (documentato in MS-FSA e gestito così anche da Go); classe senza numero del file
+  (`FileFullDirectoryInfo`, nome a 68) per i file system che non accettano l'altra.
+- **Collegamenti e reparse.** Tutti i nomi di un file con più collegamenti fisici hanno lo stesso numero di file; Esplora
+  file somma i collegamenti di WinSxS e ne mostra una dimensione maggiore del reale (documentazione Microsoft). Bit di
+  surrogato del nome `0x20000000` (giunzioni, link simbolici, punti di montaggio); attributi dei file solo online
+  (`RECALL_ON_DATA_ACCESS`, `OFFLINE`) e `RtlSetProcessPlaceholderCompatibilityMode` (Windows 10 1803+) per vederli.
+- **Consigli di pulizia.** Windows.old eliminata da Windows 10 giorni dopo l'aggiornamento (da 2 a 60 con DISM); file
+  temporanei non modificati da più di una settimana; Ottimizzazione recapito (3 giorni, 20 % dello spazio disponibile);
+  `Dism /AnalyzeComponentStore`, `/StartComponentCleanup` e `/ResetBase`; `powercfg /h /type reduced` e `/h off`; OneDrive
+  "Libera spazio"; compattazione dei VHDX solo a macchina spenta. Con una sola fonte o nessuna, e quindi scritti come da
+  verificare o con cautela: il percorso della cache di Ottimizzazione recapito (solo un post di Microsoft Q&A),
+  `swapfile.sys` (fonte non Microsoft), `$Windows.~WS` (nessuna pagina ufficiale). "Pulizia di Windows Update" riguarda
+  l'archivio dei componenti, non `SoftwareDistribution\Download`: quella cartella è tra quelle gestite da Windows.
+
+**Test automatici.**
+
+| Insieme | Esito |
+| --- | --- |
+| Motore, guide, interfaccia (vitest) | 216 test superati, tra cui: disposizione della mappa (proporzioni, nessuna sovrapposizione, dentro il rettangolo, valori nulli); formati in italiano; catalogo con un testo per ogni cartella nota dell'agente; demo coerenti (somme dell'albero, figli in ordine, nessun nome utente, tipi non più piccoli dei file elencati, spazio non attribuito sotto il 10 %, cartelle note uguali alle loro cartelle); spazio recuperabile, azioni mirate, unità non di sistema, analisi interrotte; documento senza nomi di file; funzioni pure della scheda (durate, riconoscimento del PC dell'analisi, barra dell'unità, note) |
+| Agente (Go, anche con `-race`) | 176 test superati, tra cui: analisi di un file system finto con collegamenti fisici tra System32 e WinSxS, giunzione, OneDrive, cartella negata, profili e Cestino; stesso risultato con 1 e con 16 lettori; 1555 cartelle con l'albero ridotto e le somme che tornano; interruzione e avanzamento; decodifica delle voci da buffer costruiti byte per byte (anche `FileFullDirectoryInfo` e numeri di file tutti 1); privacy (profili in Windows.old e su altre unità, e-mail, SID, lettere İ e Ⱥ, nomi comuni); errori del disco, cartelle sparite e permessi distinti; backup d'immagine esclusi dai dischi virtuali; API con avvio, doppio avvio, esclusione dei test di velocità, apertura solo per numero e per analisi, interruzione e errori; testo della riga di comando |
+| `go vet` (Windows amd64, 386 e arm64), `gofmt`, `tsc` | nessun problema nei pacchetti nuovi; `vet` a 32 bit segnala ancora le costanti di `pcinfo`, codice precedente |
+
+**Revisione indipendente.** Tre revisori (agente Go, interfaccia, motore e testi) e un secondo revisore per ogni area, che ha
+ricontrollato ogni rilievo sul codice, spesso con prove: 35 rilievi, 30 confermati e corretti, 5 scartati (unità scritta dopo
+le opzioni nella riga di comando; una lettura dello stato non riuscita; immagini disco contate in due elenchi; avvertenza su
+`docker system prune`; controllo informativo del file di paging in CI). I principali:
+- **privacy**: nomi dei profili rimasti solo in Windows.old o su altre unità, indirizzi e-mail nei nomi dei file di Outlook e
+  SID del Cestino mostrati in chiaro; percorsi storpiati e un blocco con lettere che cambiano lunghezza in minuscolo (İ, Ⱥ);
+- **agente**: una corsa sui dati in un test che rendeva la CI instabile; ogni errore di lettura presentato come problema di
+  permessi; virgolette di un nome su una chiavetta preparata ad arte passate a Esplora file;
+- **interfaccia**: esito perso rimontando la scheda; risultato unito a un rapporto importato o a un'altra demo; fuoco perso
+  scendendo nelle cartelle; regione letta dagli screen reader aggiornata ogni 400 ms;
+- **testi**: cache dei browser e download di Windows Update presentati come liberabili con gli strumenti di Windows;
+  compattazione proposta anche per un backup d'immagine di sistema; "niente da recuperare" su un'analisi interrotta; numeri
+  impossibili nella demo dell'ambulatorio.
+
+**Interfaccia**, Chromium 141 sulla build di produzione, axe-core (WCAG 2.1 A/AA e buone pratiche):
+- demo del portatile e dell'ambulatorio in tema scuro e chiaro, su desktop e a 390 px: scheda vuota, analisi in corso,
+  risultato con le quattro schede, fuoco su un riquadro e discesa con Invio; nessuno scorrimento orizzontale della pagina;
+- agente simulato: avanzamento, risultato con "Apri" e "Mostra", apertura che invia solo unità, numero e `startedAt`, errore
+  404 mostrato;
+- **0 violazioni** in tutti gli stati. Le immagini hanno mostrato tre difetti, corretti: la mappa vuota dopo la discesa in una
+  cartella (l'osservatore della larghezza restava sull'elemento rimosso), lo scorrimento orizzontale a 390 px (una griglia
+  senza colonna minima) e i riquadri di secondo livello inutili nelle cartelle senza sottocartelle.
+
+**Exe sotto Wine 9.0.** `polaris-cli space C:` legge 845 file e 119 cartelle in meno di un secondo; l'interfaccia servita
+dall'exe esegue un'analisi vera con l'agente (unità C: e Z:), senza errori della pagina. La prova ha trovato due difetti,
+corretti: il percorso delle cartelle note scritto come nella variabile d'ambiente invece che come sul disco, e il nome della
+guida nella riga di comando.
+
+**Windows reale (CI).** Windows Server 2025 (immagine windows-2025-vs2026 20261021.278.1) su una macchina virtuale Azure,
+eseguito come amministratore. Run 39 (commit `db20adc`):
+- **cartella di Windows**: 14,65 GB in 122.840 file e 41.247 cartelle, letti in 51 s la prima volta e in 2 s la seconda
+  (cartelle già in memoria); 1,15 GB di collegamenti fisici contati una volta; dati per 26,3 GB contro 14,7 GB occupati, segno che lo spazio allocato delle voci tiene
+  conto della compressione dei file di sistema (da confermare con un confronto file per file); 4.434 file di System32 nell'analisi di
+  Windows contro i 4.474 di .NET: la differenza attesa sono i file con un altro nome che viene prima in ordine alfabetico, contati là
+  (dalla run 41 il confronto si fa sull'analisi della sola System32);
+- **unità C: intera**: 116,8 GB letti su 128 GB occupati, 1.152.556 file e 208.278 cartelle in 403 s (disco della macchina
+  virtuale con operazioni al secondo limitate), 18 cartelle riservate al sistema, nessun nome utente nel JSON; cartelle note:
+  cache di Windows Installer 6,4 GB, cache dei pacchetti 1,78 GB, dischi virtuali 0,86 GB (tra cui il `system.vhd` di WSL),
+  WinSxS 0,69 GB al netto dei collegamenti;
+- **API**: analisi di D: in background (3,2 GB in 1.343 file), apertura di un numero sconosciuto rifiutata con 404,
+  interruzione di C: con il risultato parziale (100.562 file letti).
+
+**Difetti trovati e corretti durante il lavoro** (oltre ai rilievi della revisione):
+1. "Unità C::" nella riga di comando e nell'avanzamento.
+2. Mappa vuota dopo la discesa in una cartella; titoli dei gruppi in maiuscolo; scorrimento orizzontale a 390 px.
+3. Percorso delle cartelle note scritto come nella variabile d'ambiente; nome della guida nella riga di comando.
+4. Virgolette mancanti nel passo della CI (run 40, solo lo script di prova).
+
+**Avvertenze: cosa resta da provare su PC fisici.**
+- **OneDrive.** I file solo online si riconoscono dagli attributi e `RtlSetProcessPlaceholderCompatibilityMode` li rende
+  visibili; la CI non ha OneDrive: va provato su un PC con file solo online.
+- **Chiavette FAT32 ed exFAT.** La lettura senza numero del file è provata con buffer costruiti a mano, non su una chiavetta.
+- **Velocità.** Misurata solo sulla macchina virtuale della CI e sotto Wine. WizTree, che da amministratore legge
+  direttamente la tabella dei file di NTFS, resta più rapido sui dischi con milioni di file.
+- **"Apri in Esplora file".** In CI non c'è un desktop interattivo: provati il rifiuto dei numeri sconosciuti e di altre
+  analisi e, con un agente simulato, che l'interfaccia invii solo il numero.
+- **Consigli.** Nomi di menu e voci cambiano con gli aggiornamenti di Windows; i flussi alternativi dei file non si contano;
+  lo spazio dei file compressi da WOF si legge dalle voci delle cartelle senza aprire i file.
