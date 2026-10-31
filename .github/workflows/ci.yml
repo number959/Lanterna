@@ -298,6 +298,45 @@ jobs:
             "Interruzione: $($st.error); parziale=$($st.result.partial), $($st.result.files) file letti"
             if ($st.error -notmatch 'parziali' -or -not $st.result.partial) { throw "interruzione non gestita" }
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+      - name: Certificati dei servizi interni
+        timeout-minutes: 6
+        run: |
+          # Servizio HTTPS locale con un certificato autofirmato (openssl di Git per Windows, server di Python).
+          $openssl = @('C:\Program Files\Git\usr\bin\openssl.exe', 'C:\Program Files\Git\mingw64\bin\openssl.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $openssl) { throw "openssl di Git per Windows non trovato" }
+          $d = Join-Path $env:RUNNER_TEMP 'certs'
+          New-Item -ItemType Directory -Force $d | Out-Null
+          & $openssl req -x509 -newkey rsa:2048 -sha256 -nodes -keyout "$d\k.pem" -out "$d\c.pem" -days 20 -subj '/CN=servizio-prova' -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' 2>&1 | Out-Null
+          if (-not (Test-Path "$d\c.pem")) { throw "certificato di prova non creato" }
+          & $openssl x509 -in "$d\c.pem" -outform der -out "$d\c.cer" 2>&1 | Out-Null
+          @(
+            'import http.server, ssl, sys',
+            "s = http.server.HTTPServer(('127.0.0.1', 8445), http.server.SimpleHTTPRequestHandler)",
+            'c = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)',
+            'c.load_cert_chain(sys.argv[1], sys.argv[2])',
+            's.socket = c.wrap_socket(s.socket, server_side=True)',
+            's.serve_forever()'
+          ) | Set-Content -Encoding ascii "$d\srv.py"
+          $srv = Start-Process -FilePath python -ArgumentList "$d\srv.py", "$d\c.pem", "$d\k.pem" -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $a = (./polaris-cli.exe certs 127.0.0.1:8445 localhost:8445 --json | ConvertFrom-Json).results
+            if ($LASTEXITCODE -ne 0) { throw "certs fallito" }
+            foreach ($r in $a) { "$($r.host):$($r.port) ok=$($r.ok) $($r.tlsVersion) giorni=$($r.daysLeft) autofirmato=$($r.selfSigned) nome=$($r.nameMatch) fiducia=$($r.trust) $($r.error)" }
+            if (-not $a[0].ok -or -not $a[0].selfSigned -or -not $a[0].nameMatch -or $a[0].daysLeft -lt 18 -or $a[0].daysLeft -gt 20 -or $a[0].trust -ne 'untrusted-root') { throw "certificato autofirmato letto male" }
+            if (-not $a[1].ok -or -not $a[1].nameMatch -or $a[1].subject -ne 'servizio-prova') { throw "certificato per nome letto male" }
+            # Importato tra le radici attendibili del computer, Windows lo considera attendibile; poi si toglie.
+            $imp = Import-Certificate -FilePath "$d\c.cer" -CertStoreLocation Cert:\LocalMachine\Root
+            try {
+              $b = (./polaris-cli.exe certs 127.0.0.1:8445 --json | ConvertFrom-Json).results[0]
+              "Dopo l'importazione: fiducia=$($b.trust)"
+              if ($b.trust -ne 'trusted') { throw "certificato importato non attendibile per Windows" }
+            } finally { Remove-Item "Cert:\LocalMachine\Root\$($imp.Thumbprint)" -ErrorAction SilentlyContinue }
+          } finally { Stop-Process $srv -ErrorAction SilentlyContinue }
+          # Indirizzi pubblici rifiutati senza collegarsi.
+          $p = (./polaris-cli.exe certs 1.1.1.1 --json | ConvertFrom-Json).results[0]
+          if ($p.ok -or $p.error -notmatch 'pubblico') { throw "indirizzo pubblico non rifiutato" }
+          "Indirizzo pubblico: $($p.error)"
       - name: Test di velocità da riga di comando
         run: |
           $c = ./polaris-cli.exe bench cpu --quick --json | ConvertFrom-Json
