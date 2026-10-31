@@ -7,6 +7,7 @@
 //	polaris-cli.exe defender ...       stato e scansioni di Microsoft Defender
 //	polaris-cli.exe sensors            monitor dei sensori
 //	polaris-cli.exe space [C:]         cosa occupa spazio su un'unità
+//	polaris-cli.exe speedtest          test di velocità di Internet con M-Lab
 //	polaris-cli.exe version
 //
 // Polaris.exe è compilato come applicazione grafica, polaris-cli.exe per la
@@ -47,6 +48,7 @@ import (
 	"lanterna/internal/sensors"
 	"lanterna/internal/server"
 	"lanterna/internal/space"
+	"lanterna/internal/speedtest"
 	"lanterna/internal/tools"
 	"lanterna/internal/winapi"
 )
@@ -102,6 +104,13 @@ Uso:
                                  emittente, versione di TLS; solo indirizzi privati.
                                  Esempi: nas.local  192.168.1.10:8443  https://pacs.local
       --json                     stampa il risultato in JSON
+  polaris-cli speedtest          test di velocità di Internet con Measurement Lab (M-Lab):
+                                 download, upload, latenza a riposo e sotto carico.
+                                 Senza --accetto mostra solo il testo del consenso:
+                                 M-Lab pubblica il risultato con l'indirizzo IP pubblico
+      --accetto                  accetta il consenso e avvia il test (circa 30 secondi,
+                                 fino a circa 500 MB di dati)
+      --json                     stampa il risultato in JSON
   polaris-cli tools status       versioni portable scaricate (su questo PC e nel kit)
   polaris-cli tools kit [ID...]  prepara il kit per l'uso senza Internet: scarica dai
                                  siti ufficiali e verifica i programmi nella cartella
@@ -151,6 +160,8 @@ func main() {
 		err = runSpace(args[1:])
 	case args[0] == "certs":
 		err = runCerts(args[1:])
+	case args[0] == "speedtest":
+		err = runSpeedTest(args[1:])
 	case args[0] == "version" || args[0] == "--version":
 		eng, e := engine.Load(nil)
 		ev := "non incluso"
@@ -301,6 +312,11 @@ func startServer(port int) (*server.Server, string, error) {
 		},
 		SpaceOpen: space.Open,
 		OpenTool:  func(id, target string) error { return tools.Open(id, target, fetcher) },
+		SpeedTest: func(ctx context.Context, p func(speedtest.Progress)) (*scan.SpeedTest, error) {
+			opt := speedOptions(c)
+			opt.Progress = p
+			return speedtest.Run(ctx, opt)
+		},
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = httpSrv.Serve(ln) }()

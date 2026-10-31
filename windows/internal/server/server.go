@@ -32,6 +32,9 @@
 //	POST /api/open      apre uno strumento di Windows, un programma incluso,
 //	                    scaricato o installato, o il sito ufficiale
 //	                    ({"tool": "cpu-z", "target": "site"})
+//	POST /api/speedtest avvia il test di velocità di Internet con M-Lab
+//	                    ({"consent": true}); GET avanzamento ed esito,
+//	                    DELETE interrompe (vedi speedtest.go)
 //
 // Ascolta solo su 127.0.0.1 e rifiuta richieste con Host diverso (difesa dal
 // DNS rebinding) e POST provenienti da altre origini (difesa dal CSRF). Le
@@ -66,6 +69,7 @@ import (
 	"lanterna/internal/scan"
 	"lanterna/internal/sensors"
 	"lanterna/internal/space"
+	"lanterna/internal/speedtest"
 	"lanterna/internal/tools"
 )
 
@@ -109,6 +113,19 @@ type Server struct {
 	certsMu   sync.Mutex
 	certsBusy bool
 	certsLast *scan.CertData
+
+	// SpeedTest esegue il test di velocità di Internet con M-Lab (nil = non
+	// disponibile); SpeedLimit ne limita la frequenza (nil = predefinito).
+	// Non parte durante un'analisi e viceversa.
+	SpeedTest    func(ctx context.Context, progress func(speedtest.Progress)) (*scan.SpeedTest, error)
+	SpeedLimit   *speedtest.Limiter
+	speedMu      sync.Mutex
+	speedRunning bool
+	speedProg    *speedtest.Progress
+	speedErr     string
+	speedCancel  context.CancelFunc
+	speedLast    *scan.SpeedTest
+	speedFinish  chan struct{}
 
 	// Test di velocità (nil = non disponibili). Non partono durante
 	// un'analisi e viceversa: si falserebbero a vicenda.
@@ -232,6 +249,10 @@ func (s *Server) startScan() error {
 	if busy {
 		s.mu.Unlock()
 		return errBenchRunning
+	}
+	if s.speedBusy() {
+		s.mu.Unlock()
+		return errSpeedRunning
 	}
 	s.running, s.runErr, s.steps = true, "", nil
 	s.scanDone = make(chan struct{})
@@ -1209,6 +1230,7 @@ func (s *Server) Handler() http.Handler {
 		}
 		writeJSON(w, 200, last)
 	})
+	s.speedRoutes(mux)
 	if s.Web != nil {
 		files := http.FileServer(http.FS(s.Web))
 		mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

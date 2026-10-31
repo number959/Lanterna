@@ -204,6 +204,77 @@ type InternetData struct {
 	TraceTarget string      `json:"traceTarget,omitempty"`
 	MTU         *MtuResult  `json:"mtu,omitempty"`
 	HTTP        []HTTPCheck `json:"http,omitempty"`
+	// Speed è il test di velocità con M-Lab: non lo esegue l'analisi
+	// automatica ma l'utente, su richiesta e dopo il consenso; lo unisce
+	// l'interfaccia, come i test del PC.
+	Speed *SpeedTest `json:"speed,omitempty"`
+}
+
+// SpeedTest è il test di velocità di Internet con Measurement Lab (M-Lab,
+// protocollo ndt7): una connessione per verso verso un server scelto da
+// M-Lab, con la latenza misurata a riposo e durante i trasferimenti. Non
+// contiene mai l'indirizzo IP del PC, la porta né l'identificativo del test
+// che il server comunica.
+type SpeedTest struct {
+	StartedAt  string `json:"startedAt"`
+	DurationMs int64  `json:"durationMs"`
+	// Provider: "mlab-ndt7".
+	Provider string       `json:"provider"`
+	Server   *SpeedServer `json:"server,omitempty"`
+	// Probe: server pubblico delle misure di latenza ("1.1.1.1"); ProbeMethod
+	// "icmp" o "tcp" (connessioni TCP quando i ping sono bloccati).
+	Probe       string `json:"probe,omitempty"`
+	ProbeMethod string `json:"probeMethod,omitempty"`
+	// Idle: latenza a riposo, prima dei trasferimenti.
+	Idle     *SpeedLatency `json:"idle,omitempty"`
+	Download *SpeedDir     `json:"download,omitempty"`
+	Upload   *SpeedDir     `json:"upload,omitempty"`
+	// ViaProxy: il test è passato da un proxy (misura il percorso del proxy).
+	ViaProxy bool `json:"viaProxy,omitempty"`
+	// Simulated: risultato simulato dall'interfaccia nelle demo (mai dall'agente).
+	Simulated bool `json:"simulated,omitempty"`
+}
+
+// SpeedServer è il server di M-Lab usato, come lo indica il servizio Locate.
+type SpeedServer struct {
+	City    string `json:"city,omitempty"`    // in inglese, come la dà M-Lab ("Milan")
+	Country string `json:"country,omitempty"` // codice ISO ("IT")
+	Site    string `json:"site,omitempty"`    // sito di M-Lab ("mil05")
+	Machine string `json:"machine,omitempty"` // nome pubblico del server
+}
+
+// SpeedLatency riassume le misure di latenza di una fase; i campioni senza
+// risposta contano in Sent ma non in Received.
+type SpeedLatency struct {
+	Sent     int      `json:"sent"`
+	Received int      `json:"received"`
+	MinMs    *float64 `json:"minMs,omitempty"`
+	MedianMs *float64 `json:"medianMs,omitempty"`
+	P95Ms    *float64 `json:"p95Ms,omitempty"`
+}
+
+// SpeedDir è un verso del test (download o upload). Mbps è il goodput,
+// cioè i dati utili al secondo (senza le intestazioni di TLS e TCP).
+type SpeedDir struct {
+	Mbps  float64 `json:"mbps"`
+	Bytes int64   `json:"bytes"`
+	Ms    int64   `json:"ms"`
+	// Source: "client" (byte contati dal PC) o "server" (byte ricevuti dal
+	// server, per l'upload, dai suoi messaggi di misura).
+	Source string `json:"source,omitempty"`
+	// Capped: il trasferimento si è fermato al limite di dati (250 MB).
+	Capped bool `json:"capped,omitempty"`
+	// Dal TCP_INFO del server: RTT minimo e medio, ritrasmissioni (solo download).
+	MinRTTMs   *float64 `json:"minRttMs,omitempty"`
+	RTTMs      *float64 `json:"rttMs,omitempty"`
+	RetransPct *float64 `json:"retransPct,omitempty"`
+	// Latency: latenza misurata durante il trasferimento; BloatMs e
+	// BloatP95Ms la latenza aggiunta rispetto al riposo (mediana e 95°
+	// percentile meno la mediana a riposo).
+	Latency    *SpeedLatency `json:"latency,omitempty"`
+	BloatMs    *float64      `json:"bloatMs,omitempty"`
+	BloatP95Ms *float64      `json:"bloatP95Ms,omitempty"`
+	Error      string        `json:"error,omitempty"`
 }
 
 type DNSServerResult struct {
