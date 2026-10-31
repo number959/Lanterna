@@ -568,6 +568,25 @@ const list: Metric[] = [
     limits: 'Si misura l\'apertura della connessione, non il funzionamento dell\'applicazione: un servizio può accettare connessioni ed essere comunque bloccato.',
   },
   {
+    id: 'infra.cert',
+    label: 'Certificato di un servizio interno',
+    category: 'infra',
+    unit: 'giorni',
+    what: 'Il certificato TLS che un servizio della rete locale (gestionale, PACS, NAS, pannello del router, posta) presenta quando ti colleghi in modo cifrato. Solo su tua richiesta e solo verso indirizzi privati, Polaris si collega, legge il certificato durante la negoziazione e chiude senza inviare dati né credenziali: scadenza, nomi, emittente, chiave, firma, versione di TLS, richiesta di un certificato client e come Windows lo valuta su questo PC.',
+    scale: [
+      { range: 'valido, attendibile su questo PC, TLS 1.2 o 1.3', severity: 'ok', meaning: 'Nulla da fare fino al rinnovo.' },
+      { range: 'autofirmato non attendibile su questo PC; richiesta di un certificato client', severity: 'info', meaning: 'Normale sui dispositivi interni e nei PACS con DICOM su TLS: va bene se la fiducia è una scelta, non se gli utenti accettano gli avvisi del browser.' },
+      {
+        range: 'scade entro 30 giorni, o entro un terzo della durata se è minore; nome non corrispondente o solo Common Name; firma SHA-1 o MD5; chiave RSA sotto 2048 bit; accetta ancora TLS 1.0 o 1.1; catena incompleta; CA non riconosciuta da questo PC; uso non valido per i server',
+        severity: 'warn',
+        meaning: 'Da pianificare: avvisi nei browser, client che rifiutano la connessione o protezione più debole.',
+      },
+      { range: 'scaduto o entro 7 giorni dalla scadenza; solo TLS 1.0 o 1.1; firma non valida, certificato bloccato da Windows o revocato', severity: 'crit', meaning: 'Il servizio smette di funzionare o non protegge la connessione: intervieni subito.' },
+    ],
+    why: 'Un certificato scaduto ferma da un giorno all\'altro il gestionale, il PACS o la posta. I certificati non attendibili o con il nome sbagliato producono avvisi nel browser: se gli utenti si abituano ad accettarli, non si accorgono più di un servizio contraffatto. TLS 1.0 e 1.1 sono dismessi (RFC 8996) e non vanno più negoziati (RFC 9325). Sui dispositivi interni i certificati autofirmati o di una CA privata sono normali, perché le CA pubbliche non possono rilasciare certificati per nomi interni o indirizzi privati (Baseline Requirements del CA/Browser Forum).',
+    limits: 'Non esiste una soglia standard per l\'avviso di scadenza: Polaris usa 7 giorni per il problema e 30 per l\'avviso, ridotti a un terzo della durata quando è minore (Let\'s Encrypt consiglia di rinnovare quando ne resta un terzo): un certificato che dura una settimana o meno risulta sempre in scadenza, perché Polaris non sa se si rinnova da solo. La revoca non si controlla, per scelta: le CA interne pubblicano spesso gli elenchi di revoca a indirizzi non raggiungibili. L\'attendibilità è quella di questo PC e di questo utente, con i soli certificati già presenti (niente download): una CA pubblica mai usata qui può risultare non riconosciuta. Si controllano TLS diretto su qualunque porta e SMTP con STARTTLS su 25 e 587; il Desktop remoto (3389) non usa TLS diretto e per ora non si controlla. Le durate massime dei certificati pubblici (398 giorni, 200 dal 15/03/2026, 100 dal 15/03/2027, 47 dal 15/03/2029) non valgono per le CA private e i certificati autofirmati.',
+  },
+  {
     id: 'infra.assessment',
     label: 'Autovalutazione organizzativa',
     category: 'infra',

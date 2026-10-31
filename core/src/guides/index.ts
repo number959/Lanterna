@@ -19,7 +19,7 @@ export const CHAPTERS: Chapter[] = [
   { id: 'wifi', title: 'Wi-Fi', summary: 'Segnale, bande e canali, standard, sicurezza, progettazione, roaming, più access point e interferenze.' },
   { id: 'cablata', title: 'Rete cablata', summary: 'Cavi e fibra, switch e VLAN, anelli e ridondanza, PoE, architettura di una rete aziendale.' },
   { id: 'servizi', title: 'Servizi di rete', summary: 'Firewall, VPN, QoS, gestione e monitoraggio, linea Internet, telefonia, stampa e dominio.' },
-  { id: 'sicurezza', title: 'Sicurezza', summary: 'Principi, segmentazione, credenziali e aggiornamenti, minacce comuni, log e backup.' },
+  { id: 'sicurezza', title: 'Sicurezza', summary: 'Principi, segmentazione, credenziali e aggiornamenti, certificati dei servizi interni, minacce comuni, log e backup.' },
   { id: 'complesse', title: 'Reti complesse e sanità', summary: 'La rete di una clinica: dispositivi medicali, DICOM e HL7, Wi-Fi sanitario, norme, continuità, inventario e analisi su larga scala.' },
   { id: 'diagnosi', title: 'Diagnosi', summary: 'Il metodo, gli strumenti di Windows e i problemi tipici con le loro cause.' },
 ];

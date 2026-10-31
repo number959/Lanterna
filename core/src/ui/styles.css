@@ -881,6 +881,30 @@ select.field { cursor: pointer; }
 .reach-err { grid-column: 1 / -1; color: var(--crit); font-size: 12.5px; font-weight: 600; margin: 0; }
 .reach-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .reach-actions .spacer { flex: 1; }
+.cert-row { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.6fr) 96px auto; }
+.cert-hint { grid-column: 1 / -1; color: var(--text-3); font-size: 12.5px; margin: 0; }
+.cert-list { list-style: none; margin: 12px 0 14px; padding: 0; display: grid; gap: 10px; }
+.cert-item { border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); padding: 12px 14px; min-width: 0; }
+.cert-item[data-sev='crit'] { border-left-color: var(--crit); }
+.cert-item[data-sev='warn'] { border-left-color: var(--warn); }
+.cert-item[data-sev='info'] { border-left-color: var(--info); }
+.cert-item[data-sev='ok'] { border-left-color: var(--ok); }
+.cert-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 12px; }
+.cert-name { display: grid; gap: 1px; min-width: 0; }
+.cert-name strong { font-weight: 620; overflow-wrap: anywhere; }
+.cert-name .mono { font-size: 12.5px; overflow-wrap: anywhere; }
+.cert-fail { margin: 8px 0 0; color: var(--text-2); font-size: 14px; }
+.cert-notes { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; padding: 0; }
+.cert-notes .sev { white-space: normal; }
+.cert-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 8px 18px; margin: 12px 0 0; }
+.cert-facts > div { min-width: 0; }
+.cert-facts dt { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.cert-facts dd { margin: 2px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.cert-facts dd.mono { font-size: 13px; }
+.cert-facts .cert-fp { grid-column: 1 / -1; }
+.cert-fp dd { display: flex; align-items: flex-start; gap: 8px; }
+.cert-fp code { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-all; color: var(--text-2); }
+.cert-fp .btn { flex: none; }
 .roam { display: inline-flex; gap: 3px; }
 .rb { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; font: 650 11.5px/1 var(--mono); color: var(--text-3); border: 1px dashed var(--line-strong); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-3) 70%, transparent); }
 .rb.on { color: var(--ok); border: 1px solid var(--ok-line); background: var(--ok-bg); text-decoration: none; }

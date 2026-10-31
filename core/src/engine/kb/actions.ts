@@ -461,6 +461,64 @@ const list: Action[] = [
     impact: 'medio',
   },
 
+  {
+    id: 'renew-certificate',
+    title: 'Rinnova il certificato del servizio prima della scadenza',
+    why: 'Quando il certificato scade, browser e programmi rifiutano la connessione o mostrano un errore: il gestionale, il PACS o la posta si fermano da un giorno all\'altro, spesso proprio nel momento meno adatto.',
+    steps: [
+      'Individua chi gestisce il servizio (fornitore del gestionale, del PACS o del NAS, amministratore di sistema) e da dove viene il certificato: rinnovo automatico, CA interna, certificato autofirmato del dispositivo.',
+      'Se il rinnovo è automatico (per esempio ACME) controlla perché non è avvenuto: registro del servizio, credenziali, raggiungibilità della CA.',
+      'Fai emettere il nuovo certificato con gli stessi nomi (SAN), installalo sul servizio con la catena completa e riavvia il servizio se serve.',
+      'Se il certificato è autofirmato e i PC lo considerano attendibile per scelta, dopo il rinnovo l\'impronta cambia: distribuisci di nuovo il certificato ai PC.',
+      'Ripeti il controllo da Polaris: la scadenza deve risultare aggiornata. Segna in calendario la prossima scadenza, con un promemoria almeno 30 giorni prima.',
+    ],
+    effort: 'media',
+    impact: 'alto',
+  },
+  {
+    id: 'trust-internal-ca',
+    title: 'Rendi attendibile per scelta il certificato dei servizi interni',
+    why: 'Sui dispositivi interni i certificati autofirmati o di una CA privata sono normali, ma se i PC non li riconoscono gli utenti vedono un avviso a ogni accesso e imparano ad accettarlo: così non si accorgerebbero di un servizio contraffatto. La fiducia va decisa una volta, da chi gestisce la rete, non a ogni clic.',
+    steps: [
+      'Con l\'amministratore del dispositivo o del servizio verifica che l\'impronta SHA-256 mostrata da Polaris sia quella del certificato installato (dal pannello del dispositivo o dalla documentazione del fornitore). Se non coincide, fermati e indaga.',
+      'Con un dominio Active Directory: distribuisci il certificato della CA interna (o quello autofirmato del dispositivo) con i Criteri di gruppo, in Configurazione computer > Criteri > Impostazioni di Windows > Impostazioni di sicurezza > Criteri chiave pubblica > Autorità di certificazione radice attendibili (in inglese Computer Configuration > Policies > Windows Settings > Security Settings > Public Key Policies > Trusted Root Certification Authorities; i nomi italiani possono variare leggermente con la versione di Windows).',
+      'Senza dominio, su ogni PC: certlm.msc > Autorità di certificazione radice attendibili > Certificati > Tutte le attività > Importa, con un account amministratore, solo dopo aver verificato l\'impronta.',
+      'Meglio ancora: fai emettere ai dispositivi un certificato dalla CA interna, così basta distribuire un solo certificato radice per tutti i servizi.',
+      'Non insegnare agli utenti ad accettare gli avvisi del browser: un avviso deve restare un segnale di allarme.',
+      'Ripeti il controllo da Polaris: il certificato deve risultare attendibile su questo PC.',
+    ],
+    effort: 'media',
+    impact: 'medio',
+  },
+  {
+    id: 'disable-legacy-tls',
+    title: 'Aggiorna il servizio e disattiva TLS 1.0 e 1.1',
+    why: 'TLS 1.0 e 1.1 sono dismessi (RFC 8996) e non vanno più negoziati (RFC 9325): i browser attuali non li accettano più e le loro suite di cifratura sono deboli. Un servizio che offre solo queste versioni smette di funzionare man mano che i client si aggiornano.',
+    steps: [
+      'Aggiorna firmware o software del servizio (NAS, PACS, gestionale, stampante) all\'ultima versione del produttore: spesso è l\'aggiornamento ad aggiungere TLS 1.2 e 1.3.',
+      'Nelle impostazioni di sicurezza o di rete del dispositivo imposta come versione minima TLS 1.2 e disattiva TLS 1.0 e 1.1.',
+      'Prima di disattivarli verifica con i fornitori che nessun apparecchio o programma collegato usi ancora solo le versioni vecchie, soprattutto dispositivi medicali e scanner: vanno aggiornati o isolati, non lasciati a bloccare tutti gli altri.',
+      'Se il dispositivo non supporta TLS 1.2 e non riceve più aggiornamenti, isolalo in una zona dedicata e pianificane la sostituzione.',
+      'Ripeti il controllo da Polaris: il servizio non deve più accettare TLS 1.0 o 1.1.',
+    ],
+    effort: 'media',
+    impact: 'alto',
+  },
+  {
+    id: 'reissue-certificate-san',
+    title: 'Sostituisci il certificato con uno conforme: nomi giusti, SHA-256, chiave adeguata',
+    why: 'Un certificato che non riporta il nome o l\'indirizzo con cui si raggiunge il servizio, che indica il nome solo nel Common Name, firmato con SHA-1 o con una chiave RSA corta, senza la catena completa o con un uso sbagliato, produce avvisi o rifiuti e protegge meno. Va sostituito, non aggirato.',
+    steps: [
+      'Elenca i nomi e gli indirizzi con cui gli utenti raggiungono il servizio (per esempio gestionale.studio.local e 192.168.10.20): vanno tutti nei nomi alternativi del certificato (SAN), non solo nel Common Name.',
+      'Fai emettere il certificato dalla CA interna o generalo dal dispositivo con firma SHA-256 e chiave RSA da almeno 2048 bit o ECDSA P-256, con uso «autenticazione server».',
+      'Installa sul servizio il certificato con la catena completa (certificato del servizio più gli intermedi), così i client non devono cercarli altrove.',
+      'Se il certificato era bloccato, revocato o con firma non valida, chiedi all\'amministratore del servizio come è successo prima di installare quello nuovo.',
+      'Ripeti il controllo da Polaris con lo stesso nome usato dagli utenti: nome, firma, chiave e catena devono risultare a posto.',
+    ],
+    effort: 'avanzata',
+    impact: 'medio',
+  },
+
   // ---------------- Autovalutazione organizzativa ----------------
   {
     id: 'medical-devices',

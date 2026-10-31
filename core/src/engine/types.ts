@@ -20,9 +20,9 @@ export interface Scan {
   lan?: LanData;
   firewall?: FirewallData;
   /**
-   * Inventario e verifiche di raggiungibilità: non li produce l'analisi
-   * automatica ma l'utente, su richiesta esplicita, dalla sezione
-   * Infrastruttura; l'interfaccia li unisce al rapporto.
+   * Inventario, verifiche di raggiungibilità e certificati dei servizi: non
+   * li produce l'analisi automatica ma l'utente, su richiesta esplicita, dalla
+   * sezione Infrastruttura; l'interfaccia li unisce al rapporto.
    */
   infra?: InfraData;
   /**
@@ -332,9 +332,76 @@ export interface AssessmentData {
   updatedAt?: string;
 }
 
+/**
+ * Servizio di cui controllare il certificato TLS: un nome o un indirizzo
+ * della rete locale (anche "host:porta" o un indirizzo https://...), con la
+ * porta (443 se manca).
+ */
+export interface CertTarget {
+  label?: string;
+  host: string;
+  port?: number;
+}
+
+/** Come Windows valuta la catena su questo PC, senza scaricare nulla; vuoto = non verificata. */
+export type CertTrust = 'trusted' | 'untrusted-root' | 'partial-chain' | 'invalid-signature' | 'wrong-usage' | 'distrusted' | 'revoked' | '';
+
+/**
+ * Il certificato presentato da un servizio e come lo vede questo PC. Le date
+ * sono RFC 3339; daysLeft è negativo se è scaduto.
+ */
+export interface CertResult extends CertTarget {
+  ip?: string;
+  ok: boolean;
+  error?: string;
+  /** Protocollo usato prima della cifratura ("smtp"). */
+  starttls?: string;
+  /** "TLS 1.3", "TLS 1.2"... */
+  tlsVersion?: string;
+  cipher?: string;
+  /** Il servizio offre solo TLS 1.0 o 1.1. */
+  legacyOnly?: boolean;
+  /** Il servizio accetta TLS 1.0 o 1.1 oltre a TLS 1.2 o 1.3. */
+  legacyToo?: boolean;
+  /** Il servizio chiede anche un certificato al client (TLS reciproco, per esempio un PACS DICOM). */
+  clientCert?: boolean;
+  subject?: string;
+  org?: string;
+  issuer?: string;
+  issuerOrg?: string;
+  dnsNames?: string[];
+  ips?: string[];
+  notBefore?: string;
+  notAfter?: string;
+  daysLeft: number;
+  lifetimeDays?: number;
+  /** "RSA", "ECDSA P-256", "Ed25519". */
+  keyType?: string;
+  keyBits?: number;
+  sigAlg?: string;
+  /** Firma con SHA-1 o MD5. */
+  weakSig?: boolean;
+  selfSigned?: boolean;
+  /** Il nome o l'indirizzo usato è tra quelli del certificato. */
+  nameMatch: boolean;
+  /** Il certificato ha solo il Common Name, senza nomi alternativi (SAN). */
+  cnOnly?: boolean;
+  chainLen?: number;
+  trust?: CertTrust;
+  /** SHA-256 del certificato, in esadecimale. */
+  fingerprint?: string;
+}
+
+export interface CertData {
+  checkedAt: string;
+  results: CertResult[];
+}
+
 export interface InfraData {
   inventory?: Inventory;
   reach?: ReachData;
+  /** Certificati TLS dei servizi indicati dall'utente (su richiesta). */
+  certs?: CertData;
   /** Autovalutazione delle misure organizzative: dichiarata dall'utente, non misurata. */
   assessment?: AssessmentData;
 }

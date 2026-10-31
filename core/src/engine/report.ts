@@ -1,3 +1,4 @@
+import { certSeverity, certSummary, certWhere } from './certs';
 import { ACTIONS } from './kb/actions';
 import { scoreAssessment } from './kb/assessment';
 import { METRICS } from './kb/metrics';
@@ -59,10 +60,10 @@ function reachTag(r: ReachResult): string {
   return r.expect === 'isolated' && r.status === 'closed' ? TAG.warn : TAG.crit;
 }
 
-/** Dettagli che non entrano nei giudizi: elenco dei dispositivi, esiti delle verifiche, aree dell'autovalutazione. */
+/** Dettagli che non entrano nei giudizi: elenco dei dispositivi, esiti delle verifiche, certificati, aree dell'autovalutazione. */
 function infraDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
   const inf = scan.infra;
-  if (!inf || (!inf.inventory && !inf.reach?.results.length && !inf.assessment)) return;
+  if (!inf || (!inf.inventory && !inf.reach?.results.length && !inf.certs?.results?.length && !inf.assessment)) return;
   out.push('');
   out.push('-'.repeat(W));
   out.push(' INFRASTRUTTURA: DETTAGLI');
@@ -87,6 +88,15 @@ function infraDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
       const target = `${r.label ? `${r.label} ` : ''}${r.host}${r.port ? `:${r.port}` : ''}`;
       const res = `${REACH_TEXT[r.status]}${r.rttMs !== undefined && (r.status === 'open' || r.status === 'reply') ? `, ${Math.round(r.rttMs)} ms` : ''}`;
       out.push(` ${reachTag(r)} ${cut(target, 38)} ${r.expect === 'isolated' ? 'isolata ' : 'risponde'}  ${res}`.trimEnd());
+    }
+  }
+  const cs = inf.certs?.results ?? [];
+  if (cs.length) {
+    out.push('');
+    out.push(wrap(`Certificati dei servizi, ${inf.certs?.checkedAt ?? ''}`, W - 2, ' '));
+    for (const r of cs) {
+      out.push(` ${TAG[certSeverity(r)]} ${cut(`${r.label ? `${r.label} ` : ''}${certWhere(r)}`, W - 8).trimEnd()}`);
+      out.push(wrap(certSummary(r), W - 9, '        '));
     }
   }
   if (inf.assessment) {

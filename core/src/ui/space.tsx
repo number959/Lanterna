@@ -21,7 +21,7 @@ import { simulatedSpace } from '../demo/space';
 import { Anim, HexLoader } from './anim';
 import { openSpaceItem, runSpace, spaceStatus, stopSpace } from './api';
 import type { SpaceState } from './api';
-import { fmtNum, Segmented, Stat, TableWrap, useOpenGuide, useToast } from './components';
+import { fmtNum, Segmented, Stat, TableWrap, thousands, useOpenGuide, useToast } from './components';
 import { useWidth } from './hooks';
 import { ease, spring } from './motion';
 import { squarify } from './treemap';
@@ -35,7 +35,6 @@ import type { ViewProps } from './views';
 // recuperare spazio. Polaris non cancella nulla. Senza agente l'analisi è
 // simulata sui dati dimostrativi e dichiarata come tale.
 
-const thousands = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 const when = (iso?: string) => {
   if (!iso) return '';
   const d = new Date(iso);

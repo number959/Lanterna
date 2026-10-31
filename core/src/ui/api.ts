@@ -1,4 +1,4 @@
-import type { CpuBench, DefenderInfo, DiskBench, Inventory, ReachData, ReachTarget, Scan, SpaceReport, Threat } from '../engine';
+import type { CertData, CertTarget, CpuBench, DefenderInfo, DiskBench, Inventory, ReachData, ReachTarget, Scan, SpaceReport, Threat } from '../engine';
 
 // Comunicazione con l'agente locale (Polaris.exe serve / finestra).
 // L'interfaccia è servita dallo stesso agente, quindi i percorsi sono relativi.
@@ -120,6 +120,21 @@ export async function runInventory(onProgress: (p: InventoryProgress) => void, o
 }
 
 export const runReach = (targets: ReachTarget[]) => postJson<ReachData>('api/reach', { targets });
+
+/**
+ * Legge i certificati TLS dei servizi indicati (al massimo 20, solo indirizzi
+ * privati). La risposta arriva alla fine del controllo, fino a circa due
+ * minuti; 409 se un controllo è già in corso, 501 se l'agente non lo offre.
+ */
+export const runCerts = (targets: CertTarget[]) => postJson<CertData>('api/certs', { targets });
+
+/** L'ultimo controllo dei certificati fatto dall'agente, o null se non ce n'è. */
+export async function lastCerts(): Promise<CertData | null> {
+  const r = await fetch('api/certs', { cache: 'no-store' });
+  if (r.status === 204 || r.status === 404) return null;
+  if (!r.ok) throw await errorOf(r);
+  return (await r.json()) as CertData;
+}
 
 // ---- Test di velocità: partono solo su richiesta esplicita dell'utente.
 

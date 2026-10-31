@@ -25,7 +25,7 @@ import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apCount, ownRadios, phyLabel, primaryAdapter, secFamily } from '../engine';
-import type { Analysis, AnswerValue, Band, Bss, Category, CpuBench, DiskBench, InfraData, PcData, Scan, Severity, SpaceReport } from '../engine';
+import type { Analysis, AnswerValue, Band, Bss, Category, CertData, CpuBench, DiskBench, InfraData, PcData, Scan, Severity, SpaceReport } from '../engine';
 import { download, openTool } from './api';
 import { ACTION_TOOLS, WINDOWS_TOOLS } from '../tools';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
@@ -38,6 +38,7 @@ import { useLocalState } from './hooks';
 import { monitorCsv, summarize } from './monitor';
 import type { MonitorEvent, MonitorSession } from './monitor';
 import type { SpaceTarget } from './space';
+import type { CertTargetRef } from './certs';
 import { cascade, ease, rise, spring, stagger } from './motion';
 
 export type View = 'overview' | 'pc' | 'wifi' | 'lan' | 'internet' | 'router' | 'infra' | 'plan' | 'monitor' | 'guide';
@@ -76,6 +77,12 @@ export interface ViewProps {
    * false (e lo dice all'utente) se nel frattempo se ne guarda un altro.
    */
   addSpace: (r: SpaceReport, target: SpaceTarget) => boolean;
+  /**
+   * Unisce al rapporto un controllo dei certificati, solo se il rapporto
+   * mostrato è ancora della rete su cui è partito; altrimenti restituisce false
+   * e, se non è richiesto il silenzio, lo dice all'utente.
+   */
+  addCerts: (r: CertData, target: CertTargetRef, quiet?: boolean) => boolean;
   /** Aggiorna parti dei dati del computer (per esempio lo stato di Defender dopo una scansione). */
   patchPc: (p: Partial<PcData>) => void;
   assessment: AssessmentState;

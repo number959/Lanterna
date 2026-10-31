@@ -7,6 +7,27 @@ export { ASSESS_AREAS, ASSESS_QUESTIONS, scoreAssessment } from './kb/assessment
 export type { AreaScore, AssessArea, AssessAreaId, AssessQuestion } from './kb/assessment';
 export { adviseChannels, apCount, bandOf, freqToChannel, channelToFreq, ownRadios, secFamily, spectrum, phyLabel } from './wifi';
 export { renderText } from './report';
+export {
+  analyzeCerts,
+  CERT_CRIT_DAYS,
+  CERT_MAX_TARGETS,
+  CERT_TRUST_TEXT,
+  CERT_WARN_DAYS,
+  certExpiry,
+  certExpiryText,
+  certFailHint,
+  certIssuer,
+  certIssues,
+  certNormalize,
+  certSeverity,
+  certSummary,
+  certTarget,
+  certTrustShort,
+  certValue,
+  certWarnDays,
+  certWhere,
+} from './certs';
+export type { CertExpiry, CertIssue } from './certs';
 export { documentParts, renderDocument } from './document';
 export type { DocOptions } from './document';
 export { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';

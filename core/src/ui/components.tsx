@@ -57,6 +57,8 @@ export function SevBadge({ sev }: { sev: Severity }) {
 export const sevColor = (s: Severity) => `var(--${s})`;
 
 export const fmtNum = (v: number, decimals = 0) => v.toFixed(decimals).replace('.', ',');
+/** Intero con il punto delle migliaia, anche a quattro cifre (1.000), come nei documenti italiani. */
+export const thousands = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
 /** Numero che si assesta sul valore con una molla; con movimento ridotto salta subito al valore. */
 export function AnimatedNumber({ value, decimals = 0, suffix = '' }: { value: number; decimals?: number; suffix?: string }) {

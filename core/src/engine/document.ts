@@ -1,5 +1,6 @@
 import { BRAND_CYAN, BRAND_NAVY, CYAN_FRAME, CYAN_STAR, FRAME, LETTERS, LOGO_VIEWBOX, STAR_LEFT, STAR_RIGHT } from '../ui/brand-paths';
 import { ENGINE_VERSION } from './analyze';
+import { certExpiryText, certSeverity, certWhere } from './certs';
 import { THREAT_SEVERITY, THREAT_STATUS } from './defender';
 import { fmt, thousands } from './fmt';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
@@ -332,6 +333,24 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
     });
     out.push(`<section><h2>Cosa occupa spazio</h2>${parts.join('')}</section>`);
   }
+
+  // Certificati dei servizi interni: scadenza, emittente, TLS ed esito. Niente
+  // impronte né indirizzi oltre a quello indicato dall'utente (sempre privato).
+  const certs = scan.infra?.certs?.results ?? [];
+  if (certs.length)
+    out.push(
+      `<section><h2>Certificati dei servizi</h2><table class="pd-table"><thead><tr><th>Servizio</th><th>Scadenza</th><th>Emittente</th><th>TLS</th><th>Esito</th></tr></thead><tbody>${certs
+        .map((r) => {
+          const svc = r.label ? `<b>${t(r.label)}</b><br><span class="pd-small">${t(certWhere(r))}</span>` : t(certWhere(r));
+          if (!r.ok) return `<tr><td>${svc}</td><td colspan="3" class="pd-small">non controllato: ${t(r.error || 'nessun certificato ricevuto')}</td><td>${sev('unknown')}</td></tr>`;
+          const issuer = r.selfSigned ? 'autofirmato' : r.issuer || r.issuerOrg || '—';
+          return (
+            `<tr><td>${svc}</td><td>${r.notAfter ? dateIt(r.notAfter) : '—'}<br><span class="pd-small">${esc(certExpiryText(r.daysLeft))}</span></td>` +
+            `<td>${t(issuer)}</td><td>${esc(r.tlsVersion || '—')}${r.starttls ? '<br><span class="pd-small">STARTTLS</span>' : ''}</td><td>${sev(certSeverity(r))}</td></tr>`
+          );
+        })
+        .join('')}</tbody></table><p class="pd-muted pd-small">Controllo del ${esc(dateIt(scan.infra?.certs?.checkedAt ?? ''))}. Attendibilità valutata da Windows su questo PC, senza controllo della revoca.</p></section>`,
+    );
 
   // Piano d'azione con le caselle da spuntare a mano.
   if (a.plan.length)

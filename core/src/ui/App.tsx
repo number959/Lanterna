@@ -27,7 +27,7 @@ import { AnimatePresence, LazyMotion, MotionConfig, domMax, m, useReducedMotion,
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { analyze, ENGINE_VERSION, primaryAdapter, renderText } from '../engine';
-import type { AnswerValue, CpuBench, DiskBench, Finding, InfraData, PcData, Scan, Severity, SpaceReport } from '../engine';
+import type { AnswerValue, CertData, CpuBench, DiskBench, Finding, InfraData, PcData, Scan, Severity, SpaceReport } from '../engine';
 import { clinicScan } from '../demo/clinic';
 import { demoScan } from '../demo/sample';
 import { agentInfo, download, isScan, lastScan, runScan } from './api';
@@ -44,6 +44,8 @@ import { installAudioUnlock, play, useSound } from './sound';
 import { ease, page, spring } from './motion';
 import { ScanOrbit } from './scan';
 import { sameSpaceTarget } from './space';
+import { sameCertTarget } from './certs';
+import type { CertTargetRef } from './certs';
 import type { SpaceTarget } from './space';
 import { useTheme } from './theme';
 import type { ThemePref } from './theme';
@@ -296,6 +298,20 @@ function Shell() {
     [toast],
   );
 
+  // Il controllo dei certificati riguarda una rete: come per lo spazio, si
+  // unisce solo se il rapporto mostrato è ancora quello della stessa rete.
+  const addCerts = useCallback(
+    (r: CertData, target: CertTargetRef, quiet = false) => {
+      if (!sameCertTarget(target, scanRef.current, sourceRef.current)) {
+        if (!quiet) toast('Controllo dei certificati finito, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto', 'warn');
+        return false;
+      }
+      setScan((s) => (s && s.agent.host === target.host && s.gateway?.ip === target.gateway ? { ...s, infra: { ...s.infra, certs: r } } : s));
+      return true;
+    },
+    [toast],
+  );
+
   const patchPc = useCallback((p: Partial<PcData>) => setScan((s) => (s ? { ...s, pc: { ...s.pc, ...p } } : s)), []);
 
   const analysis = useMemo(() => (effective ? analyze(effective) : null), [effective]);
@@ -378,7 +394,7 @@ function Shell() {
   };
   const scanning = busy || (agent === undefined && slow);
   const props: ViewProps | null =
-    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, patchPc, assessment, monitor, gwMacChange } : null;
+    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, patchPc, assessment, monitor, gwMacChange } : null;
   const pickDemo = (k: DemoKind) => {
     setDemoKind(k);
     setScan(DEMOS[k]);

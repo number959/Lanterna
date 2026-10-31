@@ -1,4 +1,5 @@
 import { fmt, more, num, thousands } from './fmt';
+import { analyzeCerts } from './certs';
 import { ACTIONS } from './kb/actions';
 import { scoreAssessment } from './kb/assessment';
 import { analyzePc } from './pc';
@@ -34,7 +35,7 @@ import {
   STRONG_NEIGHBOUR_DBM,
 } from './wifi';
 
-export const ENGINE_VERSION = '1.3.0';
+export const ENGINE_VERSION = '1.4.0';
 
 const SEV_RANK: Record<Severity, number> = { unknown: 0, ok: 1, info: 2, warn: 3, crit: 4 };
 const SEV_POINTS: Record<Severity, number | null> = { ok: 100, info: 95, warn: 55, crit: 10, unknown: null };
@@ -51,7 +52,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
 };
 
 // L'infrastruttura conta solo quando l'utente ha eseguito inventario,
-// verifiche o autovalutazione: senza dati la categoria non ha punteggio ed
+// verifiche, controllo dei certificati o autovalutazione: senza dati la categoria non ha punteggio ed
 // è esclusa dalla media. Il computer pesa quanto il Wi-Fi: il punteggio
 // descrive PC e rete insieme.
 const CATEGORY_WEIGHT: Record<Category, number> = {
@@ -1431,6 +1432,9 @@ function analyzeInfra(scan: Scan, c: Collector) {
       actions: down.length || slow.length ? ['check-critical-service'] : [],
     });
   }
+
+  // Certificati dei servizi: un giudizio per servizio controllato.
+  analyzeCerts(scan, (f) => c.add(f));
 
   const asmt = inf.assessment;
   if (asmt) {

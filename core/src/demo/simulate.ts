@@ -1,4 +1,5 @@
-import type { CpuBench, DiskBench, Inventory, InventoryHost, ReachData, ReachResult, ReachTarget, Scan } from '../engine/types';
+import { certNormalize } from '../engine/certs';
+import type { CertData, CertResult, CertTarget, CpuBench, DiskBench, Inventory, InventoryHost, ReachData, ReachResult, ReachTarget, Scan } from '../engine/types';
 
 // Simulazioni per le reti dimostrative: senza agente l'interfaccia mostra
 // comunque come funzionano inventario e verifiche, sempre indicandole come
@@ -85,6 +86,109 @@ export function simulatedReach(scan: Scan, targets: ReachTarget[]): ReachData {
     return { ...base, status: port ? 'filtered' : 'noreply', ok: true };
   });
   return { startedAt: new Date().toISOString(), from, results };
+}
+
+// ---------------------------------------------------------------- Certificati
+
+const DAY = 86_400_000;
+/** Porte di servizi che non usano TLS diretto: il controllo non riesce, come con l'agente. */
+const PLAIN_PORTS = new Set([21, 22, 23, 53, 80, 104, 110, 139, 143, 389, 445, 554, 1883, 2575, 8080, 11112]);
+
+/** Impronta plausibile e stabile (64 cifre esadecimali), non quella di un certificato reale. */
+function demoFingerprint(seed: string): string {
+  let out = '';
+  for (let i = 0; out.length < 64; i++) out += hash(`${seed}#${i}`).toString(16).toUpperCase().padStart(8, '0');
+  return out.slice(0, 64);
+}
+
+/** Date coerenti con il momento del controllo: stessi giorni residui e stessa durata. */
+function datesFrom(now: number, daysLeft: number, lifetimeDays: number) {
+  const notAfter = now + daysLeft * DAY + 5 * 3_600_000;
+  return { notAfter: new Date(notAfter).toISOString().replace(/\.\d{3}Z$/, 'Z'), notBefore: new Date(notAfter - lifetimeDays * DAY).toISOString().replace(/\.\d{3}Z$/, 'Z') };
+}
+
+/**
+ * Esiti plausibili del controllo dei certificati: quelli già presenti nella
+ * demo per gli stessi servizi (con le date spostate a oggi), un certificato
+ * autofirmato per il pannello del router, porta chiusa se l'analisi l'ha vista
+ * chiusa o ha visto il pannello solo in HTTP, nessun TLS sulle porte dei servizi in chiaro, altrimenti un
+ * certificato coerente con la rete (CA interna nei domini, autofirmato a casa).
+ */
+export function simulatedCerts(scan: Scan, targets: CertTarget[], now = Date.now()): CertData {
+  const known = scan.infra?.certs?.results ?? [];
+  const gw = scan.gateway;
+  const pcIp = scan.adapters.find((a) => a.up && a.ipv4.length)?.ipv4[0]?.split('/')[0] ?? '192.168.1.2';
+  const prefix = pcIp.split('.').slice(0, 3).join('.');
+  const domain = scan.agent.domain;
+  const results = targets.map((t): CertResult => {
+    const n = certNormalize(t.host, t.port);
+    const host = 'error' in n ? t.host : n.host;
+    const port = 'error' in n ? t.port || 443 : n.port;
+    const base: CertResult = { ...(t.label ? { label: t.label } : {}), host, port, ok: false, daysLeft: 0, nameMatch: false };
+    if ('error' in n) return { ...base, error: n.error };
+    const k = known.find((r) => r.host.toLowerCase() === host.toLowerCase() && r.port === port);
+    if (k) return { ...k, label: t.label, ...(k.ok && k.lifetimeDays ? datesFrom(now, k.daysLeft, k.lifetimeDays) : {}) };
+    const h = hash(`${host}:${port}`);
+    const isV4 = ipv4.test(host);
+    const isIp = isV4 || host.includes(':');
+    if (isV4 && !isPrivate(host) && !host.startsWith('127.')) return { ...base, error: 'indirizzo pubblico: si controllano solo i servizi della rete locale' };
+    const ip = isIp ? host : `${prefix}.${(h % 200) + 20}`;
+    const at = { ...base, ip };
+    if (gw && ip === gw.ip && gw.ports?.some((p) => p.port === port && !p.open)) return { ...at, error: 'porta chiusa: nessun servizio in ascolto' };
+    // L'analisi ha visto il pannello solo in HTTP: non si inventa un pannello cifrato su un'altra porta.
+    if (gw && ip === gw.ip && gw.web?.https === false && !gw.ports?.some((p) => p.port === port && p.open))
+      return { ...at, error: 'porta chiusa: nessun servizio in ascolto' };
+    // Il Desktop remoto passa a TLS solo dopo una sua negoziazione: il controllo diretto non riesce.
+    if (port === 3389) return { ...at, error: 'negoziazione TLS non riuscita' };
+    if (PLAIN_PORTS.has(port)) return { ...at, error: 'il servizio su questa porta non usa TLS' };
+    const smtp = port === 25 || port === 587;
+    const common = { ...at, ok: true, ...(smtp ? { starttls: 'smtp' } : {}), chainLen: 1, fingerprint: demoFingerprint(`${host}:${port}`) };
+    if (gw && ip === gw.ip) {
+      // Pannello del router o del firewall: certificato autofirmato del dispositivo, valido per anni.
+      const life = 7300;
+      const left = 4800 + (h % 900);
+      return {
+        ...common,
+        tlsVersion: 'TLS 1.2',
+        cipher: 'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256',
+        subject: domain ? 'firewall' : 'router.home',
+        issuer: domain ? 'firewall' : 'router.home',
+        ips: [gw.ip],
+        ...(domain ? {} : { dnsNames: ['router.home'] }),
+        ...datesFrom(now, left, life),
+        daysLeft: left,
+        lifetimeDays: life,
+        keyType: 'RSA',
+        keyBits: 2048,
+        sigAlg: 'SHA256-RSA',
+        selfSigned: true,
+        nameMatch: true,
+        trust: 'untrusted-root',
+      };
+    }
+    const life = domain ? 397 : 3650;
+    const left = 90 + (h % 260);
+    const names = isIp ? { ips: [host] } : { dnsNames: [host] };
+    return {
+      ...common,
+      tlsVersion: h % 3 === 0 ? 'TLS 1.2' : 'TLS 1.3',
+      cipher: h % 3 === 0 ? 'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384' : 'TLS_AES_128_GCM_SHA256',
+      subject: host,
+      issuer: domain ? 'CA Interna' : host,
+      ...(domain ? { issuerOrg: domain } : {}),
+      ...names,
+      ...datesFrom(now, left, life),
+      daysLeft: left,
+      lifetimeDays: life,
+      keyType: h % 2 ? 'ECDSA P-256' : 'RSA',
+      keyBits: h % 2 ? 256 : 2048,
+      // Firma coerente con la chiave: un autofirmato si firma con la propria, e la CA interna della demo usa lo stesso tipo.
+      sigAlg: h % 2 ? 'ECDSA-SHA256' : 'SHA256-RSA',
+      ...(domain ? { chainLen: 2, trust: 'trusted' as const } : { selfSigned: true, trust: 'untrusted-root' as const }),
+      nameMatch: true,
+    };
+  });
+  return { checkedAt: new Date(now).toISOString().replace(/\.\d{3}Z$/, 'Z'), results };
 }
 
 // ---------------------------------------------------------------- Test di velocità

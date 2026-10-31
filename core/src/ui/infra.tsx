@@ -24,6 +24,7 @@ import type { AnswerValue, AssessAreaId, Inventory, InventoryHost, ReachExpect, 
 import { simulatedInventory, simulatedReach } from '../demo/simulate';
 import { guideById } from '../guides';
 import { download, inventoryStatus, runInventory, runReach } from './api';
+import { CertsCard } from './certs';
 import type { InventoryProgress } from './api';
 import { FindingList, SevIcon, Stat, TableWrap, fmtNum, sevColor, useOpenGuide, useToast } from './components';
 import { useLocalState } from './hooks';
@@ -47,7 +48,7 @@ export function InfraView(props: ViewProps) {
   const { analysis: a, go } = props;
   const openGuide = useOpenGuide();
   const findings = a.findings.filter((f) => f.category === 'infra');
-  const guides = ['inventario-documentazione', 'segmentazione', 'analisi-reti-grandi'].map(guideById).filter((g) => g !== undefined);
+  const guides = ['inventario-documentazione', 'segmentazione', 'certificati-servizi-interni', 'analisi-reti-grandi'].map(guideById).filter((g) => g !== undefined);
   return (
     <>
       <m.section variants={rise} className="card infra-intro">
@@ -57,8 +58,9 @@ export function InfraView(props: ViewProps) {
         <div style={{ minWidth: 0 }}>
           <h2>Strumenti per reti complesse</h2>
           <p className="muted">
-            Inventario della sottorete, test di segmentazione, verifica dei servizi critici e autovalutazione delle misure organizzative: le analisi che servono
-            in uno studio, in un'azienda o in una struttura sanitaria. Ripetile da ogni zona della rete ed esporta ogni volta il rapporto.
+            Inventario della sottorete, test di segmentazione, verifica dei servizi critici, certificati dei servizi interni e autovalutazione delle misure
+            organizzative: le analisi che servono in uno studio, in un'azienda o in una struttura sanitaria. Ripetile da ogni zona della rete ed esporta ogni volta
+            il rapporto.
           </p>
           <ul className="infra-rules" aria-label="Regole di sicurezza delle analisi">
             <li>
@@ -100,6 +102,10 @@ export function InfraView(props: ViewProps) {
 
       <Section title="Segmentazione e servizi critici">
         <ReachCard {...props} />
+      </Section>
+
+      <Section title="Certificati dei servizi">
+        <CertsCard {...props} />
       </Section>
 
       <Section title="Autovalutazione">
