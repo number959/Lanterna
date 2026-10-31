@@ -1,5 +1,5 @@
 import { fmt } from './fmt';
-import type { Finding, Scan, Severity, SurveyAlt, SurveyRoom, SurveySample, WifiSurvey } from './types';
+import type { Finding, Scan, Severity, SurveyAlt, SurveyPing, SurveyRoom, SurveySample, WifiSurvey } from './types';
 
 // Mappa del Wi-Fi per stanza: l'utente misura, con questo PC, un punto per
 // stanza (o più punti: conta il peggiore) e qui ogni stanza riceve un
@@ -82,11 +82,18 @@ export const bandText = (b?: string) => (b ? `${b.replace('.', ',')} GHz` : '');
 /** Alias dei BSSID della propria rete: "AP A", "AP B"... nell'ordine in cui compaiono. */
 export type SurveyAliases = (bssid: string) => string;
 
+const MAC = /^[0-9a-f]{2}([:-][0-9a-f]{2}){5}$/i;
+
+/**
+ * Gli alias si danno solo ai BSSID: un valore che non lo è (per esempio
+ * "AP A" in un rapporto già esportato) resta com'è, così una seconda
+ * esportazione non cambia nulla.
+ */
 export function surveyAliases(survey?: WifiSurvey): SurveyAliases {
   const map: { [bssid: string]: string } = {};
   let n = 0;
   const add = (b?: string) => {
-    if (!b) return;
+    if (!b || !MAC.test(b)) return;
     const k = b.toLowerCase();
     if (map[k]) return;
     map[k] = n < 26 ? `AP ${String.fromCharCode(65 + n)}` : `AP ${n + 1}`;
@@ -101,7 +108,39 @@ export function surveyAliases(survey?: WifiSurvey): SurveyAliases {
       }
       for (const a of s.scan?.alternatives ?? []) add(a.bssid);
     }
-  return (b: string) => map[b.toLowerCase()] || 'AP';
+  return (b: string) => (MAC.test(b) ? map[b.toLowerCase()] || 'AP' : b);
+}
+
+/**
+ * Nessuna risposta dal router su tutta la serie. Molti router e firewall
+ * ignorano i ping, e una VPN può bloccare la rete locale: da sola non è una
+ * perdita. I dati di un agente precedente non hanno noReply: vale la stessa
+ * regola se la serie non ha errori.
+ */
+export function routerSilent(g?: SurveyPing): boolean {
+  return !!g && !g.skipped && g.sent > 0 && g.received === 0 && (g.noReply === true || !g.error);
+}
+
+/** I router che hanno risposto ai ping in almeno una misura della mappa. */
+export function pingAnswerers(survey?: WifiSurvey): string[] {
+  const out: string[] = [];
+  for (const r of survey?.rooms ?? [])
+    for (const s of r.samples) {
+      const g = s.gateway;
+      if (g && g.target && g.received > 0 && out.indexOf(g.target) < 0) out.push(g.target);
+    }
+  return out;
+}
+
+/**
+ * La serie di ping misura perdite e tempi: non saltata, senza errori e, se
+ * il router non ha mai risposto, solo quando lo stesso router risponde in
+ * un'altra misura (allora in quel punto i dati non passano davvero).
+ */
+export function pingMeasured(g: SurveyPing | undefined, answering: string[] = []): boolean {
+  if (!g || g.skipped || g.sent <= 0) return false;
+  if (routerSilent(g)) return !!g.target && answering.indexOf(g.target) >= 0;
+  return !g.error;
 }
 
 export interface SurveyIssue {
@@ -125,9 +164,10 @@ function bestAlt(s: SurveySample, bands: string[]): SurveyAlt | undefined {
 
 /**
  * Che cosa c'è da sapere su un punto misurato, dal più grave. `alias`
- * sostituisce i BSSID nei testi (che finiscono nei rapporti).
+ * sostituisce i BSSID nei testi (che finiscono nei rapporti); `answering`
+ * sono i router che hanno risposto ai ping in altre misure (pingAnswerers).
  */
-export function sampleIssues(s: SurveySample, alias: SurveyAliases = () => 'AP'): SurveyIssue[] {
+export function sampleIssues(s: SurveySample, alias: SurveyAliases = () => 'AP', answering: string[] = []): SurveyIssue[] {
   const out: SurveyIssue[] = [];
   const med = s.medianDbm;
   const m = dbmText(med);
@@ -216,7 +256,15 @@ export function sampleIssues(s: SurveySample, alias: SurveyAliases = () => 'AP')
     });
 
   const g = s.gateway;
-  if (g && !g.skipped && !g.error && g.sent > 0) {
+  if (g && routerSilent(g) && pingMeasured(g, answering))
+    out.push({
+      id: 'loss',
+      severity: 'crit',
+      short: 'nessuna risposta dal router',
+      text: `Il router non ha risposto a nessuno dei ${g.sent} ping, mentre in altre misure risponde: qui i dati non passano, anche se il PC risulta collegato. Se nel frattempo si è attivata una VPN o un firewall che blocca la rete locale, ripeti la misura senza.`,
+      actions: on24 ? ['survey-place-ap', 'avoid-24-interference'] : ['survey-place-ap'],
+    });
+  else if (g && pingMeasured(g, answering)) {
     const lost = g.sent - g.received;
     if (g.lossPct > SURVEY_LOSS_WARN) {
       const sev: Severity = g.lossPct >= SURVEY_LOSS_CRIT ? 'crit' : 'warn';
@@ -275,16 +323,16 @@ export function sampleIssues(s: SurveySample, alias: SurveyAliases = () => 'AP')
 }
 
 /** Gravità di un punto: la peggiore tra quelle trovate, "ok" se non c'è nulla. */
-export function sampleSeverity(s: SurveySample): Severity {
-  return sampleIssues(s).reduce<Severity>((acc, i) => worse(acc, i.severity), 'ok');
+export function sampleSeverity(s: SurveySample, answering: string[] = []): Severity {
+  return sampleIssues(s, undefined, answering).reduce<Severity>((acc, i) => worse(acc, i.severity), 'ok');
 }
 
 /** Il punto peggiore di una stanza: gravità più alta, poi segnale più basso. */
-export function worstSample(room: SurveyRoom): SurveySample | undefined {
+export function worstSample(room: SurveyRoom, answering: string[] = []): SurveySample | undefined {
   let best: SurveySample | undefined;
   let bestSev: Severity = 'unknown';
   for (const s of room.samples) {
-    const sev = sampleSeverity(s);
+    const sev = sampleSeverity(s, answering);
     if (!best || RANK[sev] > RANK[bestSev] || (sev === bestSev && s.medianDbm < best.medianDbm)) {
       best = s;
       bestSev = sev;
@@ -317,25 +365,29 @@ export interface RoomResult {
   worst: SurveySample;
   severity: Severity;
   issues: SurveyIssue[];
+  /** I router che rispondono ai ping in almeno una misura (per gatewayText). */
+  answering: string[];
 }
 
 /** Le stanze con il loro giudizio, dalla più debole alla più forte. */
 export function surveyRooms(survey?: WifiSurvey, alias?: SurveyAliases): RoomResult[] {
   const al = alias ?? surveyAliases(survey);
+  const answering = pingAnswerers(survey);
   const seen: { [slug: string]: number } = {};
   const out: RoomResult[] = [];
   for (const room of survey?.rooms ?? []) {
-    const worst = worstSample(room);
+    const worst = worstSample(room, answering);
     if (!worst) continue;
     const slug = roomSlug(room.name);
     seen[slug] = (seen[slug] || 0) + 1;
-    const issues = sampleIssues(worst, al);
+    const issues = sampleIssues(worst, al, answering);
     out.push({
       room,
       id: `wifi.room.${slug}${seen[slug] > 1 ? `-${seen[slug]}` : ''}`,
       worst,
       severity: issues.reduce<Severity>((acc, i) => worse(acc, i.severity), 'ok'),
       issues,
+      answering,
     });
   }
   return out.sort((a, b) => RANK[b.severity] - RANK[a.severity] || a.worst.medianDbm - b.worst.medianDbm || (a.room.name < b.room.name ? -1 : 1));
@@ -353,11 +405,14 @@ export function radioText(s: SurveySample): string {
 }
 
 /** Riga del router: "persi 0 su 75 · 3,2 ms · jitter 1,1 ms". */
-export function gatewayText(s: SurveySample): string {
+export function gatewayText(s: SurveySample, answering: string[] = []): string {
   const g = s.gateway;
   if (!g) return '';
   if (g.skipped) return `non misurato: ${g.skipped}`;
-  if (g.error) return `non misurato: ${g.error}`;
+  if (!pingMeasured(g, answering)) {
+    if (routerSilent(g)) return `nessuna risposta su ${g.sent} ping: il router forse li ignora, perdite e tempi non misurabili`;
+    if (g.error) return `non misurato: ${g.error}`;
+  }
   return [
     `persi ${g.sent - g.received} su ${g.sent}`,
     g.medianMs !== undefined ? `${fmt(g.medianMs, 1)} ms` : '',
@@ -377,8 +432,10 @@ export function analyzeSurvey(scan: Scan, add: (f: Omit<Finding, 'actions'> & { 
     const lead = r.issues.some((i) => i.id === 'signal')
       ? []
       : [`Segnale ${rssiWord(s.medianDbm)} (mediana ${dbmText(s.medianDbm)} dBm, cali fino a ${s.p10Dbm} dBm): ${rssiMeaning(s.medianDbm)}.`];
-    const head = lead.concat(r.issues.map((i) => i.text)).join(' ');
-    const facts = [radioText(s), s.gateway && !s.gateway.skipped && !s.gateway.error ? `router: ${gatewayText(s)}` : ''].filter(Boolean).join('; ');
+    const estimated = s.estimated ? ['I dBm sono stimati dalla qualità del segnale riportata da Windows: la scheda non li fornisce.'] : [];
+    const head = lead.concat(estimated, r.issues.map((i) => i.text)).join(' ');
+    const g = s.gateway;
+    const facts = [radioText(s), pingMeasured(g, r.answering) || routerSilent(g) ? `router: ${gatewayText(s, r.answering)}` : ''].filter(Boolean).join('; ');
     const where = r.room.samples.length > 1 ? ` Il giudizio è quello del punto peggiore su ${r.room.samples.length}.` : '';
     const actions: string[] = [];
     for (const i of r.issues) for (const a of i.actions) if (actions.indexOf(a) < 0) actions.push(a);

@@ -7,9 +7,12 @@ import {
   analyze,
   dipSeverity,
   documentParts,
+  gatewayText,
   METRICS,
+  pingMeasured,
   renderText,
   roomSlug,
+  routerSilent,
   rssiSeverity,
   rssiWord,
   sampleIssues,
@@ -23,7 +26,7 @@ import type { Scan, SurveySample, WifiSurvey } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { clinicSurvey, homeSurvey, seriesStats, simulatedSample } from '../src/demo/survey';
-import { cleanRoom, mergeSample, removeFromSurvey, roomNameError, sameSurveyTarget } from '../src/ui/wifimap';
+import { cleanRoom, mergeSample, onlyNetwork, removeFromSurvey, roomNameError, sameSurveyTarget, storeKey, surveyRefusal, surveyTargetOf } from '../src/ui/wifimap';
 import { GLOSSARY, guideById, guidesForMetric } from '../src/guides';
 import { base } from './fixtures';
 
@@ -133,6 +136,63 @@ describe('soglie del segnale', () => {
     expect(ids(pt({ gateway: { sent: 0, received: 0, lossPct: 0, skipped: 'indirizzo pubblico' } }))).toEqual([]);
   });
 
+  it('router che non risponde a nessun ping: non è una perdita, a meno che risponda in un\'altra misura', () => {
+    const silentOld = { target: '192.168.1.1', sent: 75, received: 0, lossPct: 100 }; // agente precedente
+    const silentNew = { ...silentOld, noReply: true, error: 'nessuna risposta su 75 ping: se il router è configurato per ignorarli, perdite e tempi qui non sono misurabili' };
+    for (const g of [silentOld, silentNew]) {
+      const s = pt({ medianDbm: -52, p10Dbm: -54, gateway: g });
+      expect(routerSilent(g)).toBe(true);
+      expect(ids(s)).toEqual([]);
+      expect(sampleSeverity(s)).toBe('ok');
+      expect(gatewayText(s)).toBe('nessuna risposta su 75 ping: il router forse li ignora, perdite e tempi non misurabili');
+      // Lo stesso router ha risposto in un'altra misura: qui i dati non passano.
+      const lost = sampleIssues(s, undefined, ['192.168.1.1']);
+      expect(lost.map((i) => `${i.id}:${i.severity}`)).toEqual(['loss:crit']);
+      expect(lost[0].text).toContain('mentre in altre misure risponde');
+      expect(lost[0].text).toContain('VPN');
+      expect(gatewayText(s, ['192.168.1.1'])).toBe('persi 75 su 75');
+      // Un altro router che risponde non conta.
+      expect(ids({ ...s, gateway: g })).toEqual([]);
+      expect(sampleIssues(s, undefined, ['10.0.0.1'])).toEqual([]);
+    }
+    // Un errore locale (nessun ping partito) non è "nessuna risposta".
+    const local = { target: '192.168.1.1', sent: 75, received: 0, lossPct: 100, error: 'nessun ping è partito: errore della scheda' };
+    expect(routerSilent(local)).toBe(false);
+    expect(pingMeasured(local, ['192.168.1.1'])).toBe(false);
+    expect(gatewayText(pt({ gateway: local }), ['192.168.1.1'])).toBe('non misurato: nessun ping è partito: errore della scheda');
+    expect(ids(pt({ gateway: local }))).toEqual([]);
+  });
+
+  it('casa con un router che ignora i ping: nessuna stanza diventa critica per le perdite', () => {
+    const scan = clone(demoScan);
+    for (const r of scan.wifi!.survey!.rooms)
+      for (const s of r.samples) s.gateway = { target: '192.168.1.1', sent: 75, received: 0, lossPct: 100 };
+    scan.gateway!.ping = { ...scan.gateway!.ping!, received: 0, avgMs: undefined, minMs: undefined, maxMs: undefined, jitterMs: undefined };
+    const a = analyze(scan);
+    const rooms = a.findings.filter((f) => f.id.startsWith('wifi.room.'));
+    expect(rooms.find((f) => f.id === 'wifi.room.soggiorno')!.severity).toBe('ok');
+    for (const f of rooms) {
+      expect(f.verdict, f.id).not.toContain('Persi 75');
+      expect(f.verdict, f.id).toContain('router: nessuna risposta su 75 ping');
+    }
+    // Decide il segnale: il Bagno (-79 dBm, instabile) resta da migliorare, lo Studio (-69 dBm) da sapere.
+    expect(rooms.find((f) => f.id === 'wifi.room.bagno')!.severity).toBe('warn');
+    expect(rooms.find((f) => f.id === 'wifi.room.studio')!.severity).toBe('info');
+    // Se il router risponde in una stanza, le altre senza risposta sono perdite vere.
+    scan.wifi!.survey!.rooms.find((r) => r.name === 'Soggiorno')!.samples[0].gateway = { target: '192.168.1.1', sent: 75, received: 75, lossPct: 0, medianMs: 3, jitterMs: 1 };
+    const b = analyze(scan).findings.filter((f) => f.id.startsWith('wifi.room.'));
+    expect(b.find((f) => f.id === 'wifi.room.soggiorno')!.severity).toBe('ok');
+    expect(b.find((f) => f.id === 'wifi.room.studio')!.severity).toBe('crit');
+    expect(b.find((f) => f.id === 'wifi.room.studio')!.verdict).toContain('nessuno dei 75 ping');
+  });
+
+  it('dBm stimati dalla qualità di Windows: il giudizio lo dichiara', () => {
+    const f = analyze(withSurvey({ rooms: [{ name: 'Studio', samples: [pt({ estimated: true })] }] })).findings.find((x) => x.id === 'wifi.room.studio')!;
+    expect(f.verdict).toContain('stimati dalla qualità del segnale riportata da Windows');
+    const g = analyze(withSurvey({ rooms: [{ name: 'Studio', samples: [pt({})] }] })).findings.find((x) => x.id === 'wifi.room.studio')!;
+    expect(g.verdict).not.toContain('stimati');
+  });
+
   it('canale occupato oltre il 50 % e vicini forti sullo stesso canale', () => {
     expect(ids(pt({ scan: { ...good.scan!, utilizationPct: 50 } }))).toEqual([]);
     expect(ids(pt({ scan: { ...good.scan!, utilizationPct: 51 } }))).toEqual(['busy:warn']);
@@ -215,7 +275,8 @@ describe('stanze', () => {
 
 describe('protezione dal cambio di rapporto', () => {
   it('una misura si unisce solo al rapporto della stessa rete, dello stesso PC e della stessa origine', () => {
-    const t = { live: true, host: demoScan.agent.host, gateway: demoScan.gateway?.ip };
+    const t = surveyTargetOf(demoScan, true);
+    expect(t).toEqual({ live: true, host: demoScan.agent.host, gateway: demoScan.gateway?.ip, ssid: 'Casa-Rossi' });
     expect(sameSurveyTarget(t, demoScan, 'agent')).toBe(true);
     expect(sameSurveyTarget(t, demoScan, 'demo')).toBe(false); // misura reale, rapporto dimostrativo
     expect(sameSurveyTarget(t, demoScan, 'file')).toBe(false); // mai in un rapporto importato
@@ -226,6 +287,27 @@ describe('protezione dal cambio di rapporto', () => {
     delete noWifi.wifi;
     expect(sameSurveyTarget(t, noWifi, 'agent')).toBe(false);
     expect(sameSurveyTarget(undefined, demoScan, 'agent')).toBe(false);
+  });
+
+  it('un\'altra rete Wi-Fi con lo stesso gateway (192.168.1.1) è un altro bersaglio', () => {
+    const office = clone(demoScan);
+    office.wifi!.connected!.ssid = 'Ufficio-Bianchi';
+    delete office.wifi!.survey;
+    const home = surveyTargetOf(demoScan, true);
+    expect(office.gateway?.ip).toBe(demoScan.gateway?.ip);
+    expect(sameSurveyTarget(home, office, 'agent')).toBe(false);
+    // Salvataggio locale: chiavi diverse per reti diverse con lo stesso gateway.
+    expect(storeKey(home)).not.toBe(storeKey(surveyTargetOf(office, true)));
+    expect(storeKey({ live: true, host: 'PC', gateway: '192.168.1.1', ssid: 'Casa.Rossi 2' })).toBe('polaris.wifimap.PC.192.168.1.1.Casa.Rossi%202');
+    // Dalla memoria si riprendono solo le misure della rete del rapporto.
+    const mixed: WifiSurvey = { rooms: [{ name: 'Studio', samples: [pt({ ssid: 'Casa-Rossi' }), pt({ ssid: 'Ufficio-Bianchi', startedAt: '2026-10-31T10:00:00Z' })] }, { name: 'Sala', samples: [pt({ ssid: 'Ufficio-Bianchi' })] }] };
+    expect(onlyNetwork(mixed, 'Casa-Rossi')!.rooms.map((r) => `${r.name}:${r.samples.length}`)).toEqual(['Studio:1']);
+    expect(onlyNetwork(mixed, 'Altra')).toBeUndefined();
+    // La misura deve essere della rete del rapporto: il PC può aver cambiato rete dopo l'analisi.
+    const s = simulatedSample(demoScan, 'Cucina', 15, true, new Date('2026-10-31T10:00:00Z'));
+    expect(surveyRefusal(home, demoScan, 'agent', s)).toBeUndefined();
+    expect(surveyRefusal(home, demoScan, 'agent', { ...s, ssid: 'Ufficio-Bianchi' })).toMatch(/rete Wi-Fi diversa/);
+    expect(surveyRefusal(home, office, 'agent', s)).toMatch(/rapporto mostrato è un altro/);
   });
 });
 
@@ -331,6 +413,13 @@ describe('documento, rapporto ed esportazione', () => {
     // Lo stesso giudizio prima e dopo l'esportazione.
     const sevs = (s: Scan) => analyze(s).findings.filter((f) => f.id.startsWith('wifi.room.')).map((f) => `${f.id}:${f.severity}`);
     expect(sevs(out)).toEqual(sevs(clinicScan));
+    // Un rapporto esportato e riaperto: gli alias restano tali, una seconda esportazione non cambia nulla.
+    const again = surveyAliases(out.wifi!.survey);
+    expect(again('AP A')).toBe('AP A');
+    expect(again('AP B')).toBe('AP B');
+    expect(surveyForExport(out)).toEqual(out);
+    // I BSSID veri hanno sempre un alias.
+    expect(al('44:48:C1:A0:20:D0')).toMatch(/^AP [A-Z]$/);
   });
 
   it('il motore della riga di comando (ES2015, goja) dà gli stessi giudizi, documento e rapporto', async () => {
@@ -354,7 +443,7 @@ describe('knowledge base e guide', () => {
   it('la metrica dichiara le soglie scelte da Polaris e quelle con fonte', () => {
     const m = METRICS['wifi.survey'];
     expect(m.scale?.map((s) => s.severity)).toEqual(['ok', 'ok', 'info', 'warn', 'crit']);
-    for (const k of ['Cisco', 'Juniper Mist', 'Microsoft Teams', 'scelte di Polaris', 'da verificare', 'questo PC', 'SNR', 'posizione']) expect(m.limits, k).toContain(k);
+    for (const k of ['Cisco', 'Juniper Mist', 'Microsoft Teams', 'scelte di Polaris', 'da verificare', 'questo PC', 'SNR', 'posizione', 'ignorano', 'qualità del segnale']) expect(m.limits, k).toContain(k);
     for (const id of ['survey-place-ap', 'band-steering', 'avoid-24-interference', 'wired-backhaul']) expect(ACTIONS[id], id).toBeDefined();
   });
 
@@ -364,7 +453,7 @@ describe('knowledge base e guide', () => {
     expect(guidesForMetric('wifi.survey').map((x) => x.id)).toContain('wifi-stanza-per-stanza');
     expect(g.actions).toEqual(expect.arrayContaining(['survey-place-ap', 'band-steering', 'avoid-24-interference', 'wired-backhaul', 'fix-roaming']));
     const text = JSON.stringify(g.blocks);
-    for (const k of ['ITU-R P.1238', 'indicazioni generali', '-67 dBm', '-72 dBm', '(P)', 'RFC 5481', 'nomi di luogo', 'icona della posizione', 'SNR', 'questo PC', '6 GHz']) expect(text, k).toContain(k);
+    for (const k of ['ITU-R P.1238', 'indicazioni generali', '-67 dBm', '-72 dBm', '(P)', 'RFC 5481', 'nomi di luogo', 'icona della posizione', 'SNR', 'questo PC', '6 GHz', 'ignorano i ping', 'qualità del segnale']) expect(text, k).toContain(k);
   });
 
   it('il glossario ha i termini della mappa', () => {

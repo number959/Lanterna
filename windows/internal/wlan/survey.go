@@ -8,6 +8,7 @@ import "errors"
 // BandFor restituisce la banda ("2.4", "5" o "6"). Con la frequenza centrale
 // del canale (MHz) la risposta è certa; senza, la si deduce dal numero di
 // canale, che però si ripete tra le bande:
+//   - senza canale (0) la banda non si conosce: "";
 //   - 1-14 sono 2,4 GHz (1, 5, 9 e 13 esistono anche a 6 GHz: si sceglie
 //     la banda di gran lunga più comune);
 //   - a 6 GHz i canali sono 1, 5, 9 ... 233 (4n+1): da 17 a 145 e da 181 in
@@ -20,6 +21,8 @@ func BandFor(freqMhz, channel int) string {
 		return BandOf(freqMhz)
 	}
 	switch {
+	case channel <= 0:
+		return ""
 	case channel <= 14:
 		return "2.4"
 	case channel%4 == 1 && (channel <= 145 || (channel >= 181 && channel <= 233)):

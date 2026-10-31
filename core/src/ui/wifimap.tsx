@@ -1,11 +1,12 @@
 import { CircleStop, LocateFixed, MapPinned, Plus, Trash2, TriangleAlert } from 'lucide-react';
-import { AnimatePresence, m } from 'motion/react';
+import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import {
   bandText,
   dbmText,
   gatewayText,
+  pingMeasured,
   radioText,
   roomKey,
   rssiSeverity,
@@ -35,15 +36,39 @@ export interface SurveyTargetRef {
   live: boolean;
   host?: string;
   gateway?: string;
+  /** Rete Wi-Fi del rapporto: molte reti diverse hanno lo stesso gateway (192.168.1.1). */
+  ssid?: string;
 }
 
+/** Il bersaglio di una misura sul rapporto mostrato. */
+export const surveyTargetOf = (scan: Scan, live: boolean): SurveyTargetRef => ({ live, host: scan.agent.host, gateway: scan.gateway?.ip, ssid: scan.wifi?.connected?.ssid });
+
 /**
- * La misura riguarda il rapporto mostrato: stesso PC, stesso gateway, dati
- * Wi-Fi presenti, e dati dell'agente per una misura reale o demo per una
+ * La misura riguarda il rapporto mostrato: stesso PC, stesso gateway, stessa
+ * rete Wi-Fi, e dati dell'agente per una misura reale o demo per una
  * simulata. Un rapporto importato non riceve mai misure.
  */
 export const sameSurveyTarget = (t: SurveyTargetRef | undefined, scan: Scan | null | undefined, source: 'agent' | 'demo' | 'file') =>
-  !!t && !!scan && !!scan.wifi && source === (t.live ? 'agent' : 'demo') && t.host === scan.agent.host && t.gateway === scan.gateway?.ip;
+  !!t &&
+  !!scan &&
+  !!scan.wifi &&
+  source === (t.live ? 'agent' : 'demo') &&
+  t.host === scan.agent.host &&
+  t.gateway === scan.gateway?.ip &&
+  t.ssid === scan.wifi.connected?.ssid;
+
+/**
+ * Perché una misura finita non si unisce al rapporto mostrato (undefined se
+ * si unisce): un altro rapporto, oppure una misura fatta su una rete Wi-Fi
+ * diversa da quella del rapporto (il PC è passato a un'altra rete dopo
+ * l'analisi).
+ */
+export function surveyRefusal(t: SurveyTargetRef, scan: Scan | null | undefined, source: 'agent' | 'demo' | 'file', s: SurveySample): string | undefined {
+  if (!sameSurveyTarget(t, scan, source)) return `Misura di «${s.room}» finita, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto`;
+  if (s.ssid !== t.ssid)
+    return `Misura di «${s.room}» fatta su una rete Wi-Fi diversa da quella del rapporto: il risultato non è stato aggiunto. Ripeti l'analisi, poi misura di nuovo`;
+  return undefined;
+}
 
 /** Il nome come lo salva l'agente: spazi in eccesso tolti. */
 export const cleanRoom = (name: string) => name.trim().replace(/\s+/g, ' ');
@@ -130,13 +155,23 @@ function useSurveyJob(): SurveyJob {
   return job;
 }
 
-/** Chiave del salvataggio locale della mappa: per PC e rete (solo con l'agente). */
-const storeKey = (t: SurveyTargetRef) => `polaris.wifimap.${t.host ?? 'pc'}.${t.gateway ?? 'senza-gateway'}`;
+/**
+ * Chiave del salvataggio locale della mappa: per PC, gateway e rete Wi-Fi
+ * (solo con l'agente). Il solo gateway non basta: 192.168.1.1 è il gateway di
+ * moltissime reti diverse.
+ */
+export const storeKey = (t: SurveyTargetRef) => `polaris.wifimap.${t.host ?? 'pc'}.${t.gateway ?? 'senza-gateway'}.${encodeURIComponent(t.ssid ?? '')}`;
 
-function readStored(key: string): WifiSurvey | undefined {
+/** Solo le misure della rete indicata (nessuna mappa se non ne resta). */
+export function onlyNetwork(survey: WifiSurvey | undefined, ssid?: string): WifiSurvey | undefined {
+  const rooms = (survey?.rooms ?? []).map((r) => ({ ...r, samples: r.samples.filter((s) => s.ssid === ssid) })).filter((r) => r.samples.length > 0);
+  return rooms.length ? { rooms } : undefined;
+}
+
+function readStored(t: SurveyTargetRef): WifiSurvey | undefined {
   try {
-    const v = JSON.parse(localStorage.getItem(key) ?? 'null') as WifiSurvey | null;
-    return v && Array.isArray(v.rooms) && v.rooms.length ? v : undefined;
+    const v = JSON.parse(localStorage.getItem(storeKey(t)) ?? 'null') as WifiSurvey | null;
+    return v && Array.isArray(v.rooms) ? onlyNetwork(v, t.ssid) : undefined;
   } catch {
     return undefined;
   }
@@ -220,7 +255,8 @@ function startSurvey(
   surveyPromise = p;
   p.then(
     (s) => {
-      if (target.live) writeStored(storeKey(target), mergeSample(readStored(storeKey(target)), s));
+      // Si conserva sotto la rete su cui è stata fatta, anche se il rapporto mostrato ora è un altro.
+      if (target.live && s.ssid === target.ssid) writeStored(storeKey(target), mergeSample(readStored(target), s));
       if (!addSurvey(s, target)) return;
       toast(`Misura di «${s.room}» completata · ${dbmText(s.medianDbm)} dBm, ${rssiWord(s.medianDbm)}`, 'ok', 'complete');
     },
@@ -250,7 +286,8 @@ export function WifiMapCard({ scan, analysis, go, live, source, addSurvey, setSu
   const job = useSurveyJob();
   const run = job.run;
   const readOnly = source === 'file';
-  const target: SurveyTargetRef = { live, host: scan.agent.host, gateway: scan.gateway?.ip };
+  const reduce = useReducedMotion();
+  const target = surveyTargetOf(scan, live);
   const mine = sameSurveyTarget(job.target, scan, source);
   const survey = scan.wifi?.survey;
   const alias = useMemo(() => surveyAliases(survey), [survey]);
@@ -265,22 +302,22 @@ export function WifiMapCard({ scan, analysis, go, live, source, addSurvey, setSu
 
   // Con l'agente la mappa si conserva sul PC, per rete: sopravvive a un
   // riavvio dell'interfaccia. Le misure nuove le salva la misura stessa,
-  // anche a scheda chiusa; qui si salvano le stanze tolte.
+  // anche a scheda chiusa; qui si salvano le stanze tolte. Quando cambia la
+  // rete del rapporto (nuova analisi altrove) si riprende la mappa di quella
+  // rete, senza cancellarla.
   const key = storeKey(target);
-  const restored = useRef(false);
+  const restored = useRef<string>();
   useEffect(() => {
     if (source !== 'agent') return;
-    if (!restored.current) {
-      restored.current = true;
+    if (restored.current !== key) {
+      restored.current = key;
       if (!survey) {
-        const saved = readStored(key);
-        if (saved) {
-          setSurvey(saved);
-          return;
-        }
+        const saved = readStored(target);
+        if (saved) setSurvey(saved);
+        return;
       }
     }
-    writeStored(key, survey);
+    writeStored(key, onlyNetwork(survey, target.ssid));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, key, survey]);
 
@@ -290,7 +327,7 @@ export function WifiMapCard({ scan, analysis, go, live, source, addSurvey, setSu
     let alive = true;
     surveyStatus()
       .then((st) => {
-        if (alive && st.running && st.room) startSurvey({ live: true, host: scan.agent.host, gateway: scan.gateway?.ip }, scan, { room: st.room, seconds: st.progress?.seconds ?? SURVEY_SECONDS, scan: true }, addSurvey, toast, true);
+        if (alive && st.running && st.room) startSurvey(surveyTargetOf(scan, true), scan, { room: st.room, seconds: st.progress?.seconds ?? SURVEY_SECONDS, scan: true }, addSurvey, toast, true);
       })
       .catch(() => undefined);
     return () => {
@@ -318,8 +355,9 @@ export function WifiMapCard({ scan, analysis, go, live, source, addSurvey, setSu
   const another = (name: string) => {
     setRoom(name);
     setTouched(false);
-    inputRef.current?.focus();
-    inputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // Con "riduci movimento" lo scorrimento è immediato: un 'smooth' esplicito vincerebbe sul CSS.
+    inputRef.current?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    inputRef.current?.focus({ preventScroll: true });
     toast(`Spostati nel nuovo punto di «${name}» e premi Misura qui`, 'ok', 'tap');
   };
   const removeRoom = (name: string, startedAt?: string) => {
@@ -634,7 +672,7 @@ function RoomItem({
       <details className="wifimap-details">
         <summary>Dettagli{n > 1 ? ` dei ${n} punti` : ''}</summary>
         {r.room.samples.map((x, i) => (
-          <SampleFacts key={x.startedAt} s={x} alias={alias} label={n > 1 ? `Punto ${i + 1}${x === s ? ', il peggiore' : ''}` : undefined}>
+          <SampleFacts key={x.startedAt} s={x} alias={alias} answering={r.answering} label={n > 1 ? `Punto ${i + 1}${x === s ? ', il peggiore' : ''}` : undefined}>
             {!readOnly && n > 1 && (
               <button className="btn small" onClick={() => onRemove(name, x.startedAt)} disabled={busy}>
                 <Trash2 size={14} aria-hidden /> Rimuovi questo punto
@@ -667,15 +705,20 @@ function RoomItem({
   );
 }
 
-function SampleFacts({ s, alias, label, children }: { s: SurveySample; alias: SurveyAliases; label?: string; children?: ReactNode }) {
+function SampleFacts({ s, alias, answering, label, children }: { s: SurveySample; alias: SurveyAliases; answering: string[]; label?: string; children?: ReactNode }) {
   const g = s.gateway;
   const sc = s.scan;
   const nb = sc?.neighbors;
-  const ap = (b: string) => (
-    <>
-      <span className="mono">{b}</span> <span className="faint">({alias(b)})</span>
-    </>
-  );
+  // In un rapporto esportato e riaperto al posto del BSSID c'è già l'alias: lo si mostra una volta sola.
+  const ap = (b: string) =>
+    alias(b) === b ? (
+      <>{b}</>
+    ) : (
+      <>
+        <span className="mono">{b}</span> <span className="faint">({alias(b)})</span>
+      </>
+    );
+  const pairs = s.bssids.filter((b) => alias(b) !== b).map((b) => `${alias(b)} = ${b}`);
   return (
     <div className="wifimap-sample">
       {label && <h4>{label}</h4>}
@@ -685,6 +728,7 @@ function SampleFacts({ s, alias, label, children }: { s: SurveySample; alias: Su
           <dd>
             mediana {dbmText(s.medianDbm)} dBm, minimo {s.minDbm}, cali (10° percentile) {s.p10Dbm}, escursione {s.spreadDb} dB · {s.rssi.length} letture in{' '}
             {s.seconds} s{s.stuck ? ' · valori fermi' : ''}
+            {s.estimated ? ' · stimati dalla qualità del segnale di Windows' : ''}
           </dd>
         </div>
         <div>
@@ -719,7 +763,7 @@ function SampleFacts({ s, alias, label, children }: { s: SurveySample; alias: Su
                     al secondo {Math.round(x.atMs / 1000)} da {alias(x.from)} a {alias(x.to)}
                   </span>
                 ))}
-                <span className="faint"> ({s.bssids.map((b) => `${alias(b)} = ${b}`).join(', ')})</span>
+                {pairs.length > 0 && <span className="faint"> ({pairs.join(', ')})</span>}
               </>
             )}
           </dd>
@@ -728,8 +772,8 @@ function SampleFacts({ s, alias, label, children }: { s: SurveySample; alias: Su
           <dt>Router</dt>
           <dd>
             {g ? (
-              g.skipped || g.error ? (
-                gatewayText(s)
+              !pingMeasured(g, answering) ? (
+                gatewayText(s, answering)
               ) : (
                 <>
                   {g.target ? <span className="mono">{g.target}</span> : null}

@@ -40,4 +40,10 @@ func TestPrintSurvey(t *testing.T) {
 			t.Errorf("manca %q in:\n%s", want, out)
 		}
 	}
+	// Router che non risponde ai ping: niente "perdite 100 %".
+	s2.Gateway = &scan.SurveyPing{Target: "192.168.1.1", Sent: 75, LossPct: 100, NoReply: true, Error: "nessuna risposta su 75 ping: se il router è configurato per ignorarli, perdite e tempi qui non sono misurabili"}
+	out = capture(t, func() { printSurvey(s2) })
+	if !strings.Contains(out, "Router 192.168.1.1: nessuna risposta su 75 ping") || strings.Contains(out, "perdite 100") {
+		t.Errorf("router muto:\n%s", out)
+	}
 }

@@ -44,6 +44,9 @@ type Link struct {
 	SSID    string
 	BSSID   string
 	RssiDbm *int
+	// Quality: wlanSignalQuality (0-100), serve quando la scheda non
+	// fornisce il segnale in dBm (nil se non letta).
+	Quality *int
 	RxKbps  uint32
 	TxKbps  uint32
 	Phy     string
@@ -160,7 +163,9 @@ func Run(ctx context.Context, r Radio, newPinger func() (winapi.Pinger, error), 
 	}
 
 	var readings []Reading
-	var rx, tx []int
+	// est: i dBm ricavati dalla qualità, per le schede che non forniscono
+	// wlan_intf_opcode_rssi; live: quello che si mostra durante la misura.
+	var rx, tx, est, live []int
 	channels := []int{}
 	phy := ""
 	gap, gaps, failed := 0, 0, 0
@@ -195,10 +200,21 @@ func Run(ctx context.Context, r Radio, newPinger func() (winapi.Pinger, error), 
 			return nil, errSwitched
 		}
 		gap = 0
-		readings = append(readings, Reading{AtMs: at, BSSID: l.BSSID, Dbm: l.RssiDbm})
+		dbm := l.RssiDbm
 		if l.RssiDbm != nil {
 			out.Rssi = append(out.Rssi, *l.RssiDbm)
 		}
+		if l.Quality != nil {
+			e := QualityDbm(*l.Quality)
+			est = append(est, e)
+			if dbm == nil {
+				dbm = &e
+			}
+		}
+		if dbm != nil {
+			live = append(live, *dbm)
+		}
+		readings = append(readings, Reading{AtMs: at, BSSID: l.BSSID, Dbm: dbm})
 		if l.RxKbps > 0 {
 			rx = append(rx, int(l.RxKbps/1000))
 		}
@@ -212,29 +228,49 @@ func Run(ctx context.Context, r Radio, newPinger func() (winapi.Pinger, error), 
 			channels = append(channels, l.Channel)
 		}
 		_, roams := Roams(readings)
-		report(Progress{Phase: "misura", Dbm: l.RssiDbm, Rssi: append([]int(nil), out.Rssi...), Roams: len(roams)})
+		report(Progress{Phase: "misura", Dbm: dbm, Rssi: append([]int(nil), live...), Roams: len(roams)})
 	}
 	if pings != nil {
 		res := <-pings
 		if res.err != nil {
 			out.Gateway = &scan.SurveyPing{Target: gw.String(), Error: res.err.Error()}
 		} else {
-			out.Gateway = PingStats(gw.String(), res.echoes)
-			if res.failed > 0 && res.failed == len(res.echoes) {
-				out.Gateway.Error = "nessun ping è partito: " + res.lastErr
+			g := PingStats(gw.String(), res.echoes)
+			switch {
+			case res.failed > 0 && res.failed == len(res.echoes):
+				g.Error = "nessun ping è partito: " + res.lastErr
+			case g.Sent > 0 && g.Received == 0:
+				// Molti router e firewall ignorano i ping, e una VPN può
+				// bloccare la rete locale: nessuna risposta non è una perdita.
+				g.NoReply = true
+				g.Error = fmt.Sprintf("nessuna risposta su %d ping: se il router è configurato per ignorarli, perdite e tempi qui non sono misurabili", g.Sent)
 			}
+			out.Gateway = g
 		}
 	}
 	out.DurationMs = time.Since(start).Milliseconds()
 
-	if len(out.Rssi) < (secs+1)/2 {
-		if lastErr != nil {
-			return nil, lastErr
-		}
-		return nil, fmt.Errorf("Windows ha fornito solo %d letture del segnale su %d: ripeti la misura", len(out.Rssi), secs)
+	need := (secs + 1) / 2
+	switch {
+	case len(out.Rssi) >= need:
+	case len(est) >= need:
+		// Senza dBm dalla scheda: tutti i valori dalla qualità, mai mescolati.
+		out.Rssi, out.Estimated = est, true
+		out.Notes = append(out.Notes, "La scheda non fornisce il segnale in dBm: i valori sono stimati dalla qualità del segnale riportata da Windows (da 0 a 100, cioè da -100 a -50 dBm).")
+	case len(readings) >= need:
+		return nil, errors.New("la scheda Wi-Fi non fornisce a Windows il livello del segnale: con questa scheda la misura non è possibile")
+	case lastErr != nil:
+		return nil, lastErr
+	default:
+		return nil, fmt.Errorf("Windows ha fornito solo %d letture del segnale su %d: ripeti la misura", len(readings), secs)
 	}
 	sig := SignalStats(out.Rssi)
 	out.MedianDbm, out.MinDbm, out.MaxDbm, out.P10Dbm, out.SpreadDb, out.Stuck = sig.Median, sig.Min, sig.Max, sig.P10, sig.Spread, sig.Stuck
+	if out.Estimated && out.Stuck && sig.Max == QualityDbm(100) {
+		// Qualità al 100 %: il valore è fermo perché è in cima alla scala.
+		out.Stuck = false
+		out.Notes = append(out.Notes, "Qualità del segnale al 100 % per tutta la misura: il segnale è di almeno -50 dBm.")
+	}
 	out.BSSIDs, out.Roams = Roams(readings)
 	out.RxMbps, out.TxMbps, out.Phy = medianInt(rx), medianInt(tx), phy
 	if len(channels) > 0 {
@@ -262,7 +298,7 @@ func Run(ctx context.Context, r Radio, newPinger func() (winapi.Pinger, error), 
 		}
 	}
 	nets, listErr = r.Networks()
-	out.Band = wlan.BandFor(0, out.Channel)
+	out.Band = wlan.BandFor(0, out.Channel) // "" se il canale non è noto
 	if c := connectedBss(nets, out.SSID, last); c != nil {
 		out.Band, out.WidthMhz = c.Band, c.WidthMhz
 		if out.Channel == 0 {

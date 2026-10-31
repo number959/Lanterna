@@ -197,6 +197,11 @@ export interface SurveyPing {
   /** Perché il router non è stato misurato. */
   skipped?: string;
   error?: string;
+  /**
+   * I ping sono partiti ma il router non ha risposto a nessuno: molti router
+   * e firewall li ignorano, quindi da solo non è una perdita.
+   */
+  noReply?: boolean;
 }
 
 /** Un altro access point della propria rete (stesso SSID), il migliore della sua banda. */
@@ -255,6 +260,8 @@ export interface SurveySample {
   spreadDb: number;
   /** Letture tutte identiche: la scheda forse non aggiorna il valore ogni secondo. */
   stuck?: boolean;
+  /** La scheda non fornisce i dBm: valori stimati dalla qualità del segnale di Windows (0-100 = da -100 a -50 dBm). */
+  estimated?: boolean;
   rxMbps?: number;
   txMbps?: number;
   bssids: string[];

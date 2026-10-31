@@ -124,7 +124,7 @@ function surveyDetails(scan: Scan, out: string[], W: number) {
     const n = r.room.samples.length;
     out.push(hang(`${TAG[r.severity]} ${r.room.name}: ${dbmText(s.medianDbm)} dBm, cali ${s.p10Dbm} dBm${radioText(s) ? ` · ${radioText(s)}` : ''}`, W, ' ', '        '));
     const facts = [
-      s.gateway ? `router: ${gatewayText(s)}` : '',
+      s.gateway ? `router: ${gatewayText(s, r.answering)}` : '',
       s.bssids.length ? `access point: ${s.bssids.map(al).join(' → ')}` : '',
       `${s.seconds} s il ${dateIt(s.startedAt)}${n > 1 ? `, il peggiore di ${n} punti` : ''}`,
     ].filter(Boolean);

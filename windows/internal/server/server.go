@@ -437,6 +437,9 @@ func (s *Server) startBench(kind, drive string) error {
 	if spaceBusy {
 		return errors.New("analisi dello spazio in corso: il test di velocità ne sarebbe falsato")
 	}
+	if s.surveyBusy() {
+		return errors.New("misura del Wi-Fi in corso: il test di velocità ne falserebbe i valori. Riprova quando la misura è finita")
+	}
 	timeout := 2 * time.Minute
 	if kind == "disk" {
 		timeout = 3 * time.Minute

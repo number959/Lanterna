@@ -20,6 +20,7 @@ func TestBandFor(t *testing.T) {
 	// Senza frequenza: i canali 6 GHz che non esistono a 5 GHz non devono più
 	// risultare 5 GHz (prima "oltre 14 = 5 GHz").
 	for ch, want := range map[int]string{
+		0: "", -1: "", // canale sconosciuto: nessuna banda inventata
 		1: "2.4", 6: "2.4", 13: "2.4", 14: "2.4",
 		36: "5", 40: "5", 64: "5", 100: "5", 144: "5", 149: "5", 165: "5", 177: "5", 38: "5",
 		17: "6", 21: "6", 37: "6", 53: "6", 93: "6", 101: "6", 145: "6", 181: "6", 233: "6",

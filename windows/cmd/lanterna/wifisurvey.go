@@ -115,6 +115,8 @@ func printSurvey(s *scan.SurveySample) {
 		switch {
 		case g.Skipped != "":
 			fmt.Printf("  Router: non misurato, %s\n", g.Skipped)
+		case g.NoReply:
+			fmt.Printf("  Router %s: %s\n", g.Target, g.Error)
 		case g.Error != "":
 			fmt.Printf("  Router: %s\n", g.Error)
 		default:

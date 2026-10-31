@@ -46,7 +46,7 @@ import { ScanOrbit } from './scan';
 import { sameSpaceTarget } from './space';
 import { sameCertTarget } from './certs';
 import type { CertTargetRef } from './certs';
-import { mergeSample, sameSurveyTarget } from './wifimap';
+import { mergeSample, surveyRefusal } from './wifimap';
 import type { SurveyTargetRef } from './wifimap';
 import type { SpaceTarget } from './space';
 import { useTheme } from './theme';
@@ -198,7 +198,8 @@ function Shell() {
         // E le analisi dello spazio, che possono durare minuti.
         if (prev?.pc?.space?.length && next.pc && !next.pc.space && prev.agent.host === next.agent.host) next = { ...next, pc: { ...next.pc, space: prev.pc.space } };
         // E la mappa del Wi-Fi per stanza, dello stesso PC e della stessa rete.
-        if (prev?.wifi?.survey && next.wifi && !next.wifi.survey && prev.agent.host === next.agent.host && prev.gateway?.ip === next.gateway?.ip) next = { ...next, wifi: { ...next.wifi, survey: prev.wifi.survey } };
+        if (prev?.wifi?.survey && next.wifi && !next.wifi.survey && prev.agent.host === next.agent.host && prev.gateway?.ip === next.gateway?.ip && prev.wifi.connected?.ssid === next.wifi.connected?.ssid)
+          next = { ...next, wifi: { ...next.wifi, survey: prev.wifi.survey } };
         return next;
       });
       setSource('agent');
@@ -317,14 +318,20 @@ function Shell() {
   );
 
   // La misura del Wi-Fi riguarda una rete: come per i certificati, si unisce
-  // solo se il rapporto mostrato è ancora quello della stessa rete.
+  // solo se il rapporto mostrato è ancora quello della stessa rete (PC,
+  // gateway e nome della rete Wi-Fi) e se la misura è stata fatta su quella.
   const addSurvey = useCallback(
     (r: SurveySample, target: SurveyTargetRef, quiet = false) => {
-      if (!sameSurveyTarget(target, scanRef.current, sourceRef.current)) {
-        if (!quiet) toast(`Misura di «${r.room}» finita, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto`, 'warn');
+      const why = surveyRefusal(target, scanRef.current, sourceRef.current, r);
+      if (why) {
+        if (!quiet) toast(why, 'warn');
         return false;
       }
-      setScan((s) => (s?.wifi && s.agent.host === target.host && s.gateway?.ip === target.gateway ? { ...s, wifi: { ...s.wifi, survey: mergeSample(s.wifi.survey, r) } } : s));
+      setScan((s) =>
+        s?.wifi && s.agent.host === target.host && s.gateway?.ip === target.gateway && s.wifi.connected?.ssid === target.ssid
+          ? { ...s, wifi: { ...s.wifi, survey: mergeSample(s.wifi.survey, r) } }
+          : s,
+      );
       return true;
     },
     [toast],

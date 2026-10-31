@@ -135,6 +135,20 @@ func SignalStats(rssi []int) Signal {
 	return st
 }
 
+// QualityDbm converte la qualità del segnale di Windows (wlanSignalQuality,
+// 0-100) in dBm: secondo la documentazione di WLAN_ASSOCIATION_ATTRIBUTES 0
+// vale -100 dBm, 100 vale -50 dBm, in mezzo interpolazione lineare. Sopra
+// -50 dBm la qualità resta 100: il valore è un minimo.
+func QualityDbm(q int) int {
+	if q < 0 {
+		q = 0
+	}
+	if q > 100 {
+		q = 100
+	}
+	return q/2 - 100
+}
+
 // Reading è una lettura al secondo della connessione.
 type Reading struct {
 	AtMs  int64

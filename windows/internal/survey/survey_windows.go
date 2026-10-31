@@ -56,7 +56,8 @@ func (w *winRadio) Link() (Link, error) {
 	if err != nil {
 		return Link{}, err
 	}
-	return Link{SSID: l.SSID, BSSID: strings.ToLower(l.BSSID), RssiDbm: l.RssiDbm, RxKbps: l.RxKbps, TxKbps: l.TxKbps, Phy: wlan.PhyNames[l.PhyType], Channel: l.Channel}, nil
+	q := l.Quality
+	return Link{SSID: l.SSID, BSSID: strings.ToLower(l.BSSID), RssiDbm: l.RssiDbm, Quality: &q, RxKbps: l.RxKbps, TxKbps: l.TxKbps, Phy: wlan.PhyNames[l.PhyType], Channel: l.Channel}, nil
 }
 
 func (w *winRadio) Scan(ctx context.Context) error {

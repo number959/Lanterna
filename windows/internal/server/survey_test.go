@@ -3,12 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"lanterna/internal/bench"
 	"lanterna/internal/scan"
 	"lanterna/internal/survey"
 )
@@ -68,6 +70,11 @@ func TestSurveyEndpoint(t *testing.T) {
 	if r := doBody(t, h, "POST", "/api/scan", "", ""); r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "Wi-Fi") {
 		t.Fatalf("analisi durante la misura: %d %s", r.Code, r.Body)
 	}
+	// Nemmeno un test di velocità: il carico allungherebbe i tempi dei ping.
+	s.BenchCPU = func(context.Context, bench.Report) (*scan.CPUBench, error) { return &scan.CPUBench{}, nil }
+	if r := doBody(t, h, "POST", "/api/bench", "application/json", `{"kind":"cpu"}`); r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "misura del Wi-Fi") {
+		t.Fatalf("test di velocità durante la misura: %d %s", r.Code, r.Body)
+	}
 	var st surveyState
 	for i := 0; i < 200; i++ {
 		if st = status(); st.Progress != nil {
@@ -106,5 +113,34 @@ func TestSurveyEndpoint(t *testing.T) {
 	// Da un'altra origine la misura non parte.
 	if r := do(t, h, "POST", "/api/wifi/survey", map[string]string{"Origin": "https://evil.example", "Content-Type": "application/json"}); r.Code != http.StatusForbidden {
 		t.Fatalf("da altra origine: %d", r.Code)
+	}
+}
+
+// Durante un test di velocità del processore o del disco la misura del Wi-Fi
+// non parte: il carico allungherebbe tempi e jitter del router.
+func TestSurveyRefusedDuringBench(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	s.BenchCPU = func(ctx context.Context, _ bench.Report) (*scan.CPUBench, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	called := false
+	s.Survey = func(context.Context, survey.Options) (*scan.SurveySample, error) {
+		called = true
+		return nil, errors.New("non doveva partire")
+	}
+	if r := doBody(t, h, "POST", "/api/bench", "application/json", `{"kind":"cpu"}`); r.Code != http.StatusAccepted {
+		t.Fatalf("test: %d %s", r.Code, r.Body)
+	}
+	r := doBody(t, h, "POST", "/api/wifi/survey", "application/json", `{"room":"Studio"}`)
+	if r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "test di velocità in corso") {
+		t.Fatalf("misura durante il test: %d %s", r.Code, r.Body)
+	}
+	do(t, h, "DELETE", "/api/bench", nil)
+	s.WaitBench()
+	s.WaitSurvey()
+	if called {
+		t.Fatal("la misura è partita durante il test")
 	}
 }

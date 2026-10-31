@@ -239,3 +239,109 @@ func TestPingSeriesUnavailable(t *testing.T) {
 		t.Fatalf("%+v", res.Gateway)
 	}
 }
+
+// Il router non risponde a nessun ping (firewall, router che li ignora, VPN
+// che blocca la rete locale): non è una perdita del 100 %, è "non misurabile".
+func TestRunRouterIgnoresPing(t *testing.T) {
+	r := &fakeRadio{gw: "192.168.1.1", links: []Link{link("aa:bb:cc:00:00:10", -52)}}
+	all := make([]int32, 200)
+	for i := range all {
+		all[i] = int32(i)
+	}
+	newPinger, fp := pingerFactory(all...)
+	res, err := Run(context.Background(), r, newPinger, fast(Options{Room: "Soggiorno", Seconds: 10}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := res.Gateway
+	if fp.n.Load() == 0 || g == nil || !g.NoReply || g.Sent == 0 || g.Received != 0 || g.Target != "192.168.1.1" || !strings.Contains(g.Error, "non sono misurabili") {
+		t.Fatalf("router muto: %+v", g)
+	}
+	if g.MedianMs != nil || g.JitterMs != nil {
+		t.Fatalf("tempi inventati: %+v", g)
+	}
+	// Con almeno una risposta la serie resta una misura di perdite.
+	newPinger, _ = pingerFactory(all[1:]...)
+	res, err = Run(context.Background(), &fakeRadio{gw: "192.168.1.1", links: []Link{link("aa", -52)}}, newPinger, fast(Options{Room: "Soggiorno", Seconds: 10}))
+	if err != nil || res.Gateway.NoReply || res.Gateway.Error != "" || res.Gateway.Received != 1 {
+		t.Fatalf("una risposta: %v %+v", err, res.Gateway)
+	}
+	// Se nessun ping parte (errore locale) non è "nessuna risposta".
+	res, err = Run(context.Background(), &fakeRadio{gw: "192.168.1.1", links: []Link{link("aa", -52)}}, func() (winapi.Pinger, error) { return errPinger{}, nil }, fast(Options{Room: "Soggiorno", Seconds: 10}))
+	if err != nil || res.Gateway.NoReply || !strings.Contains(res.Gateway.Error, "nessun ping è partito") {
+		t.Fatalf("errore locale: %v %+v", err, res.Gateway)
+	}
+}
+
+type errPinger struct{}
+
+func (errPinger) Echo(net.IP, int, int, bool, time.Duration) winapi.EchoResult {
+	return winapi.EchoResult{Status: winapi.EchoError, Err: errors.New("errore della scheda")}
+}
+func (errPinger) Close() {}
+
+func qlink(bssid string, q int) Link {
+	l := link(bssid, 0)
+	l.RssiDbm, l.Quality = nil, &q
+	return l
+}
+
+// Schede senza wlan_intf_opcode_rssi: i dBm si stimano dalla qualità, tutti
+// dalla stessa fonte, e la misura lo dichiara.
+func TestRunQualityFallback(t *testing.T) {
+	newPinger, _ := pingerFactory()
+	// Una lettura con i dBm veri in mezzo non si mescola alle stime.
+	mixed := link("aa", -40)
+	q := 60
+	mixed.Quality = &q
+	r := &fakeRadio{links: []Link{qlink("aa", 60), qlink("aa", 58), qlink("aa", 61), qlink("aa", 60), qlink("aa", 59), mixed, qlink("aa", 60)}}
+	var last Progress
+	res, err := Run(context.Background(), r, newPinger, fast(Options{Room: "Studio", Seconds: 10, Progress: func(p Progress) { last = p }}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Estimated || len(res.Rssi) != 10 || res.MedianDbm != -70 || res.MinDbm != -71 || res.MaxDbm != -70 || res.Stuck {
+		t.Fatalf("stima dalla qualità: %+v", res)
+	}
+	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], "stimati dalla qualità") {
+		t.Fatalf("note: %v", res.Notes)
+	}
+	if last.Dbm == nil || len(last.Rssi) != 10 {
+		t.Fatalf("avanzamento senza dBm: %+v", last)
+	}
+	// Con i dBm della scheda la qualità non si usa.
+	res, err = Run(context.Background(), &fakeRadio{links: []Link{mixed}}, newPinger, fast(Options{Room: "Studio", Seconds: 10}))
+	if err != nil || res.Estimated || res.MedianDbm != -40 {
+		t.Fatalf("dBm della scheda: %v %+v", err, res)
+	}
+	// Qualità sempre al 100 %: valori in cima alla scala, non "fermi".
+	res, err = Run(context.Background(), &fakeRadio{links: []Link{qlink("aa", 100)}}, newPinger, fast(Options{Room: "Studio", Seconds: 10}))
+	if err != nil || !res.Estimated || res.Stuck || res.MedianDbm != -50 || len(res.Notes) != 2 {
+		t.Fatalf("qualità al 100 %%: %v %+v", err, res)
+	}
+	// Né dBm né qualità: un errore che non invita a ripetere invano.
+	none := link("aa", 0)
+	none.RssiDbm = nil
+	_, err = Run(context.Background(), &fakeRadio{links: []Link{none}}, newPinger, fast(Options{Room: "Studio", Seconds: 10}))
+	if err == nil || !strings.Contains(err.Error(), "non fornisce") || strings.Contains(err.Error(), "ripeti") {
+		t.Fatalf("senza segnale: %v", err)
+	}
+	if QualityDbm(0) != -100 || QualityDbm(100) != -50 || QualityDbm(61) != -70 || QualityDbm(150) != -50 || QualityDbm(-3) != -100 {
+		t.Fatal("conversione della qualità")
+	}
+}
+
+// Senza canale e senza la rete nella lista la banda non si conosce: non
+// "2,4 GHz" per difetto.
+func TestRunUnknownBand(t *testing.T) {
+	l := link("aa:bb:cc:00:00:10", -60)
+	l.Channel = 0
+	newPinger, _ := pingerFactory()
+	res, err := Run(context.Background(), &fakeRadio{links: []Link{l}}, newPinger, fast(Options{Room: "Studio", Seconds: 10, Scan: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Band != "" || res.Channel != 0 || res.Scan == nil || res.Scan.Neighbors.Cochannel != 0 {
+		t.Fatalf("banda sconosciuta: %q %d %+v", res.Band, res.Channel, res.Scan)
+	}
+}

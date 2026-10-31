@@ -368,7 +368,7 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
             `<tr><td><b>${t(r.room.name)}</b>${n > 1 ? `<br><span class="pd-small">il peggiore di ${n} punti</span>` : ''}</td>` +
             `<td>${esc(dbmText(s.medianDbm))} dBm, ${esc(rssiWord(s.medianDbm))}<br><span class="pd-small">cali fino a ${s.p10Dbm} dBm</span></td>` +
             `<td>${esc(radioText(s) || '—')}${s.bssids.length ? `<br><span class="pd-small">${esc(s.bssids.map(al).join(' → '))}</span>` : ''}</td>` +
-            `<td class="pd-small">${t(gatewayText(s) || '—')}</td>` +
+            `<td class="pd-small">${t(gatewayText(s, r.answering) || '—')}</td>` +
             `<td>${sev(r.severity)}${notes.length ? `<br><span class="pd-small">${esc(notes.join(', '))}</span>` : ''}</td></tr>`
           );
         })

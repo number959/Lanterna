@@ -168,6 +168,10 @@ type SurveySample struct {
 	// Stuck: tutte le letture identiche, la scheda forse non aggiorna il
 	// valore ogni secondo: instabilità e cali non sono valutabili.
 	Stuck bool `json:"stuck,omitempty"`
+	// Estimated: la scheda non fornisce il segnale in dBm e i valori sono
+	// ricavati dalla qualità del segnale riportata da Windows (0-100 da -100
+	// a -50 dBm, interpolazione lineare documentata da Microsoft).
+	Estimated bool `json:"estimated,omitempty"`
 	// Velocità radio negoziate (mediana, Mbit/s).
 	RxMbps int `json:"rxMbps,omitempty"`
 	TxMbps int `json:"txMbps,omitempty"`
@@ -204,6 +208,9 @@ type SurveyPing struct {
 	// Skipped: perché il router non è stato misurato.
 	Skipped string `json:"skipped,omitempty"`
 	Error   string `json:"error,omitempty"`
+	// NoReply: i ping sono partiti ma il router non ha risposto a nessuno.
+	// Molti router e firewall ignorano i ping: da soli non sono perdite.
+	NoReply bool `json:"noReply,omitempty"`
 }
 
 // SurveyScan è ciò che una scansione dopo la misura dice di quel punto.

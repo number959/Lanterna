@@ -15,7 +15,8 @@ import (
 //
 //	POST   /api/wifi/survey  avvia la misura di un punto ({"room": "Soggiorno",
 //	                         "seconds": 15, "scan": true}): 202, 409 se un'altra
-//	                         misura, un'analisi o un inventario sono in corso
+//	                         misura, un'analisi, un inventario o un test di
+//	                         velocità sono in corso
 //	GET    /api/wifi/survey  avanzamento (secondi, ultimo dBm) o esito
 //	DELETE /api/wifi/survey  interrompe la misura in corso
 
@@ -50,12 +51,19 @@ func (s *Server) surveyBusy() bool {
 }
 
 // startSurvey avvia la misura in background. Ordine dei lock: mu (analisi),
-// poi invMu e survey.mu, come in startBench.
+// poi benchMu, invMu e survey.mu, come in startBench.
 func (s *Server) startSurvey(opt survey.Options) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.running {
 		return errors.New("analisi in corso: la misura del Wi-Fi ne sarebbe falsata. Riprova quando l'analisi è finita")
+	}
+	// Un test di velocità carica processore o disco e allunga i tempi dei ping.
+	s.benchMu.Lock()
+	bench := s.benchRunning
+	s.benchMu.Unlock()
+	if bench {
+		return errors.New("test di velocità in corso: la misura del Wi-Fi ne sarebbe falsata. Riprova quando il test è finito")
 	}
 	s.invMu.Lock()
 	inv := s.invRunning
