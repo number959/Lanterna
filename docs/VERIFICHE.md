@@ -804,29 +804,41 @@ corretti: il percorso delle cartelle note scritto come nella variabile d'ambient
 guida nella riga di comando.
 
 **Windows reale (CI).** Windows Server 2025 (immagine windows-2025-vs2026 20261021.278.1) su una macchina virtuale Azure,
-eseguito come amministratore. Run 39 (commit `db20adc`):
+eseguito come amministratore. Run 39 (commit `db20adc`) e run 44 (commit `67c373f`, con le correzioni della revisione):
 - **cartella di Windows**: 14,65 GB in 122.840 file e 41.247 cartelle, letti in 51 s la prima volta e in 2 s la seconda
   (cartelle già in memoria); 1,15 GB di collegamenti fisici contati una volta; dati per 26,3 GB contro 14,7 GB occupati, segno che lo spazio allocato delle voci tiene
   conto della compressione dei file di sistema (da confermare con un confronto file per file); 4.434 file di System32 nell'analisi di
-  Windows contro i 4.474 di .NET: la differenza attesa sono i file con un altro nome che viene prima in ordine alfabetico, contati là
-  (dalla run 41 il confronto si fa sull'analisi della sola System32);
+  Windows contro i 4.474 nomi di file per .NET; anche analizzando la sola System32 Polaris ne attribuisce 4.463, perché i file con un altro
+  nome che viene prima in ordine alfabetico (per esempio in `System32\DriverStore`) si contano una volta, là. Il confronto
+  esatto della run 43 era quindi sbagliato come prova: ora è un controllo di buon senso (entro il 2 %) e i conteggi esatti si
+  provano su cartelle dal contenuto noto;
 - **unità C: intera**: 116,8 GB letti su 128 GB occupati, 1.152.556 file e 208.278 cartelle in 403 s (disco della macchina
   virtuale con operazioni al secondo limitate), 18 cartelle riservate al sistema, nessun nome utente nel JSON; cartelle note:
   cache di Windows Installer 6,4 GB, cache dei pacchetti 1,78 GB, dischi virtuali 0,86 GB (tra cui il `system.vhd` di WSL),
   WinSxS 0,69 GB al netto dei collegamenti;
 - **API**: analisi di D: in background (3,2 GB in 1.343 file), apertura di un numero sconosciuto rifiutata con 404,
-  interruzione di C: con il risultato parziale (100.562 file letti).
+  interruzione di C: con il risultato parziale (100.562 file letti);
+- **cartella NTFS dal contenuto noto** (run 44): esattamente 53 file, 5 cartelle e 6.483.968 byte; la giunzione non è
+  seguita, il collegamento fisico fuori dalla cartella di Windows conta con entrambi i nomi, nessuna cartella negata e nessun
+  errore; il nome del profilo in `Users` e l'indirizzo e-mail nel nome di un file `.ost` non compaiono nel JSON;
+- **FAT32 ed exFAT** (run 44), su dischi virtuali da 100 MB creati con diskpart e montati come unità T e U: la cartella di
+  prova risulta esattamente di 21 file, 1 cartella e 635.000 byte su entrambi; la radice ha 22 file come per .NET (con le
+  cartelle di sistema create da Windows); nessun errore; il nome del file system è riconosciuto;
+- **da amministratore** il messaggio sulle cartelle non leggibili dice che sono riservate al sistema (3 nella cartella di
+  Windows, 18 sull'unità), senza il consiglio inutile di riavviare come amministratore; tutte le run dalla 44 in poi verdi.
 
 **Difetti trovati e corretti durante il lavoro** (oltre ai rilievi della revisione):
 1. "Unità C::" nella riga di comando e nell'avanzamento.
 2. Mappa vuota dopo la discesa in una cartella; titoli dei gruppi in maiuscolo; scorrimento orizzontale a 390 px.
 3. Percorso delle cartelle note scritto come nella variabile d'ambiente; nome della guida nella riga di comando.
-4. Virgolette mancanti nel passo della CI (run 40, solo lo script di prova).
+4. Virgolette mancanti nel passo della CI (run 40, solo lo script di prova); confronto esatto con .NET su System32 (run
+   43, premessa sbagliata, vedi sopra).
 
 **Avvertenze: cosa resta da provare su PC fisici.**
 - **OneDrive.** I file solo online si riconoscono dagli attributi e `RtlSetProcessPlaceholderCompatibilityMode` li rende
   visibili; la CI non ha OneDrive: va provato su un PC con file solo online.
-- **Chiavette FAT32 ed exFAT.** La lettura senza numero del file è provata con buffer costruiti a mano, non su una chiavetta.
+- **Chiavette vere.** FAT32 ed exFAT sono provati su dischi virtuali in CI; una chiavetta USB fisica (più lenta, rimovibile
+  durante la lettura) non è stata provata.
 - **Velocità.** Misurata solo sulla macchina virtuale della CI e sotto Wine. WizTree, che da amministratore legge
   direttamente la tabella dei file di NTFS, resta più rapido sui dischi con milioni di file.
 - **"Apri in Esplora file".** In CI non c'è un desktop interattivo: provati il rifiuto dei numeri sconosciuti e di altre
