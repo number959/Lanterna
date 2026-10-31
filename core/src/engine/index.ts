@@ -28,6 +28,28 @@ export {
   certWhere,
 } from './certs';
 export type { CertExpiry, CertIssue } from './certs';
+export {
+  analyzeCrashes,
+  BUGCHECKS_MORE,
+  bugcheckInfo,
+  bugcheckText,
+  CRASH_DUMP_TYPE,
+  CRASH_FAMILY_TEXT,
+  CRASH_LIMITED,
+  CRASH_RECENT_DAYS,
+  CRASH_REPEAT,
+  crashCode,
+  crashCodes,
+  crashDrivers,
+  crashRead,
+  crashSetting,
+  crashSummary,
+  crashWhen,
+  culpritHow,
+  lastBugcheckEvent,
+  parseBugcheckEvent,
+} from './crash';
+export type { BugcheckInfo, CrashFamily, CrashGroup } from './crash';
 export { documentParts, renderDocument } from './document';
 export type { DocOptions } from './document';
 export { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';

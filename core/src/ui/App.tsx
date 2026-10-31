@@ -46,6 +46,9 @@ import { ScanOrbit } from './scan';
 import { sameSpaceTarget } from './space';
 import { sameCertTarget } from './certs';
 import type { CertTargetRef } from './certs';
+import { sameCrashTarget } from './crashes';
+import type { CrashTargetRef } from './crashes';
+import type { CrashData } from '../engine';
 import type { SpaceTarget } from './space';
 import { useTheme } from './theme';
 import type { ThemePref } from './theme';
@@ -312,6 +315,20 @@ function Shell() {
     [toast],
   );
 
+  // Una nuova lettura delle schermate blu riguarda questo PC: si unisce solo
+  // al rapporto dell'agente dello stesso PC e della stessa analisi.
+  const addCrashes = useCallback(
+    (r: CrashData, target: CrashTargetRef) => {
+      if (!sameCrashTarget(target, scanRef.current, sourceRef.current)) {
+        toast('Lettura delle schermate blu finita, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto', 'warn');
+        return false;
+      }
+      setScan((s) => (s && s.pc && s.agent.host === target.host && s.agent.startedAt === target.startedAt ? { ...s, pc: { ...s.pc, crashes: r } } : s));
+      return true;
+    },
+    [toast],
+  );
+
   const patchPc = useCallback((p: Partial<PcData>) => setScan((s) => (s ? { ...s, pc: { ...s.pc, ...p } } : s)), []);
 
   const analysis = useMemo(() => (effective ? analyze(effective) : null), [effective]);
@@ -394,7 +411,9 @@ function Shell() {
   };
   const scanning = busy || (agent === undefined && slow);
   const props: ViewProps | null =
-    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, patchPc, assessment, monitor, gwMacChange } : null;
+    effective && analysis
+      ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, addCrashes, patchPc, assessment, monitor, gwMacChange }
+      : null;
   const pickDemo = (k: DemoKind) => {
     setDemoKind(k);
     setScan(DEMOS[k]);

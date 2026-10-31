@@ -1,4 +1,5 @@
 import { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from '../engine/pc';
+import { BUGCHECKS_MORE } from '../engine/crash';
 import { SPACE_HINTS, SPACE_RISK_LABEL } from '../engine/space';
 import type { SpaceRisk } from '../engine/space';
 import type { Guide } from './types';
@@ -11,6 +12,7 @@ import type { Guide } from './types';
 
 const win11Rows = Object.entries(WIN11_EOS).map(([v, d]) => [v, dateIt(d.home), dateIt(d.ent)]);
 const bugcheckRows = Object.entries(BUGCHECKS).map(([code, [name, meaning]]) => [`\`${code}\``, name, meaning]);
+const moreBugcheckRows = Object.entries(BUGCHECKS_MORE).map(([code, [name, meaning]]) => [`\`${code}\``, name, meaning]);
 
 // Dove l'agente cerca le cartelle e i file noti (con Windows sull'unità C:).
 const SPACE_PATHS: Record<string, string> = {
@@ -621,7 +623,7 @@ export const pc: Guide[] = [
       { t: 'list', items: [
         'una schermata blu isolata può capitare; se si ripetono c\'è quasi sempre un driver, un componente o un disco da sistemare;',
         'aggiornamenti di Windows e driver aggiornati (video, chipset, rete, archiviazione) risolvono gran parte dei casi;',
-        'i file in C:\\Windows\\Minidump permettono a un tecnico di individuare il driver responsabile con WinDbg (comando `!analyze -v`).',
+        'i file in C:\\Windows\\Minidump indicano il driver sospetto: Polaris li legge da amministratore (vedi [[minidump-schermate-blu]]); un tecnico può approfondire con WinDbg (comando `!analyze -v`).',
       ] },
       { t: 'h', text: 'Errori hardware WHEA' },
       { t: 'p', text: 'Processore, memoria e bus segnalano i propri errori tramite la Windows Hardware Error Architecture. Gli errori corretti sono stati recuperati dall\'hardware: pochi possono essere normali, molti indicano un componente al limite (memoria, overclock, dispositivo PCIe). Un errore grave provoca di solito una schermata blu con codice 0x124.' },
@@ -632,6 +634,65 @@ export const pc: Guide[] = [
         ['Diagnostica memoria Windows', '`mdsched.exe`', 'verifica della RAM al riavvio'],
       ] },
       { t: 'note', kind: 'tip', title: 'Privacy', text: 'Degli eventi Polaris conserva solo origine, codice, numero di occorrenze e data dell\'ultima; il dettaglio solo per schermate blu, dischi e file system (codice di arresto, disco coinvolto). Nessun nome utente o contenuto di file finisce nel rapporto.' },
+    ],
+  },
+  {
+    id: 'minidump-schermate-blu',
+    chapter: 'pc',
+    title: 'Schermate blu: leggere i minidump',
+    summary: 'Che cos\'è un minidump, dove lo salva Windows, perché servono i privilegi di amministratore, che cosa vuol dire il driver indicato e perché è solo un indizio, che cosa fare e i limiti dell\'analisi di Polaris.',
+    level: 'intermedio',
+    metrics: ['pc.crash.driver', 'pc.crash.code', 'pc.crash.settings', 'pc.crash.access'],
+    actions: ['update-crash-driver', 'test-memory', 'check-disk-errors', 'check-temperatures', 'enable-minidump', 'read-crash-files', 'diagnose-bsod'],
+    tags: ['minidump', 'dump', 'memory.dmp', 'schermata blu', 'bsod', 'bug check', 'codice di arresto', 'stop code', 'parametri', 'driver', 'driver scaricato', 'stack', 'crashcontrol', 'avvio e ripristino', 'amministratore', 'bluescreenview', 'windbg', 'simboli', 'mdsched', '0xd1', 'irql', 'polaris-cli crashes'],
+    blocks: [
+      { t: 'p', text: 'Davanti a un errore che non può gestire Windows si ferma con la schermata blu e, prima di ripartire, salva un file con lo stato del sistema: il **dump della memoria**. Il più piccolo, il **minidump**, contiene il codice di arresto, i quattro parametri, l\'elenco dei driver caricati e di quelli scaricati da poco, e una parte dello stack del thread che si è fermato. Polaris lo legge come BlueScreenView, senza programmi esterni. Il conteggio delle schermate blu degli ultimi 30 giorni viene invece dal registro eventi (vedi [[registro-eventi]]).' },
+      { t: 'h', text: 'Dove li salva Windows' },
+      { t: 'table', head: ['File', 'Dove', 'Che cosa contiene'], rows: [
+        ['minidump', '`C:\\Windows\\Minidump`, un file per arresto, con nomi come `092726-8421-01.dmp`', 'codice, parametri, driver, parte dello stack; di solito da qualche centinaio di KB a qualche MB'],
+        ['dump del kernel o automatico', '`C:\\Windows\\MEMORY.DMP`, sovrascritto a ogni arresto', 'la memoria del kernel: centinaia di MB o più; Polaris ne legge solo l\'intestazione'],
+        ['dump completo', '`C:\\Windows\\MEMORY.DMP`', 'tutta la memoria, grande quanto la RAM; solo l\'intestazione'],
+      ] },
+      { t: 'p', text: 'Che cosa salvare lo decide l\'impostazione di Avvio e ripristino (`sysdm.cpl` > Avanzate), che Polaris legge dal registro, chiave CrashControl, senza modificarla. Con le impostazioni predefinite di Windows 10 e 11 (dump automatico) nella cartella Minidump di solito si trova un file per ogni arresto. Se il salvataggio è disattivato, le schermate blu lasciano solo il codice nel registro eventi: Polaris lo segnala e spiega come riattivarlo a mano.' },
+      { t: 'note', kind: 'warn', title: 'File che spariscono', text: 'Pulizia disco e Sensore memoria possono cancellare i file di dump, e con poco spazio libero Windows può non conservare MEMORY.DMP. Se servono a un tecnico, copiali altrove prima di fare pulizia.' },
+      { t: 'h', text: 'Perché servono i privilegi di amministratore' },
+      { t: 'p', text: 'La cartella dei minidump e MEMORY.DMP di solito sono leggibili solo dagli amministratori: i file contengono parti della memoria del sistema. Senza privilegi Polaris mostra il codice e i parametri dell\'evento 1001 del registro di sistema e le impostazioni dei dump, e lo dice chiaramente. Per leggere i file avvia Polaris con "Esegui come amministratore", oppure usa `polaris-cli crashes` da un Prompt dei comandi aperto come amministratore. Microsoft non documenta i permessi predefiniti della cartella: è la situazione osservata comunemente, da verificare su ogni PC.' },
+      { t: 'h', text: 'Codice di arresto e parametri' },
+      { t: 'p', text: 'Il codice, per esempio 0x000000D1 DRIVER_IRQL_NOT_LESS_OR_EQUAL, indica la famiglia del problema. I quattro parametri, P1-P4, ne danno i dettagli e cambiano significato da un codice all\'altro: la tabella "Bug Check Code Reference" di Microsoft li spiega codice per codice. Polaris li mostra in esadecimale, come sono scritti nel file. Oltre ai codici più frequenti (vedi [[registro-eventi]]) riconosce questi:' },
+      { t: 'table', caption: 'Altri codici che Polaris riconosce', head: ['Codice', 'Nome', 'In breve'], rows: moreBugcheckRows },
+      { t: 'p', text: 'Un codice che non è in questi elenchi si mostra solo in esadecimale: cercalo nella documentazione Microsoft.' },
+      { t: 'h', text: 'Il driver indicato è un indizio' },
+      { t: 'p', text: 'Per alcuni codici la documentazione Microsoft indica che un parametro contiene l\'indirizzo dell\'istruzione che ha causato l\'arresto: Polaris cerca quale driver occupava quell\'indirizzo, tra quelli caricati e quelli scaricati da poco.' },
+      { t: 'table', head: ['Codice', 'Parametro con l\'indirizzo'], rows: [
+        ['0xA, 0xD1', 'P4'],
+        ['0x1E, 0x7E, 0x8E, 0x3B, 0x1000007E, 0x1000008E', 'P2'],
+        ['0x50', 'P3'],
+      ] },
+      { t: 'p', text: 'Negli altri casi Polaris esamina lo stack salvato, un valore alla volta, e prende il primo indirizzo che cade dentro un driver che non fa parte del nucleo di Windows: kernel e HAL compaiono in quasi ogni arresto e si saltano. È lo stesso principio dell\'esame manuale dello stack descritto da Microsoft e del metodo dichiarato da BlueScreenView.' },
+      { t: 'list', items: [
+        'è un **indizio**, non una certezza: nello stack restano anche valori di chiamate precedenti, e un driver può essere vittima di memoria danneggiata da altri, per esempio da RAM difettosa;',
+        'se lo stesso driver ritorna in più schermate blu il sospetto si rafforza: Polaris lo segnala con il giudizio "Driver ricorrente" da due minidump in su, una soglia scelta da Polaris;',
+        'un driver "già scaricato" non era più in memoria al momento dell\'arresto: il suo nome può essere troncato a 12 caratteri, come lo conserva Windows;',
+        'per gli errori segnalati dall\'hardware (0x124) e per gli arresti provocati di proposito (0xE2, 0x1C8) Polaris non indica driver;',
+        'il nome mostrato sulla schermata blu può essere diverso da quello indicato da Polaris: Windows lo ricava con informazioni che nel minidump non ci sono.',
+      ] },
+      { t: 'h', text: 'Che cosa fare' },
+      { t: 'list', ordered: true, items: [
+        '**Driver indicato più volte**: aggiornalo dal sito del produttore del PC o del dispositivo, oppure ripristina la versione precedente se le schermate blu sono cominciate dopo un aggiornamento.',
+        '**Memoria**: con codici come MEMORY_MANAGEMENT o PFN_LIST_CORRUPT, o con driver ogni volta diversi, prova la RAM con Diagnostica memoria Windows (`mdsched.exe`).',
+        '**Disco**: con KERNEL_DATA_INPAGE_ERROR, CRITICAL_PROCESS_DIED o UNEXPECTED_STORE_EXCEPTION controlla la salute e il collegamento del disco (vedi [[salute-dischi-smart]]).',
+        '**Temperature**: con errori hardware (0x124), della scheda video (0x116) o arresti sotto carico, guarda il monitor dei sensori (vedi [[sensori]]).',
+        '**Tecnico**: se le schermate blu continuano dopo questi passi, o compaiono errori hardware gravi, rivolgiti a un tecnico portando i file .dmp e il rapporto di Polaris.',
+      ] },
+      { t: 'h', text: 'I limiti dell\'analisi di Polaris' },
+      { t: 'list', items: [
+        'nessun simbolo di debug: Polaris non scarica nulla e non conosce i nomi delle funzioni, quindi non ricostruisce lo stack completo come WinDbg (`!analyze -v`);',
+        'dei minidump a 64 bit legge intestazione, driver e stack salvato; dei dump a 32 bit, del kernel e completi solo l\'intestazione;',
+        'il formato dei minidump non ha una documentazione Microsoft completa: Polaris usa le posizioni dei dati ricavate da fonti pubbliche e verificate con controlli incrociati; se i dati non tornano mostra solo l\'intestazione e lo dice;',
+        'legge al massimo i 50 minidump più recenti; nei rapporti mette solo i nomi dei file e dei driver, senza percorsi né nomi di processi;',
+        'la build scritta nel file è quella di base del kernel: per esempio 19041 anche su Windows 10 22H2, che è la build 19045.',
+      ] },
+      { t: 'note', kind: 'tip', title: 'Un secondo parere', text: 'BlueScreenView, incluso nella Cassetta degli attrezzi, legge gli stessi file e mostra l\'elenco completo dei driver. Per l\'analisi completa serve WinDbg, il debugger gratuito di Microsoft, che usa i simboli di debug scaricati dal server di Microsoft.' },
     ],
   },
   {

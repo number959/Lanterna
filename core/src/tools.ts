@@ -56,6 +56,8 @@ export const ACTION_TOOLS: Record<string, string[]> = {
   'update-gpu-driver': ['device-manager'],
   'firmware-security': ['recovery'],
   'dual-channel': ['system-info'],
+  'update-crash-driver': ['device-manager', 'windows-update'],
+  'test-memory': ['memory-diagnostic'],
 };
 
 export interface Tool {
@@ -256,7 +258,7 @@ export const TOOLS: Tool[] = [
     vendor: 'NirSoft',
     category: 'errori',
     what: 'Legge i file delle schermate blu e indica il driver coinvolto.',
-    polaris: 'Computer > Eventi: codice delle schermate blu con la spiegazione.',
+    polaris: 'Computer > Schermate blu: legge i minidump (da amministratore) con codice, parametri e driver indicato come indizio.',
     license: 'freeware, ridistribuibile gratuitamente e senza modifiche',
     site: 'https://www.nirsoft.net/utils/blue_screen_view.html',
     note: 'Legge i minidump in C:\\Windows\\Minidump: per vederli tutti chiede i permessi di amministratore.',

@@ -438,6 +438,8 @@ export interface PcData {
   bench?: BenchData;
   /** Che cosa occupa spazio, un rapporto per unità: su richiesta, unito dall'interfaccia come i test di velocità. */
   space?: SpaceReport[];
+  /** Schermate blu lette dai file di Windows (minidump) e impostazioni dei dump; assente se non lette. */
+  crashes?: CrashData;
   /** Limiti della raccolta (dati SMART solo da amministratore, PowerShell assente...). */
   notes?: string[];
 }
@@ -951,4 +953,83 @@ export interface SpaceHint {
   alloc: number;
   files?: number;
   nodeId?: number;
+}
+
+// ---------------------------------------------------------------- Schermate blu
+
+/**
+ * Schermate blu (arresti di sistema, "bug check") lette dai file che Windows
+ * salva: minidump della cartella di CrashControl e intestazione di
+ * MEMORY.DMP. Dei driver solo i nomi dei file; nessun percorso, nessun nome
+ * di processo.
+ */
+export interface CrashData {
+  readAt: string;
+  settings?: CrashSettings;
+  /** Cartella dei minidump: ok | missing (nessun arresto salvato) | denied (serve l'amministratore) | error. */
+  folder?: 'ok' | 'missing' | 'denied' | 'error';
+  /** Cartella o file non leggibili con i permessi di chi usa Polaris. */
+  needsAdmin?: boolean;
+  /** File .dmp nella cartella; `dumps` ne contiene al massimo 50, i più recenti prima. */
+  total: number;
+  dumps: CrashDump[];
+  /** Intestazione di MEMORY.DMP, se il file esiste. */
+  memoryDump?: CrashDump;
+  /** Lettura interrotta prima della fine. */
+  partial?: boolean;
+}
+
+/** Valori di HKLM\SYSTEM\CurrentControlSet\Control\CrashControl, letti senza modificarli. */
+export interface CrashSettings {
+  /** CrashDumpEnabled: 0 nessun file, 1 completo (memoria attiva con filterPages), 2 kernel, 3 piccolo (minidump), 7 automatico. */
+  dumpEnabled?: number;
+  filterPages?: boolean;
+  /** Come nel registro (%SystemRoot%\Minidump), con la cartella dell'utente sostituita da %USERPROFILE%. */
+  minidumpDir?: string;
+  dumpFile?: string;
+  autoReboot?: boolean;
+  overwrite?: boolean;
+  logEvent?: boolean;
+}
+
+export type CrashDumpType = 'triage' | 'kernel' | 'full' | 'header' | 'bitmap-full' | 'bitmap-kernel' | 'automatic' | 'kernel-user' | 'unknown';
+
+export interface CrashDump {
+  /** Solo il nome del file. */
+  file: string;
+  size: number;
+  /** Data del file, ISO 8601. */
+  modified?: string;
+  /** Ora dell'arresto scritta nel file (UTC); assente se non scritta. */
+  time?: string;
+  /** Esadecimale, "0x000000d1"; assente se non scritto nel file. */
+  code?: string;
+  /** P1..P4 in esadecimale ("" se non scritto): i valori a 64 bit superano gli interi esatti di JavaScript. */
+  params?: string[];
+  bits?: 32 | 64;
+  machine?: string;
+  /** Build di base di Windows (senza la revisione mensile). */
+  build?: number;
+  processors?: number;
+  dumpType?: CrashDumpType;
+  /** Driver caricati elencati nel minidump. */
+  drivers?: number;
+  /** Driver indicato come probabile causa: un indizio. */
+  probable?: CrashCulprit;
+  /** Moduli non del kernel trovati nello stack salvato, in ordine (al massimo 6). */
+  stack?: string[];
+  /** Perché ci sono solo i dati dell'intestazione: not-triage | 32bit | too-large | inconsistent. */
+  limited?: 'not-triage' | '32bit' | 'too-large' | 'inconsistent';
+  /** File non letto (per esempio senza amministratore). */
+  error?: string;
+}
+
+/** Driver indicato: dall'indirizzo nel parametro documentato del codice (param) o dal primo modulo non del kernel nello stack salvato (stack). */
+export interface CrashCulprit {
+  driver: string;
+  method: 'param' | 'stack';
+  param?: number;
+  offset?: string;
+  /** Il driver era già stato scaricato al momento dell'arresto. */
+  unloaded?: boolean;
 }

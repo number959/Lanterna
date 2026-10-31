@@ -1,5 +1,6 @@
 import { fmt, more, num, thousands } from './fmt';
 import { analyzeCerts } from './certs';
+import { analyzeCrashes } from './crash';
 import { ACTIONS } from './kb/actions';
 import { scoreAssessment } from './kb/assessment';
 import { analyzePc } from './pc';
@@ -1547,6 +1548,9 @@ export function analyze(scan: Scan): Analysis {
   analyzeFirewall(scan, c);
   analyzeInfra(scan, c);
   analyzePc(scan, (f) => c.add(f));
+  // Schermate blu dai minidump: cause ricorrenti e impostazioni, senza
+  // ripetere il conteggio di pc.events.bsod.
+  analyzeCrashes(scan, (f) => c.add(f));
 
   const findings = c.findings.sort((a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity]);
   const categories = scoreCategories(findings);

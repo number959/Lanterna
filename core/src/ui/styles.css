@@ -905,6 +905,24 @@ select.field { cursor: pointer; }
 .cert-fp dd { display: flex; align-items: flex-start; gap: 8px; }
 .cert-fp code { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-all; color: var(--text-2); }
 .cert-fp .btn { flex: none; }
+/* Schermate blu: riquadri dei minidump (stessa struttura dei certificati). */
+.crash-code { margin: 10px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.crash-code code { font-size: 13.5px; color: var(--text-2); }
+.crash-code b { font-weight: 650; overflow-wrap: anywhere; }
+.crash-meaning { margin: 4px 0 0; color: var(--text-2); font-size: 14px; }
+.cert-facts .crash-params { grid-column: 1 / -1; }
+.crash-plist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 2px 16px; }
+.crash-plist li { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.crash-plist code { font-size: 12.5px; overflow-wrap: anywhere; word-break: break-all; color: var(--text-2); }
+.crash-settings { margin-top: 14px; }
+.crash-settings .sev { white-space: normal; }
+.crash-event { border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 12px 14px; margin: 14px 0 0; min-width: 0; }
+.crash-event h3 { margin: 0; }
+.crash-event-when { margin: 4px 0 0; font-size: 13px; }
+.crash-empty { display: flex; align-items: flex-start; gap: 8px; margin: 16px 0 0; }
+.crash-empty svg { flex: none; margin-top: 3px; }
+.crash-admin { margin-top: 4px; }
+.crash-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 14px; }
 .roam { display: inline-flex; gap: 3px; }
 .rb { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; font: 650 11.5px/1 var(--mono); color: var(--text-3); border: 1px dashed var(--line-strong); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-3) 70%, transparent); }
 .rb.on { color: var(--ok); border: 1px solid var(--ok-line); background: var(--ok-bg); text-decoration: none; }

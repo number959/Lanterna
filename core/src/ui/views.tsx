@@ -39,6 +39,8 @@ import { monitorCsv, summarize } from './monitor';
 import type { MonitorEvent, MonitorSession } from './monitor';
 import type { SpaceTarget } from './space';
 import type { CertTargetRef } from './certs';
+import type { CrashTargetRef } from './crashes';
+import type { CrashData } from '../engine';
 import { cascade, ease, rise, spring, stagger } from './motion';
 
 export type View = 'overview' | 'pc' | 'wifi' | 'lan' | 'internet' | 'router' | 'infra' | 'plan' | 'monitor' | 'guide';
@@ -83,6 +85,12 @@ export interface ViewProps {
    * e, se non è richiesto il silenzio, lo dice all'utente.
    */
   addCerts: (r: CertData, target: CertTargetRef, quiet?: boolean) => boolean;
+  /**
+   * Sostituisce le schermate blu del rapporto con una nuova lettura, solo se
+   * il rapporto mostrato è ancora quello dell'agente su cui è partita;
+   * altrimenti lo dice all'utente e restituisce false.
+   */
+  addCrashes: (r: CrashData, target: CrashTargetRef) => boolean;
   /** Aggiorna parti dei dati del computer (per esempio lo stato di Defender dopo una scansione). */
   patchPc: (p: Partial<PcData>) => void;
   assessment: AssessmentState;
