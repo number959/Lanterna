@@ -58,6 +58,7 @@ import (
 	"time"
 
 	"lanterna/internal/bench"
+	"lanterna/internal/certs"
 	"lanterna/internal/collect"
 	"lanterna/internal/cpuclock"
 	"lanterna/internal/defender"
@@ -102,6 +103,12 @@ type Server struct {
 	reachMu    sync.Mutex
 	reachBusy  bool
 	reachLast  *scan.ReachData
+
+	// Certs controlla i certificati TLS dei servizi indicati (nil = non disponibile).
+	Certs     func(ctx context.Context, targets []scan.CertTarget) (*scan.CertData, error)
+	certsMu   sync.Mutex
+	certsBusy bool
+	certsLast *scan.CertData
 
 	// Test di velocità (nil = non disponibili). Non partono durante
 	// un'analisi e viceversa: si falserebbero a vicenda.
@@ -1141,6 +1148,57 @@ func (s *Server) Handler() http.Handler {
 		}
 		writeJSON(w, 200, map[string]bool{"opened": true})
 	})
+	mux.HandleFunc("POST /api/certs", func(w http.ResponseWriter, r *http.Request) {
+		if s.Certs == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "controllo dei certificati non disponibile"})
+			return
+		}
+		var body struct {
+			Targets []scan.CertTarget `json:"targets"`
+		}
+		if code, err := readJSON(w, r, &body); err != nil {
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := certs.Validate(body.Targets); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		s.certsMu.Lock()
+		if s.certsBusy {
+			s.certsMu.Unlock()
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "controllo dei certificati già in corso"})
+			return
+		}
+		s.certsBusy = true
+		s.certsMu.Unlock()
+		defer func() {
+			s.certsMu.Lock()
+			s.certsBusy = false
+			s.certsMu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+		defer cancel()
+		res, err := s.Certs(ctx, body.Targets)
+		if res == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": errText(err)})
+			return
+		}
+		s.certsMu.Lock()
+		s.certsLast = res
+		s.certsMu.Unlock()
+		writeJSON(w, 200, res)
+	})
+	mux.HandleFunc("GET /api/certs", func(w http.ResponseWriter, r *http.Request) {
+		s.certsMu.Lock()
+		last := s.certsLast
+		s.certsMu.Unlock()
+		if last == nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		writeJSON(w, 200, last)
+	})
 	mux.HandleFunc("GET /api/reach", func(w http.ResponseWriter, r *http.Request) {
 		s.reachMu.Lock()
 		last := s.reachLast
@@ -1282,4 +1340,11 @@ func (s *Server) startFetch(ids []string, kit bool) error {
 		s.fetchRunning, s.fetchCancel, s.fetchQueue = false, nil, nil
 	}()
 	return nil
+}
+
+func errText(err error) string {
+	if err == nil {
+		return "controllo non riuscito"
+	}
+	return err.Error()
 }

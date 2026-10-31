@@ -303,7 +303,69 @@ type Assessment struct {
 type InfraData struct {
 	Inventory  *Inventory  `json:"inventory,omitempty"`
 	Reach      *ReachData  `json:"reach,omitempty"`
+	Certs      *CertData   `json:"certs,omitempty"`
 	Assessment *Assessment `json:"assessment,omitempty"`
+}
+
+// CertTarget è un servizio di cui controllare il certificato TLS: un nome o
+// un indirizzo della rete locale (anche un indirizzo https://...), con la
+// porta (443 se manca).
+type CertTarget struct {
+	Label string `json:"label,omitempty"`
+	Host  string `json:"host"`
+	Port  int    `json:"port,omitempty"`
+}
+
+// CertData raccoglie i certificati dei servizi indicati dall'utente.
+type CertData struct {
+	CheckedAt string       `json:"checkedAt"`
+	Results   []CertResult `json:"results"`
+}
+
+// CertResult è il certificato presentato da un servizio e come lo vede
+// questo PC. Le date sono RFC 3339; DaysLeft è negativo se è scaduto.
+type CertResult struct {
+	CertTarget
+	IP    string `json:"ip,omitempty"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+	// StartTLS: protocollo usato prima della cifratura ("smtp").
+	StartTLS   string `json:"starttls,omitempty"`
+	TLSVersion string `json:"tlsVersion,omitempty"`
+	Cipher     string `json:"cipher,omitempty"`
+	// LegacyOnly: il servizio offre solo TLS 1.0 o 1.1; LegacyToo: li
+	// accetta oltre a TLS 1.2 o 1.3.
+	LegacyOnly bool `json:"legacyOnly,omitempty"`
+	LegacyToo  bool `json:"legacyToo,omitempty"`
+	// ClientCert: il servizio chiede anche un certificato al client (TLS
+	// reciproco, per esempio un PACS DICOM).
+	ClientCert   bool     `json:"clientCert,omitempty"`
+	Subject      string   `json:"subject,omitempty"`
+	Org          string   `json:"org,omitempty"`
+	Issuer       string   `json:"issuer,omitempty"`
+	IssuerOrg    string   `json:"issuerOrg,omitempty"`
+	DNSNames     []string `json:"dnsNames,omitempty"`
+	IPs          []string `json:"ips,omitempty"`
+	NotBefore    string   `json:"notBefore,omitempty"`
+	NotAfter     string   `json:"notAfter,omitempty"`
+	DaysLeft     int      `json:"daysLeft"`
+	LifetimeDays int      `json:"lifetimeDays,omitempty"`
+	KeyType      string   `json:"keyType,omitempty"`
+	KeyBits      int      `json:"keyBits,omitempty"`
+	SigAlg       string   `json:"sigAlg,omitempty"`
+	// WeakSig: firma con SHA-1 o MD5.
+	WeakSig    bool `json:"weakSig,omitempty"`
+	SelfSigned bool `json:"selfSigned,omitempty"`
+	// NameMatch: il nome o l'indirizzo usato è tra quelli del certificato;
+	// CNOnly: il certificato ha solo il Common Name, senza nomi alternativi.
+	NameMatch bool `json:"nameMatch"`
+	CNOnly    bool `json:"cnOnly,omitempty"`
+	ChainLen  int  `json:"chainLen,omitempty"`
+	// Trust: come lo valuta Windows su questo PC, senza scaricare nulla:
+	// trusted, untrusted-root, partial-chain, invalid-signature, wrong-usage,
+	// distrusted; vuoto se non verificabile (fuori da Windows).
+	Trust       string `json:"trust,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"` // SHA-256 del certificato
 }
 
 // ---------- PC ----------

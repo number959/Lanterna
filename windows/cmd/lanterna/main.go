@@ -34,6 +34,7 @@ import (
 
 	"lanterna/internal/assets"
 	"lanterna/internal/bench"
+	"lanterna/internal/certs"
 	"lanterna/internal/collect"
 	"lanterna/internal/cpuclock"
 	"lanterna/internal/defender"
@@ -96,6 +97,11 @@ Uso:
                                  legge solo l'elenco dei file e non cancella nulla
       --top N                    quanti file più grandi mostrare (predefinito 20)
       --json                     stampa il risultato completo in JSON
+  polaris-cli certs SERVIZIO...  certificati TLS dei servizi della rete locale (gestionale,
+                                 PACS, NAS, pannello del router, posta): scadenza, nomi,
+                                 emittente, versione di TLS; solo indirizzi privati.
+                                 Esempi: nas.local  192.168.1.10:8443  https://pacs.local
+      --json                     stampa il risultato in JSON
   polaris-cli tools status       versioni portable scaricate (su questo PC e nel kit)
   polaris-cli tools kit [ID...]  prepara il kit per l'uso senza Internet: scarica dai
                                  siti ufficiali e verifica i programmi nella cartella
@@ -143,6 +149,8 @@ func main() {
 		err = runSensors(args[1:])
 	case args[0] == "space":
 		err = runSpace(args[1:])
+	case args[0] == "certs":
+		err = runCerts(args[1:])
 	case args[0] == "version" || args[0] == "--version":
 		eng, e := engine.Load(nil)
 		ev := "non incluso"
@@ -288,8 +296,11 @@ func startServer(port int) (*server.Server, string, error) {
 		CPUClock:      clock.Read,
 		Sensors:       mon.Read,
 		SpaceScan:     space.Scan,
-		SpaceOpen:     space.Open,
-		OpenTool:      func(id, target string) error { return tools.Open(id, target, fetcher) },
+		Certs: func(ctx context.Context, t []scan.CertTarget) (*scan.CertData, error) {
+			return certs.Check(ctx, t, certs.Options{})
+		},
+		SpaceOpen: space.Open,
+		OpenTool:  func(id, target string) error { return tools.Open(id, target, fetcher) },
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = httpSrv.Serve(ln) }()

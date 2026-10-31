@@ -1010,3 +1010,57 @@ func TestSpaceEndpoint(t *testing.T) {
 		t.Fatalf("errore: %+v", st)
 	}
 }
+
+func TestCertsEndpoint(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	post := func(body string) *httptest.ResponseRecorder {
+		return doBody(t, h, "POST", "/api/certs", "application/json", body)
+	}
+	if r := post(`{"targets":[{"host":"nas.local"}]}`); r.Code != http.StatusNotImplemented {
+		t.Fatalf("non disponibile: %d", r.Code)
+	}
+	release := make(chan struct{})
+	var got []scan.CertTarget
+	s.Certs = func(ctx context.Context, targets []scan.CertTarget) (*scan.CertData, error) {
+		got = targets
+		<-release
+		return &scan.CertData{CheckedAt: "2026-10-31T09:00:00Z", Results: []scan.CertResult{{CertTarget: targets[0], OK: true, Subject: "nas.local", DaysLeft: 20, NameMatch: true}}}, nil
+	}
+	if r := do(t, h, "GET", "/api/certs", nil); r.Code != http.StatusNoContent {
+		t.Fatalf("prima del controllo: %d", r.Code)
+	}
+	for _, body := range []string{`{"targets":[]}`, `{"targets":[{"host":"nas local"}]}`, `{"targets":[{"host":"nas.local","port":70000}]}`} {
+		if r := post(body); r.Code != http.StatusBadRequest {
+			t.Fatalf("%s: %d", body, r.Code)
+		}
+	}
+	if r := doBody(t, h, "POST", "/api/certs", "text/plain", `{"targets":[{"host":"nas.local"}]}`); r.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("corpo non JSON: %d", r.Code)
+	}
+	done := make(chan *httptest.ResponseRecorder)
+	go func() { done <- post(`{"targets":[{"label":"NAS","host":"nas.local","port":5001}]}`) }()
+	for i := 0; i < 200; i++ {
+		s.certsMu.Lock()
+		busy := s.certsBusy
+		s.certsMu.Unlock()
+		if busy {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if r := post(`{"targets":[{"host":"nas.local"}]}`); r.Code != http.StatusConflict {
+		t.Fatalf("doppio controllo: %d", r.Code)
+	}
+	close(release)
+	r := <-done
+	if r.Code != 200 || !strings.Contains(r.Body.String(), `"subject":"nas.local"`) || len(got) != 1 || got[0].Port != 5001 || got[0].Label != "NAS" {
+		t.Fatalf("controllo: %d %s %+v", r.Code, r.Body, got)
+	}
+	if r := do(t, h, "GET", "/api/certs", nil); r.Code != 200 || !strings.Contains(r.Body.String(), "nas.local") {
+		t.Fatalf("ultimo controllo: %d", r.Code)
+	}
+	if r := do(t, h, "POST", "/api/certs", map[string]string{"Origin": "https://evil.example", "Content-Type": "application/json"}); r.Code != http.StatusForbidden {
+		t.Fatalf("da altra origine: %d", r.Code)
+	}
+}
