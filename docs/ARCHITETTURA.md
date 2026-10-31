@@ -31,6 +31,7 @@ nome, che non compare più all'utente.
    │   wlan/ ie/ netsh/  interpretazione byte per byte, collaudata ovunque   │
    │   probe/   DNS, UPnP/SSDP, porte e pannello del router, HTTPS          │
    │   infra/   inventario e verifiche su richiesta, ritmo prudente          │
+   │   certs/   certificati TLS dei servizi interni, su richiesta            │
    │   pcinfo/  dati del computer: API native + uno script PowerShell        │
    │   bench/   test di velocità di processore e dischi, su richiesta        │
    │   pdh/     contatori delle prestazioni di Windows (nomi inglesi)       │
@@ -137,6 +138,10 @@ Organizzazione di `core/src/ui/`:
   che non inventano picchi; il monitor scorre in modo continuo invece che a scatti.
 - `guides.tsx` e `diagrams.tsx`: il centro guide (biblioteca, lettore con indice, glossario, riferimento delle soglie, ricerca) e i
   diagrammi SVG animati all'ingresso nella vista, fermi con "riduci movimento".
+- `certs.tsx`: "Servizi con connessione cifrata" nell'Infrastruttura. I servizi si ricordano per rete (gateway); il controllo in
+  corso e l'ultimo errore vivono a livello di modulo. Il risultato entra nel rapporto in `infra.certs` solo se il rapporto
+  mostrato è ancora quello della stessa rete e della stessa origine (`addCerts` con `sameCertTarget`, come per lo spazio).
+  Giudizi e soglie in `engine/certs.ts`; nella demo `simulatedCerts` produce esiti coerenti con l'analisi.
 - `infra.tsx`: la sezione Infrastruttura. L'inventario vive a livello di modulo, quindi prosegue anche cambiando pagina; senza
   agente (demo) inventario e verifiche sono simulati da `demo/simulate.ts` e dichiarati come tali; con un rapporto importato si
   consultano solo i risultati salvati.
@@ -200,6 +205,7 @@ rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFIC
 | Dominio e DHCP | `GetComputerNameExW(ComputerNameDnsDomain)`; suffisso DNS e `Dhcpv4Server` da `GetAdaptersAddresses` | il server DHCP solo se la struttura restituita lo contiene |
 | Inventario (su richiesta) | `IcmpSendEcho` a ogni indirizzo della sottorete (circa 30 al secondo, 8 in parallelo), poi `GetIpNetTable`, DNS inverso e richiesta NetBIOS *node status* (UDP 137) ai soli dispositivi trovati | solo reti private; oltre /22 solo il blocco /24 del PC; interruzione dopo 4 minuti |
 | Verifiche (su richiesta) | connessione TCP alla porta indicata (aperta, chiusa con rifiuto, filtrata) o due ping; nomi risolti prima, preferendo IPv4 | solo destinazioni private, al massimo 64, 4 alla volta |
+| Certificati (su richiesta) | `crypto/tls` di Go con `InsecureSkipVerify` e `VerifyConnection` per leggere la catena senza rifiutarla; seconda negoziazione limitata a TLS 1.0/1.1 (`tls.InsecureCipherSuites`) per sapere se il servizio li accetta ancora; con TLS 1.3 la richiesta di un certificato client si vede da una lettura di un secondo dopo la negoziazione; SMTP con `EHLO` (l'indirizzo IP del PC, mai il nome) e `STARTTLS` sulle porte 25 e 587. Attendibilità con `CertGetCertificateChain` (archivio dell'utente, intermedi della catena in un archivio in memoria, uso `serverAuth`, `CACHE_ONLY_URL_RETRIEVAL`, `DISABLE_AUTH_ROOT_AUTO_UPDATE`: niente download) e stato tradotto in attendibile, radice non riconosciuta, catena incompleta, firma non valida, uso non previsto, revocato o non attendibile per scelta; scadenza calcolata dalle date | solo indirizzi privati, loopback e link-local: un nome deve portare solo a indirizzi privati e si provano, prima gli IPv4, finché uno risponde; al massimo 20 servizi, 4 alla volta, 3 s per collegarsi e 6 s per la negoziazione; si chiude subito, senza inviare dati (per la posta solo `EHLO` e `STARTTLS`) |
 | Computer: sistema | `RtlGetVersion`, registro (`CurrentVersion`, `CentralProcessor`, `HiberbootEnabled`, chiavi dei riavvii in sospeso), `GetTickCount64`, `GlobalMemoryStatusEx`, `GetSystemPowerStatus`, `PowerGetActiveScheme` | Windows 11 riconosciuto dalla build (il registro dice ancora "Windows 10") |
 | Computer: volumi | `GetLogicalDriveStrings`, `GetDriveType`, `GetDiskFreeSpaceEx`, `GetVolumeInformation` | solo dischi locali e rimovibili: niente unità di rete o CD |
 | Computer: avvio e processi | chiavi `Run` (utente, computer, 32 bit), cartelle di esecuzione automatica, `StartupApproved`; Toolhelp32 + `GetProcessTimes` + `K32GetProcessMemoryInfo` su 1,5 s a fine analisi | cartella dell'utente sostituita da `%USERPROFILE%`; processi raggruppati per nome |
@@ -241,6 +247,8 @@ per la console, comoda negli script.
 | `GET /api/inventory` | avanzamento (`ping`, poi `nomi`), eventuale errore e ultimo inventario |
 | `POST /api/reach` | corpo `{"targets": [{"label", "host", "port", "expect": "reachable"\|"isolated"}]}`: esiti delle verifiche (sincrono, al massimo 2 minuti); `400` se le destinazioni non sono valide, `409` se ne è già in corso una |
 | `GET /api/reach` | ultime verifiche, oppure `204` |
+| `POST /api/certs` | corpo `{"targets": [{"label", "host", "port"}]}` (`host` anche come `nome:porta` o `https://…`, porta predefinita 443): esito per ogni servizio (sincrono, al massimo 2 minuti, 4 servizi alla volta); `400` se i servizi non sono validi (più di 20, porta fuori intervallo, nome non valido), `409` se ne è già in corso uno, `501` se non disponibile |
+| `GET /api/certs` | ultimo controllo dei certificati, oppure `204` |
 | `POST /api/bench` | corpo `{"kind": "cpu"}` oppure `{"kind": "disk", "drive": "C:", "confirm": true}`: `202` avvia il test; `400` senza conferma o con unità non valida, `422` se l'unità non è un disco locale o rimovibile, `409` se c'è un test, un'analisi o un'analisi dello spazio in corso |
 | `GET /api/bench` | test in corso con fase e avanzamento (campioni al secondo per il processore), eventuale errore e ultimi risultati |
 | `DELETE /api/bench` | interrompe il test in corso; il file temporaneo del test del disco viene cancellato |

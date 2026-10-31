@@ -176,7 +176,7 @@ serie.
 | Internet | latenza, perdite e jitter verso Cloudflare, Google e Quad9, traceroute, MTU del percorso, navigazione HTTPS reale |
 | DNS | tempo di risposta del DNS in uso e confronto con i resolver pubblici |
 | Router e sicurezza | servizi esposti dal *proprio* router (Telnet, FTP, SMB…), UPnP IGD e indirizzo pubblico, pannello di gestione HTTP/HTTPS, profili del firewall di Windows |
-| Infrastruttura (su richiesta) | inventario della sottorete, test di segmentazione tra le zone, raggiungibilità e tempi dei servizi critici, autovalutazione organizzativa in sei aree |
+| Infrastruttura (su richiesta) | inventario della sottorete, test di segmentazione tra le zone, raggiungibilità e tempi dei servizi critici, certificati dei servizi interni (scadenza, nomi, emittente, versione di TLS, attendibilità su questo PC), autovalutazione organizzativa in sei aree |
 | Monitor | un ping al secondo verso router e Internet per tutta la sessione (fino a 12 ore, anche cambiando sezione), con picchi, interruzioni e relativa ora; esportazione CSV |
 
 ## Reti complesse e strutture sanitarie
@@ -195,6 +195,12 @@ e **senza scansioni di porte**.
   clinica, PACS, HL7, DNS, controller di dominio…) e quelle che devono restare isolate (dispositivi medicali, gestione degli
   apparati, telecamere, ospiti). Per ognuna una connessione TCP alla porta indicata o due ping; le destinazioni si ricordano per
   rete. Una risposta da una zona che doveva essere isolata è un problema critico.
+- **Certificati dei servizi interni**: si indicano i servizi cifrati della rete locale (cartella clinica, PACS su DICOM TLS,
+  NAS, pannello del router, posta con STARTTLS, LDAPS) e Polaris legge il certificato durante la negoziazione TLS, poi chiude
+  senza inviare dati né credenziali. Per ognuno: scadenza e durata, nomi coperti, emittente o autofirmato, chiave e firma,
+  versione di TLS (e se il servizio accetta ancora TLS 1.0/1.1), richiesta di un certificato client, impronta SHA-256 e
+  attendibilità come la vede Windows su questo PC, con i soli certificati già presenti (niente download, niente controllo della
+  revoca). Solo indirizzi privati, al massimo 20 servizi; un nome deve portare solo a indirizzi privati.
 - **Autovalutazione**: 28 domande su segmentazione, dispositivi medicali, accessi e fornitori, backup, continuità e gestione
   degli incidenti. Le risposte restano sul PC ed entrano nel rapporto; ogni lacuna aggiunge al piano l'azione corrispondente. È
   una dichiarazione, non una verifica, e non sostituisce un audit.
@@ -253,6 +259,7 @@ polaris-cli tools status            programmi scaricati, sul PC e nel kit
 polaris-cli clock                   velocità dei core in tempo reale (--seconds N, --json)
 polaris-cli sensors --seconds 600 --csv sensori.csv   sensori come HWiNFO, con registro per Excel (--all, --json)
 polaris-cli space C: --top 30       cosa occupa spazio, come WizTree (anche una cartella; --json)
+polaris-cli certs nas.studio.local:5001 10.0.0.5   certificati dei servizi della rete locale (--json)
 ```
 
 Su Windows 11 24H2 e successivi la lettura delle reti Wi-Fi richiede il permesso di posizione per le app desktop: Polaris lo

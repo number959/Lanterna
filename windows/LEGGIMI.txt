@@ -98,6 +98,9 @@ RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
   polaris-cli space C:                cosa occupa spazio, come WizTree: anche
                                       una cartella; --top N per i file piu'
                                       grandi (predefinito 20), --json
+  polaris-cli certs SERVIZIO...       certificati TLS dei servizi della rete
+                                      locale (nome, IP, nome:porta o
+                                      https://...), --json
 
 STRUMENTI INCLUSI
   Nella cartella strumenti ci sono CrystalDiskInfo 9.9.2 e CrystalDiskMark
@@ -146,6 +149,10 @@ PRIVACY
   richiesta, solo verso indirizzi privati, con un ritmo prudente e senza
   scansioni di porte. Avviali solo su reti che sei autorizzato ad analizzare
   e, dove ci sono dispositivi medicali, d'accordo con l'ingegneria clinica.
+  Il controllo dei certificati dei servizi interni si collega solo ai
+  servizi che indichi (indirizzi privati), legge il certificato durante la
+  negoziazione TLS e chiude senza inviare dati; l'attendibilita' e' quella di
+  Windows su questo PC, senza scaricare nulla.
   I dati del computer si leggono senza modificare nulla. I test di velocita'
   partono solo su richiesta; quello del disco chiede conferma, lascia almeno
   2 GB liberi e cancella il file di prova anche se viene interrotto.
