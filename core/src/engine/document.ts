@@ -309,7 +309,9 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
         crashFiles.length
           ? `<table class="pd-table"><thead><tr><th>Data</th><th>Codice di arresto</th><th>Driver indicato (indizio)</th><th>File</th></tr></thead><tbody>${[...shown, ...(crashes.memoryDump ? [crashes.memoryDump] : [])]
               .map(row)
-              .join('')}</tbody></table>${crashes.total > shown.length ? `<p class="pd-muted pd-small">Mostrati i ${shown.length} minidump più recenti su ${crashes.total}.</p>` : ''}`
+              .join('')}</tbody></table>${crashes.total > shown.length ? `<p class="pd-muted pd-small">Mostrati i ${shown.length} minidump più recenti su ${crashes.total}.</p>` : ''}${
+              crashes.partial ? '<p class="pd-muted pd-small">Lettura interrotta prima della fine: l\'elenco può essere incompleto.</p>' : ''
+            }`
           : ''
       }<p class="pd-small">Salvataggio dopo una schermata blu: ${esc(crashSetting(s))}${s?.autoReboot !== undefined ? `; riavvio automatico ${s.autoReboot ? 'sì' : 'no'}` : ''}${s?.logEvent === false ? '; evento nel registro di sistema disattivato' : ''}.</p>${
         crashes.needsAdmin ? '<p class="pd-small"><b>Per leggere i file delle schermate blu serve avviare Polaris come amministratore.</b></p>' : ''

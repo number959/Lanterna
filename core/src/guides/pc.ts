@@ -646,7 +646,7 @@ export const pc: Guide[] = [
     actions: ['update-crash-driver', 'test-memory', 'check-disk-errors', 'check-temperatures', 'enable-minidump', 'read-crash-files', 'diagnose-bsod'],
     tags: ['minidump', 'dump', 'memory.dmp', 'schermata blu', 'bsod', 'bug check', 'codice di arresto', 'stop code', 'parametri', 'driver', 'driver scaricato', 'stack', 'crashcontrol', 'avvio e ripristino', 'amministratore', 'bluescreenview', 'windbg', 'simboli', 'mdsched', '0xd1', 'irql', 'polaris-cli crashes'],
     blocks: [
-      { t: 'p', text: 'Davanti a un errore che non può gestire Windows si ferma con la schermata blu e, prima di ripartire, salva un file con lo stato del sistema: il **dump della memoria**. Il più piccolo, il **minidump**, contiene il codice di arresto, i quattro parametri, l\'elenco dei driver caricati e di quelli scaricati da poco, e una parte dello stack del thread che si è fermato. Polaris lo legge come BlueScreenView, senza programmi esterni. Il conteggio delle schermate blu degli ultimi 30 giorni viene invece dal registro eventi (vedi [[registro-eventi]]).' },
+      { t: 'p', text: 'Davanti a un errore che non può gestire Windows si ferma con la schermata blu e, prima di ripartire, salva un file con lo stato del sistema: il **dump della memoria**. Il più piccolo, il **minidump**, contiene il codice di arresto, i quattro parametri, l\'elenco dei driver caricati e di quelli scaricati da poco, e una parte dello stack del thread che si è fermato. Polaris lo legge come BlueScreenView, senza programmi esterni. Il conteggio delle schermate blu degli ultimi 30 giorni viene invece dal registro eventi (vedi [[registro-eventi]]); se i minidump dello stesso periodo sono di più, per esempio perché il registro è stato svuotato, vale il loro numero.' },
       { t: 'h', text: 'Dove li salva Windows' },
       { t: 'table', head: ['File', 'Dove', 'Che cosa contiene'], rows: [
         ['minidump', '`C:\\Windows\\Minidump`, un file per arresto, con nomi come `092726-8421-01.dmp`', 'codice, parametri, driver, parte dello stack; di solito da qualche centinaio di KB a qualche MB'],
@@ -668,7 +668,7 @@ export const pc: Guide[] = [
         ['0x1E, 0x7E, 0x8E, 0x3B, 0x1000007E, 0x1000008E', 'P2'],
         ['0x50', 'P3'],
       ] },
-      { t: 'p', text: 'Negli altri casi Polaris esamina lo stack salvato, un valore alla volta, e prende il primo indirizzo che cade dentro un driver che non fa parte del nucleo di Windows: kernel e HAL compaiono in quasi ogni arresto e si saltano. È lo stesso principio dell\'esame manuale dello stack descritto da Microsoft e del metodo dichiarato da BlueScreenView.' },
+      { t: 'p', text: 'Negli altri casi Polaris esamina lo stack salvato, un valore alla volta, e prende il primo indirizzo che cade dentro un driver che non fa parte del nucleo di Windows: kernel e HAL compaiono in quasi ogni arresto e si saltano. Gli altri driver di Windows, per esempio quelli della rete o della grafica, non si saltano e possono essere indicati. È lo stesso principio dell\'esame manuale dello stack descritto da Microsoft e del metodo dichiarato da BlueScreenView.' },
       { t: 'list', items: [
         'è un **indizio**, non una certezza: nello stack restano anche valori di chiamate precedenti, e un driver può essere vittima di memoria danneggiata da altri, per esempio da RAM difettosa;',
         'se lo stesso driver ritorna in più schermate blu il sospetto si rafforza: Polaris lo segnala con il giudizio "Driver ricorrente" da due minidump in su, una soglia scelta da Polaris;',

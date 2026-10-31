@@ -41,12 +41,14 @@ export {
   crashCode,
   crashCodes,
   crashDrivers,
+  crashFolderText,
   crashRead,
   crashSetting,
   crashSummary,
   crashWhen,
   culpritHow,
   lastBugcheckEvent,
+  noCulpritText,
   parseBugcheckEvent,
 } from './crash';
 export type { BugcheckInfo, CrashFamily, CrashGroup } from './crash';

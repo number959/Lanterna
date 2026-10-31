@@ -13,10 +13,12 @@ import {
   crashCode,
   crashCodes,
   crashDrivers,
+  crashFolderText,
   crashSummary,
   documentParts,
   lastBugcheckEvent,
   METRICS,
+  noCulpritText,
   parseBugcheckEvent,
   renderText,
 } from '../src/engine';
@@ -24,7 +26,7 @@ import type { CrashData, CrashDump, EventGroup, Finding, PcData, Scan } from '..
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { ACTION_TOOLS } from '../src/tools';
-import { crashBadge, noCulpritText, sameCrashTarget } from '../src/ui/crashes';
+import { crashBadge, sameCrashTarget } from '../src/ui/crashes';
 import { GLOSSARY, guideById } from '../src/guides';
 
 // Schermate blu dai minidump: giudizi del motore senza doppioni rispetto a
@@ -172,6 +174,20 @@ describe('giudizi', () => {
     // Gli arresti provocati a mano non sono un problema da cercare.
     const manual = data([dump({ code: '0x000000e2' }), dump({ code: '0x000000e2' })]);
     expect(crashFindings(scanWith(manual))).toEqual([]);
+    // ...e non nascondono un altro codice che si ripete, anche se sono di più.
+    const tests = data([
+      dump({ code: '0x000000e2' }),
+      dump({ code: '0x000000e2' }),
+      dump({ code: '0x000000e2' }),
+      dump({ code: '0x0000001a' }),
+      dump({ code: '0x0000001a', time: '2026-09-01T10:00:00Z' }),
+    ]);
+    expect(crashCodes(tests)[0].key).toBe('0x000000e2');
+    const f2 = byId(scanWith(tests), 'pc.crash.code')!;
+    expect(f2.severity).toBe('warn');
+    expect(f2.value).toBe('0x0000001a: 2 su 5');
+    expect(f2.verdict).toContain('MEMORY_MANAGEMENT');
+    expect(f2.actions).toEqual(['test-memory', 'diagnose-bsod']);
     // Con un driver ricorrente il codice è già nel suo giudizio.
     const both = data([dump({ probable: { driver: 'acmenet.sys', method: 'param', param: 4 } }), dump({ probable: { driver: 'acmenet.sys', method: 'param', param: 4 } })]);
     expect(crashFindings(scanWith(both)).map((x) => x.id)).toEqual(['pc.crash.driver']);
@@ -231,6 +247,52 @@ describe('giudizi', () => {
   });
 });
 
+describe('conteggio delle schermate blu (pc.events.bsod) con i minidump', () => {
+  const bsodOf = (s: Scan) => analyze(s).findings.filter((f) => f.metric === 'pc.events.bsod');
+
+  it('un minidump recente che il registro eventi non riporta non lascia il giudizio "nessuna"', () => {
+    const s = scanWith(data([dump({})]), []);
+    const b = bsodOf(s);
+    expect(b).toHaveLength(1);
+    expect(b[0].severity).toBe('warn');
+    expect(b[0].value).toBe('1 in 30 giorni');
+    expect(b[0].verdict).toContain('l\'ultima il 10 ottobre 2026');
+    expect(b[0].verdict).toContain('0x000000d1 DRIVER_IRQL_NOT_LESS_OR_EQUAL');
+    expect(b[0].verdict).toContain('Il numero viene dai file delle schermate blu (minidump): il registro eventi non ne riporta nessuna');
+    expect(b[0].actions).toEqual(['diagnose-bsod']);
+    // Nessun giudizio doppio sulle stesse schermate blu.
+    expect(crashFindings(s)).toEqual([]);
+    expect(renderText(s, analyze(s), {})).not.toContain('Schermate blu: nessuna');
+    // Con LogEvent spento il motivo è noto.
+    const noLog = scanWith(data([dump({})], { settings: { dumpEnabled: 3, logEvent: false } }), []);
+    expect(bsodOf(noLog)[0].verdict).toContain('e Windows è impostato per non annotarle');
+  });
+
+  it('evento e file della stessa schermata blu non si sommano; vale il numero più alto', () => {
+    expect(bsodOf(scanWith(data([dump({})]), [bsodEvent(1)]))[0]).toMatchObject({ value: '1 in 30 giorni', severity: 'warn' });
+    expect(bsodOf(scanWith(data([dump({})]), [bsodEvent(1)]))[0].verdict).not.toContain('minidump');
+    expect(bsodOf(scanWith(data([dump({})]), [bsodEvent(3)]))[0].value).toBe('3 in 30 giorni');
+    const two = bsodOf(scanWith(data([dump({}), dump({ time: '2026-10-01T08:00:00Z', code: '0x0000001a' })]), [bsodEvent(1)]))[0];
+    expect(two).toMatchObject({ value: '2 in 30 giorni', severity: 'crit' });
+    expect(two.verdict).toContain('il registro eventi ne riporta solo una');
+    expect(two.verdict).toContain('0x0000001a MEMORY_MANAGEMENT');
+    expect(two.actions).toEqual(['diagnose-bsod', 'check-hardware']);
+  });
+
+  it('contano solo i minidump letti dentro la finestra degli eventi', () => {
+    const old = scanWith(data([dump({ time: '2026-09-01T10:00:00Z' })]), []);
+    expect(bsodOf(old)[0]).toMatchObject({ value: 'nessuna', severity: 'ok' });
+    const unread = scanWith(data([dump({ error: 'file non leggibile', code: undefined }), dump({ code: undefined })]), []);
+    expect(bsodOf(unread)[0].value).toBe('nessuna');
+    // Senza l'ora scritta nel file vale la data del file.
+    const byFile = scanWith(data([dump({ time: undefined, modified: '2026-10-11T08:00:00Z' })]), []);
+    expect(bsodOf(byFile)[0].value).toBe('1 in 30 giorni');
+    // La demo resta coerente: un evento e un minidump nella finestra.
+    expect(bsodOf(demoScan)[0].value).toBe('1 in 30 giorni');
+    expect(bsodOf(demoScan)[0].verdict).not.toContain('Il numero viene dai file');
+  });
+});
+
 describe('demo', () => {
   it('casa: minidump dal più recente, driver di fantasia, coerenti con l\'evento 1001', () => {
     const c = demoScan.pc!.crashes!;
@@ -265,7 +327,20 @@ describe('interfaccia', () => {
     expect(crashBadge(dump({ code: undefined }))).toEqual({ sev: 'unknown', label: 'codice non scritto' });
     expect(noCulpritText(dump({ code: '0x00000124' }))).toContain('hardware');
     expect(noCulpritText(dump({ limited: 'inconsistent' }))).toContain('solo l\'intestazione');
-    expect(noCulpritText(dump({}))).toContain('nessun driver di terze parti');
+    expect(noCulpritText(dump({}))).toBe('nessun driver fuori dal nucleo di Windows (kernel e HAL) nello stack salvato');
+    expect(noCulpritText(dump({ code: '0x000000e2' }))).toContain('di proposito');
+    expect(noCulpritText(dump({ code: undefined }))).toBe('non cercato: codice non scritto nel file');
+    expect(noCulpritText(dump({ dumpType: 'kernel', limited: 'not-triage' }))).toContain('solo l\'intestazione');
+  });
+
+  it('stato della cartella dei minidump', () => {
+    expect(crashFolderText(data([dump({})]))).toBe('1 file');
+    expect(crashFolderText(data([]))).toBe('nessun file');
+    expect(crashFolderText(data([], { folder: 'missing' }))).toBe('nessun file');
+    expect(crashFolderText(data([], { folder: 'denied', needsAdmin: true }))).toBe('cartella non leggibile');
+    expect(crashFolderText(data([], { folder: 'error' }))).toBe('cartella non leggibile');
+    expect(crashFolderText({ readAt: '2026-10-15T09:00:00Z', total: 0, dumps: [], partial: true })).toBe('lettura non finita in tempo');
+    expect(crashFolderText(data([dump({})], { partial: true }))).toBe('1 file, lettura interrotta prima della fine');
   });
 });
 
@@ -289,6 +364,9 @@ describe('documento e rapporto', () => {
     expect(sec).toContain('dump automatico');
     expect(sec).toContain('indizio, non una certezza');
     for (const bad of ['%USERPROFILE%', 'Minidump', '\\Dump', 'SystemRoot', 'C:\\']) expect(sec, bad).not.toContain(bad);
+    expect(sec).not.toContain('Lettura interrotta');
+    s.pc!.crashes!.partial = true;
+    expect(documentParts(s, analyze(s)).body).toContain('Lettura interrotta prima della fine: l\'elenco può essere incompleto.');
   });
 
   it('senza amministratore il documento lo dice; senza schermate blu non ha la sezione', () => {
@@ -303,7 +381,9 @@ describe('documento e rapporto', () => {
     expect(txt).toContain(' Schermate blu nei minidump: 4 file; salvataggio: dump automatico');
     expect(txt).toContain('27/09/2026 0x0000009f DRIVER_POWER_STATE_FAILURE; indizio: acmewlan.sys');
     expect(txt).toContain('(parametro 4)');
-    expect(txt).toContain('MEMORY_MANAGEMENT; nessun driver di terze parti');
+    expect(txt.replace(/\s+/g, ' ')).toContain('MEMORY_MANAGEMENT; nessun driver indicato fuori dal nucleo di Windows (060326-5121-01.dmp)');
+    const sec = txt.slice(txt.indexOf('Schermate blu nei minidump'), txt.indexOf('(060326-5121-01.dmp)'));
+    expect(sec).not.toContain('terze parti');
     expect(txt).not.toContain('Minidump\\');
     for (const line of txt.split('\n')) expect(line.length, line).toBeLessThanOrEqual(90);
     const denied = scanWith(data([], { folder: 'denied', needsAdmin: true }), [bsodEvent(1)]);
@@ -311,6 +391,13 @@ describe('documento e rapporto', () => {
     expect(t2).toContain('Schermate blu nei minidump: cartella non leggibile');
     expect(t2.replace(/\s+/g, ' ')).toContain('Per leggere i file delle schermate blu serve avviare Polaris come amministratore.');
     expect(crashSummary(dump({ code: '0x000000e2' }))).toBe('0x000000e2 MANUALLY_INITIATED_CRASH');
+    expect(crashSummary(dump({ code: '0x00000124' }))).toBe('0x00000124 WHEA_UNCORRECTABLE_ERROR; nessun driver: errore segnalato dall\'hardware');
+    expect(crashSummary(dump({ code: undefined }))).toBe('codice non scritto nel file');
+    // Cartella illeggibile per un errore che non è di permessi: non è "nessun file".
+    const broken = scanWith(data([], { folder: 'error' }));
+    expect(renderText(broken, analyze(broken), {})).toContain('Schermate blu nei minidump: cartella non leggibile');
+    const unfinished = scanWith({ readAt: '2026-10-15T09:00:00Z', total: 0, dumps: [], partial: true });
+    expect(renderText(unfinished, analyze(unfinished), {})).toContain('Schermate blu nei minidump: lettura non finita in tempo');
   });
 
   it('il motore della riga di comando (ES2015, goja) dà gli stessi giudizi, documento e rapporto', async () => {
@@ -323,7 +410,13 @@ describe('documento e rapporto', () => {
     vm.createContext(ctx);
     vm.runInContext(code, ctx);
     const engine = ctx.PolarisEngine as { analyzeJson(s: string): string; reportText(s: string, v: boolean): string; reportHtml(s: string, v: string, g: string): string };
-    for (const s of [demoScan, scanWith(data([], { folder: 'denied', needsAdmin: true, settings: { dumpEnabled: 0 } }), [bsodEvent(2)])]) {
+    const scans = [
+      demoScan,
+      scanWith(data([], { folder: 'denied', needsAdmin: true, settings: { dumpEnabled: 0 } }), [bsodEvent(2)]),
+      // Minidump che il registro eventi non riporta, con un codice ricorrente dopo arresti provocati.
+      scanWith(data([dump({ code: '0x000000e2' }), dump({ code: '0x000000e2' }), dump({ code: '0x0000001a' }), dump({ code: '0x0000001a' })], { partial: true }), []),
+    ];
+    for (const s of scans) {
       const json = JSON.stringify(s);
       expect(JSON.parse(engine.analyzeJson(json))).toEqual(JSON.parse(JSON.stringify(analyze(s))));
       expect(engine.reportText(json, true)).toBe(renderText(s, analyze(s), { verbose: true }));

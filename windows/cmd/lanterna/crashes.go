@@ -126,8 +126,12 @@ func printCrashes(d *scan.CrashData, loc *time.Location) {
 	}
 	fmt.Println()
 	switch {
+	case d.Partial && d.Folder == "":
+		fmt.Println("Lettura dei file delle schermate blu non finita in tempo.")
 	case d.Folder == "denied":
 		fmt.Println("Cartella dei minidump non leggibile.")
+	case d.Folder == "error":
+		fmt.Println("Cartella dei minidump non leggibile: errore di lettura.")
 	case d.Folder == "missing" || d.Total == 0:
 		fmt.Println("Nessun file di schermata blu nella cartella dei minidump.")
 	default:
@@ -146,7 +150,7 @@ func printCrashes(d *scan.CrashData, loc *time.Location) {
 		fmt.Println("Dump della memoria (MEMORY.DMP):")
 		printDump(*m, loc)
 	}
-	if d.Partial {
+	if d.Partial && d.Folder != "" {
 		fmt.Println()
 		fmt.Println("Lettura interrotta prima della fine: l'elenco è parziale.")
 	}
@@ -191,8 +195,8 @@ func printDump(c scan.CrashDump, loc *time.Location) {
 			extra = ", già scaricato al momento dell'arresto"
 		}
 		fmt.Printf("  Driver indicato (indizio, %s): %s +%s%s\n", how, p.Driver, strings.TrimPrefix(p.Offset, "0x"), extra)
-	} else if c.DumpType == "triage" && c.Limited == "" {
-		fmt.Println("  Nessun driver di terze parti indicato")
+	} else if t := noCulpritText(c); t != "" {
+		fmt.Printf("  Driver indicato: %s\n", t)
 	}
 	var others []string
 	for _, m := range c.Stack {
@@ -214,6 +218,25 @@ func printDump(c scan.CrashDump, loc *time.Location) {
 		facts = append(facts, t)
 	}
 	fmt.Printf("  File: %s\n", strings.Join(facts, ", "))
+}
+
+// noCulpritText spiega perché un file letto non ha un driver indicato, come
+// la scheda dell'interfaccia (noCulpritText in core/src/engine/crash.ts).
+// Si saltano solo kernel, HAL e PSHED (crash.Ignored): gli altri driver di
+// Windows possono essere indicati. "" se il motivo è già nella riga File.
+func noCulpritText(c scan.CrashDump) string {
+	v, err := strconv.ParseUint(strings.TrimPrefix(c.Code, "0x"), 16, 32)
+	switch {
+	case c.Code == "" || err != nil:
+		return "non cercato, codice non scritto nel file"
+	case crash.Manual(uint32(v)):
+		return "nessuno, arresto provocato di proposito"
+	case v == 0x124:
+		return "nessuno, errore segnalato dall'hardware"
+	case c.Limited != "" || c.DumpType != "triage":
+		return ""
+	}
+	return "nessun driver fuori dal nucleo di Windows (kernel e HAL) nello stack salvato"
 }
 
 func orUnknown(s string) string {

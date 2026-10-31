@@ -1,5 +1,5 @@
 import { certSeverity, certSummary, certWhere } from './certs';
-import { crashSetting, crashSummary, crashWhen } from './crash';
+import { crashFolderText, crashSetting, crashSummary, crashWhen } from './crash';
 import { ACTIONS } from './kb/actions';
 import { scoreAssessment } from './kb/assessment';
 import { METRICS } from './kb/metrics';
@@ -250,7 +250,7 @@ function pcDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
     // Schermate blu dai minidump: nomi dei file e dei driver, nessun percorso.
     out.push(
       wrap(
-        `Schermate blu nei minidump: ${cr.folder === 'denied' ? 'cartella non leggibile' : cr.total ? `${cr.total} file` : 'nessun file'}; salvataggio: ${crashSetting(cr.settings)}`,
+        `Schermate blu nei minidump: ${crashFolderText(cr)}; salvataggio: ${crashSetting(cr.settings)}`,
         W - 2,
         ' ',
       ),

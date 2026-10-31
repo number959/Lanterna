@@ -6,8 +6,10 @@ import type { CrashCulprit, CrashData, CrashDump, CrashDumpType, CrashSettings, 
 // legge i minidump (codice di arresto, parametri, driver indicato) e le
 // impostazioni di CrashControl; qui si trasformano in giudizi che non
 // ripetono il conteggio delle schermate blu, già dato da "pc.events.bsod"
-// con l'evento 1001 del registro di sistema. Gira anche in goja: niente
-// Intl, solo funzioni di ES2015 (indexOf al posto di includes).
+// con l'evento 1001 del registro di sistema (e con i minidump dello stesso
+// periodo, se il registro ne riporta meno: vedi analyzeEvents in pc.ts).
+// Gira anche in goja: niente Intl, solo funzioni di ES2015 (indexOf al
+// posto di includes).
 //
 // Nomi ufficiali dei codici: Microsoft Learn, "Bug Check Code Reference"
 // (https://learn.microsoft.com/windows-hardware/drivers/debugger/bug-check-code-reference2),
@@ -185,15 +187,39 @@ export const crashWhen = (d: CrashDump) => d.time || d.modified || '';
 /** Il file è stato letto e ha un codice. */
 export const crashRead = (d: CrashDump) => !d.error && !!crashCode(d.code);
 
+/**
+ * Perché un file letto non ha un driver indicato. L'agente salta solo il
+ * nucleo di Windows (kernel, HAL e PSHED, vedi Ignored in
+ * windows/internal/crash/parse.go): gli altri driver Microsoft possono
+ * essere indicati. Per 0x124 e per gli arresti provocati a mano non cerca.
+ */
+export function noCulpritText(d: CrashDump): string {
+  const info = bugcheckInfo(d.code);
+  if (!info.code) return 'non cercato: codice non scritto nel file';
+  if (info.family === 'manual') return 'nessuno: arresto provocato di proposito';
+  if (info.code === '0x00000124') return 'nessuno: errore segnalato dall\'hardware';
+  if (d.limited || d.dumpType !== 'triage') return 'non cercato: di questo file si legge solo l\'intestazione';
+  return 'nessun driver fuori dal nucleo di Windows (kernel e HAL) nello stack salvato';
+}
+
 /** Riga riassuntiva: "0x000000d1 DRIVER_IRQL_NOT_LESS_OR_EQUAL; indizio: fictnet.sys (parametro 4)". */
 export function crashSummary(d: CrashDump): string {
   if (d.error) return `non letto: ${d.error}`;
   const parts = [bugcheckText(d.code)];
   const p = d.probable;
   if (p) parts.push(`indizio: ${p.driver} (${p.method === 'param' ? `parametro ${p.param ?? '?'}` : 'stack'}${p.unloaded ? ', già scaricato' : ''})`);
-  else if (d.dumpType === 'triage' && !d.limited && bugcheckInfo(d.code).family !== 'manual') parts.push('nessun driver di terze parti indicato');
+  else if (crashCode(d.code) && d.dumpType === 'triage' && !d.limited && bugcheckInfo(d.code).family !== 'manual')
+    parts.push(crashCode(d.code) === '0x00000124' ? 'nessun driver: errore segnalato dall\'hardware' : 'nessun driver indicato fuori dal nucleo di Windows');
   if (d.limited) parts.push(CRASH_LIMITED[d.limited]);
   return parts.join('; ');
+}
+
+/** Stato della cartella dei minidump in breve: "4 file", "nessun file", "cartella non leggibile"... */
+export function crashFolderText(c: CrashData): string {
+  if (c.partial && !c.folder) return 'lettura non finita in tempo';
+  if (c.folder === 'denied' || c.folder === 'error') return 'cartella non leggibile';
+  if (c.total) return `${c.total} file${c.partial ? ', lettura interrotta prima della fine' : ''}`;
+  return 'nessun file';
 }
 
 export interface CrashGroup {
@@ -303,10 +329,11 @@ export function analyzeCrashes(scan: Scan, add: Add) {
     });
   }
 
-  const codes = crashCodes(c);
-  const topCode = codes[0];
+  // Gli arresti provocati di proposito (0xE2 dalla tastiera...) non sono un
+  // problema da cercare: conta il primo codice ricorrente tra gli altri.
+  const topCode = crashCodes(c).filter((g) => bugcheckInfo(g.key).family !== 'manual')[0];
   const info = topCode ? bugcheckInfo(topCode.key) : undefined;
-  if (!drivers.length && topCode && info && info.family !== 'manual') {
+  if (!drivers.length && topCode && info) {
     const sev: Severity = recent(topCode.last) ? 'warn' : 'info';
     const what = info.name
       ? `${bugcheckText(topCode.key)}${info.meaning ? ` (${info.meaning})` : ''}`
@@ -342,7 +369,7 @@ export function analyzeCrashes(scan: Scan, add: Add) {
         ? `Windows è impostato per non salvare nulla dopo una schermata blu: se ne capita un'altra non resterà un file da esaminare${s.logEvent === false ? ' né un evento nel registro di sistema' : ', solo il codice nel registro eventi'}.` +
           (hadCrashes ? ' Su questo PC ci sono già state schermate blu: conviene riattivarlo.' : '') +
           ' Il dump piccolo (minidump) occupa poco spazio e basta per una prima analisi. Polaris non cambia l\'impostazione: è un passo da fare a mano.'
-        : 'Windows salva i file delle schermate blu ma non le annota nel registro di sistema: il conteggio delle schermate blu di Polaris può risultare incompleto.',
+        : 'Windows salva i file delle schermate blu ma non le annota nel registro di sistema: Polaris le conta dai minidump, quindi se un file manca anche il conteggio risulta incompleto.',
       actions: ['enable-minidump'],
     });
   }

@@ -975,7 +975,7 @@ export interface CrashData {
   dumps: CrashDump[];
   /** Intestazione di MEMORY.DMP, se il file esiste. */
   memoryDump?: CrashDump;
-  /** Lettura interrotta prima della fine. */
+  /** Lettura interrotta prima della fine (tempo scaduto); senza `folder` non è arrivata alla cartella dei minidump. */
   partial?: boolean;
 }
 

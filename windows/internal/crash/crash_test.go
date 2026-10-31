@@ -352,8 +352,11 @@ func TestNamesAndTypes(t *testing.T) {
 	if TypeName(4, false) != "unknown" || MachineName(0xAA64) != "arm64" || MachineName(1) != "" {
 		t.Fatal("nomi")
 	}
-	if !Ignored("NTOSKRNL.EXE") || Ignored("fictnet.sys") {
+	if !Ignored("NTOSKRNL.EXE") || Ignored("fictnet.sys") || Ignored("ndis.sys") {
 		t.Fatal("moduli ignorati")
+	}
+	if !Manual(0xE2) || !Manual(0x1C8) || !Manual(0xDEADDEAD) || Manual(0x124) || Manual(0xD1) {
+		t.Fatal("arresti provocati di proposito")
 	}
 }
 

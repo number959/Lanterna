@@ -858,7 +858,8 @@ type CrashData struct {
 	Dumps []CrashDump `json:"dumps"`
 	// MemoryDump è l'intestazione di MEMORY.DMP, se il file esiste.
 	MemoryDump *CrashDump `json:"memoryDump,omitempty"`
-	// Partial: lettura interrotta prima della fine (tempo scaduto).
+	// Partial: lettura interrotta prima della fine (tempo scaduto); con
+	// Folder vuoto non è arrivata alla cartella dei minidump.
 	Partial bool `json:"partial,omitempty"`
 }
 

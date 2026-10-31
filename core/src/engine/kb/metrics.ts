@@ -768,7 +768,7 @@ const list: Metric[] = [
     id: 'pc.events.bsod',
     label: 'Schermate blu (arresti di sistema)',
     category: 'pc',
-    what: 'Gli arresti di Windows con schermata blu negli ultimi 30 giorni (evento 1001 "BugCheck"), con il codice di arresto che indica la famiglia del problema.',
+    what: 'Gli arresti di Windows con schermata blu negli ultimi 30 giorni (evento 1001 "BugCheck"), con il codice di arresto che indica la famiglia del problema. Se i minidump letti dello stesso periodo sono di più, per esempio perché il registro è stato svuotato, vale il numero dei minidump: evento e file della stessa schermata blu non si sommano.',
     scale: [
       { range: 'nessuna', severity: 'ok', meaning: 'Sistema stabile.' },
       { range: 'una', severity: 'warn', meaning: 'Da tenere d\'occhio.' },
@@ -809,7 +809,7 @@ const list: Metric[] = [
     scale: [
       { range: 'dump attivo e evento nel registro', severity: 'ok', meaning: 'Le prossime schermate blu lasceranno un file da esaminare (nessun giudizio mostrato).' },
       { range: 'evento nel registro disattivato, o dump disattivato senza schermate blu', severity: 'info', meaning: 'Da sistemare con calma.' },
-      { range: 'dump disattivato su un PC che ha già avuto schermate blu', severity: 'warn', meaning: 'Le prossime non lasceranno traccia da esaminare.' },
+      { range: 'dump disattivato su un PC che ha già avuto schermate blu', severity: 'warn', meaning: 'Le prossime non lasceranno un file da esaminare.' },
     ],
     why: 'Senza il file di dump una schermata blu lascia solo il codice: per capire quale driver la causa servono i minidump, che occupano poco spazio.',
     limits: 'Polaris legge l\'impostazione ma non la cambia: l\'attivazione è un passo manuale da amministratore. Anche con il dump attivo Windows può non scriverlo, per esempio senza file di paging o con poco spazio libero.',

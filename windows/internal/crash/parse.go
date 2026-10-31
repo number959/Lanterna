@@ -433,6 +433,10 @@ var addrParam = map[uint32]int{
 // (0xE2 dalla tastiera, 0x1C8 tenendo premuto il pulsante, 0xDEADDEAD).
 var noCulprit = map[uint32]bool{0x124: true, 0xE2: true, 0x1C8: true, 0xDEADDEAD: true}
 
+// Manual dice se il codice è di un arresto provocato di proposito (0xE2,
+// 0x1C8, 0xDEADDEAD): non c'è un driver da cercare.
+func Manual(code uint32) bool { return code != 0x124 && noCulprit[code] }
+
 // ignored sono i moduli del nucleo di Windows: kernel, HAL e PSHED compaiono
 // in quasi ogni stack perché sono loro a gestire interruzioni, eccezioni ed
 // errori hardware e a chiamare KeBugCheckEx. Come la parola chiave "ignore"

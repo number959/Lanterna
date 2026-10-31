@@ -1,7 +1,7 @@
 import { BookOpenText, MonitorX, RefreshCw, ShieldAlert, TriangleAlert } from 'lucide-react';
 import { m } from 'motion/react';
 import { useState } from 'react';
-import { bugcheckInfo, CRASH_DUMP_TYPE, CRASH_LIMITED, crashRead, crashSetting, culpritHow, lastBugcheckEvent, parseBugcheckEvent, sizeText } from '../engine';
+import { bugcheckInfo, CRASH_DUMP_TYPE, CRASH_LIMITED, crashRead, crashSetting, culpritHow, lastBugcheckEvent, noCulpritText, parseBugcheckEvent, sizeText } from '../engine';
 import type { BugcheckInfo, CrashData, CrashDump, Scan, Severity } from '../engine';
 import { readCrashes } from './api';
 import { SevIcon, useOpenGuide, useToast } from './components';
@@ -42,14 +42,6 @@ export function crashBadge(d: CrashDump): { sev: Severity; label: string } {
   if (!crashRead(d)) return { sev: 'unknown', label: 'codice non scritto' };
   if (bugcheckInfo(d.code).family === 'manual') return { sev: 'info', label: 'arresto provocato' };
   return { sev: 'warn', label: 'schermata blu' };
-}
-
-/** Perché non c'è un driver indicato. */
-export function noCulpritText(d: CrashDump, info: BugcheckInfo = bugcheckInfo(d.code)): string {
-  if (info.family === 'manual') return 'nessuno: arresto provocato di proposito';
-  if (info.code === '0x00000124') return 'nessuno: errore segnalato dall\'hardware';
-  if (d.limited) return 'non cercato: di questo file si legge solo l\'intestazione';
-  return 'nessun driver di terze parti nello stack salvato';
 }
 
 function Params({ params, label }: { params?: string[]; label: string }) {
@@ -102,7 +94,7 @@ function CrashItem({ d, title }: { d: CrashDump; title?: string }) {
         <p className="cert-fail">Non letto: {d.error}.</p>
       ) : (
         <>
-          <CodeLine info={info} />
+          {info.code ? <CodeLine info={info} /> : <p className="crash-meaning">Codice non scritto nel file.</p>}
           <dl className="cert-facts">
             <div>
               <dt>Driver indicato (indizio)</dt>
@@ -116,7 +108,7 @@ function CrashItem({ d, title }: { d: CrashDump; title?: string }) {
                     </span>
                   </>
                 ) : (
-                  noCulpritText(d, info)
+                  noCulpritText(d)
                 )}
               </dd>
             </div>
@@ -165,7 +157,7 @@ function Settings({ c }: { c: CrashData }) {
           {off ? (
             <span className="sev warn">
               <SevIcon sev="warn" size={14} />
-              nessun file: le prossime non lasceranno traccia
+              nessun file: le prossime non lasceranno un file da esaminare
             </span>
           ) : (
             cap(crashSetting(s))
@@ -202,6 +194,8 @@ export function CrashesCard({ scan, live, source, addCrashes }: ViewProps) {
   const read = dumps.filter(crashRead);
   const shown = all ? dumps : dumps.slice(0, CRASH_SHOWN);
   const canRead = live && source === 'agent';
+  // Lettura fermata dall'agente prima di arrivare alla cartella (tempo scaduto).
+  const unfinished = !!c && !!c.partial && !c.folder && !dumps.length;
 
   const refresh = () => {
     const target: CrashTargetRef = { host: scan.agent.host, startedAt: scan.agent.startedAt };
@@ -237,8 +231,17 @@ export function CrashesCard({ scan, live, source, addCrashes }: ViewProps) {
         <div className="notice">
           <TriangleAlert size={18} aria-hidden />
           <span>
-            Questo rapporto non contiene la lettura dei file delle schermate blu: è stato creato con una versione precedente di Polaris
-            {canRead ? '. Puoi leggerli ora.' : '.'}
+            Questo rapporto non contiene la lettura dei file delle schermate blu: è stato creato con una versione precedente di Polaris oppure la lettura
+            non è riuscita.{canRead ? ' Puoi leggerli ora.' : ''}
+          </span>
+        </div>
+      )}
+
+      {unfinished && (
+        <div className="notice">
+          <TriangleAlert size={18} aria-hidden />
+          <span>
+            La lettura dei file delle schermate blu non è finita in tempo durante l'analisi.{canRead ? ' Puoi leggerli ora.' : ''}
           </span>
         </div>
       )}
@@ -273,11 +276,11 @@ export function CrashesCard({ scan, live, source, addCrashes }: ViewProps) {
         </div>
       )}
 
-      {c && <Settings c={c} />}
+      {c && !unfinished && <Settings c={c} />}
 
-      {c && !c.needsAdmin && !dumps.length && (
+      {c && !c.needsAdmin && !unfinished && !dumps.length && (
         <p className="crash-empty">
-          <SevIcon sev="ok" size={16} className="c-ok" />
+          {c.folder === 'error' ? <SevIcon sev="unknown" size={16} className="c-unknown" /> : <SevIcon sev="ok" size={16} className="c-ok" />}
           <span>
             {c.folder === 'missing'
               ? 'Nessun file di schermata blu: la cartella dei minidump non esiste, quindi Windows non ne ha salvati (o sono stati cancellati).'
@@ -325,7 +328,7 @@ export function CrashesCard({ scan, live, source, addCrashes }: ViewProps) {
         {canRead && (
           <button className="btn small" onClick={refresh} disabled={busy}>
             <RefreshCw size={15} className={busy ? 'spin' : undefined} aria-hidden />
-            {busy ? 'Lettura in corso…' : c ? 'Rileggi i file' : 'Leggi i file'}
+            {busy ? 'Lettura in corso…' : c && !unfinished ? 'Rileggi i file' : 'Leggi i file'}
           </button>
         )}
         {openGuide && (

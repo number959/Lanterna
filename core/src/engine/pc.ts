@@ -523,7 +523,7 @@ const bugcheckCode = (detail?: string) => {
   return '0x' + ('00000000' + hex).slice(-8);
 };
 
-function analyzeEvents(pc: PcData, add: Add) {
+function analyzeEvents(pc: PcData, now: number, add: Add) {
   const days = pc.eventsDays;
   if (!days) return;
   const ev = pc.events ?? [];
@@ -536,7 +536,22 @@ function analyzeEvents(pc: PcData, add: Add) {
   const sd = of('unexpected-shutdown');
   const shutdowns = Math.max(total(sd.filter((e) => e.id === 41)), total(sd.filter((e) => e.id !== 41)));
   const bsod = of('bugcheck');
-  const nBsod = total(bsod);
+  const nEvents = total(bsod);
+  // Minidump letti dello stesso periodo (vedi crash.ts): se il registro ne
+  // riporta meno, per esempio perché è stato svuotato, vale il numero dei
+  // file. Non si sommano: di solito la stessa schermata blu lascia sia
+  // l'evento sia il file.
+  const dumps = (pc.crashes?.dumps ?? []).filter((d) => {
+    const t = Date.parse(d.time || d.modified || '');
+    return !d.error && !!bugcheckCode(d.code) && !isNaN(t) && now - t <= days * DAY;
+  });
+  const nBsod = Math.max(nEvents, dumps.length);
+  const fromDumps = dumps.length > nEvents;
+  const lastBsod =
+    [last(bsod), ...dumps.map((d) => d.time || d.modified || '')]
+      .filter((x) => !isNaN(Date.parse(x)))
+      .sort((a, b) => Date.parse(a) - Date.parse(b))
+      .pop() ?? '';
   add({
     id: 'pc.events.shutdown',
     metric: 'pc.events.shutdown',
@@ -553,8 +568,7 @@ function analyzeEvents(pc: PcData, add: Add) {
   });
 
   const codes: string[] = [];
-  for (const e of bsod) {
-    const c = bugcheckCode(e.detail);
+  for (const c of [...bsod.map((e) => bugcheckCode(e.detail)), ...dumps.map((d) => bugcheckCode(d.code))]) {
     if (c && codes.indexOf(c) < 0) codes.push(c);
   }
   const named = codes.map((c) => (BUGCHECKS[c] ? `${c} ${BUGCHECKS[c][0]} (${BUGCHECKS[c][1]})` : c));
@@ -568,8 +582,12 @@ function analyzeEvents(pc: PcData, add: Add) {
     numeric: nBsod,
     severity: nBsod >= 2 ? 'crit' : nBsod ? 'warn' : 'ok',
     verdict: nBsod
-      ? `Windows si è arrestato con un errore ${nBsod === 1 ? 'una volta' : `${nBsod} volte`} ${period}, l'ultima ${on(last(bsod), 'il')}.` +
-        (named.length ? ` Codic${named.length === 1 ? 'e' : 'i'}: ${named.join('; ')}.` : '')
+      ? `Windows si è arrestato con un errore ${nBsod === 1 ? 'una volta' : `${nBsod} volte`} ${period}, l'ultima ${on(lastBsod, 'il')}.` +
+        (named.length ? ` Codic${named.length === 1 ? 'e' : 'i'}: ${named.join('; ')}.` : '') +
+        (fromDumps
+          ? ` Il numero viene dai file delle schermate blu (minidump): il registro eventi ${nEvents ? `ne riporta solo ${nEvents === 1 ? 'una' : nEvents}` : 'non ne riporta nessuna'}` +
+            (pc.crashes?.settings?.logEvent === false ? ', e Windows è impostato per non annotarle.' : ', per esempio perché è stato svuotato.')
+          : '')
       : `Nessun arresto con schermata blu ${period}.`,
     actions: nBsod ? (hw ? ['diagnose-bsod', 'check-hardware'] : ['diagnose-bsod']) : [],
   });
@@ -879,7 +897,7 @@ export function analyzePc(scan: Scan, add: Add) {
   analyzeDisks(scan, pc, add);
   analyzeHardware(pc, add);
   analyzeStartup(pc, add);
-  analyzeEvents(pc, add);
+  analyzeEvents(pc, now, add);
   analyzeSecurity(pc, now, add);
   analyzeDefender(pc, now, add);
   analyzePower(pc, now, add);
