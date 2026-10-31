@@ -8,6 +8,7 @@ import { THREAT_SEVERITY, THREAT_STATUS } from './defender';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import { dbmText, gatewayText, radioText, surveyAliases, surveyRooms } from './survey';
+import { speedTextLines } from './speedtest';
 import type { Analysis, EventKind, Finding, ReachResult, Scan, Severity } from './types';
 
 // Rapporto testuale, usato dalla riga di comando e dall'esportazione .txt.
@@ -376,6 +377,15 @@ export function renderText(scan: Scan, a: Analysis, opts: { verbose?: boolean; w
     }
   }
   surveyDetails(scan, out, W);
+  // Test di velocità di Internet (su richiesta): misure, server e nota sul valore legale.
+  const speed = scan.internet?.speed;
+  if (speed) {
+    out.push('');
+    out.push('-'.repeat(W));
+    out.push(' TEST DI VELOCITÀ DI INTERNET (M-LAB)');
+    out.push('-'.repeat(W));
+    for (const l of speedTextLines(speed)) out.push(wrap(l, W - 2, ' '));
+  }
   infraDetails(scan, out, W, !!opts.verbose);
   pcDetails(scan, out, W, !!opts.verbose);
   if (a.plan.length) {

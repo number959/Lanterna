@@ -37,6 +37,9 @@
 //	                    ({"room": "Soggiorno", "seconds": 15, "scan": true})
 //	GET  /api/wifi/survey avanzamento ed esito della misura
 //	DELETE /api/wifi/survey interrompe la misura
+//	POST /api/speedtest avvia il test di velocità di Internet con M-Lab
+//	                    ({"consent": true}); GET avanzamento ed esito,
+//	                    DELETE interrompe (vedi speedtest.go)
 //
 // Ascolta solo su 127.0.0.1 e rifiuta richieste con Host diverso (difesa dal
 // DNS rebinding) e POST provenienti da altre origini (difesa dal CSRF). Le
@@ -71,6 +74,7 @@ import (
 	"lanterna/internal/scan"
 	"lanterna/internal/sensors"
 	"lanterna/internal/space"
+	"lanterna/internal/speedtest"
 	"lanterna/internal/survey"
 	"lanterna/internal/tools"
 )
@@ -125,6 +129,18 @@ type Server struct {
 	// disponibile). Non si sovrappone a un'analisi o a un inventario.
 	Survey func(ctx context.Context, opt survey.Options) (*scan.SurveySample, error)
 	survey surveyJob
+	// SpeedTest esegue il test di velocità di Internet con M-Lab (nil = non
+	// disponibile); SpeedLimit ne limita la frequenza (nil = predefinito).
+	// Non parte durante un'analisi e viceversa.
+	SpeedTest    func(ctx context.Context, progress func(speedtest.Progress)) (*scan.SpeedTest, error)
+	SpeedLimit   *speedtest.Limiter
+	speedMu      sync.Mutex
+	speedRunning bool
+	speedProg    *speedtest.Progress
+	speedErr     string
+	speedCancel  context.CancelFunc
+	speedLast    *scan.SpeedTest
+	speedFinish  chan struct{}
 
 	// Test di velocità (nil = non disponibili). Non partono durante
 	// un'analisi e viceversa: si falserebbero a vicenda.
@@ -229,7 +245,7 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 var (
 	errScanRunning  = errors.New("analisi già in corso")
-	errBenchRunning = errors.New("test di velocità in corso: attendi che finisca o interrompilo")
+	errBenchRunning = errors.New("test della CPU o del disco in corso: attendi che finisca o interrompilo")
 )
 
 // Start avvia un'analisi in background; false se ce n'è già una in corso o
@@ -252,6 +268,10 @@ func (s *Server) startScan() error {
 	if s.surveyBusy() {
 		s.mu.Unlock()
 		return errSurveyRunning
+	}
+	if s.speedBusy() {
+		s.mu.Unlock()
+		return errSpeedRunning
 	}
 	s.running, s.runErr, s.steps = true, "", nil
 	s.scanDone = make(chan struct{})
@@ -444,7 +464,11 @@ func (s *Server) startBench(kind, drive string) error {
 		return errors.New("analisi dello spazio in corso: il test di velocità ne sarebbe falsato")
 	}
 	if s.surveyBusy() {
-		return errors.New("misura del Wi-Fi in corso: il test di velocità ne falserebbe i valori. Riprova quando la misura è finita")
+		return errors.New("misura del Wi-Fi in corso: il test della CPU o del disco ne falserebbe i valori. Riprova quando la misura è finita")
+	}
+	// Ordine dei lock: mu, benchMu, speedMu (come in startSpeed).
+	if s.speedBusy() {
+		return errors.New("test di velocità di Internet in corso: il test della CPU o del disco ne sarebbe falsato, attendi che finisca")
 	}
 	timeout := 2 * time.Minute
 	if kind == "disk" {
@@ -510,7 +534,7 @@ func (s *Server) startSpace(drive string) error {
 	s.benchMu.Lock()
 	defer s.benchMu.Unlock()
 	if s.benchRunning {
-		return errors.New("test di velocità in corso: l'analisi dello spazio ne falserebbe le misure")
+		return errors.New("test della CPU o del disco in corso: l'analisi dello spazio ne falserebbe le misure")
 	}
 	s.spaceMu.Lock()
 	defer s.spaceMu.Unlock()
@@ -588,7 +612,7 @@ func (s *Server) startDefender(action string) error {
 	s.benchMu.Lock()
 	defer s.benchMu.Unlock()
 	if s.benchRunning {
-		return errors.New("test di velocità in corso: la scansione ne falserebbe le misure")
+		return errors.New("test della CPU o del disco in corso: la scansione ne falserebbe le misure")
 	}
 	s.defMu.Lock()
 	defer s.defMu.Unlock()
@@ -1252,6 +1276,7 @@ func (s *Server) Handler() http.Handler {
 		}
 		writeJSON(w, 200, last)
 	})
+	s.speedRoutes(mux)
 	if s.Web != nil {
 		files := http.FileServer(http.FS(s.Web))
 		mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

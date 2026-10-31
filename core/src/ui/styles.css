@@ -992,6 +992,52 @@ select.field { cursor: pointer; }
   .wifimap-secs { flex: 1 1 100%; }
   .wifimap-room-dbm { white-space: normal; }
 }
+/* Velocità di Internet (M-Lab): scheda, finestra del consenso, fasi ed esito. */
+.speed-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.speed-controls .faint { font-size: 13px; flex: 1 1 260px; min-width: 0; }
+.speed-portal { z-index: 90; }
+.speed-dialog {
+  position: relative; width: min(640px, 100%); max-height: min(92vh, 100%); overflow: auto; overscroll-behavior: contain;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: var(--shadow-2); padding: 20px 22px;
+}
+.speed-dialog h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 12px; font-size: 19px; }
+.speed-dialog h2:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.speed-dialog h2 svg { color: var(--accent-text); flex: none; }
+.speed-consent p { margin: 0 0 10px; font-size: 14.5px; line-height: 1.55; color: var(--text-2); overflow-wrap: anywhere; }
+.speed-consent a, .speed-legal a { color: var(--accent-text); text-underline-offset: 3px; }
+.speed-check { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0 6px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--surface-2); font-weight: 600; font-size: 14.5px; cursor: pointer; }
+.speed-check input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); cursor: pointer; }
+.speed-check:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.speed-dialog-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; }
+.speed-dialog-actions .faint { font-size: 13px; }
+.speed-dialog-actions .spacer { flex: 1; }
+.speed-live { padding-top: 14px; }
+.speed-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; }
+.speed-steps li { display: inline-flex; align-items: center; gap: 6px; color: var(--text-3); }
+.speed-steps li[data-state='done'] { color: var(--ok); }
+.speed-steps li[data-state='current'] { color: var(--text); font-weight: 650; }
+.speed-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
+.speed-big { font: 650 30px/1.15 var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+.speed-now .faint { font-size: 13.5px; min-width: 0; overflow-wrap: anywhere; }
+.speed-live .bench-live-row { flex-wrap: wrap; }
+.speed-live .bench-live-row .faint { flex: 1 1 240px; }
+.speed-result { margin-top: 18px; display: grid; gap: 12px; min-width: 0; }
+.speed-result h3 { margin: 0; }
+.speed-result h3:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.speed-stats { grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); }
+.speed-bloat { display: grid; justify-items: start; gap: 4px; }
+.speed-bloat .sev { font-size: 13px; }
+.speed-sub { font-size: 13px; font-weight: 500; color: var(--text-3); }
+.speed-server { font-size: 16px; overflow-wrap: anywhere; }
+.speed-server .speed-sub { display: block; margin-top: 4px; }
+.speed-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 8px 18px; margin: 0; }
+.speed-facts > div { min-width: 0; }
+.speed-facts dt { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.speed-facts dd { margin: 2px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.speed-warn { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--warn); font-size: 13.5px; }
+.speed-warn svg { flex: none; margin-top: 2px; }
+.speed-notes { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13.5px; color: var(--text-2); }
+.speed-legal { font-size: 13.5px; }
 .roam { display: inline-flex; gap: 3px; }
 .rb { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; font: 650 11.5px/1 var(--mono); color: var(--text-3); border: 1px dashed var(--line-strong); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-3) 70%, transparent); }
 .rb.on { color: var(--ok); border: 1px solid var(--ok-line); background: var(--ok-bg); text-decoration: none; }

@@ -1,5 +1,5 @@
 import { certNormalize } from '../engine/certs';
-import type { CertData, CertResult, CertTarget, CpuBench, DiskBench, Inventory, InventoryHost, ReachData, ReachResult, ReachTarget, Scan } from '../engine/types';
+import type { CertData, CertResult, CertTarget, CpuBench, DiskBench, Inventory, InventoryHost, ReachData, ReachResult, ReachTarget, Scan, SpeedLatency, SpeedTest } from '../engine/types';
 
 // Simulazioni per le reti dimostrative: senza agente l'interfaccia mostra
 // comunque come funzionano inventario e verifiche, sempre indicandole come
@@ -269,3 +269,61 @@ export function simulatedDiskBench(scan: Scan, drive: string): DiskBench {
   };
 }
 
+/**
+ * Test di velocità simulato per le demo: nessun traffico, nessun dato a
+ * M-Lab. La casa è in Wi-Fi a 2,4 GHz su una linea FTTC con l'upload che fa
+ * coda nel modem (bufferbloat alto); la clinica è in Wi-Fi su fibra (il Wi-Fi
+ * fa da limite), con i ping bloccati dal firewall (sonde TCP) e un po' di
+ * coda in upload.
+ */
+export function simulatedSpeed(scan: Scan, now = Date.now()): SpeedTest {
+  const clinic = !!scan.agent.domain;
+  const targets = scan.internet?.targets ?? [];
+  const answered = targets.filter((t) => t.received > 0 && t.avgMs !== undefined);
+  const tcp = answered.length > 0 && answered.every((t) => t.method === 'tcp');
+  const idle = Math.round(Math.min(...answered.map((t) => t.avgMs as number), clinic ? 13 : 24) * 10) / 10;
+  const v = clinic
+    ? { down: 138.6, up: 121.4, bd: 6.2, bdp: 11.8, bu: 41.5, bup: 63.0, retrans: 0.4, rtt: 7.8, site: 'mil05', machine: 'mlab1-mil05.mlab-oti.measurement-lab.org' }
+    : { down: 61.8, up: 18.7, bd: 19.4, bdp: 31.2, bu: 142.6, bup: 188.4, retrans: 1.3, rtt: 21.6, site: 'mil07', machine: 'mlab3-mil07.mlab-oti.measurement-lab.org' };
+  const r1 = (x: number) => Math.round(x * 10) / 10;
+  const lat = (bloat: number, p95: number, sent: number, lost: number): SpeedLatency => ({
+    sent,
+    received: sent - lost,
+    minMs: r1(idle + bloat * 0.4),
+    medianMs: r1(idle + bloat),
+    p95Ms: r1(idle + p95),
+  });
+  const every = tcp ? 2 : 4;
+  return {
+    startedAt: new Date(now).toISOString(),
+    durationMs: 27400,
+    provider: 'mlab-ndt7',
+    server: { city: 'Milan', country: 'IT', site: v.site, machine: v.machine },
+    probe: '1.1.1.1',
+    probeMethod: tcp ? 'tcp' : 'icmp',
+    idle: { sent: 5 * every, received: 5 * every, minMs: r1(idle * 0.9), medianMs: idle, p95Ms: r1(idle * 1.25) },
+    download: {
+      mbps: v.down,
+      bytes: Math.round((v.down * 1e6 * 10) / 8),
+      ms: 10000,
+      source: 'client',
+      minRttMs: v.rtt,
+      rttMs: r1(v.rtt + v.bd * 0.3),
+      retransPct: v.retrans,
+      latency: lat(v.bd, v.bdp, 10 * every, 0),
+      bloatMs: v.bd,
+      bloatP95Ms: v.bdp,
+    },
+    upload: {
+      mbps: v.up,
+      bytes: Math.round((v.up * 1e6 * 10) / 8),
+      ms: 10000,
+      source: 'server',
+      minRttMs: v.rtt,
+      latency: lat(v.bu, v.bup, 10 * every, clinic ? 0 : 2),
+      bloatMs: v.bu,
+      bloatP95Ms: v.bup,
+    },
+    simulated: true,
+  };
+}

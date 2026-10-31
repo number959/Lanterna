@@ -51,25 +51,30 @@ func (s *Server) surveyBusy() bool {
 }
 
 // startSurvey avvia la misura in background. Ordine dei lock: mu (analisi),
-// poi benchMu, invMu e survey.mu, come in startBench.
+// poi benchMu, invMu, speedMu e survey.mu, come in startBench.
 func (s *Server) startSurvey(opt survey.Options) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.running {
 		return errors.New("analisi in corso: la misura del Wi-Fi ne sarebbe falsata. Riprova quando l'analisi è finita")
 	}
-	// Un test di velocità carica processore o disco e allunga i tempi dei ping.
+	// Il test della CPU o del disco carica il PC e allunga i tempi dei ping.
 	s.benchMu.Lock()
 	bench := s.benchRunning
 	s.benchMu.Unlock()
 	if bench {
-		return errors.New("test di velocità in corso: la misura del Wi-Fi ne sarebbe falsata. Riprova quando il test è finito")
+		return errors.New("test della CPU o del disco in corso: la misura del Wi-Fi ne sarebbe falsata. Riprova quando il test è finito")
 	}
 	s.invMu.Lock()
 	inv := s.invRunning
 	s.invMu.Unlock()
 	if inv {
 		return errors.New("inventario della rete in corso: la misura del Wi-Fi ne sarebbe falsata. Riprova quando è finito")
+	}
+	// Il test di velocità di Internet satura la connessione: ping e perdite
+	// della misura non direbbero nulla della stanza.
+	if s.speedBusy() {
+		return errors.New("test di velocità di Internet in corso: la misura del Wi-Fi ne sarebbe falsata. Riprova quando il test è finito")
 	}
 	j := &s.survey
 	j.mu.Lock()

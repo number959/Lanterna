@@ -1,4 +1,4 @@
-import type { CertData, CertTarget, CpuBench, DefenderInfo, DiskBench, Inventory, ReachData, ReachTarget, Scan, SpaceReport, SurveySample, Threat } from '../engine';
+import type { CertData, CertTarget, CpuBench, DefenderInfo, DiskBench, Inventory, ReachData, ReachTarget, Scan, SpaceReport, SpeedServer, SpeedTest, SurveySample, Threat } from '../engine';
 import type { CrashData } from '../engine';
 
 // Comunicazione con l'agente locale (Polaris.exe serve / finestra).
@@ -305,6 +305,53 @@ export async function runSpace(drive: string, onProgress: (st: SpaceState) => vo
  */
 export const openSpaceItem = (drive: string, id: number, file: boolean, startedAt: string) =>
   postJson<{ opened: boolean }>('api/space/open', { drive, id, file, startedAt });
+
+// ---- Test di velocità di Internet con M-Lab: solo su richiesta, con il consenso.
+
+export interface SpeedProgress {
+  phase: 'locate' | 'idle' | 'download' | 'upload';
+  mbps?: number;
+  latencyMs?: number;
+  elapsedMs: number;
+  phaseMs?: number;
+  server?: SpeedServer;
+}
+
+export interface SpeedState {
+  running: boolean;
+  progress?: SpeedProgress;
+  error?: string;
+  result?: SpeedTest;
+  /** Secondi prima che l'agente accetti un altro test; test ancora possibili oggi. */
+  waitSec?: number;
+  left: number;
+}
+
+export const speedStatus = () => getJson<SpeedState>('api/speedtest');
+
+/** Interrompe il test in corso. */
+export async function stopSpeed(): Promise<void> {
+  const r = await fetch('api/speedtest', { method: 'DELETE', cache: 'no-store' });
+  if (!r.ok) throw await errorOf(r);
+}
+
+/**
+ * Avvia il test (l'utente ha appena dato il consenso) e ne attende la fine,
+ * riportando l'avanzamento. 409 se c'è già un test o un'analisi, 429 se è
+ * troppo presto: il messaggio dell'agente dice quanto aspettare.
+ */
+export async function runSpeed(onProgress: (st: SpeedState) => void, opts: { resume?: boolean } = {}): Promise<SpeedTest> {
+  if (!opts.resume) await postJson<{ started: boolean }>('api/speedtest', { consent: true });
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 400));
+    const st = await speedStatus();
+    onProgress(st);
+    if (!st.running) {
+      if (!st.result) throw new Error(st.error || 'Test terminato senza risultato');
+      return st.result;
+    }
+  }
+}
 
 // ---- Microsoft Defender: scansioni e aggiornamento delle firme su richiesta.
 

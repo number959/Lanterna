@@ -349,6 +349,91 @@ export interface InternetData {
   traceTarget?: string;
   mtu?: MtuResult;
   http?: HttpCheck[];
+  /**
+   * Test di velocità con M-Lab: non lo esegue l'analisi automatica ma
+   * l'utente, su richiesta e dopo il consenso; lo unisce l'interfaccia.
+   */
+  speed?: SpeedTest;
+}
+
+/** Server di M-Lab usato dal test, come lo indica il servizio Locate. */
+export interface SpeedServer {
+  /** In inglese, come la dà M-Lab ("Milan"). */
+  city?: string;
+  /** Codice ISO del paese ("IT"). */
+  country?: string;
+  /** Sito di M-Lab ("mil05"). */
+  site?: string;
+  /** Nome pubblico del server. */
+  machine?: string;
+}
+
+/**
+ * Latenza di una fase del test: i campioni senza risposta contano in sent ma
+ * non in received. Durante i trasferimenti (se a riposo le sonde
+ * rispondevano) una sonda senza risposta conta come latenza pari all'attesa
+ * della sonda (SpeedTest.probeTimeoutMs), tolta la quota persa anche a
+ * riposo: medianAtLeast e p95AtLeast dicono che il valore è un minimo.
+ */
+export interface SpeedLatency {
+  sent: number;
+  received: number;
+  minMs?: number;
+  medianMs?: number;
+  p95Ms?: number;
+  medianAtLeast?: boolean;
+  p95AtLeast?: boolean;
+}
+
+/** Un verso del test: mbps è il goodput (dati utili al secondo); bytes e ms sono i valori da cui si calcola. */
+export interface SpeedDir {
+  mbps: number;
+  bytes: number;
+  ms: number;
+  /**
+   * "client": byte contati dal PC; "server" (upload): byte ricevuti dal
+   * server nel suo tempo, dal suo TCP_INFO (comprendono le intestazioni di
+   * TLS e WebSocket, di solito meno dell'1 %).
+   */
+  source?: 'client' | 'server';
+  /** Server di questo verso, solo se diverso da SpeedTest.server (l'upload passato a un altro server). */
+  server?: SpeedServer;
+  /** Fermato al limite di dati (250 MB). */
+  capped?: boolean;
+  /** Dal TCP_INFO del server: RTT minimo e medio, ritrasmissioni (solo download). */
+  minRttMs?: number;
+  rttMs?: number;
+  retransPct?: number;
+  /** Latenza durante il trasferimento e latenza aggiunta rispetto al riposo (mediana e 95° percentile; minimi quando lo sono quelli di latency). */
+  latency?: SpeedLatency;
+  bloatMs?: number;
+  bloatP95Ms?: number;
+  error?: string;
+}
+
+/**
+ * Test di velocità di Internet con Measurement Lab (M-Lab, ndt7): una
+ * connessione per verso, latenza a riposo e sotto carico. Non contiene mai
+ * l'indirizzo IP del PC né l'identificativo del test.
+ */
+export interface SpeedTest {
+  startedAt: string;
+  durationMs: number;
+  /** "mlab-ndt7". */
+  provider: string;
+  server?: SpeedServer;
+  /** Server pubblico delle sonde di latenza ("1.1.1.1") e metodo. */
+  probe?: string;
+  probeMethod?: 'icmp' | 'tcp' | '';
+  /** Quanto una sonda aspetta la risposta (1000 ms). */
+  probeTimeoutMs?: number;
+  idle?: SpeedLatency;
+  download?: SpeedDir;
+  upload?: SpeedDir;
+  /** Il test è passato da un proxy: misura il percorso attraverso il proxy. */
+  viaProxy?: boolean;
+  /** Risultato simulato dall'interfaccia nelle demo, mai dall'agente. */
+  simulated?: boolean;
 }
 
 export interface DnsServerResult {

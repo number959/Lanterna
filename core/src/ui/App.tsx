@@ -27,7 +27,7 @@ import { AnimatePresence, LazyMotion, MotionConfig, domMax, m, useReducedMotion,
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { analyze, ENGINE_VERSION, primaryAdapter, renderText, surveyForExport } from '../engine';
-import type { AnswerValue, CertData, CpuBench, DiskBench, Finding, InfraData, PcData, Scan, Severity, SpaceReport, SurveySample, WifiSurvey } from '../engine';
+import type { AnswerValue, CertData, CpuBench, DiskBench, Finding, InfraData, PcData, Scan, Severity, SpaceReport, SpeedTest, SurveySample, WifiSurvey } from '../engine';
 import { clinicScan } from '../demo/clinic';
 import { demoScan } from '../demo/sample';
 import { agentInfo, download, isScan, lastScan, runScan } from './api';
@@ -51,6 +51,8 @@ import type { CrashTargetRef } from './crashes';
 import type { CrashData } from '../engine';
 import { mergeSample, surveyRefusal } from './wifimap';
 import type { SurveyTargetRef } from './wifimap';
+import { sameSpeedTarget } from './speedtest';
+import type { SpeedTargetRef } from './speedtest';
 import type { SpaceTarget } from './space';
 import { useTheme } from './theme';
 import type { ThemePref } from './theme';
@@ -203,6 +205,9 @@ function Shell() {
         // E la mappa del Wi-Fi per stanza, dello stesso PC e della stessa rete.
         if (prev?.wifi?.survey && next.wifi && !next.wifi.survey && prev.agent.host === next.agent.host && prev.gateway?.ip === next.gateway?.ip && prev.wifi.connected?.ssid === next.wifi.connected?.ssid)
           next = { ...next, wifi: { ...next.wifi, survey: prev.wifi.survey } };
+        // E il test di velocità di Internet, se PC e rete sono gli stessi.
+        if (prev?.internet?.speed && next.internet && !next.internet.speed && prev.agent.host === next.agent.host && prev.gateway?.ip === next.gateway?.ip)
+          next = { ...next, internet: { ...next.internet, speed: prev.internet.speed } };
         return next;
       });
       setSource('agent');
@@ -353,6 +358,22 @@ function Shell() {
     },
     [toast],
   );
+
+  // Il test di velocità riguarda PC e rete: come i certificati, si unisce solo
+  // se il rapporto mostrato è ancora quello su cui è partito.
+  const addSpeed = useCallback(
+    (r: SpeedTest, target: SpeedTargetRef, quiet = false) => {
+      if (!sameSpeedTarget(target, scanRef.current, sourceRef.current)) {
+        if (!quiet) toast('Test di velocità finito, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto', 'warn');
+        return false;
+      }
+      setScan((s) =>
+        s && s.agent.host === target.host && s.gateway?.ip === target.gateway ? { ...s, internet: { ...(s.internet ?? { targets: [] }), speed: r } } : s,
+      );
+      return true;
+    },
+    [toast],
+  );
   const setSurvey = useCallback((survey?: WifiSurvey) => setScan((s) => (s?.wifi ? { ...s, wifi: { ...s.wifi, survey } } : s)), []);
 
   const patchPc = useCallback((p: Partial<PcData>) => setScan((s) => (s ? { ...s, pc: { ...s.pc, ...p } } : s)), []);
@@ -438,7 +459,7 @@ function Shell() {
   const scanning = busy || (agent === undefined && slow);
   const props: ViewProps | null =
     effective && analysis
-      ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, addCrashes, addSurvey, setSurvey, patchPc, assessment, monitor, gwMacChange }
+      ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, addCrashes, addSurvey, setSurvey, addSpeed, patchPc, assessment, monitor, gwMacChange }
       : null;
   const pickDemo = (k: DemoKind) => {
     setDemoKind(k);

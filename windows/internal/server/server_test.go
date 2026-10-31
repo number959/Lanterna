@@ -334,7 +334,7 @@ func TestBenchEndpoint(t *testing.T) {
 	if r := post(`{"kind":"cpu"}`); r.Code != http.StatusConflict {
 		t.Fatalf("doppio avvio: %d", r.Code)
 	}
-	if r := do(t, h, "POST", "/api/scan", nil); r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "test di velocità") {
+	if r := do(t, h, "POST", "/api/scan", nil); r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "test della CPU o del disco") {
 		t.Fatalf("analisi durante il test: %d %s", r.Code, r.Body)
 	}
 	var st benchState

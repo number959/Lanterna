@@ -2,6 +2,7 @@ import { fmt, more, num, thousands } from './fmt';
 import { analyzeCerts } from './certs';
 import { analyzeCrashes } from './crash';
 import { analyzeSurvey } from './survey';
+import { analyzeSpeed } from './speedtest';
 import { ACTIONS } from './kb/actions';
 import { scoreAssessment } from './kb/assessment';
 import { analyzePc } from './pc';
@@ -1546,6 +1547,7 @@ export function analyze(scan: Scan): Analysis {
   analyzeSurvey(scan, (f) => c.add(f));
   analyzeLan(scan, c, primary, corp);
   analyzeInternet(scan, c, primary, corp);
+  analyzeSpeed(scan, (f) => c.add(f), primary);
   analyzeDns(scan, c, corp);
   analyzeRouter(scan, c);
   analyzeFirewall(scan, c);

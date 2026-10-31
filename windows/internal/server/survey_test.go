@@ -134,7 +134,7 @@ func TestSurveyRefusedDuringBench(t *testing.T) {
 		t.Fatalf("test: %d %s", r.Code, r.Body)
 	}
 	r := doBody(t, h, "POST", "/api/wifi/survey", "application/json", `{"room":"Studio"}`)
-	if r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "test di velocità in corso") {
+	if r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "test della CPU o del disco in corso") {
 		t.Fatalf("misura durante il test: %d %s", r.Code, r.Body)
 	}
 	do(t, h, "DELETE", "/api/bench", nil)

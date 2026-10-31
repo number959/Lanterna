@@ -21,7 +21,7 @@ export const CHAPTERS: Chapter[] = [
   { id: 'servizi', title: 'Servizi di rete', summary: 'Firewall, VPN, QoS, gestione e monitoraggio, linea Internet, telefonia, stampa e dominio.' },
   { id: 'sicurezza', title: 'Sicurezza', summary: 'Principi, segmentazione, credenziali e aggiornamenti, certificati dei servizi interni, minacce comuni, log e backup.' },
   { id: 'complesse', title: 'Reti complesse e sanità', summary: 'La rete di una clinica: dispositivi medicali, DICOM e HL7, Wi-Fi sanitario, norme, continuità, inventario e analisi su larga scala.' },
-  { id: 'diagnosi', title: 'Diagnosi', summary: 'Il metodo, gli strumenti di Windows e i problemi tipici con le loro cause.' },
+  { id: 'diagnosi', title: 'Diagnosi', summary: 'Il metodo, gli strumenti di Windows, i problemi tipici con le loro cause e il test di velocità di Internet.' },
 ];
 
 export const GUIDES: Guide[] = [...uso, ...pc, ...fondamenti, ...wifi, ...cablata, ...servizi, ...sicurezza, ...complesse, ...diagnosi];

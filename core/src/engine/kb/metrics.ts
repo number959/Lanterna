@@ -469,6 +469,52 @@ const list: Metric[] = [
     ],
     why: 'Il ping può funzionare anche quando la navigazione no (proxy, firewall aziendale, captive portal di hotel e aeroporti): questo test lo verifica.',
   },
+  {
+    id: 'net.speed',
+    label: 'Velocità di Internet (M-Lab)',
+    category: 'internet',
+    unit: 'Mbit/s',
+    what: 'Il goodput, cioè i dati utili trasferiti al secondo, in download e in upload, misurato con il protocollo ndt7 di Measurement Lab (M-Lab): una sola connessione cifrata per verso, per circa 10 secondi ciascuna, verso un server scelto da M-Lab vicino a te. Si esegue solo su tua richiesta, dopo il consenso: M-Lab pubblica il risultato con l\'indirizzo IP pubblico della connessione.',
+    scale: [
+      {
+        range: 'qualunque valore',
+        severity: 'info',
+        meaning: 'Polaris non conosce la velocità del tuo contratto: il valore va confrontato con la velocità minima indicata nell\'offerta, ripetendo il test via cavo e in orari diversi.',
+      },
+    ],
+    why: 'Dice quanta banda arriva davvero al PC, in entrambi i versi: l\'upload conta per videochiamate, backup nel cloud e invio di immagini. Un valore molto sotto il contratto, confermato più volte via cavo, è un motivo per fare la misura certificata AGCOM e reclamare.',
+    limits:
+      'Una sola connessione per verso: sulle linee molto veloci (da 2,5 a 10 Gbit/s) dà spesso valori più bassi dei test con più connessioni in parallelo, e alcuni server di M-Lab hanno collegamenti da 1 Gbit/s. In Wi-Fi misura anche il Wi-Fi; con un proxy misura il percorso attraverso il proxy; altri trasferimenti in corso sulla rete abbassano il risultato. Il download si ferma a 250 MB (parametro early_exit del server) e l\'upload a 250 MB (limite di Polaris). M-Lab offre il servizio al meglio delle possibilità, senza garanzie: a volte è occupato. Non ha valore legale: per un reclamo all\'operatore serve la misura certificata AGCOM con Ne.Me.Sys. (misurainternet.it).',
+  },
+  {
+    id: 'net.bufferbloat',
+    label: 'Latenza sotto carico (bufferbloat)',
+    category: 'internet',
+    unit: 'ms',
+    what: 'Quanto sale la latenza mentre la linea è satura dal test di velocità: la mediana dei ping fatti durante il download e durante l\'upload, meno la mediana a riposo misurata subito prima. Le sonde sono le stesse dell\'analisi (ping verso 1.1.1.1 ogni 250 ms, oppure connessioni TCP ogni 500 ms se i ping sono bloccati) e viaggiano su connessioni separate da quella del test.',
+    scale: [
+      { range: 'meno di 30 ms in più (P)', severity: 'ok', meaning: 'Coda contenuta: chiamate e videochiamate reggono anche con la linea piena.' },
+      { range: 'da 30 a 100 ms in più (P)', severity: 'warn', meaning: 'Si nota nelle videochiamate e nei giochi quando qualcuno scarica o carica file.' },
+      { range: 'oltre 100 ms in più (P)', severity: 'crit', meaning: 'Con la linea piena le chiamate si spezzano e le pagine tardano ad aprirsi.' },
+    ],
+    why: 'Una linea veloce può essere inutilizzabile per chiamate e lavoro interattivo se, quando un backup o un aggiornamento la satura, il modem accumula pacchetti in code lunghe. È il bufferbloat: si cura sul router con la gestione attiva delle code (SQM), non comprando più banda.',
+    limits:
+      'Le soglie (P) sono una scelta di Polaris: non esiste una soglia standard per la latenza aggiunta. 30 ms è una soglia prudente scelta da Polaris, non un limite misurato; oltre 100 ms, sommati alla latenza della linea e del servizio, ci si avvicina al ritardo oltre cui una conversazione peggiora (riferimento generale, da verificare: la raccomandazione ITU-T G.114 indica 150 ms di ritardo di sola andata come obiettivo per la voce). Il giudizio usa la mediana del verso peggiore; il 95° percentile è mostrato per i picchi. Ogni sonda aspetta la risposta per un secondo. Durante i trasferimenti, se a riposo le sonde rispondevano, una sonda senza risposta conta come latenza di almeno un secondo (tolta la quota persa anche a riposo): quando mediana o 95° percentile cadono su queste sonde sono valori minimi ("almeno"), e se resta senza risposta più di metà delle sonde il giudizio è alto. Se resta senza risposta oltre il 10 % delle sonde, oltre la quota persa a riposo, il giudizio è almeno da migliorare (P). Una sonda può restare senza risposta anche perché il router scarta o rallenta i ping quando la linea è piena: il valore è quindi un\'indicazione, non una misura esatta della coda. Il test usa una sola connessione e in download il server di M-Lab usa BBR, che tiene basse le code: una linea con molti trasferimenti contemporanei può fare peggio.',
+  },
+  {
+    id: 'net.speed.retrans',
+    label: 'Dati ritrasmessi nel test di velocità',
+    category: 'internet',
+    unit: '%',
+    what: 'La quota di dati che il server di M-Lab ha dovuto inviare di nuovo durante il download, dalle statistiche TCP del server (byte ritrasmessi su byte inviati).',
+    scale: [
+      { range: 'sotto il 5 % (P)', severity: 'ok', meaning: 'Nessuna indicazione particolare: qualche ritrasmissione è normale.' },
+      { range: '5 % o più (P)', severity: 'info', meaning: 'Da tenere d\'occhio se si ripete in più test, insieme a perdite o latenza alte.' },
+    ],
+    why: 'Molte ritrasmissioni indicano pacchetti persi lungo il percorso: Wi-Fi disturbato, linea con errori, congestione presso l\'operatore.',
+    limits:
+      'La soglia del 5 % (P) è una scelta di Polaris. La specifica di ndt7 avverte che questo rapporto approssima male il tasso di perdita: una parte delle ritrasmissioni è normale e dipende dal controllo di congestione. Per questo Polaris lo riporta solo come informazione.',
+  },
 
   // ---------------- DNS ----------------
   {
