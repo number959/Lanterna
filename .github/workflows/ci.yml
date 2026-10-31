@@ -207,15 +207,56 @@ jobs:
           if ($w.files -lt 10000 -or $w.allocBytes -le 0) { throw "cartella di Windows letta male" }
           if ($w.linkedBytes -le 0) { throw "nessun collegamento fisico contato una volta (WinSxS/System32)" }
           if (@($w.hints | ForEach-Object { $_.id }) -notcontains 'winsxs') { throw "manca WinSxS tra le cartelle note" }
-          # Stesso numero di file di .NET nella cartella System32 analizzata da sola (senza sottocartelle). Dentro
-          # l'analisi di Windows ne risultano meno: un file con un altro nome che viene prima in ordine alfabetico
-          # (per esempio in Microsoft.NET) si conta là.
+          # System32 analizzata da sola contro .NET: Polaris conta una volta i file con più nomi e li attribuisce al nome
+          # che viene prima in ordine alfabetico (per esempio in DriverStore), quindi ne vede qualcuno in meno. Solo un
+          # controllo di buon senso; i conteggi esatti si provano sotto, su cartelle dal contenuto noto.
           $s = ./polaris-cli.exe space "$env:SystemRoot\System32" --json | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "space su System32 fallito" }
-          $s32 = $w.tree.children | Where-Object { $_.name -eq 'System32' }
           $net = [System.IO.Directory]::GetFiles("$env:SystemRoot\System32").Count
-          "System32: $($s.tree.ownFiles) file letti da Polaris ($($s32.ownFiles) nell'analisi di Windows), $net da .NET"
-          if ([math]::Abs($s.tree.ownFiles - $net) -gt [math]::Max(3, $net * 0.002)) { throw "conteggio dei file di System32 diverso da .NET" }
+          "System32: $($s.tree.ownFiles) file attribuiti da Polaris, $net nomi di file per .NET"
+          if ($s.tree.ownFiles -gt $net -or $s.tree.ownFiles -lt $net * 0.98) { throw "conteggio dei file di System32 lontano da quello di .NET" }
+
+          # Cartella dal contenuto noto (NTFS): conteggi esatti, giunzione non seguita, collegamento fisico fuori da
+          # Windows contato con entrambi i nomi, nome di un profilo e indirizzo e-mail nascosti.
+          $t = if (Test-Path 'D:\') { 'D:\polaris-spazio' } else { "$env:SystemDrive\polaris-spazio" }
+          New-Item -ItemType Directory -Force "$t\Users\Giulia\Documenti", "$t\Cartella", "$t\Destinazione" | Out-Null
+          1..50 | ForEach-Object { [System.IO.File]::WriteAllBytes("$t\Cartella\file$_.bin", [byte[]]::new(4096 * $_)) }
+          [System.IO.File]::WriteAllBytes("$t\Users\Giulia\Documenti\giulia.rossi@studio-prova.it.ost", [byte[]]::new(1048576))
+          [System.IO.File]::WriteAllBytes("$t\Destinazione\dentro.bin", [byte[]]::new(8192))
+          New-Item -ItemType HardLink -Path "$t\Cartella\collegamento.bin" -Target "$t\Cartella\file50.bin" | Out-Null
+          New-Item -ItemType Junction -Path "$t\Giunzione" -Target "$t\Destinazione" | Out-Null
+          $kraw = ./polaris-cli.exe space $t --json | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "space sulla cartella di prova fallito" }
+          $k = $kraw | ConvertFrom-Json
+          $size = 4096 * 1275 + 1048576 + 8192 + 4096 * 50
+          "Cartella di prova: $($k.files) file, $($k.dirs) cartelle, $($k.sizeBytes) byte di dati, $($k.allocBytes) occupati; negate $([int]$k.denied), errori $([int]$k.errors)"
+          if ($k.files -ne 53 -or $k.dirs -ne 5 -or $k.sizeBytes -ne $size -or $k.allocBytes -lt $k.sizeBytes -or [int]$k.denied -ne 0 -or [int]$k.errors -ne 0) { throw "cartella di prova letta male (attesi 53 file, 5 cartelle, $size byte)" }
+          if ($kraw -match 'Giulia|giulia|rossi|studio-prova') { throw "nome del profilo o indirizzo e-mail nel rapporto" }
+          if ($kraw -notmatch 'e-mail[^"\\]*\.ost' -or $kraw -notmatch 'utente 1') { throw "alias del profilo o dell'indirizzo e-mail mancanti" }
+
+          # FAT32 ed exFAT (come le chiavette USB) su dischi virtuali: conteggi uguali a quelli di .NET, nessun errore.
+          foreach ($v in @(@('FAT32', 'T'), @('exFAT', 'U'))) {
+            $fs, $letter = $v
+            $vhd = Join-Path $env:RUNNER_TEMP "prova-$fs.vhdx"
+            $dp = Join-Path $env:RUNNER_TEMP "diskpart-$fs.txt"
+            @("create vdisk file=`"$vhd`" maximum=100 type=expandable", "select vdisk file=`"$vhd`"", 'attach vdisk', 'convert mbr', 'create partition primary', "format fs=$fs quick label=PROVA", "assign letter=$letter", 'exit') | Set-Content -Encoding ascii $dp
+            diskpart /s $dp | Out-Null
+            if (-not (Test-Path "${letter}:\")) { "Disco virtuale ${fs} non disponibile su questa macchina: prova saltata"; continue }
+            New-Item -ItemType Directory -Force "${letter}:\dati\sotto" | Out-Null
+            1..20 | ForEach-Object { [System.IO.File]::WriteAllBytes("${letter}:\dati\f$_.bin", [byte[]]::new(3000 * $_)) }
+            [System.IO.File]::WriteAllBytes("${letter}:\dati\sotto\x.bin", [byte[]]::new(5000))
+            $j = ./polaris-cli.exe space "${letter}:\dati" --json | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw "space su ${fs} fallito" }
+            # Windows può creare System Volume Information alla radice dopo il montaggio: .NET conta prima e dopo.
+            $o = [System.IO.EnumerationOptions]::new(); $o.RecurseSubdirectories = $true; $o.IgnoreInaccessible = $true; $o.AttributesToSkip = 0
+            $n0 = @([System.IO.Directory]::EnumerateFiles("${letter}:\", '*', $o)).Count
+            $r = ./polaris-cli.exe space "${letter}:" --json | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw "space sulla radice di ${fs} fallito" }
+            $nf = @([System.IO.Directory]::EnumerateFiles("${letter}:\", '*', $o)).Count
+            "${fs}: cartella dati $($j.files) file, $($j.dirs) cartelle, $($j.sizeBytes) byte; radice $($r.files) file ($nf per .NET), file system $($r.fs), errori $([int]$r.errors)"
+            if ($j.files -ne 21 -or $j.dirs -ne 1 -or $j.sizeBytes -ne 635000 -or $j.allocBytes -lt $j.sizeBytes -or [int]$j.errors -ne 0) { throw "${fs}: cartella letta male (attesi 21 file, 1 cartella, 635000 byte)" }
+            if ($r.fs -ne $fs -or $r.files -lt [math]::Min($n0, $nf) -or $r.files -gt [math]::Max($n0, $nf) -or [int]$r.errors -ne 0) { throw "${fs}: radice letta male" }
+          }
           ./polaris-cli.exe space $env:SystemRoot --top 5
           if ($LASTEXITCODE -ne 0) { throw "space in testo fallito" }
 

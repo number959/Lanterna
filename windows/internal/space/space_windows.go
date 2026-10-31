@@ -76,7 +76,7 @@ func (w *winLister) List(path string) ([]entry, error) {
 		}
 		// File system senza la classe con il numero del file: si riprova
 		// con quella senza, sulla stessa cartella appena aperta.
-		if first && class == fileIDBothDirectoryInfo && (errors.Is(err, windows.ERROR_INVALID_PARAMETER) || errors.Is(err, windows.ERROR_NOT_SUPPORTED) || errors.Is(err, windows.ERROR_INVALID_FUNCTION)) {
+		if first && class == fileIDBothDirectoryInfo && (errors.Is(err, windows.ERROR_INVALID_PARAMETER) || errors.Is(err, windows.ERROR_NOT_SUPPORTED) || errors.Is(err, windows.ERROR_INVALID_FUNCTION) || errors.Is(err, windows.ERROR_INVALID_LEVEL)) {
 			class, parse, first = fileFullDirectoryInfo, parseFullDirInfo, true
 			err = windows.GetFileInformationByHandleEx(h, class, &buf[0], uint32(len(buf)))
 			if errors.Is(err, windows.ERROR_NO_MORE_FILES) || errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
