@@ -109,7 +109,7 @@ const homeCHints: [string, number, number, string?][] = [
 
 // ---------------------------------------------------------------- Ambulatorio, C: e D:
 
-const clinicC: Dir = d('C:\\', 6.1, 4, [
+const clinicC: Dir = d('C:\\', 4.3, 3, [
   d('Users', 0, 2, [
     d('%USERPROFILE%', 0.01, 6, [
       d('AppData', 0, 3, [
@@ -119,12 +119,12 @@ const clinicC: Dir = d('C:\\', 6.1, 4, [
         ], [102, 0.8]),
         d('Roaming', 0.9, 2100),
       ]),
-      d('Documents', 2.1, 1300),
+      d('Documents', 2.1, 1300, [d('Scansioni', 4.6, 3100)]),
       d('Downloads', 3.4, 210),
       d('Desktop', 0.6, 40),
     ]),
-    d('‹utente 1›', 0, 4, [d('AppData', 4.8, 9800), d('Documents', 1.2, 600), d('Downloads', 2.2, 140)]),
-    d('‹utente 2›', 0, 4, [d('AppData', 3.9, 8100), d('Downloads', 1.1, 90)]),
+    d('‹utente 1›', 0, 4, [d('AppData', 7.6, 15200), d('Documents', 1.2, 600), d('Downloads', 2.2, 140)]),
+    d('‹utente 2›', 0, 4, [d('AppData', 6.4, 12800), d('Downloads', 1.1, 90)]),
     d('Public', 0.2, 20),
   ]),
   d('Windows', 0.3, 60, [
@@ -136,13 +136,14 @@ const clinicC: Dir = d('C:\\', 6.1, 4, [
     d('Microsoft.NET', 1.0, 4300),
     d('SysWOW64', 1.2, 5400),
     d('Temp', 0.6, 900),
-  ], [121, 2.9]),
-  d('Program Files', 0.1, 12, [d('Gestionale Ambulatorio', 6.9, 8800, [d('Database', 18.4, 22)]), d('Microsoft Office', 3.3, 5600), d('Visualizzatore DICOM', 1.2, 900)], [52, 3.4]),
+  ], [121, 4.6]),
+  d('Program Files', 0.1, 12, [d('Gestionale Ambulatorio', 6.9, 8800, [d('Database', 18.4, 22, [d('Storico', 6.8, 12)])]), d('Microsoft Office', 3.3, 5600), d('Visualizzatore DICOM', 1.2, 900)], [52, 6.2]),
   d('Program Files (x86)', 0.1, 10, [d('Microsoft', 1.2, 900), d('Firma digitale', 0.4, 300)], [18, 0.8]),
   d('ProgramData', 0.1, 20, [
     d('Microsoft', 1.6, 3200, [d('Windows', 0.1, 50, [d('WER', 0.3, 40)])]),
     d('Package Cache', 2.2, 640),
-    d('Gestionale Ambulatorio', 0.2, 30, [d('Backup locale', 21.7, 30)]),
+    d('Gestionale Ambulatorio', 0.2, 30, [d('Backup locale', 21.7, 30), d('Allegati', 16.4, 52000)]),
+    d('Visualizzatore DICOM', 0.1, 40, [d('Cache', 11.3, 9200)]),
   ], [40, 0.6]),
   d('$Recycle.Bin', 0, 1, [d('S-1-5-21-…-1104', 0.8, 70)]),
 ]);
@@ -160,7 +161,7 @@ const clinicCFiles: [string, number, string][] = [
 
 const clinicCHints: [string, number, number, string?][] = [
   ['winsxs', 8.6, 64000, 'C:\\Windows\\WinSxS'],
-  ['downloads', 6.7, 440],
+  ['downloads', 3.4, 210, '%USERPROFILE%\\Downloads'],
   ['installer', 4.6, 620, 'C:\\Windows\\Installer'],
   ['pagefile', 4.29, 1],
   ['update-cache', 2.8, 1100, 'C:\\Windows\\SoftwareDistribution\\Download'],
@@ -175,14 +176,16 @@ const clinicCHints: [string, number, number, string?][] = [
 const clinicD: Dir = d('D:\\', 0.02, 3, [
   d('Immagini diagnostiche', 0.1, 20, [d('2026', 96.4, 61000), d('2025', 118.2, 79000), d('2024', 74.9, 52000)], [6, 31.7]),
   d('Archivio documenti', 0.3, 200, [d('Referti', 61.8, 184000), d('Consensi firmati', 38.6, 92000), d('Fatture', 12.4, 41000)]),
-  d('Backup', 0, 3, [d('Gestionale', 88.5, 62), d('Posta', 31.2, 14), d('Immagine di sistema', 21.4, 3)]),
+  d('Backup', 0, 3, [d('Gestionale', 88.5, 62), d('Posta', 31.2, 14)]),
+  // Backup d'immagine di sistema di Windows: l'agente non lo conta tra i dischi virtuali.
+  d('WindowsImageBackup', 0, 0, [d('AMB-07', 0, 1, [d('Backup 2026-09-30 220014', 20.42, 16), d('Catalog', 0.01, 2)])]),
   d('Condivisa', 9.8, 4100, [d('Modulistica', 1.4, 380)]),
   d('$Recycle.Bin', 0, 1, [d('S-1-5-21-…-1104', 4.8, 1900)]),
   { n: 'System Volume Information', denied: true },
 ]);
 
 const clinicDFiles: [string, number, string][] = [
-  ['D:\\Backup\\Immagine di sistema\\AMB-07.vhdx', 19.8, '2026-09-30'],
+  ['D:\\WindowsImageBackup\\AMB-07\\Backup 2026-09-30 220014\\5d3f1c2a-8e47-4b9a-9c61-2f0e7a4b8d13.vhdx', 19.8, '2026-09-30'],
   ['D:\\Backup\\Gestionale\\gestionale-2026-10.zip', 15.1, '2026-10-01'],
   ['D:\\Backup\\Gestionale\\gestionale-2026-09.zip', 14.8, '2026-09-01'],
   ['D:\\Backup\\Gestionale\\gestionale-2026-08.zip', 14.6, '2026-08-01'],
@@ -192,10 +195,7 @@ const clinicDFiles: [string, number, string][] = [
   ['D:\\Backup\\Gestionale\\gestionale-2026-05.zip', 13.9, '2026-05-01'],
 ];
 
-const clinicDHints: [string, number, number, string?][] = [
-  ['virtual-disks', 19.8, 1],
-  ['recycle-bin', 4.8, 1900, 'D:\\$Recycle.Bin'],
-];
+const clinicDHints: [string, number, number, string?][] = [['recycle-bin', 4.8, 1900, 'D:\\$Recycle.Bin']];
 
 // ---------------------------------------------------------------- Costruzione
 
@@ -251,27 +251,34 @@ function findPath(n: SpaceNode, path: string): SpaceNode | undefined {
 }
 
 // Ripartizione per tipo di file: [estensione, quota dello spazio, file per GB].
+// Ogni quota copre almeno i file più grandi elencati con quell'estensione.
 const HOME_TYPES: [string, number, number][] = [
   ['.mkv', 0.14, 8], ['.mp4', 0.12, 60], ['.dll', 0.12, 900], ['.pak', 0.07, 30], ['.jpg', 0.07, 900], ['.exe', 0.06, 160], ['.iso', 0.045, 1],
-  ['.zip', 0.04, 20], ['.cab', 0.03, 60], ['pagefile.sys', 0.02, 0.5], ['.esd', 0.02, 1], ['.png', 0.02, 1500], ['.heic', 0.02, 600], ['hiberfil.sys', 0.015, 0.3],
+  ['.zip', 0.04, 20], ['.cab', 0.03, 60], ['.esd', 0.02, 1], ['.png', 0.02, 1500], ['.heic', 0.02, 600],
   ['.msp', 0.013, 20], ['.pdf', 0.012, 200], ['.img', 0.009, 1], ['.mp3', 0.008, 120], ['.docx', 0.006, 300],
 ];
 const CLINIC_C_TYPES: [string, number, number][] = [
-  ['.mdf', 0.09, 0.1], ['.bak', 0.12, 0.3], ['.dll', 0.13, 900], ['.ost', 0.035, 0.2], ['.exe', 0.05, 160], ['pagefile.sys', 0.022, 0.3], ['.cab', 0.03, 60],
-  ['.msp', 0.025, 20], ['.ldf', 0.011, 0.5], ['.pdf', 0.01, 200], ['.docx', 0.006, 300], ['.jpg', 0.008, 900],
+  ['.mdf', 0.127, 0.6], ['.bak', 0.117, 0.25], ['.dll', 0.11, 900], ['.pdf', 0.08, 2400], ['.dcm', 0.06, 800], ['.jpg', 0.045, 1500], ['.exe', 0.04, 160],
+  ['.ost', 0.037, 0.3], ['.msi', 0.022, 30], ['.cab', 0.022, 60], ['.msp', 0.018, 20], ['.sys', 0.012, 400], ['.zip', 0.012, 20], ['.ldf', 0.012, 0.5],
+  ['.png', 0.01, 1500], ['.msg', 0.008, 2000], ['.docx', 0.006, 300], ['.xlsx', 0.004, 200],
 ];
 const CLINIC_D_TYPES: [string, number, number][] = [
-  ['.dcm', 0.5, 600], ['.pdf', 0.21, 2500], ['.zip', 0.16, 0.5], ['.vhdx', 0.033, 0.05], ['.pst', 0.052, 0.2], ['.jpg', 0.01, 900], ['.docx', 0.006, 300],
+  ['.dcm', 0.5, 600], ['.pdf', 0.21, 2500], ['.zip', 0.16, 0.5], ['.pst', 0.052, 0.2], ['.jpg', 0.01, 900], ['.docx', 0.006, 300],
 ];
 
 const CATEGORY: Record<string, string> = {
   '.mkv': 'video', '.mp4': 'video', '.dll': 'program', '.exe': 'program', '.msp': 'program', '.pak': 'other', '.iso': 'archive', '.zip': 'archive',
   '.cab': 'archive', '.img': 'archive', '.esd': 'archive', '.jpg': 'image', '.png': 'image', '.heic': 'image', '.docx': 'document', '.pdf': 'document', '.ost': 'document',
-  '.pst': 'document', '.mp3': 'audio', '.vhdx': 'virtualdisk', 'pagefile.sys': 'system', 'hiberfil.sys': 'system',
+  '.pst': 'document', '.mp3': 'audio', '.vhdx': 'virtualdisk', 'pagefile.sys': 'system', 'hiberfil.sys': 'system', '.msi': 'program', '.sys': 'program',
+  '.msg': 'document', '.xlsx': 'document',
 };
 
-function types(total: number, files: number, spec: [string, number, number][]): { types: SpaceType[]; categories: SpaceType[] } {
-  const list: SpaceType[] = spec.map(([id, share, perGB]) => ({ id, alloc: Math.round(total * share), files: Math.max(1, Math.round(((total * share) / GB) * perGB)) }));
+function types(total: number, files: number, spec: [string, number, number][], exact: [string, number, number][] = []): { types: SpaceType[]; categories: SpaceType[] } {
+  const list: SpaceType[] = [
+    // I tipi di pochi file noti (file di paging, dischi virtuali) valgono esattamente quei file.
+    ...exact.map(([id, gb, n]) => ({ id, alloc: Math.round(gb * GB), files: n })),
+    ...spec.map(([id, share, perGB]) => ({ id, alloc: Math.round(total * share), files: Math.max(1, Math.round(((total * share) / GB) * perGB)) })),
+  ];
   const usedA = list.reduce((s, t) => s + t.alloc, 0);
   const usedF = list.reduce((s, t) => s + t.files, 0);
   const cats = new Map<string, SpaceType>();
@@ -296,6 +303,8 @@ interface Plan {
   files: [string, number, string][];
   hints: [string, number, number, string?][];
   types: [string, number, number][];
+  /** Tipi con spazio esatto: [estensione o nome, GB, file]. */
+  exact?: [string, number, number][];
   cloud?: [number, number];
   linkedGB?: number;
   denied?: string[];
@@ -305,9 +314,9 @@ interface Plan {
 function planFor(scan: Scan, drive: string): Plan | null {
   const clinic = scan.agent.host === 'AMB-07';
   const D = drive.toUpperCase();
-  if (D === 'C:' && !clinic) return { tree: homeC, files: homeCFiles, hints: homeCHints, types: HOME_TYPES, cloud: [1840, 42.6], linkedGB: 5.6, denied: ['C:\\System Volume Information', 'C:\\Windows\\CSC', 'C:\\Windows\\System32\\LogFiles\\WMI\\RtBackup'], seconds: 19 };
-  if (D === 'C:' && clinic) return { tree: clinicC, files: clinicCFiles, hints: clinicCHints, types: CLINIC_C_TYPES, linkedGB: 6.1, denied: ['C:\\System Volume Information', 'C:\\Users\\‹utente 1›\\AppData\\Local\\Microsoft\\Credentials'], seconds: 24 };
-  if (D === 'D:' && clinic) return { tree: clinicD, files: clinicDFiles, hints: clinicDHints, types: CLINIC_D_TYPES, denied: ['D:\\System Volume Information'], seconds: 71 };
+  if (D === 'C:' && !clinic) return { tree: homeC, files: homeCFiles, hints: homeCHints, types: HOME_TYPES, exact: [['pagefile.sys', 4.29, 1], ['hiberfil.sys', 3.18, 1]], cloud: [1840, 42.6], linkedGB: 5.6, denied: ['C:\\System Volume Information', 'C:\\Windows\\CSC', 'C:\\Windows\\System32\\LogFiles\\WMI\\RtBackup'], seconds: 19 };
+  if (D === 'C:' && clinic) return { tree: clinicC, files: clinicCFiles, hints: clinicCHints, types: CLINIC_C_TYPES, exact: [['pagefile.sys', 4.29, 1]], linkedGB: 6.1, denied: ['C:\\System Volume Information', 'C:\\Users\\‹utente 1›\\AppData\\Local\\Microsoft\\Credentials'], seconds: 24 };
+  if (D === 'D:' && clinic) return { tree: clinicD, files: clinicDFiles, hints: clinicDHints, types: CLINIC_D_TYPES, exact: [['.vhdx', 20.4, 3]], denied: ['D:\\System Volume Information'], seconds: 71 };
   return null;
 }
 
@@ -350,7 +359,7 @@ export function simulatedSpace(scan: Scan, drive: string, now = new Date()): Spa
       return h;
     })
     .sort((a, b) => b.alloc - a.alloc);
-  const t = types(tree.alloc, files, plan.types);
+  const t = types(tree.alloc, files, plan.types, plan.exact);
   const r: SpaceReport = {
     root: `${D}\\`,
     drive: D,

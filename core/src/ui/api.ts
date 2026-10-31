@@ -215,8 +215,14 @@ export async function runSpace(drive: string, onProgress: (st: SpaceState) => vo
   }
 }
 
-/** Apre in Esplora file una cartella (o la cartella di un file, selezionandolo) dell'ultima analisi. */
-export const openSpaceItem = (drive: string, id: number, file = false) => postJson<{ opened: boolean }>('api/space/open', { drive, id, file });
+/**
+ * Apre in Esplora file una cartella (o la cartella di un file, selezionandolo)
+ * dell'ultima analisi. `startedAt` è quello del rapporto mostrato: se nel
+ * frattempo l'unità è stata analizzata di nuovo (anche da un'altra finestra)
+ * gli identificativi sono cambiati e l'agente risponde "elemento non trovato".
+ */
+export const openSpaceItem = (drive: string, id: number, file: boolean, startedAt: string) =>
+  postJson<{ opened: boolean }>('api/space/open', { drive, id, file, startedAt });
 
 // ---- Microsoft Defender: scansioni e aggiornamento delle firme su richiesta.
 

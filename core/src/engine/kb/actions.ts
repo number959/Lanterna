@@ -622,7 +622,7 @@ const list: Action[] = [
     steps: [
       'In Polaris, Computer > Cosa occupa spazio: scegli l\'unità e avvia l\'analisi. Legge solo l\'elenco dei file, non il contenuto, e non cancella nulla.',
       'Nella mappa e nella tabella scendi nelle cartelle più grandi; in "File più grandi" trovi i singoli file da spostare o eliminare.',
-      'In "Cartelle note" trovi cosa si libera con gli strumenti di Windows, cosa va rivisto a mano e cosa non va toccato.',
+      'In "Cartelle note" trovi cosa si libera con gli strumenti di Windows, cosa si svuota dal programma che lo usa, cosa va rivisto a mano e cosa non va toccato.',
       'Avviando Polaris come amministratore si leggono anche molte cartelle protette.',
     ],
     effort: 'facile',
@@ -634,6 +634,7 @@ const list: Action[] = [
     why: 'Dopo un aggiornamento di versione Windows conserva la versione precedente per poter tornare indietro; la elimina da solo dopo 10 giorni, salvo impostazioni diverse. Se il PC funziona bene la si può togliere prima.',
     steps: [
       'Controlla che il PC funzioni bene e che non ti serva tornare alla versione precedente: dopo la rimozione non si può più.',
+      'Controlla che in Windows.old\\Users non ci siano documenti tuoi da recuperare: se ci sono, copiali nelle tue cartelle.',
       'Impostazioni > Sistema > Archiviazione > File temporanei: seleziona "Installazioni precedenti di Windows" e scegli Rimuovi file.',
       'In alternativa: Pulizia disco > Pulizia file di sistema > "Installazioni precedenti di Windows".',
       'Non cancellare la cartella da Esplora file: contiene file protetti e rischi di lasciarla a metà.',
@@ -660,10 +661,12 @@ const list: Action[] = [
     title: 'Compatta i dischi virtuali (WSL, Docker, macchine virtuali)',
     why: 'I file dei dischi virtuali crescono quando si scrivono dati ma non si rimpiccioliscono da soli quando li si cancella al loro interno.',
     steps: [
+      'Non compattare i backup d\'immagine di sistema (cartella WindowsImageBackup) né i dischi con punti di controllo (file .avhdx accanto).',
       'Libera prima spazio dentro la macchina virtuale o la distribuzione Linux (per Docker: docker system prune).',
       'Spegni tutto: wsl --shutdown per WSL e Docker Desktop, oppure spegni la macchina virtuale.',
+      'Fai una copia del file su un altro disco: se la compattazione si interrompe, il disco virtuale può rovinarsi.',
       'Compatta il file con Optimize-VHD -Path <file.vhdx> -Mode Full (richiede il modulo Hyper-V) oppure con diskpart: select vdisk file=<file>, attach vdisk readonly, compact vdisk, detach vdisk.',
-      'Fai prima una copia del file se contiene dati importanti, e non cancellarlo: si perderebbe la macchina virtuale.',
+      'Non cancellare il file: si perderebbe la macchina virtuale.',
     ],
     effort: 'avanzata',
     impact: 'medio',

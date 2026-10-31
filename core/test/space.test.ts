@@ -3,7 +3,7 @@ import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { simulatedSpace } from '../src/demo/space';
 import { ACTIONS, analyze, METRICS, pctText, reclaimableBytes, renderDocument, sizeText, SPACE_CATEGORY_LABEL, SPACE_HINTS, unattributedBytes } from '../src/engine';
-import type { SpaceNode, SpaceReport } from '../src/engine';
+import type { Scan, SpaceNode, SpaceReport } from '../src/engine';
 import { squarify } from '../src/ui/treemap';
 
 const walk = (n: SpaceNode, f: (n: SpaceNode) => void) => {
@@ -77,6 +77,17 @@ describe('cosa occupa spazio: formati e catalogo', () => {
     }
     expect(Object.keys(SPACE_CATEGORY_LABEL).sort()).toEqual(['archive', 'audio', 'document', 'image', 'other', 'program', 'system', 'video', 'virtualdisk']);
   });
+
+  it('conta come recuperabile solo ciò che liberano gli strumenti di Windows', () => {
+    // Le cache dei browser si svuotano dal browser; i download di Windows Update li gestisce Windows.
+    expect(SPACE_HINTS['browser-cache'].risk).toBe('app');
+    expect(SPACE_HINTS['update-cache'].risk).toBe('keep');
+    expect(SPACE_HINTS['update-cache'].how).not.toContain('Pulizia disco');
+    expect(SPACE_HINTS['windows-old'].how).toContain('Windows.old\\Users');
+    expect(SPACE_HINTS['virtual-disks'].how).toContain('WindowsImageBackup');
+    const r = { hints: [{ id: 'browser-cache', alloc: 6e9 }, { id: 'update-cache', alloc: 3e9 }, { id: 'temp-user', alloc: 2e9 }] } as SpaceReport;
+    expect(reclaimableBytes(r)).toBe(2e9);
+  });
 });
 
 describe('analisi dello spazio simulata', () => {
@@ -103,21 +114,50 @@ describe('analisi dello spazio simulata', () => {
       expect(n.path).not.toMatch(/\\Users\\(?!%|‹|Public)/);
     });
     expect(ids.size).toBeGreaterThan(5);
+    const byId = new Map<number, SpaceNode>();
+    walk(tree, (n) => byId.set(n.id, n));
     for (const h of r.hints ?? []) {
       expect(SPACE_HINTS[h.id]).toBeDefined();
-      if (h.nodeId !== undefined) expect(ids.has(h.nodeId)).toBe(true);
+      // L'agente ricava la cartella nota dalla cartella stessa.
+      if (h.nodeId !== undefined) expect(Math.abs(byId.get(h.nodeId)!.alloc - h.alloc), h.id).toBeLessThan(1e6);
     }
     const cats = (r.categories ?? []).reduce((s, c) => s + c.alloc, 0);
     expect(cats).toBe(r.allocBytes);
+    // Lo spazio non attribuito resta sotto il 10 % dello spazio usato.
+    const used = r.totalBytes - r.freeBytes;
+    expect((used - r.allocBytes) / used).toBeLessThan(0.1);
+    // Ogni tipo vale almeno i file più grandi elencati con quell'estensione; i file di sistema esattamente.
+    const keyOf = (path: string) => {
+      const name = path.split('\\').pop()!.toLowerCase();
+      return name === 'pagefile.sys' || name === 'hiberfil.sys' ? name : name.slice(name.lastIndexOf('.'));
+    };
+    const listed = new Map<string, number>();
+    for (const f of r.topFiles ?? []) listed.set(keyOf(f.path), (listed.get(keyOf(f.path)) ?? 0) + f.alloc);
+    for (const [key, sum] of listed) {
+      const t = (r.types ?? []).find((x) => x.id === key);
+      expect(t, key).toBeDefined();
+      if (key.endsWith('.sys')) expect(t!.alloc, key).toBe(sum);
+      else expect(t!.alloc, key).toBeGreaterThanOrEqual(sum);
+    }
   });
 
   it('mostra il caso tipico del PC di casa: C: quasi pieno, Windows.old e download', () => {
     const r = cases[0][1];
     expect(r.hints?.some((h) => h.id === 'windows-old' && h.nodeId)).toBe(true);
-    expect(reclaimableBytes(r)).toBeGreaterThan(30e9);
+    expect(reclaimableBytes(r)).toBeGreaterThan(25e9);
     expect(unattributedBytes(r)).toBeGreaterThan(0);
     expect(r.cloudFiles).toBeGreaterThan(0);
     expect(r.linkedBytes).toBeGreaterThan(0);
+  });
+
+  it('nell\'ambulatorio il backup d\'immagine non è un disco virtuale e i download sono quelli dell\'utente', () => {
+    const c = cases[2][1];
+    const dl = c.hints?.find((h) => h.id === 'downloads');
+    expect(dl?.path).toBe('%USERPROFILE%\\Downloads');
+    expect(dl?.nodeId).toBeDefined();
+    const d = cases[3][1];
+    expect(d.hints?.some((h) => h.id === 'virtual-disks')).toBe(false);
+    expect(d.topFiles?.some((f) => /\\WindowsImageBackup\\.*\.vhdx$/.test(f.path))).toBe(true);
   });
 
   it('non dà spazio non attribuito per una cartella o un\'analisi interrotta', () => {
@@ -129,6 +169,7 @@ describe('analisi dello spazio simulata', () => {
 
 describe('cosa occupa spazio nel motore e nel documento', () => {
   const withSpace = (scan: typeof demoScan, drives: string[]) => ({ ...scan, pc: { ...scan.pc!, space: drives.map((d) => simulatedSpace(scan, d, new Date('2026-10-30T09:00:00Z'))) } });
+  const withReports = (scan: Scan, space: SpaceReport[]): Scan => ({ ...scan, pc: { ...scan.pc!, space } });
 
   it('valuta lo spazio recuperabile e propone azioni mirate', () => {
     const a = analyze(withSpace(demoScan, ['C:']));
@@ -138,7 +179,10 @@ describe('cosa occupa spazio nel motore e nel documento', () => {
     expect(f.verdict).toContain('Installazione precedente di Windows');
     expect(f.verdict).toContain('Cartella Download');
     expect(f.verdict).toContain('30/10/2026');
+    expect(f.verdict).toContain('Si svuotano dal programma che le usa: Cache dei browser 4,2 GB.');
+    expect(f.verdict).not.toContain('Download di Windows Update');
     expect(f.actions).toEqual(expect.arrayContaining(['remove-windows-old', 'free-disk-space', 'review-large-files']));
+    expect(f.actions).not.toContain('space-analysis');
     // Lo spazio quasi esaurito su C: dice dove sta lo spazio e mette prima Windows.old.
     const low = a.findings.find((x) => x.id === 'pc.space.C')!;
     expect(low.severity).not.toBe('ok');
@@ -154,11 +198,56 @@ describe('cosa occupa spazio nel motore e nel documento', () => {
     expect(a.findings.some((x) => x.id.startsWith('pc.spacereclaim'))).toBe(false);
   });
 
-  it('propone di compattare i dischi virtuali grandi', () => {
+  it('propone di compattare i dischi virtuali grandi, non i backup d\'immagine', () => {
     const a = analyze(withSpace(clinicScan, ['C:', 'D:']));
-    const d = a.findings.find((x) => x.id === 'pc.spacereclaim.D')!;
-    expect(d.actions).toEqual(['compact-virtual-disks']);
+    expect(a.findings.find((x) => x.id === 'pc.spacereclaim.D')!.actions).not.toContain('compact-virtual-disks');
     expect(a.findings.find((x) => x.id === 'pc.spacereclaim.C')!.actions).not.toContain('remove-windows-old');
+    const vm = { ...simulatedSpace(clinicScan, 'D:'), hints: [{ id: 'virtual-disks', alloc: 42e9, files: 2 }] };
+    const b = analyze(withReports(clinicScan, [vm]));
+    expect(b.findings.find((x) => x.id === 'pc.spacereclaim.D')!.actions).toEqual(['compact-virtual-disks']);
+  });
+
+  it('propone di rimuovere Windows.old solo sull\'unità di sistema', () => {
+    const old = { ...simulatedSpace(clinicScan, 'D:'), hints: [{ id: 'windows-old', alloc: 15e9, files: 90000 }] };
+    const a = analyze(withReports(clinicScan, [old]));
+    expect(a.findings.find((x) => x.id === 'pc.spacereclaim.D')!.actions).not.toContain('remove-windows-old');
+  });
+
+  it('con un\'analisi interrotta non dice che non c\'è nulla e propone di ripeterla', () => {
+    const full = simulatedSpace(demoScan, 'C:', new Date('2026-10-30T09:00:00Z'));
+    const part: SpaceReport = { ...full, partial: true, hints: full.hints!.filter((h) => h.id === 'downloads' || h.id === 'onedrive') };
+    const a = analyze(withReports(demoScan, [part]));
+    const f = a.findings.find((x) => x.id === 'pc.spacereclaim.C')!;
+    expect(f.severity).toBe('info');
+    expect(f.value).toBe('nulla di rilevante (analisi parziale)');
+    expect(f.verdict).not.toContain('Nessuna cartella');
+    expect(f.verdict).toContain('Analisi interrotta: i valori possono essere più alti');
+    expect(f.actions).toContain('space-analysis');
+    const low = a.findings.find((x) => x.id === 'pc.space.C')!;
+    expect(low.verdict).toContain('(analisi parziale).');
+    expect(low.actions).toContain('space-analysis');
+  });
+
+  it('senza i diritti di amministratore avverte che il recuperabile può essere più alto', () => {
+    // Senza amministratore la cartella Temp di Windows non si legge e manca dalle cartelle note.
+    const full = simulatedSpace(demoScan, 'C:');
+    const scan = withReports(demoScan, [{ ...full, hints: full.hints!.filter((h) => h.id !== 'temp-windows') }]);
+    const a = analyze({ ...scan, agent: { ...scan.agent, elevated: false } });
+    const f = a.findings.find((x) => x.id === 'pc.spacereclaim.C')!;
+    expect(f.verdict).toContain('amministratore');
+    expect(f.actions).toContain('space-analysis');
+    const b = analyze({ ...scan, agent: { ...scan.agent, elevated: true } });
+    expect(b.findings.find((x) => x.id === 'pc.spacereclaim.C')!.verdict).not.toContain('amministratore');
+  });
+
+  it('tiene le cache dei browser fuori dal recuperabile', () => {
+    const r = { ...simulatedSpace(demoScan, 'C:'), hints: [{ id: 'browser-cache', alloc: 6e9, files: 30000 }] };
+    const f = analyze(withReports(demoScan, [r])).findings.find((x) => x.id === 'pc.spacereclaim.C')!;
+    expect(f.severity).toBe('ok');
+    expect(f.value).toBe('nulla di rilevante');
+    expect(f.verdict).not.toContain('Si libera con gli strumenti di Windows');
+    expect(f.verdict).toContain('Si svuotano dal programma che le usa: Cache dei browser 6,0 GB.');
+    expect(f.actions).not.toContain('free-disk-space');
   });
 
   it('nel documento mette totali, tipi e cartelle note, senza nomi di file o profili', () => {
@@ -168,8 +257,11 @@ describe('cosa occupa spazio nel motore e nel documento', () => {
     expect(html).toContain('Unità C:, analisi del 30/10/2026');
     expect(html).toContain('Installazione precedente di Windows (Windows.old)');
     expect(html).toContain('Si libera con Windows');
+    expect(html).toContain('Si libera dal programma');
     expect(html).not.toContain('Vacanze 2025.mkv');
     expect(html).not.toContain('%USERPROFILE%');
     expect(html).not.toContain('Videos');
+    const err = withReports(demoScan, [{ ...scan.pc.space[0], errors: 3 }]);
+    expect(renderDocument(err, analyze(err))).toContain('3 cartelle non lette per errori del disco');
   });
 });

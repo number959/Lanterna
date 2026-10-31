@@ -37,6 +37,7 @@ import { useFx } from './fx';
 import { useLocalState } from './hooks';
 import { monitorCsv, summarize } from './monitor';
 import type { MonitorEvent, MonitorSession } from './monitor';
+import type { SpaceTarget } from './space';
 import { cascade, ease, rise, spring, stagger } from './motion';
 
 export type View = 'overview' | 'pc' | 'wifi' | 'lan' | 'internet' | 'router' | 'infra' | 'plan' | 'monitor' | 'guide';
@@ -69,8 +70,12 @@ export interface ViewProps {
   setInfra: (patch: Partial<InfraData>) => void;
   /** Unisce al rapporto il risultato di un test di velocità. */
   addBench: (r: { cpu?: CpuBench; disk?: DiskBench }) => void;
-  /** Unisce al rapporto un'analisi dello spazio (una per unità, la più recente). */
-  addSpace: (r: SpaceReport) => void;
+  /**
+   * Unisce al rapporto un'analisi dello spazio (una per unità, la più recente),
+   * solo se il rapporto mostrato è ancora del PC su cui è partita; restituisce
+   * false (e lo dice all'utente) se nel frattempo se ne guarda un altro.
+   */
+  addSpace: (r: SpaceReport, target: SpaceTarget) => boolean;
   /** Aggiorna parti dei dati del computer (per esempio lo stato di Defender dopo una scansione). */
   patchPc: (p: Partial<PcData>) => void;
   assessment: AssessmentState;

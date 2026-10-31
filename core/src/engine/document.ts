@@ -316,6 +316,7 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
         r.linkedBytes ? `${sizeText(r.linkedBytes)} di collegamenti fisici contati una volta` : '',
         r.cloudFiles ? `${thousands(r.cloudFiles)} file solo online esclusi` : '',
         r.denied ? `${thousands(r.denied)} cartelle non leggibili` : '',
+        r.errors ? `${thousands(r.errors)} ${r.errors === 1 ? 'cartella non letta' : 'cartelle non lette'} per errori del disco` : '',
         un > 0 ? `${sizeText(un)} non attribuiti a file leggibili` : '',
       ].filter(Boolean);
       return (

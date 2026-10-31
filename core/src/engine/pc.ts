@@ -378,11 +378,15 @@ function analyzeDisks(scan: Scan, pc: PcData, add: Add) {
               : 'Spazio scarso sull\'unità di Windows: gli aggiornamenti di funzionalità richiedono circa 20 GB liberi e il sistema rallenta quando l\'unità è quasi piena.'
             : 'Unità quasi piena: i nuovi file non troveranno posto.') +
         (sev !== 'ok' && disk && isFlash(disk) ? ' Un SSD quasi pieno è anche più lento in scrittura, perché ha meno spazio per riorganizzare i dati.' : '') +
-        (where ? ` Dall'analisi delle cartelle: ${where}.` : ''),
-      actions: sev === 'ok' ? [] : rep ? spaceActions(rep, ['free-disk-space']) : ['space-analysis', 'free-disk-space'],
+        (where ? ` Dall'analisi delle cartelle: ${where}${rep?.partial ? ' (analisi parziale)' : ''}.` : ''),
+      // Un'analisi interrotta va completata prima di decidere.
+      actions: sev === 'ok' ? [] : rep ? spaceActions(rep, rep.partial ? ['space-analysis', 'free-disk-space'] : ['free-disk-space'], !!vol.system) : ['space-analysis', 'free-disk-space'],
     });
   }
-  for (const rep of pc.space ?? []) analyzeSpace(rep, add);
+  for (const rep of pc.space ?? []) {
+    const vol = (pc.volumes ?? []).find((v) => v.letter.toUpperCase() === rep.drive.toUpperCase());
+    analyzeSpace(rep, vol ? !!vol.system : undefined, scan.agent.elevated, add);
+  }
 }
 
 // ---------------------------------------------------------------- Cosa occupa spazio
@@ -396,33 +400,60 @@ function biggestHints(r: SpaceReport, n: number): string {
   return (r.hints ?? [])
     .filter((h) => {
       const risk = SPACE_HINTS[h.id]?.risk;
-      return (risk === 'tool' || risk === 'review') && h.alloc >= 0.5 * GB;
+      return (risk === 'tool' || risk === 'app' || risk === 'review') && h.alloc >= 0.5 * GB;
     })
     .slice(0, n)
     .map((h) => `${SPACE_HINTS[h.id].label} ${sizeText(h.alloc)}`)
     .join(', ');
 }
 
-/** Azioni mirate a ciò che l'analisi ha trovato, dopo quelle indicate. */
-function spaceActions(r: SpaceReport, base: string[] = []): string[] {
+/**
+ * Azioni mirate a ciò che l'analisi ha trovato, dopo quelle indicate.
+ * Windows.old si rimuove con gli strumenti di Windows solo sull'unità di
+ * sistema (system false: un'altra unità; undefined: non si sa).
+ */
+function spaceActions(r: SpaceReport, base: string[] = [], system?: boolean): string[] {
   const out = [...base];
   const push = (id: string) => {
     if (!out.includes(id)) out.push(id);
   };
-  if ((hintOf(r, 'windows-old')?.alloc ?? 0) >= GB) out.unshift('remove-windows-old');
+  if (system !== false && (hintOf(r, 'windows-old')?.alloc ?? 0) >= GB) out.unshift('remove-windows-old');
   if (hintSum(r, (id) => SPACE_HINTS[id]?.risk === 'tool' && id !== 'windows-old') >= GB) push('free-disk-space');
   if (hintSum(r, (id) => id === 'downloads' || id === 'recycle-bin' || id === 'onedrive') >= 5 * GB) push('review-large-files');
   if ((hintOf(r, 'virtual-disks')?.alloc ?? 0) >= 10 * GB) push('compact-virtual-disks');
   return out;
 }
 
-function analyzeSpace(r: SpaceReport, add: Add) {
+// Cartelle note che senza i diritti di amministratore non si leggono (file
+// temporanei di Windows, dump del sistema): mancano dal recuperabile.
+const ADMIN_ONLY = /^[a-z]:\\windows\\(temp|minidump|livekernelreports)$/i;
+
+function analyzeSpace(r: SpaceReport, system: boolean | undefined, elevated: boolean | undefined, add: Add) {
   const reclaim = reclaimableBytes(r);
   const tool = (r.hints ?? []).filter((h) => SPACE_HINTS[h.id]?.risk === 'tool' && h.alloc >= 0.1 * GB);
+  const app = (r.hints ?? []).filter((h) => SPACE_HINTS[h.id]?.risk === 'app' && h.alloc >= GB);
   const review = (r.hints ?? []).filter((h) => SPACE_HINTS[h.id]?.risk === 'review' && h.alloc >= GB);
-  const sev: Severity = reclaim >= 5 * GB ? 'info' : 'ok';
+  // Senza amministratore mancano sull'unità di sistema (salvo che l'analisi
+  // le abbia lette); con un agente che non lo dice, solo se compaiono tra le
+  // cartelle non leggibili.
+  const notAdmin =
+    !hintOf(r, 'temp-windows') && (elevated === false ? system === true : elevated === undefined && (r.deniedPaths ?? []).some((p) => ADMIN_ONLY.test(p)));
+  // Un'analisi interrotta non permette di dire che non c'è nulla.
+  const sev: Severity = reclaim >= 5 * GB || r.partial ? 'info' : 'ok';
   const list = (hs: typeof tool) => hs.map((h) => `${SPACE_HINTS[h.id].label} ${sizeText(h.alloc)}`).join(', ');
   const drive = r.drive.toUpperCase();
+  const verdict = [
+    tool.length
+      ? `Si libera con gli strumenti di Windows, senza toccare i documenti: ${list(tool)}.`
+      : r.partial
+        ? ''
+        : `Nessuna cartella di file temporanei, aggiornamenti o installazioni precedenti di dimensioni rilevanti${notAdmin ? ' tra quelle lette' : ''}.`,
+    app.length ? `Si svuotano dal programma che le usa: ${list(app)}.` : '',
+    review.length ? `Da rivedere a mano, perché sono dati personali: ${list(review)}.` : '',
+    r.partial ? "Analisi interrotta: i valori possono essere più alti; ripeti l'analisi completa." : '',
+    notAdmin ? 'I file temporanei di Windows e i dump del sistema si leggono solo avviando Polaris come amministratore: il valore può essere più alto.' : '',
+    `Analisi del ${dateIt(r.startedAt)}: ${sizeText(r.allocBytes)} in ${thousands(r.files)} file.`,
+  ];
   add({
     id: `pc.spacereclaim.${drive.replace(':', '')}`,
     metric: 'pc.spacereclaim',
@@ -431,13 +462,8 @@ function analyzeSpace(r: SpaceReport, add: Add) {
     value: `${reclaim > 0 ? `circa ${sizeText(reclaim)}` : 'nulla di rilevante'}${r.partial ? ' (analisi parziale)' : ''}`,
     numeric: Math.round((reclaim / GB) * 10) / 10,
     severity: sev,
-    verdict:
-      (tool.length
-        ? `Si libera con gli strumenti di Windows, senza toccare i documenti: ${list(tool)}.`
-        : 'Nessuna cartella di file temporanei, aggiornamenti o installazioni precedenti di dimensioni rilevanti.') +
-      (review.length ? ` Da rivedere a mano, perché sono dati personali: ${list(review)}.` : '') +
-      ` Analisi del ${dateIt(r.startedAt)}: ${sizeText(r.allocBytes)} in ${thousands(r.files)} file.`,
-    actions: sev === 'ok' && !review.length ? [] : spaceActions(r),
+    verdict: verdict.filter(Boolean).join(' '),
+    actions: sev === 'ok' && !review.length && !notAdmin ? [] : spaceActions(r, r.partial || notAdmin ? ['space-analysis'] : [], system),
   });
 }
 

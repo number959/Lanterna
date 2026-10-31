@@ -711,13 +711,13 @@ const list: Metric[] = [
     label: 'Spazio recuperabile',
     category: 'pc',
     unit: 'GB',
-    what: 'Lo spazio che l\'analisi "Cosa occupa spazio" ha trovato in cartelle che Windows sa ripulire da solo o con i suoi strumenti: file temporanei, download degli aggiornamenti, installazione precedente (Windows.old), cache dei browser, segnalazioni e dump degli errori.',
+    what: 'Lo spazio che l\'analisi "Cosa occupa spazio" ha trovato in cartelle che Windows sa ripulire da solo o con i suoi strumenti: file temporanei, installazione precedente (Windows.old), file dell\'aggiornamento di versione, cache di Ottimizzazione recapito, segnalazioni e dump degli errori.',
     scale: [
       { range: 'meno di 5 GB', severity: 'ok', meaning: 'Poco da recuperare senza toccare i dati.' },
-      { range: '5 GB o più', severity: 'info', meaning: 'Si libera spazio con Impostazioni > Archiviazione o Pulizia disco.' },
+      { range: '5 GB o più, oppure analisi interrotta', severity: 'info', meaning: 'Si libera spazio con Impostazioni > Archiviazione o Pulizia disco; un\'analisi interrotta va ripetuta, perché il valore può essere più alto.' },
     ],
     why: 'Sono file che non servono più o che si ricreano da soli: liberarli è il modo più sicuro di recuperare spazio, prima di toccare documenti, foto e programmi.',
-    limits: 'È una stima: Windows può tenere alcuni file (aggiornamenti in attesa, file in uso) finché non li considera superati. WinSxS, file di paging, cache di Windows Installer e dei pacchetti non sono contati perché non vanno toccati; download, OneDrive e Cestino sono indicati a parte, perché sono dati personali.',
+    limits: 'È una stima: Windows può tenere alcuni file (per esempio quelli in uso) finché non li considera superati. WinSxS, download di Windows Update, file di paging, cache di Windows Installer e dei pacchetti non sono contati perché non vanno toccati; le cache dei browser sono indicate a parte, perché si svuotano dal browser; download, OneDrive e Cestino sono indicati a parte, perché sono dati personali. Senza i diritti di amministratore i file temporanei di Windows e i dump del sistema non si leggono.',
   },
   {
     id: 'pc.startup',

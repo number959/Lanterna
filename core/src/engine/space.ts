@@ -7,16 +7,18 @@ import type { SpaceReport } from './types';
 // versioni di Windows. Polaris non cancella nulla.
 
 /**
- * Cosa fare con una cartella nota:
+ * Cosa fare con una cartella nota (in quest'ordine anche nei gruppi):
  * - tool: si libera con gli strumenti di Windows (Impostazioni, Pulizia disco);
+ * - app: si svuota dal programma che la usa (per esempio il browser);
  * - review: dati personali, da rivedere a mano;
  * - setting: si riduce da un'impostazione;
  * - keep: gestita da Windows, non va toccata a mano.
  */
-export type SpaceRisk = 'tool' | 'review' | 'setting' | 'keep';
+export type SpaceRisk = 'tool' | 'app' | 'review' | 'setting' | 'keep';
 
 export const SPACE_RISK_LABEL: Record<SpaceRisk, string> = {
   tool: 'Si libera con Windows',
+  app: 'Si libera dal programma',
   review: 'Da rivedere',
   setting: 'Da impostazione',
   keep: 'Non toccare',
@@ -46,9 +48,9 @@ export const SPACE_HINTS: Record<string, SpaceHintInfo> = {
   },
   'update-cache': {
     label: 'Download di Windows Update',
-    risk: 'tool',
-    what: 'Aggiornamenti scaricati da Windows Update, già installati o in attesa di esserlo.',
-    how: 'Pulizia disco > Pulizia file di sistema > Pulizia di Windows Update, oppure Impostazioni > Sistema > Archiviazione > File temporanei. Non cancellare la cartella a mano mentre Windows si aggiorna.',
+    risk: 'keep',
+    what: 'Aggiornamenti scaricati da Windows Update per essere installati.',
+    how: 'Windows elimina da solo gli aggiornamenti scaricati dopo averli installati. Se la cartella è grande di solito ci sono aggiornamenti in attesa o non riusciti: completa Windows Update (Impostazioni > Windows Update) e riavvia il PC. Non cancellarla a mano mentre Windows si aggiorna.',
   },
   'delivery-optimization': {
     label: 'Cache di Ottimizzazione recapito',
@@ -60,7 +62,7 @@ export const SPACE_HINTS: Record<string, SpaceHintInfo> = {
     label: 'Installazione precedente di Windows (Windows.old)',
     risk: 'tool',
     what: "La versione precedente di Windows, conservata dopo un aggiornamento per poter tornare indietro. Windows la elimina da solo 10 giorni dopo l'aggiornamento, salvo impostazioni diverse.",
-    how: 'Se il PC funziona bene e non vuoi tornare indietro: Impostazioni > Sistema > Archiviazione > File temporanei > Installazioni precedenti di Windows, oppure Pulizia disco > Pulizia file di sistema. Non si può annullare.',
+    how: 'Prima controlla che in Windows.old\\Users non ci siano documenti tuoi da recuperare. Se il PC funziona bene e non vuoi tornare indietro: Impostazioni > Sistema > Archiviazione > File temporanei > Installazioni precedenti di Windows, oppure Pulizia disco > Pulizia file di sistema. Non si può annullare.',
   },
   'upgrade-files': {
     label: "File dell'aggiornamento di Windows",
@@ -96,11 +98,11 @@ export const SPACE_HINTS: Record<string, SpaceHintInfo> = {
     label: 'File di dump degli arresti anomali',
     risk: 'tool',
     what: 'Copie della memoria salvate quando Windows o un programma si blocca: servono a capirne la causa. MEMORY.DMP può essere grande quanto la RAM.',
-    how: "Se i blocchi sono risolti e l'assistenza non li ha chiesti: Pulizia disco > Pulizia file di sistema, voci sui file di dump della memoria.",
+    how: "Se i blocchi sono risolti e l'assistenza non li ha chiesti: Pulizia disco > Pulizia file di sistema, voci sui file di dump della memoria (MEMORY.DMP e minidump). Le cartelle CrashDumps e LiveKernelReports, se all'assistenza non servono, si svuotano a mano (LiveKernelReports da amministratore).",
   },
   'browser-cache': {
     label: 'Cache dei browser',
-    risk: 'tool',
+    risk: 'app',
     what: 'Copie di pagine e immagini dei siti visitati (Edge, Chrome, Firefox): si ricostruiscono da sole.',
     how: 'Svuotala dal browser, non cancellando le cartelle: in Edge Impostazioni > Privacy, ricerca e servizi > Cancella dati delle esplorazioni > Immagini e file memorizzati nella cache; in Chrome menu > Elimina dati di navigazione.',
   },
@@ -138,7 +140,7 @@ export const SPACE_HINTS: Record<string, SpaceHintInfo> = {
     label: 'Dischi virtuali (WSL, Docker, macchine virtuali)',
     risk: 'review',
     what: 'File dei dischi virtuali (.vhdx, .vmdk, .vdi): crescono quando si scrivono dati e non si rimpiccioliscono da soli quando si cancellano.',
-    how: 'Libera prima spazio al loro interno (per Docker: docker system prune), poi compatta il disco a macchina spenta (wsl --shutdown, quindi Optimize-VHD o diskpart). Non cancellare il file: si perderebbero i dati della macchina virtuale.',
+    how: "Libera prima spazio al loro interno (per Docker: docker system prune), poi fai una copia del file e compatta il disco a macchina spenta (wsl --shutdown, quindi Optimize-VHD o diskpart). Non compattare i backup d'immagine di sistema (cartella WindowsImageBackup) né i dischi con punti di controllo (file .avhdx). Non cancellare il file: si perderebbero i dati della macchina virtuale.",
   },
 };
 
@@ -194,7 +196,11 @@ export function unattributedBytes(r: SpaceReport): number {
   return un >= r.totalBytes / 100 ? un : 0;
 }
 
-/** Spazio che si recupera con gli strumenti di Windows, senza toccare dati personali. */
+/**
+ * Spazio che si recupera con gli strumenti di Windows, senza toccare dati
+ * personali. Le cache che si svuotano dal programma che le usa (browser) non
+ * contano: Impostazioni e Pulizia disco non le liberano.
+ */
 export function reclaimableBytes(r: SpaceReport): number {
   return (r.hints ?? []).filter((h) => SPACE_HINTS[h.id]?.risk === 'tool').reduce((s, h) => s + h.alloc, 0);
 }

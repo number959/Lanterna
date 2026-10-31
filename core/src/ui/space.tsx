@@ -13,7 +13,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { pctText, reclaimableBytes, sizeText, SPACE_CATEGORY_LABEL, SPACE_HINTS, SPACE_RISK_LABEL, unattributedBytes } from '../engine';
 import type { Scan, SpaceHint, SpaceNode, SpaceReport, SpaceRisk } from '../engine';
@@ -46,7 +46,12 @@ const day = (iso?: string) => {
   const d = new Date(iso);
   return isNaN(d.getTime()) ? '' : d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
-const seconds = (ms: number) => (ms < 1000 ? 'meno di un secondo' : ms < 120000 ? `${Math.round(ms / 1000)} s` : `${Math.floor(ms / 60000)} min ${Math.round((ms % 60000) / 1000)} s`);
+/** Durata dell'analisi: si arrotonda prima ai secondi, così non esce mai "2 min 60 s". */
+export const seconds = (ms: number) => {
+  if (ms < 1000) return 'meno di un secondo';
+  const s = Math.round(ms / 1000);
+  return s < 120 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+};
 
 // ---------------------------------------------------------------- Analisi in corso
 
@@ -58,28 +63,66 @@ export interface SpaceRun {
   elapsedMs: number;
 }
 
-// L'analisi continua anche se si cambia sezione: lo stato vive fuori dal componente.
-let spaceRun: SpaceRun | null = null;
+/** PC su cui è partita un'analisi: reale (agente) o simulata (demo). */
+export interface SpaceTarget {
+  host?: string;
+  live: boolean;
+}
+
+/**
+ * L'analisi riguarda il rapporto mostrato: stesso PC, e dati dell'agente per
+ * un'analisi reale o demo per una simulata. Un rapporto importato non riceve
+ * mai analisi.
+ */
+export const sameSpaceTarget = (t: SpaceTarget | undefined, scan: Scan | null | undefined, source: 'agent' | 'demo' | 'file') =>
+  !!t && !!scan && source === (t.live ? 'agent' : 'demo') && t.host === scan.agent.host;
+
+/** Spazio occupato su un'unità secondo l'analisi del PC: riferimento per la barra di avanzamento. */
+const usedOf = (scan: Scan, drive: string) => {
+  const v = scan.pc?.volumes?.find((x) => x.letter.toUpperCase() === drive.toUpperCase());
+  return v ? Math.max(0, v.sizeGB - v.freeGB) * 1e9 : 0;
+};
+
+interface SpaceJob {
+  /** Avanzamento dell'analisi in corso. */
+  run: SpaceRun | null;
+  /** Unità dell'analisi in corso o dell'ultima finita: la scheda la segue anche dopo essere stata rimontata. */
+  drive?: string;
+  /** PC e modo (reale o simulata) dell'analisi in corso o dell'ultima finita. */
+  target?: SpaceTarget;
+  /** Occupato dell'unità analizzata, preso all'avvio. */
+  used?: number;
+  /** Errore dell'ultima analisi. */
+  error?: string;
+}
+
+// L'analisi continua anche se si cambia sezione: lo stato (e l'esito) vive
+// fuori dal componente, così la scheda rimontata li ritrova.
+let spaceJob: SpaceJob = { run: null };
 let spacePromise: Promise<unknown> | null = null;
 let spaceCancel: (() => void) | null = null;
-const runListeners = new Set<(r: SpaceRun | null) => void>();
+const jobListeners = new Set<(j: SpaceJob) => void>();
 
-function publish(r: SpaceRun | null) {
-  spaceRun = r;
-  for (const l of runListeners) l(r);
+function publish(patch: Partial<SpaceJob>) {
+  spaceJob = { ...spaceJob, ...patch };
+  for (const l of jobListeners) l(spaceJob);
+}
+
+function useSpaceJob(): SpaceJob {
+  const [job, setJob] = useState<SpaceJob>(spaceJob);
+  useEffect(() => {
+    jobListeners.add(setJob);
+    setJob(spaceJob);
+    return () => {
+      jobListeners.delete(setJob);
+    };
+  }, []);
+  return job;
 }
 
 /** Analisi dello spazio in corso (anche per disattivare i test di velocità nel frattempo). */
 export function useSpaceRun(): SpaceRun | null {
-  const [run, setRun] = useState<SpaceRun | null>(spaceRun);
-  useEffect(() => {
-    runListeners.add(setRun);
-    setRun(spaceRun);
-    return () => {
-      runListeners.delete(setRun);
-    };
-  }, []);
-  return run;
+  return useSpaceJob().run;
 }
 
 /** Simulazione per la demo: l'avanzamento sale in un paio di secondi fino ai totali dell'analisi preparata. */
@@ -97,7 +140,7 @@ function simulateSpace(scan: Scan, drive: string): Promise<{ report: SpaceReport
       i++;
       // Le cartelle grandi arrivano prima: la curva sale veloce e poi rallenta.
       const f = 1 - (1 - i / steps) ** 2;
-      publish({ drive, dirs: Math.round(report.dirs * f), files: Math.round(report.files * f), alloc: Math.round(report.allocBytes * f), elapsedMs: i * 80 });
+      publish({ run: { drive, dirs: Math.round(report.dirs * f), files: Math.round(report.files * f), alloc: Math.round(report.allocBytes * f), elapsedMs: i * 80 } });
       if (i >= steps) resolve({ report });
       else timer = window.setTimeout(tick, 80);
     };
@@ -105,27 +148,44 @@ function simulateSpace(scan: Scan, drive: string): Promise<{ report: SpaceReport
   });
 }
 
-function startSpace(live: boolean, scan: Scan, drive: string, done: (r: SpaceReport, warning?: string) => void, fail: (e: Error) => void, resume = false) {
+/**
+ * Avvia (o riprende) l'analisi per il PC `target`. L'esito non passa dalla
+ * scheda che l'ha avviata, che nel frattempo può essere stata smontata:
+ * unità ed errore restano nello stato del modulo e App unisce il risultato
+ * solo se mostra ancora lo stesso PC.
+ */
+function startSpace(target: SpaceTarget, scan: Scan, drive: string, addSpace: ViewProps['addSpace'], toast: ReturnType<typeof useToast>, resume = false) {
   if (spacePromise) return;
-  publish({ drive, dirs: 0, files: 0, alloc: 0, elapsedMs: 0 });
-  const p = live
+  publish({ run: { drive, dirs: 0, files: 0, alloc: 0, elapsedMs: 0 }, drive, target, used: usedOf(scan, drive), error: undefined });
+  const p = target.live
     ? runSpace(
         drive,
         (st: SpaceState) => {
           const g = st.progress;
-          if (st.running) publish({ drive: st.drive ?? drive, dirs: g?.dirs ?? 0, files: g?.files ?? 0, alloc: g?.alloc ?? 0, elapsedMs: g?.elapsedMs ?? 0 });
+          if (st.running) publish({ run: { drive: st.drive ?? drive, dirs: g?.dirs ?? 0, files: g?.files ?? 0, alloc: g?.alloc ?? 0, elapsedMs: g?.elapsedMs ?? 0 } });
         },
         { resume },
       )
     : simulateSpace(scan, drive);
   spacePromise = p;
   p.then(
-    (r) => done(r.report, r.error),
-    (e) => fail(e instanceof Error ? e : new Error(String(e))),
+    ({ report: r, error: warning }) => {
+      publish({ drive: r.drive });
+      // Se ora si guarda un altro rapporto App non unisce il risultato e lo dice.
+      if (!addSpace(r, target)) return;
+      if (r.partial) toast(warning ?? `Analisi di ${r.drive} interrotta: valori parziali`, 'warn');
+      else toast(`Analisi di ${r.drive} completata`, 'ok', 'complete');
+    },
+    (e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      publish({ error: msg });
+      if (/interrott/i.test(msg)) toast('Analisi interrotta', 'ok', 'tap');
+      else toast(`Analisi non riuscita: ${msg}`, 'error');
+    },
   ).finally(() => {
     spacePromise = null;
     spaceCancel = null;
-    publish(null);
+    publish({ run: null });
   });
 }
 
@@ -134,35 +194,37 @@ function startSpace(live: boolean, scan: Scan, drive: string, done: (r: SpaceRep
 export function SpaceCard({ scan, live, source, addSpace }: ViewProps) {
   const toast = useToast();
   const openGuide = useOpenGuide();
-  const run = useSpaceRun();
-  const [error, setError] = useState<string | null>(null);
+  const job = useSpaceJob();
+  const run = job.run;
+  // L'analisi in corso (o l'ultima finita) è di questo rapporto.
+  const mine = sameSpaceTarget(job.target, scan, source);
   const vols = (scan.pc?.volumes ?? []).filter((v) => v.sizeGB > 0 && (v.kind === 'fixed' || v.kind === 'removable'));
   const reports = scan.pc?.space ?? [];
-  const [drive, setDrive] = useState(() => reports[0]?.drive ?? (vols.find((v) => v.system) ?? vols[0])?.letter ?? 'C:');
+  const [drive, setDrive] = useState(() => (mine && job.drive) || reports[0]?.drive || (vols.find((v) => v.system) ?? vols[0])?.letter || 'C:');
   const report = reports.find((r) => r.drive.toUpperCase() === drive.toUpperCase());
   const readOnly = source === 'file';
-  const choices = [...new Set([...vols.map((v) => v.letter.toUpperCase()), ...reports.map((r) => r.drive.toUpperCase())])].sort();
+  // In un rapporto importato si sceglie solo tra le unità analizzate.
+  const choices = [...new Set([...(readOnly ? [] : vols.map((v) => v.letter.toUpperCase())), ...reports.map((r) => r.drive.toUpperCase())])].sort();
   if (!choices.includes(drive.toUpperCase())) choices.unshift(drive.toUpperCase());
 
-  const done = (r: SpaceReport, warning?: string) => {
-    addSpace(r);
-    setDrive(r.drive);
-    if (r.partial) toast(warning ?? `Analisi di ${r.drive} interrotta: valori parziali`, 'warn');
-    else toast(`Analisi di ${r.drive} completata`, 'ok', 'complete');
-  };
-  const fail = (e: Error) => {
-    setError(e.message);
-    if (/interrott/i.test(e.message)) toast('Analisi interrotta', 'ok', 'tap');
-    else toast(`Analisi non riuscita: ${e.message}`, 'error');
-  };
+  // La scheda segue l'unità dell'analisi in corso o appena finita, anche se è
+  // stata rimontata mentre l'analisi andava avanti.
+  useEffect(() => {
+    if (mine && job.drive) setDrive(job.drive);
+  }, [mine, job.drive]);
 
-  // Un'analisi avviata prima (anche da un'altra finestra) si riprende.
+  // Un'analisi avviata prima (anche da un'altra finestra) si riprende; una già
+  // finita (pagina ricaricata, rapporto cambiato nel frattempo) si recupera dall'agente.
   useEffect(() => {
     if (!live || spacePromise) return;
     let alive = true;
+    const target: SpaceTarget = { host: scan.agent.host, live: true };
     spaceStatus()
       .then((st) => {
-        if (alive && st.running && st.drive) startSpace(true, scan, st.drive, done, fail, true);
+        if (!alive) return;
+        const res = st.result;
+        if (st.running && st.drive) startSpace(target, scan, st.drive, addSpace, toast, true);
+        else if (!st.running && res && !reports.some((r) => r.drive.toUpperCase() === res.drive.toUpperCase() && r.startedAt === res.startedAt)) addSpace(res, target);
       })
       .catch(() => undefined);
     return () => {
@@ -171,16 +233,14 @@ export function SpaceCard({ scan, live, source, addSpace }: ViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live]);
 
-  const start = () => {
-    setError(null);
-    startSpace(live, scan, drive, done, fail);
-  };
+  const start = () => startSpace({ host: scan.agent.host, live }, scan, drive, addSpace, toast);
+  // Si interrompe con il modo dell'analisi in corso, non con quello del rapporto mostrato ora.
   const stop = () => {
-    if (live) stopSpace().catch((e) => toast(`Interruzione non riuscita: ${e instanceof Error ? e.message : e}`, 'error'));
+    if (spaceJob.target?.live) stopSpace().catch((e) => toast(`Interruzione non riuscita: ${e instanceof Error ? e.message : e}`, 'error'));
     else spaceCancel?.();
   };
   const running = !!run;
-  const vol = vols.find((v) => v.letter.toUpperCase() === drive.toUpperCase());
+  const error = mine && !running ? job.error : undefined;
 
   return (
     <>
@@ -221,34 +281,40 @@ export function SpaceCard({ scan, live, source, addSpace }: ViewProps) {
             </>
           )}
         </p>
-        {!readOnly && (
+        {(!readOnly || choices.length > 1) && (
           <div className="space-controls">
             <label className="bench-drive">
               <span>Unità</span>
-              <select className="field" value={drive.toUpperCase()} onChange={(e) => setDrive(e.target.value)} disabled={running}>
+              <select className="field" value={drive.toUpperCase()} onChange={(e) => setDrive(e.target.value)} disabled={running && !readOnly}>
                 {choices.map((c) => {
                   const v = vols.find((x) => x.letter.toUpperCase() === c);
                   return (
                     <option key={c} value={c}>
                       {c}
-                      {v ? ` ${v.label ? `${v.label} · ` : ''}${fmtNum(v.sizeGB, 0)} GB, liberi ${fmtNum(v.freeGB, v.freeGB < 10 ? 1 : 0)} GB` : ''}
+                      {v ? ` ${v.label ? `${v.label} · ` : ''}${thousands(v.sizeGB)} GB, liberi ${v.freeGB < 10 ? fmtNum(v.freeGB, 1) : thousands(v.freeGB)} GB` : ''}
                     </option>
                   );
                 })}
               </select>
             </label>
-            <button className="btn primary" disabled={running} onClick={start}>
-              <Play size={16} className="nudge" aria-hidden /> {running ? 'Analisi in corso…' : report ? "Ripeti l'analisi" : live ? 'Analizza' : "Simula l'analisi"}
-            </button>
+            {!readOnly && (
+              <button className="btn primary" disabled={running} onClick={start}>
+                <Play size={16} className="nudge" aria-hidden /> {running ? 'Analisi in corso…' : report ? "Ripeti l'analisi" : live ? 'Analizza' : "Simula l'analisi"}
+              </button>
+            )}
           </div>
         )}
-        <AnimatePresence initial={false}>{run && <SpaceProgressBox run={run} totalBytes={vol ? (vol.sizeGB - vol.freeGB) * 1e9 : 0} onStop={stop} />}</AnimatePresence>
-        {error && !running && (
+        {/* Annuncia solo l'avvio: la fine la annuncia il messaggio temporaneo (anch'esso letto dai lettori di schermo). */}
+        <p className="sr-only" aria-live="polite">
+          {run ? `Analisi di ${run.drive} avviata` : ''}
+        </p>
+        <AnimatePresence initial={false}>{run && <SpaceProgressBox run={run} totalBytes={job.used ?? 0} onStop={stop} />}</AnimatePresence>
+        {error && (
           <p className="space-error" role="alert">
             <TriangleAlert size={15} aria-hidden /> {error}
           </p>
         )}
-        {report && <SpaceResult key={`${report.drive}-${report.startedAt}`} report={report} canOpen={live && source === 'agent'} />}
+        {report && <SpaceResult key={`${report.drive}-${report.startedAt}`} report={report} canOpen={live && source === 'agent'} elevated={scan.agent.elevated} />}
         {!report && !running && readOnly && <p className="muted">Questo rapporto non contiene analisi dello spazio.</p>}
       </m.section>
     </>
@@ -256,8 +322,10 @@ export function SpaceCard({ scan, live, source, addSpace }: ViewProps) {
 }
 
 function SpaceProgressBox({ run, totalBytes, onStop }: { run: SpaceRun; totalBytes: number; onStop: () => void }) {
-  // L'occupato del volume è un buon riferimento per la barra (i file non leggibili la lasciano un po' indietro).
+  // L'occupato dell'unità analizzata è un buon riferimento per la barra (i file non leggibili la lasciano un po' indietro).
   const done = totalBytes > 0 ? Math.min(0.99, run.alloc / totalBytes) : undefined;
+  // Letto a richiesta dal lettore di schermo: i contatori cambiano di continuo e non vanno annunciati.
+  const valueText = `${done === undefined ? '' : `${Math.round(done * 100)} %, `}${sizeText(run.alloc)} in ${thousands(run.files)} file`;
   return (
     <m.div
       key="progress"
@@ -274,12 +342,13 @@ function SpaceProgressBox({ run, totalBytes, onStop }: { run: SpaceRun; totalByt
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={done === undefined ? undefined : Math.round(done * 100)}
+          aria-valuetext={valueText}
         >
           {done === undefined ? <i /> : <m.i initial={false} animate={{ scaleX: done }} transition={spring.gentle} />}
         </div>
         <div className="bench-live-row">
-          <span className="faint space-live" aria-live="polite">
-            <HexLoader size={16} /> {run.drive}: {thousands(run.dirs)} cartelle, {thousands(run.files)} file, {sizeText(run.alloc)}
+          <span className="faint space-live">
+            <HexLoader size={16} /> {run.drive} · {thousands(run.dirs)} cartelle, {thousands(run.files)} file, {sizeText(run.alloc)}
           </span>
           <button className="btn small" onClick={onStop}>
             <CircleStop size={15} aria-hidden /> Interrompi
@@ -303,7 +372,7 @@ function trail(root: SpaceNode, id: number): SpaceNode[] {
   return [];
 }
 
-function SpaceResult({ report: r, canOpen }: { report: SpaceReport; canOpen: boolean }) {
+function SpaceResult({ report: r, canOpen, elevated }: { report: SpaceReport; canOpen: boolean; elevated?: boolean }) {
   const toast = useToast();
   const [tab, setTab] = useState<Tab>('folders');
   const [cur, setCur] = useState(r.tree?.id ?? 0);
@@ -313,10 +382,25 @@ function SpaceResult({ report: r, canOpen }: { report: SpaceReport; canOpen: boo
   const unattr = unattributedBytes(r);
   const reclaim = reclaimableBytes(r);
   const hints = r.hints ?? [];
+  // Cambiando cartella l'elemento attivato sparisce (riquadro, riga, briciola):
+  // il cursore va sul nome della cartella mostrata, mai alla prima apertura.
+  const curRef = useRef<HTMLElement>(null);
+  const focusAfterNav = useRef(false);
+  useEffect(() => {
+    if (!focusAfterNav.current) return;
+    focusAfterNav.current = false;
+    curRef.current?.focus();
+  }, [cur, tab]);
 
+  // L'agente risponde solo se l'identificativo è della sua ultima analisi di quest'unità.
   const open = (id: number, file = false) =>
-    openSpaceItem(r.drive, id, file).catch((e) => toast(e instanceof Error ? e.message : String(e), 'error'));
+    openSpaceItem(r.drive, id, file, r.startedAt).catch((e) => toast(e instanceof Error ? e.message : String(e), 'error'));
+  const pick = (id: number) => {
+    focusAfterNav.current = true;
+    setCur(id);
+  };
   const show = (id: number) => {
+    focusAfterNav.current = true;
     setCur(id);
     setTab('folders');
   };
@@ -337,7 +421,7 @@ function SpaceResult({ report: r, canOpen }: { report: SpaceReport; canOpen: boo
         <Stat k="Cartelle" v={thousands(r.dirs)} />
         {reclaim > 0 && <Stat k="Si libera con Windows" v={`circa ${sizeText(reclaim)}`} sev="ok" />}
       </div>
-      <SpaceNotes r={r} unattr={unattr} used={used} />
+      <SpaceNotes r={r} unattr={unattr} used={used} elevated={elevated} />
 
       <div className="space-tabs">
         <Segmented<Tab>
@@ -360,9 +444,11 @@ function SpaceResult({ report: r, canOpen }: { report: SpaceReport; canOpen: boo
                 <span key={n.id} className="space-crumb">
                   {i > 0 && <ChevronRight size={14} aria-hidden />}
                   {i === path.length - 1 ? (
-                    <b aria-current="location">{n.name}</b>
+                    <b ref={curRef} tabIndex={-1} aria-current="location">
+                      {n.name}
+                    </b>
                   ) : (
-                    <button className="link-btn" onClick={() => setCur(n.id)}>
+                    <button className="link-btn" onClick={() => pick(n.id)}>
                       {n.name}
                     </button>
                   )}
@@ -373,8 +459,8 @@ function SpaceResult({ report: r, canOpen }: { report: SpaceReport; canOpen: boo
                 {node !== r.tree ? ` · ${pctText(node.alloc, r.allocBytes)} del totale` : ''}
               </span>
             </nav>
-            <Treemap node={node} total={r.allocBytes} onPick={setCur} />
-            <FolderTable node={node} canOpen={canOpen} onPick={setCur} onOpen={open} />
+            <Treemap node={node} total={r.allocBytes} onPick={pick} />
+            <FolderTable node={node} canOpen={canOpen} onPick={pick} onOpen={open} />
           </>
         )}
         {tab === 'files' && <FilesTable r={r} canOpen={canOpen} onOpen={open} />}
@@ -385,17 +471,26 @@ function SpaceResult({ report: r, canOpen }: { report: SpaceReport; canOpen: boo
   );
 }
 
-/** Barra dell'unità: occupato dai file letti, occupato ma non attribuito, libero. */
-function DriveBar({ r, unattr }: { r: SpaceReport; unattr: number }) {
-  const reduce = useReducedMotion();
+/**
+ * Parti della barra dell'unità: occupato dai file letti, occupato ma non
+ * attribuito, libero. In un'analisi interrotta l'occupato non ancora letto ha
+ * una parte sua, altrimenti sembrerebbe spazio libero.
+ */
+export function driveParts(r: SpaceReport, unattr: number) {
   const files = Math.min(r.allocBytes, r.totalBytes);
-  const parts = [
+  return [
     { k: 'files', label: 'File letti', v: files, cls: 'db-files' },
     { k: 'other', label: 'Non attribuito', v: unattr, cls: 'db-other' },
+    { k: 'unread', label: 'Non letto', v: r.partial ? Math.max(0, r.totalBytes - r.freeBytes - files) : 0, cls: 'db-unread' },
     { k: 'free', label: 'Libero', v: r.freeBytes, cls: 'db-free' },
   ].filter((p) => p.v > 0);
+}
+
+function DriveBar({ r, unattr }: { r: SpaceReport; unattr: number }) {
+  const reduce = useReducedMotion();
+  const parts = driveParts(r, unattr);
   return (
-    <figure className="space-drive" aria-label={`Unità ${r.drive}: ${parts.map((p) => `${p.label.toLowerCase()} ${sizeText(p.v)}`).join(', ')}, su ${sizeText(r.totalBytes)}`}>
+    <figure className="space-drive" aria-label={`Unità ${r.drive}, ${parts.map((p) => `${p.label.toLowerCase()} ${sizeText(p.v)}`).join(', ')}, su ${sizeText(r.totalBytes)}`}>
       <div className="db-bar" aria-hidden>
         {parts.map((p, i) => (
           <m.span
@@ -421,7 +516,13 @@ function DriveBar({ r, unattr }: { r: SpaceReport; unattr: number }) {
   );
 }
 
-function SpaceNotes({ r, unattr, used }: { r: SpaceReport; unattr: number; used: number }) {
+/**
+ * Note sotto la barra. Il consiglio di avviare Polaris come amministratore
+ * vale solo se non lo è (elevated === false): da amministratore restano
+ * chiuse le cartelle riservate al sistema, perché l'agente non usa i
+ * privilegi di backup.
+ */
+export function spaceNotes(r: SpaceReport, unattr: number, used: number, elevated?: boolean): { icon: typeof Lock; text: string }[] {
   const notes: { icon: typeof Lock; text: string }[] = [];
   if (r.linkedBytes)
     notes.push({ icon: ShieldCheck, text: `${sizeText(r.linkedBytes)} di file di Windows con più nomi (collegamenti fisici, come tra WinSxS e System32) contati una volta sola: Esplora file li conta più volte.` });
@@ -430,13 +531,22 @@ function SpaceNotes({ r, unattr, used }: { r: SpaceReport; unattr: number; used:
   if (r.denied)
     notes.push({
       icon: Lock,
-      text: `${thousands(r.denied)} ${r.denied === 1 ? 'cartella non leggibile' : 'cartelle non leggibili'} con i permessi attuali${r.deniedPaths?.length ? ` (per esempio ${r.deniedPaths.slice(0, 2).join(', ')})` : ''}: avviando Polaris come amministratore se ne leggono di più.`,
+      text: `${thousands(r.denied)} ${r.denied === 1 ? 'cartella non leggibile' : 'cartelle non leggibili'} con i permessi attuali${r.deniedPaths?.length ? ` (per esempio ${r.deniedPaths.slice(0, 2).join(', ')})` : ''}${
+        elevated === false ? ': avviando Polaris come amministratore se ne leggono di più.' : elevated ? ': sono cartelle riservate al sistema.' : '.'
+      }`,
     });
+  if (r.errors)
+    notes.push({ icon: TriangleAlert, text: `${thousands(r.errors)} ${r.errors === 1 ? 'cartella non letta' : 'cartelle non lette'} per errori del disco o del file system.` });
   if (unattr > 0)
     notes.push({
       icon: FileStack,
       text: `${sizeText(unattr)} (${pctText(unattr, used)} dell'occupato) non risultano nei file leggibili: cartelle protette, punti di ripristino e copie shadow, metadati del file system.`,
     });
+  return notes;
+}
+
+function SpaceNotes({ r, unattr, used, elevated }: { r: SpaceReport; unattr: number; used: number; elevated?: boolean }) {
+  const notes = spaceNotes(r, unattr, used, elevated);
   if (!notes.length) return null;
   return (
     <ul className="space-notes">
@@ -530,7 +640,8 @@ function Treemap({ node, total, onPick }: { node: SpaceNode; total: number; onPi
           // Il secondo livello serve solo se la cartella si divide in più voci.
           const split = item.kind === 'dir' && item.node && r.w >= 90 && r.h >= 70 ? itemsOf(through(item.node)) : [];
           const inner = split.length > 1 ? split : [];
-          // Nei riquadri stretti nome e dimensione vanno su due righe.
+          // Nei riquadri stretti nome e dimensione vanno su due righe; negli altri
+          // restano su una (il nome si accorcia) per non finire sopra le sottocartelle.
           const head = r.w < 150 ? 44 : 30;
           const subs = inner.length ? squarify(inner.map((it) => ({ value: it.value, item: it })), { x: 3, y: head, w: r.w - 6, h: r.h - head - 3 }) : [];
           const content = (
@@ -559,7 +670,7 @@ function Treemap({ node, total, onPick }: { node: SpaceNode; total: number; onPi
                 );
               })}
               {big && (
-                <span className="tm-label">
+                <span className={`tm-label${head === 30 ? ' one' : ''}`}>
                   <span className="tm-name">
                     {item.node?.denied && <Lock size={11} aria-hidden />} {item.label}
                   </span>
@@ -832,12 +943,13 @@ function TypesView({ r }: { r: SpaceReport }) {
   );
 }
 
-const RISK_ORDER: SpaceRisk[] = ['tool', 'review', 'setting', 'keep'];
+const RISK_ORDER: SpaceRisk[] = ['tool', 'app', 'review', 'setting', 'keep'];
 const RISK_INTRO: Record<SpaceRisk, string> = {
-  tool: 'Si liberano con gli strumenti di Windows, senza toccare i tuoi file.',
+  tool: 'Si liberano con gli strumenti di Windows indicati, senza cancellare cartelle a mano.',
+  app: 'Si svuotano dal programma che le usa (per esempio il browser), non cancellando le cartelle.',
   review: 'Sono dati tuoi: decidi tu cosa tenere.',
   setting: 'Si riducono cambiando un\'impostazione.',
-  keep: 'Servono a Windows e ai programmi: non vanno cancellate a mano.',
+  keep: 'Servono a Windows e ai programmi o sono gestite da Windows: non vanno cancellate a mano.',
 };
 
 function HintsView({ r, canOpen, onShow, onOpen }: { r: SpaceReport; canOpen: boolean; onShow: (id: number) => void; onOpen: (id: number) => void }) {

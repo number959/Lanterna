@@ -43,6 +43,8 @@ import { useMonitor } from './monitor';
 import { installAudioUnlock, play, useSound } from './sound';
 import { ease, page, spring } from './motion';
 import { ScanOrbit } from './scan';
+import { sameSpaceTarget } from './space';
+import type { SpaceTarget } from './space';
 import { useTheme } from './theme';
 import type { ThemePref } from './theme';
 import { GuideView } from './guides';
@@ -189,6 +191,8 @@ function Shell() {
         if (prev && !s.infra && prev.infra && prev.gateway?.ip === s.gateway?.ip && prev.agent.platform === s.agent.platform) next = { ...next, infra: { ...prev.infra, assessment: undefined } };
         // Anche i test di velocità dello stesso PC, finché non se ne esegue uno nuovo.
         if (prev?.pc?.bench && s.pc && !s.pc.bench && prev.agent.host === s.agent.host) next = { ...next, pc: { ...next.pc, bench: prev.pc.bench } };
+        // E le analisi dello spazio, che possono durare minuti.
+        if (prev?.pc?.space?.length && next.pc && !next.pc.space && prev.agent.host === next.agent.host) next = { ...next, pc: { ...next.pc, space: prev.pc.space } };
         return next;
       });
       setSource('agent');
@@ -271,10 +275,25 @@ function Shell() {
   );
 
   // L'analisi dello spazio più recente per ogni unità, prima quella appena fatta.
+  // Può durare minuti: se intanto si guarda un altro rapporto (importato, altra
+  // demo) non vi si unisce. Rapporto e origine si leggono da riferimenti
+  // perché chi chiama può essere rimasto da una scheda già smontata.
+  const scanRef = useRef(scan);
+  scanRef.current = scan;
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
   const addSpace = useCallback(
-    (r: SpaceReport) =>
-      setScan((s) => (s ? { ...s, pc: { ...s.pc, space: [r, ...(s.pc?.space ?? []).filter((x) => x.drive.toUpperCase() !== r.drive.toUpperCase())] } } : s)),
-    [],
+    (r: SpaceReport, target: SpaceTarget) => {
+      if (!sameSpaceTarget(target, scanRef.current, sourceRef.current)) {
+        toast(`Analisi di ${r.drive} ${r.partial ? 'interrotta' : 'completata'}, ma il rapporto mostrato è un altro`, 'warn');
+        return false;
+      }
+      setScan((s) =>
+        s && s.agent.host === target.host ? { ...s, pc: { ...s.pc, space: [r, ...(s.pc?.space ?? []).filter((x) => x.drive.toUpperCase() !== r.drive.toUpperCase())] } } : s,
+      );
+      return true;
+    },
+    [toast],
   );
 
   const patchPc = useCallback((p: Partial<PcData>) => setScan((s) => (s ? { ...s, pc: { ...s.pc, ...p } } : s)), []);
