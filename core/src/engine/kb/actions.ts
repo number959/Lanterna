@@ -364,6 +364,64 @@ const list: Action[] = [
     impact: 'alto',
   },
 
+  // ---------------- Mappa del Wi-Fi per stanza ----------------
+  {
+    id: 'survey-place-ap',
+    title: 'Sposta il router o aggiungi un access point verso le stanze deboli',
+    why: 'La mappa per stanza mostra dove il segnale non arriva. Distanza, muri portanti e solai pesano molto: un muro in cemento o un solaio in cemento armato possono togliere 10-20 dB e più, di più a 5 e 6 GHz che a 2,4 GHz (indicazioni generali della raccomandazione ITU-R P.1238). Avvicinare la sorgente alle stanze deboli vale più di qualunque impostazione.',
+    steps: [
+      'Parti dalle stanze in cima alla mappa (le più deboli) e conta muri e solai che le separano dal router o dall\'access point più vicino.',
+      'Se puoi, sposta il router o l\'access point in un punto più centrale, in alto, fuori da mobili e armadi metallici.',
+      'Altrimenti aggiungi un access point o un nodo mesh tra la sorgente e le stanze deboli, dove la mappa indica ancora almeno -67 dBm: un nodo messo dove il segnale è già debole ritrasmette un segnale debole.',
+      'Collega il nuovo access point al router con un cavo, se possibile: vedi il collegamento via cavo dei nodi.',
+      'Ripeti la mappa con lo stesso PC, negli stessi punti e nella stessa posizione, e confronta le stanze prima e dopo.',
+    ],
+    effort: 'media',
+    impact: 'alto',
+  },
+  {
+    id: 'band-steering',
+    title: 'Fai preferire ai dispositivi la banda 5 GHz (band steering)',
+    why: 'Quando la rete ha lo stesso nome a 2,4 e 5 GHz, il router può spingere i dispositivi compatibili verso i 5 GHz, più veloci e meno affollati. Se questa funzione è spenta o poco decisa il PC resta sui 2,4 GHz anche dove i 5 GHz arrivano bene.',
+    steps: [
+      'Nel pannello del router o del sistema mesh cerca "Band steering", "Smart Connect" o "selezione automatica della banda" e attivala, con lo stesso nome e la stessa password sulle due bande.',
+      'Se la funzione non c\'è, crea un nome distinto per i 5 GHz (per esempio "Casa-5G") e collega lì i dispositivi che restano nelle stanze coperte bene.',
+      'Sul PC, se la voce esiste: Gestione dispositivi > scheda Wi-Fi > Avanzate > "Banda preferita" = preferisci 5 GHz.',
+      'Lascia sui 2,4 GHz solo i dispositivi che non supportano altro (prese, lampadine, sensori).',
+      'Ripeti la misura nella stanza: il PC deve risultare sui 5 GHz.',
+    ],
+    effort: 'facile',
+    impact: 'medio',
+  },
+  {
+    id: 'avoid-24-interference',
+    title: 'Allontana le fonti di disturbo della banda 2,4 GHz',
+    why: 'Forni a microonde, telecamere e baby monitor analogici, vecchi telefoni senza fili a 2,4 GHz e dispositivi Bluetooth usano la stessa banda del Wi-Fi a 2,4 GHz: mentre sono accesi il segnale oscilla, i pacchetti si perdono e il ritardo varia. I cordless DECT europei usano 1,9 GHz e non disturbano il Wi-Fi.',
+    steps: [
+      'Se nella stanza o vicino c\'è un forno a microonde, ripeti la misura con il forno spento e poi acceso: se cambia molto, la causa è quella.',
+      'Allontana router, access point e PC da forno, basi dei telefoni senza fili a 2,4 GHz, baby monitor e ricevitori Bluetooth.',
+      'Collega ai 5 GHz i dispositivi che lo supportano: queste interferenze lì non arrivano.',
+      'Sui 2,4 GHz usa solo i canali 1, 6 o 11 e la larghezza di 20 MHz.',
+      'Ripeti la misura nella stanza: perdite ed escursione del segnale devono calare.',
+    ],
+    effort: 'facile',
+    impact: 'medio',
+  },
+  {
+    id: 'wired-backhaul',
+    title: 'Collega via cavo i nodi mesh e gli access point',
+    why: 'Un nodo mesh collegato al router solo via radio usa parte del tempo di trasmissione per inoltrare i dati: la velocità cala a ogni passaggio e la stabilità dipende dal segnale tra i nodi. Con un cavo Ethernet (backhaul cablato) ogni nodo lavora a piena capacità e si possono dare canali diversi ai nodi vicini.',
+    steps: [
+      'Cerca tra il router e la stanza una presa di rete già cablata o un percorso per un cavo (canaline, controsoffitto, battiscopa).',
+      'Collega il nodo mesh o l\'access point al router con un cavo Ethernet di categoria 5e o superiore; nei sistemi mesh attiva il collegamento via cavo ("backhaul Ethernet") se non è automatico.',
+      'Dove il cavo non si può posare, l\'adattatore powerline è un ripiego; altrimenti metti il nodo dove riceve il router ad almeno -67 dBm.',
+      'Con i nodi collegati via cavo assegna canali diversi a quelli vicini (vedi il piano dei canali).',
+      'Ripeti la mappa nelle stanze servite dal nodo.',
+    ],
+    effort: 'media',
+    impact: 'alto',
+  },
+
   // ---------------- Reti aziendali ----------------
   {
     id: 'internal-dns',

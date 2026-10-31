@@ -1,5 +1,6 @@
 import { fmt, more, num, thousands } from './fmt';
 import { analyzeCerts } from './certs';
+import { analyzeSurvey } from './survey';
 import { ACTIONS } from './kb/actions';
 import { scoreAssessment } from './kb/assessment';
 import { analyzePc } from './pc';
@@ -1540,6 +1541,8 @@ export function analyze(scan: Scan): Analysis {
   const primary = primaryAdapter(scan);
   const corp = corporateDomain(scan, primary);
   analyzeWifi(scan, c, primary);
+  // Mappa del Wi-Fi per stanza: un giudizio per stanza misurata.
+  analyzeSurvey(scan, (f) => c.add(f));
   analyzeLan(scan, c, primary, corp);
   analyzeInternet(scan, c, primary, corp);
   analyzeDns(scan, c, corp);

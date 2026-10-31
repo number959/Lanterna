@@ -6,6 +6,7 @@ import { dateIt } from './pc';
 import { THREAT_SEVERITY, THREAT_STATUS } from './defender';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
+import { dbmText, gatewayText, radioText, surveyAliases, surveyRooms } from './survey';
 import type { Analysis, EventKind, Finding, ReachResult, Scan, Severity } from './types';
 
 // Rapporto testuale, usato dalla riga di comando e dall'esportazione .txt.
@@ -106,6 +107,28 @@ function infraDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
       out.push(`   ${s.area.title.padEnd(26)} ${s.score === null ? '  -' : String(s.score).padStart(3)}  ${s.score === null ? '' : bar(s.score, 20)}`.trimEnd());
       if (verbose) for (const g of s.gaps) out.push(wrap(`- ${g.q.short}${g.answer === 'partial' ? ' (in parte)' : ''}`, W - 9, '        '));
     }
+  }
+}
+
+/** Mappa del Wi-Fi per stanza: dalla stanza più debole, con gli access point come "AP A", "AP B". */
+function surveyDetails(scan: Scan, out: string[], W: number) {
+  const survey = scan.wifi?.survey;
+  if (!survey?.rooms?.length) return;
+  const al = surveyAliases(survey);
+  out.push('');
+  out.push('-'.repeat(W));
+  out.push(' MAPPA DEL WI-FI PER STANZA (misure fatte con questo PC)');
+  out.push('-'.repeat(W));
+  for (const r of surveyRooms(survey, al)) {
+    const s = r.worst;
+    const n = r.room.samples.length;
+    out.push(hang(`${TAG[r.severity]} ${r.room.name}: ${dbmText(s.medianDbm)} dBm, cali ${s.p10Dbm} dBm${radioText(s) ? ` · ${radioText(s)}` : ''}`, W, ' ', '        '));
+    const facts = [
+      s.gateway ? `router: ${gatewayText(s)}` : '',
+      s.bssids.length ? `access point: ${s.bssids.map(al).join(' → ')}` : '',
+      `${s.seconds} s il ${dateIt(s.startedAt)}${n > 1 ? `, il peggiore di ${n} punti` : ''}`,
+    ].filter(Boolean);
+    out.push(wrap(facts.join('; '), W - 9, '        '));
   }
 }
 
@@ -332,6 +355,7 @@ export function renderText(scan: Scan, a: Analysis, opts: { verbose?: boolean; w
       out.push(wrap(ch.note, W - 9, '        '));
     }
   }
+  surveyDetails(scan, out, W);
   infraDetails(scan, out, W, !!opts.verbose);
   pcDetails(scan, out, W, !!opts.verbose);
   if (a.plan.length) {

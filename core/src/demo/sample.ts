@@ -1,5 +1,6 @@
 import type { Bss, Scan } from '../engine/types';
 import { homePc } from './pc';
+import { homeSurvey } from './survey';
 import { pingSamples, stats } from './util';
 
 // Scansione dimostrativa: appartamento in condominio, PC portatile collegato
@@ -41,6 +42,8 @@ export const demoScan: Scan = {
     source: 'demo',
     connected: { interface: 'Wi-Fi', ssid: 'Casa-Rossi', bssid: 'a4:2b:b0:11:22:33', signalQuality: 58, rssiDbm: -71, rxMbps: 144, txMbps: 117, phy: '802.11n', band: '2.4', channel: 5, widthMhz: 40, auth: 'WPA2-Personal', cipher: 'CCMP' },
     networks: nets,
+    // Mappa del Wi-Fi per stanza già misurata dall'utente.
+    survey: homeSurvey,
   },
   gateway: {
     ip: '192.168.1.1',

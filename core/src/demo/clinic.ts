@@ -1,4 +1,5 @@
 import type { Bss, InventoryHost, Roaming, Scan, WifiSecurity } from '../engine/types';
+import { clinicSurvey } from './survey';
 import { pingSamples, stats } from './util';
 import { clinicPc } from './pc';
 
@@ -97,6 +98,8 @@ export const clinicScan: Scan = {
     source: 'demo',
     connected: { interface: 'Wi-Fi', ssid: 'Clinica-Staff', bssid: ap(2, 1, 0), signalQuality: 48, rssiDbm: -76, rxMbps: 172, txMbps: 130, phy: '802.11ax', band: '5', channel: 36, widthMhz: 40, auth: 'WPA2-Enterprise', cipher: 'CCMP' },
     networks: nets,
+    // Mappa del Wi-Fi per stanza già misurata dall'utente.
+    survey: clinicSurvey,
   },
   gateway: {
     ip: '10.20.30.1',

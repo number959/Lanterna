@@ -26,8 +26,8 @@ import {
 import { AnimatePresence, LazyMotion, MotionConfig, domMax, m, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
-import { analyze, ENGINE_VERSION, primaryAdapter, renderText } from '../engine';
-import type { AnswerValue, CertData, CpuBench, DiskBench, Finding, InfraData, PcData, Scan, Severity, SpaceReport } from '../engine';
+import { analyze, ENGINE_VERSION, primaryAdapter, renderText, surveyForExport } from '../engine';
+import type { AnswerValue, CertData, CpuBench, DiskBench, Finding, InfraData, PcData, Scan, Severity, SpaceReport, SurveySample, WifiSurvey } from '../engine';
 import { clinicScan } from '../demo/clinic';
 import { demoScan } from '../demo/sample';
 import { agentInfo, download, isScan, lastScan, runScan } from './api';
@@ -46,6 +46,8 @@ import { ScanOrbit } from './scan';
 import { sameSpaceTarget } from './space';
 import { sameCertTarget } from './certs';
 import type { CertTargetRef } from './certs';
+import { mergeSample, sameSurveyTarget } from './wifimap';
+import type { SurveyTargetRef } from './wifimap';
 import type { SpaceTarget } from './space';
 import { useTheme } from './theme';
 import type { ThemePref } from './theme';
@@ -195,6 +197,8 @@ function Shell() {
         if (prev?.pc?.bench && s.pc && !s.pc.bench && prev.agent.host === s.agent.host) next = { ...next, pc: { ...next.pc, bench: prev.pc.bench } };
         // E le analisi dello spazio, che possono durare minuti.
         if (prev?.pc?.space?.length && next.pc && !next.pc.space && prev.agent.host === next.agent.host) next = { ...next, pc: { ...next.pc, space: prev.pc.space } };
+        // E la mappa del Wi-Fi per stanza, dello stesso PC e della stessa rete.
+        if (prev?.wifi?.survey && next.wifi && !next.wifi.survey && prev.agent.host === next.agent.host && prev.gateway?.ip === next.gateway?.ip) next = { ...next, wifi: { ...next.wifi, survey: prev.wifi.survey } };
         return next;
       });
       setSource('agent');
@@ -312,6 +316,21 @@ function Shell() {
     [toast],
   );
 
+  // La misura del Wi-Fi riguarda una rete: come per i certificati, si unisce
+  // solo se il rapporto mostrato è ancora quello della stessa rete.
+  const addSurvey = useCallback(
+    (r: SurveySample, target: SurveyTargetRef, quiet = false) => {
+      if (!sameSurveyTarget(target, scanRef.current, sourceRef.current)) {
+        if (!quiet) toast(`Misura di «${r.room}» finita, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto`, 'warn');
+        return false;
+      }
+      setScan((s) => (s?.wifi && s.agent.host === target.host && s.gateway?.ip === target.gateway ? { ...s, wifi: { ...s.wifi, survey: mergeSample(s.wifi.survey, r) } } : s));
+      return true;
+    },
+    [toast],
+  );
+  const setSurvey = useCallback((survey?: WifiSurvey) => setScan((s) => (s?.wifi ? { ...s, wifi: { ...s.wifi, survey } } : s)), []);
+
   const patchPc = useCallback((p: Partial<PcData>) => setScan((s) => (s ? { ...s, pc: { ...s.pc, ...p } } : s)), []);
 
   const analysis = useMemo(() => (effective ? analyze(effective) : null), [effective]);
@@ -394,7 +413,7 @@ function Shell() {
   };
   const scanning = busy || (agent === undefined && slow);
   const props: ViewProps | null =
-    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, patchPc, assessment, monitor, gwMacChange } : null;
+    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, addSurvey, setSurvey, patchPc, assessment, monitor, gwMacChange } : null;
   const pickDemo = (k: DemoKind) => {
     setDemoKind(k);
     setScan(DEMOS[k]);
@@ -523,7 +542,7 @@ function Shell() {
                   </button>
                   <button
                     className="btn"
-                    onClick={() => save(`polaris-${stamp}.json`, JSON.stringify(effective ?? scan, null, 2), 'application/json')}
+                    onClick={() => save(`polaris-${stamp}.json`, JSON.stringify(surveyForExport(effective ?? scan), null, 2), 'application/json')}
                     title="Salva i dati grezzi: potrai riaprirli o confrontarli"
                     aria-label="Esporta JSON"
                   >

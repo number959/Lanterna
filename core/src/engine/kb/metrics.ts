@@ -249,6 +249,30 @@ const list: Metric[] = [
     why: 'Un access point gemello (evil twin) usa il nome della rete per attirare i dispositivi. Anche quando è solo un errore di configurazione, un AP con protezione diversa crea problemi di roaming e una falla nella rete.',
     limits: 'Reti diverse con lo stesso nome, per esempio "Ospiti" di due attività vicine, possono essere segnalate per errore: BSSID e posizione aiutano a distinguerle.',
   },
+  {
+    id: 'wifi.survey',
+    label: 'Wi-Fi di una stanza (mappa per stanza)',
+    category: 'wifi',
+    unit: 'dBm',
+    what: 'Una misura di circa 15 secondi (da 10 a 20) fatta con questo PC, fermo nel punto in cui si lavora: il segnale ricevuto una volta al secondo (mediana, minimo, 10° percentile per i cali, escursione tra massimo e minimo), l\'access point a cui il PC è collegato e le velocità radio; in parallelo un ping al router ogni 200 ms, solo se il suo indirizzo è privato (perdite, tempo di risposta, jitter). Alla fine, se scelto, una sola scansione: gli altri access point della stessa rete, le reti dei vicini sullo stesso canale (solo come numeri) e l\'occupazione del canale dichiarata dall\'access point. Con più punti nella stessa stanza conta il peggiore.',
+    scale: [
+      { range: 'mediana da -60 dBm in su', severity: 'ok', meaning: 'Ottimo (soglia di Polaris; Aruba progetta le celle Wi-Fi 6 tra -55 e -65 dBm).' },
+      { range: 'mediana da -67 a -60 dBm', severity: 'ok', meaning: 'Buono: adatto anche a chiamate e video (Cisco indica -67 dBm come minimo per la voce su Wi-Fi).' },
+      {
+        range: 'mediana da -72 a -67 dBm, oppure cali (10° percentile) da -80 a -72 dBm; PC sui 2,4 GHz mentre la stessa rete arriva a 5 o 6 GHz da -67 dBm in su; reti dei vicini sopra -75 dBm sullo stesso canale; letture tutte identiche',
+        severity: 'info',
+        meaning: 'Va bene per navigazione e posta, chiamate e video al limite (-72 dBm è la soglia predefinita di copertura di Juniper Mist).',
+      },
+      {
+        range: 'mediana da -80 a -72 dBm, oppure cali sotto -80 dBm; escursione oltre 10 dB da fermi; cambio di access point da fermi; un altro access point della stessa rete e banda più forte di almeno 8 dB; perdite al router oltre l\'1 %; jitter da 10 ms; tempo di risposta del router da 20 ms insieme a perdite; canale occupato oltre il 50 %',
+        severity: 'warn',
+        meaning: 'Debole o instabile: velocità ridotta, chiamate e video che scattano.',
+      },
+      { range: 'mediana sotto -80 dBm; perdite al router dal 5 %; jitter da 30 ms; tempo di risposta del router da 50 ms insieme a perdite', severity: 'crit', meaning: 'In quel punto il Wi-Fi non regge: disconnessioni e lentezza marcata.' },
+    ],
+    why: 'Una sola analisi dice come va il Wi-Fi dove si trova il PC in quel momento. Misurando ogni stanza con lo stesso dispositivo, nella stessa posizione, si vede dove il segnale non arriva, dove il PC salta da un access point all\'altro e dove il canale è affollato: è la base per decidere dove spostare il router o aggiungere un access point. Muri in cemento e solai in cemento armato possono togliere 10-20 dB e più, di più a 5 e 6 GHz (indicazioni generali della raccomandazione ITU-R P.1238).',
+    limits: 'Soglie con fonte: -67 dBm (Cisco, voce su Wi-Fi), -72 dBm (Juniper Mist, copertura predefinita), perdite sotto l\'1 % e jitter sotto 30 ms in ogni intervallo di 15 secondi (Microsoft Teams, per tutto il percorso fino ai server di Microsoft: il solo tratto Wi-Fi dovrebbe restarne ben sotto). Sono scelte di Polaris, senza una fonte primaria: "ottimo" da -60 dBm, -80 dBm per il problema, i cali (10° percentile) valutati un livello sotto la mediana, 10 dB di escursione, 8 dB per l\'access point più forte, 5 % di perdite per il problema, 10 ms di jitter per l\'avviso, 20 e 50 ms di tempo di risposta del router, 50 % di occupazione del canale (alcune guide Cisco per la voce indicano 40-50 %, dato da verificare), -75 dBm per un vicino forte. I valori valgono per questo PC: ogni scheda e antenna riceve in modo diverso, quindi le stanze si confrontano misurandole con lo stesso dispositivo. Il segnale è quello che il PC riceve dall\'access point: nell\'altra direzione può essere più debole, e le perdite dei ping ne danno un indizio. Il router risponde ai ping con il suo processore, quando ha tempo: per questo il tempo di risposta conta solo se ci sono anche perdite. Windows non espone il rumore di fondo, quindi l\'SNR non si calcola. Microsoft non documenta ogni quanto la scheda aggiorna il segnale: se tutte le letture sono identiche Polaris lo segnala. La scansione può includere reti sentite qualche secondo prima; quelle sentite più di 10 secondi prima si scartano. Su Windows 11 24H2 e successivi servono i permessi di posizione e durante la misura Windows mostra l\'icona della posizione.',
+  },
 
   // ---------------- LAN ----------------
   {
