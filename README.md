@@ -13,18 +13,19 @@ confluiscono in un piano unico, ordinato per gravità, impatto e facilità.
 
 Del **computer** controlla versione e supporto di Windows, memoria, **salute dei dischi HDD e SSD** (attributi SMART e registro
 NVMe come in CrystalDiskInfo, usura, temperatura, errori), **cosa occupa spazio** come WizTree, programmi all'avvio, processi, spegnimenti imprevisti,
-schermate blu, **Microsoft Defender** (protezione, minacce e scansioni su richiesta), aggiornamenti e batteria; compila la
+**schermate blu con la lettura dei minidump** come BlueScreenView, **Microsoft Defender** (protezione, minacce e scansioni su richiesta), aggiornamenti e batteria; compila la
 **scheda tecnica** come CPU-Z, con la **velocità dei core in tempo reale**, e offre **test di velocità** del processore e dei dischi,
 questi con il profilo di CrystalDiskMark.
 La **cassetta degli attrezzi** apre gli strumenti di Windows e **CrystalDiskInfo, CrystalDiskMark e BlueScreenView, inclusi nel
 pacchetto**; CPU-Z, HWiNFO, Autoruns e gli altri programmi che non si possono ridistribuire li **scarica dal sito ufficiale**, solo
 su richiesta, e li avvia solo con la firma digitale del produttore. Per i PC senza Internet prepara un **kit** da portare su una
 chiavetta. Un **documento stampabile** riassume lo stato del PC, da consegnare o salvare in PDF.
-Della **rete** misura Wi-Fi, router, Internet e DNS.
+Della **rete** misura Wi-Fi, router, Internet e DNS; su richiesta disegna la **mappa del Wi-Fi stanza per stanza**, controlla i
+**certificati dei servizi interni** e, con il tuo consenso ogni volta, misura la **velocità di Internet** con Measurement Lab.
 
 Funziona in casa come in uno studio, in un'azienda o in una **struttura sanitaria**: riconosce le reti con più access point e
 con dominio, censisce la sottorete, verifica la separazione tra le zone e i servizi critici e guida un'autovalutazione delle
-misure organizzative. Una biblioteca di **68 guide** in italiano spiega come usare il programma, il computer e la rete, dalle
+misure organizzative. Una biblioteca di **72 guide** in italiano spiega come usare il programma, il computer e la rete, dalle
 basi alle reti cliniche.
 
 Il nome nasce dal marchio STARNET: Polaris è la stella polare, quella che indica la direzione. Qui indica cosa sistemare per primo.
@@ -84,6 +85,16 @@ script PowerShell nascosto: nessuna impostazione viene modificata.
   riavvio (con l'effetto dell'avvio rapido) e riavvii in sospeso.
 - **Stabilità e sicurezza**: spegnimenti imprevisti, schermate blu con il codice di arresto spiegato, errori hardware WHEA
   degli ultimi 30 giorni; antivirus dal Centro sicurezza; data dell'ultimo aggiornamento.
+- **File delle schermate blu**, come BlueScreenView ma senza installare nulla: Polaris legge da solo i minidump che Windows
+  salva a ogni schermata blu (i 50 più recenti e l'intestazione di `MEMORY.DMP`), in sola lettura. Per ognuno data e ora,
+  codice di arresto con nome e significato, i quattro parametri, versione di Windows e tipo del file; per i minidump a 64 bit
+  anche i driver caricati e il **driver indicato come indizio**, con il metodo usato (l'indirizzo che Microsoft documenta per
+  quel codice, altrimenti il primo modulo fuori dal nucleo di Windows nello stack salvato). Niente indizio per gli errori
+  segnalati dall'hardware (0x124) e per gli arresti provocati di proposito. Il motore segnala lo stesso driver o lo stesso
+  codice in più schermate blu e le impostazioni che impediscono di salvare i file; mostra anche le impostazioni dei dump
+  (lette, mai cambiate). Leggere i file richiede di avviare Polaris come amministratore: senza, la scheda lo dice e mostra
+  codice e parametri dal registro eventi. Il formato è ricostruito da documentazione pubblica e provato su file costruiti ad
+  arte (vedi Verifiche); per l'analisi completa dello stack serve WinDbg, e BlueScreenView resta nel pacchetto.
 - **Microsoft Defender**: protezione in tempo reale e da manomissioni, firme, ultime scansioni e cronologia delle minacce (nome,
   gravità e stato, senza percorsi dei file né nomi utente). Su richiesta, scansione rapida o completa e aggiornamento delle firme
   con lo strumento ufficiale `MpCmdRun`; una scansione si può interrompere.
@@ -167,17 +178,36 @@ serie.
 
 | Area | Misure |
 | --- | --- |
-| Computer | versione e supporto di Windows, RAM installata e in uso, carico del processore e processi, velocità dei core in tempo reale, salute dei dischi (stato, attributi SMART, registro NVMe, usura, temperatura, errori), tipo del disco di sistema, spazio per volume, cosa occupa spazio (cartelle, file più grandi, tipi di file, cartelle note di Windows, spazio recuperabile), programmi all'avvio, riavvio e riavvii in sospeso, spegnimenti imprevisti, schermate blu, errori hardware e di disco nel registro, antivirus e Microsoft Defender (protezione, firme, scansioni, minacce), ultimo aggiornamento, batteria, piano di alimentazione, driver video, scheda tecnica (processore, memoria e canali, scheda madre, firmware, Secure Boot, TPM, video) |
+| Computer | versione e supporto di Windows, RAM installata e in uso, carico del processore e processi, velocità dei core in tempo reale, salute dei dischi (stato, attributi SMART, registro NVMe, usura, temperatura, errori), tipo del disco di sistema, spazio per volume, cosa occupa spazio (cartelle, file più grandi, tipi di file, cartelle note di Windows, spazio recuperabile), programmi all'avvio, riavvio e riavvii in sospeso, spegnimenti imprevisti, schermate blu e loro file (codice, parametri, driver indicato, impostazioni dei dump), errori hardware e di disco nel registro, antivirus e Microsoft Defender (protezione, firme, scansioni, minacce), ultimo aggiornamento, batteria, piano di alimentazione, driver video, scheda tecnica (processore, memoria e canali, scheda madre, firmware, Secure Boot, TPM, video) |
 | Test di velocità (su richiesta) | processore con un thread e con tutti, punta e velocità mantenuta; disco con il profilo di CrystalDiskMark (SEQ1M Q8T1, SEQ1M Q1T1, RND4K Q32T1, RND4K Q1T1), in MB/s e IOPS |
 | Antivirus (su richiesta) | scansione rapida o completa e aggiornamento delle firme di Microsoft Defender |
 | Wi-Fi | potenza in dBm, qualità, velocità radio, banda, standard (Wi-Fi 4…7), larghezza di canale, reti sullo stesso canale, canali 2,4 GHz sovrapposti, carico dichiarato dall'access point (BSS Load), sicurezza (WPA2/WPA3 Personal ed Enterprise, TKIP, PMF, WPS), canale consigliato per 2,4 e 5 GHz |
+| Mappa del Wi-Fi (su richiesta) | per ogni stanza: segnale una volta al secondo per 15 secondi (mediana, peggiore 10 %, oscillazione), cambi di access point, perdite, tempi e jitter verso il router, reti vicine sullo stesso canale; giudizio per stanza e azioni |
 | Reti con più access point | AP della rete con canali, segnale, carico e roaming assistito (802.11k, 802.11v, 802.11r e Mobility Domain), AP propri sullo stesso canale, PC agganciato a un AP lontano (sticky client), stessa rete annunciata con protezioni diverse (possibile AP gemello) |
 | Rete locale | indirizzo, DHCP e server DHCP (APIPA), gateway, latenza/perdite/jitter verso il router, velocità della porta Ethernet, IPv6, sottoreti molto ampie, dominio e DNS aziendali, stesso MAC per più indirizzi, MAC del router cambiato rispetto all'analisi precedente, dispositivi visti di recente |
 | Internet | latenza, perdite e jitter verso Cloudflare, Google e Quad9, traceroute, MTU del percorso, navigazione HTTPS reale |
+| Velocità di Internet (su richiesta, con consenso) | download e upload con Measurement Lab (ndt7), latenza a riposo e sotto carico (bufferbloat), ritrasmissioni, server usato |
 | DNS | tempo di risposta del DNS in uso e confronto con i resolver pubblici |
 | Router e sicurezza | servizi esposti dal *proprio* router (Telnet, FTP, SMB…), UPnP IGD e indirizzo pubblico, pannello di gestione HTTP/HTTPS, profili del firewall di Windows |
 | Infrastruttura (su richiesta) | inventario della sottorete, test di segmentazione tra le zone, raggiungibilità e tempi dei servizi critici, certificati dei servizi interni (scadenza, nomi, emittente, versione di TLS, attendibilità su questo PC), autovalutazione organizzativa in sei aree |
 | Monitor | un ping al secondo verso router e Internet per tutta la sessione (fino a 12 ore, anche cambiando sezione), con picchi, interruzioni e relativa ora; esportazione CSV |
+
+## Wi-Fi stanza per stanza e velocità di Internet
+
+- **Mappa del Wi-Fi per stanza** (sezione Wi-Fi): si scrive il nome della stanza, si resta fermi con il portatile dove si
+  lavora e Polaris misura per circa 15 secondi il segnale (una lettura al secondo), i cambi di access point e un ping al router
+  ogni 200 ms, poi fa una scansione delle reti. Ogni stanza ha un giudizio (segnale, oscillazioni, perdite, jitter, reti sullo
+  stesso canale) e le azioni conseguenti: dove mettere un access point, separare le bande, cambiare canale, collegare via cavo
+  gli access point. Soglie con fonte: -67 dBm per la voce su Wi-Fi (Cisco), -72 dBm di copertura predefinita (Juniper
+  Mist), perdite sotto l'1 % e jitter sotto 30 ms (Microsoft Teams); le altre sono scelte di Polaris e lo dice. Un router che ignora i ping non rende critica la stanza. Gli access
+  point della rete compaiono negli export come "AP A", "AP B"; delle reti vicine si conservano solo conteggi, canali e segnali.
+  I ping vanno solo al router, se ha un indirizzo privato; nessuna impostazione della scheda viene cambiata.
+- **Velocità di Internet** (sezione Internet): solo su richiesta e dopo una finestra di **consenso a ogni test**, Polaris usa il
+  protocollo ndt7 di [Measurement Lab](https://www.measurementlab.net/) (M-Lab), un progetto senza scopo di lucro: latenza a
+  riposo per 5 secondi, poi 10 secondi di download e 10 di upload (fino a circa 250 MB per verso) mentre continua a misurare la
+  latenza, così si vede quanto cresce sotto carico (bufferbloat). M-Lab **pubblica** ogni risultato con l'indirizzo IP pubblico
+  della connessione; Polaris non salva né stampa l'IP. Dall'interfaccia, al massimo un test ogni 2 minuti e 10 al giorno. La velocità è sempre
+  informativa: Polaris non conosce il contratto; per le contestazioni vale la misura certificata di AGCOM (Ne.Me.Sys.).
 
 ## Reti complesse e strutture sanitarie
 
@@ -216,11 +246,12 @@ Senza agente, le due reti dimostrative (*Casa* e *Clinica*) mostrano tutte le fu
 
 ![Guide](docs/img/guide.webp)
 
-68 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
-complesse e sanità, diagnosi), un glossario di 208 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
+72 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
+complesse e sanità, diagnosi), un glossario di 230 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
 d'uso parte dai primi passi e arriva alla riga di comando e alla cassetta degli attrezzi; il capitolo sul computer spiega
 componenti, scheda tecnica, sensori in tempo reale, dischi HDD e SSD, attributi SMART, cosa occupa spazio e come liberarlo, test di velocità, memoria, avvio, aggiornamenti, antivirus e
-Microsoft Defender, registro eventi, batteria e il metodo per un PC lento. Le date di supporto di
+Microsoft Defender, registro eventi, file delle schermate blu, batteria e il metodo per un PC lento; quelli sulla rete anche la
+misura del Wi-Fi stanza per stanza, i certificati dei servizi interni e che cosa dice (e non dice) un test di velocità. Le date di supporto di
 Windows citate sono quelle note a metà 2026 e vanno verificate sul sito Microsoft. Ogni valore misurato e ogni azione del piano rimandano
 alla guida che li spiega; sette diagrammi animati illustrano livelli, sottoreti, DHCP, canali, roaming, VLAN e zone di una rete
 sanitaria. I riferimenti normativi citati (GDPR, NIS2, dispositivi medicali) sono una sintesi da verificare sui testi ufficiali,
@@ -260,6 +291,9 @@ polaris-cli clock                   velocità dei core in tempo reale (--seconds
 polaris-cli sensors --seconds 600 --csv sensori.csv   sensori come HWiNFO, con registro per Excel (--all, --json)
 polaris-cli space C: --top 30       cosa occupa spazio, come WizTree (anche una cartella; --json)
 polaris-cli certs nas.studio.local:5001 10.0.0.5   certificati dei servizi della rete locale (--json)
+polaris-cli crashes                 file delle schermate blu, come BlueScreenView (da amministratore; --json)
+polaris-cli wifi-survey Soggiorno   misura il Wi-Fi in questa stanza (--secondi 10-20, --senza-scansione, --json)
+polaris-cli speedtest --accetto     test di velocità di Internet con M-Lab (senza --accetto mostra il consenso; --json)
 ```
 
 Su Windows 11 24H2 e successivi la lettura delle reti Wi-Fi richiede il permesso di posizione per le app desktop: Polaris lo
@@ -301,14 +335,24 @@ PC con scheda Wi-Fi: [docs/VERIFICHE.md](docs/VERIFICHE.md).
 
 ## Privacy e sicurezza
 
-- Tutto resta sul PC: nessun dato viene inviato a servizi esterni.
+- Tutto resta sul PC: nessun dato viene inviato a servizi esterni, con una sola eccezione che decidi tu, il test di velocità di
+  Internet (vedi sotto).
+- **Test di velocità di Internet**: parte solo dopo il consenso, chiesto a ogni test. Measurement Lab riceve e pubblica per
+  sempre, in un archivio aperto, il risultato con l'indirizzo IP pubblico della connessione, data, ora e nome del programma;
+  Polaris non salva né stampa l'IP e non invia altri dati del PC. Con un IP fisso (studi, aziende, strutture sanitarie) il
+  risultato resta collegato a quell'indirizzo: va deciso secondo le regole interne. Informativa di M-Lab:
+  https://www.measurementlab.net/privacy/.
+- La **mappa del Wi-Fi** contatta solo il router (se ha un indirizzo privato); gli access point della rete compaiono negli
+  export con un alias e le reti vicine solo come conteggi.
+- I **file delle schermate blu** si leggono senza modificarli; dei driver si mostrano solo i nomi dei file e dai percorsi delle
+  impostazioni spariscono i nomi utente.
 - Il server locale ascolta solo su `127.0.0.1`, rifiuta host diversi (DNS rebinding) e richieste da altre origini.
 - Il controllo dei servizi esposti riguarda **esclusivamente il gateway** della rete a cui si è collegati, senza autenticarsi.
 - Inventario e verifiche partono solo su richiesta, solo verso indirizzi privati (RFC 1918 e ULA IPv6) e senza scansioni di
   porte: l'inventario contatta i dispositivi della sola sottorete del PC, le verifiche solo le destinazioni indicate
   dall'utente. Le API locali rifiutano richieste senza conferma, con destinazioni non valide o pubbliche.
 - Per le misure vengono contattati: il router, i resolver pubblici 1.1.1.1, 8.8.8.8 e 9.9.9.9, `www.google.com/generate_204` e
-  `cp.cloudflare.com/generate_204`.
+  `cp.cloudflare.com/generate_204`; solo per il test di velocità, `locate.measurementlab.net` e il server di M-Lab che indica.
 - I dati del computer si leggono senza modificare nulla; i test di velocità partono solo su richiesta, quello del disco con una
   conferma esplicita, lasciando almeno 2 GB liberi e cancellando il file di prova. Nei rapporti la cartella dell'utente è
   sostituita da `%USERPROFILE%`, i numeri di serie dei dischi non vengono letti e degli eventi si conservano solo origine,

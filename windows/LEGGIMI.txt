@@ -13,6 +13,9 @@ COSA FA
   errori, come in CrystalDiskInfo), spazio, programmi all'avvio, riavvii,
   spegnimenti imprevisti, schermate blu, errori hardware, antivirus e
   Microsoft Defender, aggiornamenti, batteria e piano di alimentazione.
+  Legge da solo i file delle schermate blu (minidump), come BlueScreenView:
+  data, codice di arresto spiegato, parametri e il driver indicato come
+  indizio; i file si leggono avviando Polaris come amministratore.
   Compila la scheda tecnica come CPU-Z (processore, memoria, scheda madre,
   firmware, Secure Boot, TPM, video), con la velocita' dei core in tempo
   reale letta dai contatori di Windows, senza driver. Il monitor dei sensori,
@@ -38,12 +41,15 @@ COSA FA
   Misura Wi-Fi (segnale in dBm, canale, larghezza, carico dell'access point,
   reti vicine), rete locale (router, perdite, stabilita'), Internet (latenza,
   percorso, MTU), DNS, servizi esposti dal router, UPnP e firewall di Windows.
+  Su richiesta disegna la mappa del Wi-Fi stanza per stanza (circa 15
+  secondi per stanza, fermi dove si lavora) e misura la velocita' di
+  Internet con Measurement Lab (M-Lab), dopo il tuo consenso a ogni test.
   Per ogni valore spiega cosa significa, quanto e' grave e cosa fare.
   Nelle reti con piu' access point mostra gli AP della rete, il roaming
   (802.11k/v/r), gli AP sullo stesso canale e il PC agganciato a un AP lontano;
   riconosce le reti con dominio. La sezione Infrastruttura censisce la
   sottorete, verifica la separazione tra le zone e i servizi critici e guida
-  un'autovalutazione delle misure organizzative. 68 guide spiegano come si
+  un'autovalutazione delle misure organizzative. 72 guide spiegano come si
   usa il programma, il computer e la rete, dalle basi alle reti cliniche.
 
 REQUISITI
@@ -101,6 +107,15 @@ RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
   polaris-cli certs SERVIZIO...       certificati TLS dei servizi della rete
                                       locale (nome, IP, nome:porta o
                                       https://...), --json
+  polaris-cli crashes                 file delle schermate blu, come
+                                      BlueScreenView (da amministratore),
+                                      --json
+  polaris-cli wifi-survey STANZA      misura il Wi-Fi nella stanza in cui
+                                      sei (--secondi da 10 a 20,
+                                      --senza-scansione, --json)
+  polaris-cli speedtest --accetto     test di velocita' di Internet con
+                                      M-Lab; senza --accetto mostra solo il
+                                      testo del consenso, --json
 
 STRUMENTI INCLUSI
   Nella cartella strumenti ci sono CrystalDiskInfo 9.9.2 e CrystalDiskMark
@@ -139,7 +154,12 @@ PROGRAMMI SCARICATI E KIT
   apre il sito ufficiale.
 
 PRIVACY
-  Tutto resta su questo PC: Polaris non invia dati a nessun servizio esterno.
+  Tutto resta su questo PC: Polaris non invia dati a nessun servizio esterno,
+  tranne il test di velocita' di Internet, che parte solo con il tuo
+  consenso: Measurement Lab (M-Lab) riceve e pubblica per sempre il
+  risultato con l'indirizzo IP pubblico della connessione, data, ora e nome
+  del programma. Polaris non salva ne' stampa l'IP. Informativa di M-Lab:
+  https://www.measurementlab.net/privacy/
   Per misurare la rete contatta il tuo router, i resolver DNS pubblici
   1.1.1.1, 8.8.8.8 e 9.9.9.9 (ping e richieste DNS) e due indirizzi di prova
   (www.google.com/generate_204 e cp.cloudflare.com/generate_204).
@@ -153,6 +173,10 @@ PRIVACY
   servizi che indichi (indirizzi privati), legge il certificato durante la
   negoziazione TLS e chiude senza inviare dati; l'attendibilita' e' quella di
   Windows su questo PC, senza scaricare nulla.
+  La mappa del Wi-Fi fa ping solo al router (se ha un indirizzo privato) e
+  non cambia le impostazioni della scheda; negli export gli access point
+  della rete hanno un alias e le reti vicine compaiono solo come numeri.
+  I file delle schermate blu si leggono senza modificarli.
   I dati del computer si leggono senza modificare nulla. I test di velocita'
   partono solo su richiesta; quello del disco chiede conferma, lascia almeno
   2 GB liberi e cancella il file di prova anche se viene interrotto.

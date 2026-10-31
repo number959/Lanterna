@@ -12,10 +12,14 @@ nome, che non compare più all'utente.
             │    kb/assessment.ts  autovalutazione: aree, domande, punteggi               │
             │    analyze.ts     diagnosi, punteggi, piano d'azione                        │
             │    pc.ts          computer: Windows e supporto, dischi, eventi, test        │
+            │    crash.ts       file delle schermate blu: codici, driver ricorrenti       │
+            │    certs.ts       certificati dei servizi interni                           │
+            │    survey.ts      mappa del Wi-Fi per stanza                                │
+            │    speedtest.ts   velocità di Internet (M-Lab ndt7), bufferbloat            │
             │    wifi.ts        canali, spettro, interferenza, AP della rete              │
             │    report.ts      rapporto testuale                                         │
             │    document.ts    documento stampabile: HTML A4 autonomo                    │
-            │  guides/   68 guide come dati tipizzati, glossario, ricerca                 │
+            │  guides/   72 guide come dati tipizzati, glossario, ricerca                 │
             │  demo/     PC e reti dimostrative Casa e Clinica, simulazioni               │
             │  ui/       interfaccia React (animazioni, suoni, grafici SVG, 10 viste)     │
             └───────────────▲───────────────────────────────▲────────────────────────────┘
@@ -32,6 +36,9 @@ nome, che non compare più all'utente.
    │   probe/   DNS, UPnP/SSDP, porte e pannello del router, HTTPS          │
    │   infra/   inventario e verifiche su richiesta, ritmo prudente          │
    │   certs/   certificati TLS dei servizi interni, su richiesta            │
+   │   survey/  mappa del Wi-Fi: un punto per volta, su richiesta           │
+   │   speedtest/ client ndt7 di M-Lab, solo con il consenso                │
+   │   crash/   file delle schermate blu (minidump), in sola lettura        │
    │   pcinfo/  dati del computer: API native + uno script PowerShell        │
    │   bench/   test di velocità di processore e dischi, su richiesta        │
    │   pdh/     contatori delle prestazioni di Windows (nomi inglesi)       │
@@ -142,6 +149,24 @@ Organizzazione di `core/src/ui/`:
   corso e l'ultimo errore vivono a livello di modulo. Il risultato entra nel rapporto in `infra.certs` solo se il rapporto
   mostrato è ancora quello della stessa rete e della stessa origine (`addCerts` con `sameCertTarget`, come per lo spazio).
   Giudizi e soglie in `engine/certs.ts`; nella demo `simulatedCerts` produce esiti coerenti con l'analisi.
+- `crashes.tsx`: "File delle schermate blu" nel Computer. Mostra i minidump dal più recente con codice, significato, parametri e
+  driver indicato (sempre con il metodo, mai come certezza), le impostazioni dei dump e, senza amministratore, codice e
+  parametri dell'evento 1001. "Rileggi i file" chiede una lettura nuova (`GET /api/crashes`), che entra nel rapporto in
+  `pc.crashes` solo se il rapporto mostrato è ancora quello dello stesso PC e della stessa analisi (`addCrashes` con
+  `sameCrashTarget`). Giudizi in `engine/crash.ts`: il conteggio delle schermate blu resta in `pc.events.bsod` (il maggiore tra
+  eventi 1001 e minidump nel periodo, mai la somma); i giudizi nuovi riguardano driver e codici ricorrenti, impostazioni e
+  accesso ai file.
+- `wifimap.tsx`: "Mappa del Wi-Fi per stanza" nella sezione Wi-Fi. La misura in corso vive a livello di modulo; il risultato
+  entra in `wifi.survey` solo se il rapporto mostrato è dello stesso PC, dello stesso gateway e della stessa rete Wi-Fi (SSID),
+  e se la misura è stata fatta su quella rete (`addSurvey`, `surveyRefusal`). Con l'agente la mappa resta in `localStorage`
+  per PC, gateway e rete; negli export JSON i BSSID della rete diventano "AP A", "AP B" (`surveyForExport`). Giudizi in
+  `engine/survey.ts`, uno per stanza (`wifi.room.<stanza>`), con il punto peggiore della stanza.
+- `speedtest.tsx`: "Velocità di Internet" nella sezione Internet. Prima di ogni test reale una finestra modale di consenso
+  (fuoco intrappolato, Esc chiude, casella da spuntare ogni volta); il testo coincide con quello dell'agente (verificato da un
+  test). Durante il test fasi, Mbit/s e latenza dal vivo; alla fine download, upload, latenza a riposo e sotto carico,
+  bufferbloat (icona e testo), server, avvertenze. Il risultato entra in `internet.speed` solo per lo stesso PC e la stessa
+  rete (`addSpeed`, `sameSpeedTarget`) e, riaprendo la pagina, solo se il test è successivo all'analisi mostrata
+  (`speedFitsScan`). Nella demo il test è simulato, senza rete e senza consenso, e dichiarato.
 - `infra.tsx`: la sezione Infrastruttura. L'inventario vive a livello di modulo, quindi prosegue anche cambiando pagina; senza
   agente (demo) inventario e verifiche sono simulati da `demo/simulate.ts` e dichiarati come tali; con un rapporto importato si
   consultano solo i risultati salvati.
@@ -209,8 +234,11 @@ rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFIC
 | Computer: sistema | `RtlGetVersion`, registro (`CurrentVersion`, `CentralProcessor`, `HiberbootEnabled`, chiavi dei riavvii in sospeso), `GetTickCount64`, `GlobalMemoryStatusEx`, `GetSystemPowerStatus`, `PowerGetActiveScheme` | Windows 11 riconosciuto dalla build (il registro dice ancora "Windows 10") |
 | Computer: volumi | `GetLogicalDriveStrings`, `GetDriveType`, `GetDiskFreeSpaceEx`, `GetVolumeInformation` | solo dischi locali e rimovibili: niente unità di rete o CD |
 | Computer: avvio e processi | chiavi `Run` (utente, computer, 32 bit), cartelle di esecuzione automatica, `StartupApproved`; Toolhelp32 + `GetProcessTimes` + `K32GetProcessMemoryInfo` su 1,5 s a fine analisi | cartella dell'utente sostituita da `%USERPROFILE%`; processi raggruppati per nome |
+| Mappa del Wi-Fi (su richiesta) | un handle `WlanOpenHandle` per tutta la misura; ogni secondo `WlanQueryInterface` con `wlan_intf_opcode_current_connection` (BSSID, qualità, velocità radio, PHY), `channel_number` e `rssi` (0x10000102, dBm); se la scheda non dà i dBm si stimano dalla qualità (0-100 → da -100 a -50 dBm, come documenta Microsoft) e lo si dichiara. In parallelo `IcmpSendEcho` al gateway IPv4 della scheda Wi-Fi (`GetAdaptersAddresses`, stesso GUID) ogni 200 ms, 32 byte, 1 s di attesa. Alla fine un solo `WlanScan`, 4 s di attesa e `WlanGetNetworkBssList` con l'ora dell'ultimo ascolto di ogni voce (`ullHostTimestamp`) | sola lettura: nessuna impostazione della scheda cambiata. Ping solo a un gateway privato o link-local. Scostamenti di `WLAN_BSS_ENTRY` (tempo a 80, frequenza a 92, dimensione 360) e valori degli opcode confrontati con gli header mingw-w64 su amd64, arm64 e 386. Statistiche: mediana, 10° percentile (rango più vicino), escursione, perdite, mediana e 95° percentile dei tempi, jitter (RFC 5481); voci della scansione sentite più di 10 s prima scartate; dei vicini solo conteggi, canali e dBm. Non si sovrappone ad analisi, inventario, test della CPU o del disco e test di velocità di Internet |
+| Velocità di Internet (su richiesta, con consenso) | client ndt7 scritto dalla specifica pubblica di M-Lab con `gorilla/websocket`: Locate v2 (`locate.measurementlab.net`, fino a 4 server provati in ordine, token rinnovati dopo 55 s), WebSocket `wss` con il sottoprotocollo `net.measurementlab.ndt.v7`, download di 10 s con `early_exit=250`, upload di 10 s con un tetto di 250 MB; `client_name` e `client_version` nell'indirizzo, `User-Agent` `starnet-polaris/<versione>`. Latenza a riposo per 5 s, poi sonde ICMP verso 1.1.1.1 (TCP se l'ICMP non risponde) anche durante i trasferimenti; una sonda persa sotto carico vale quanto l'attesa (1 s) e il valore diventa "almeno". Upload dai contatori TCP del server (`TCPInfo.BytesReceived` ed `ElapsedTime`), altrimenti dal conteggio del PC | proxy di sistema come per i download (407 spiegato, NTLM e PAC non gestiti); dell'esito di M-Lab non si leggono IP, porta e UUID del test. Limiti dell'agente: un test ogni 2 minuti e 10 al giorno (in memoria); un test che non ha raggiunto M-Lab non conta. Non si sovrappone ad analisi, test della CPU o del disco e misura del Wi-Fi |
 | Computer: dischi, eventi, sicurezza | un solo script PowerShell nascosto (vedi sotto) con uscita JSON: `Get-PhysicalDisk`, `Get-Partition`, `Get-StorageReliabilityCounter` (da amministratore), classi batteria di `root/wmi`, `Get-WinEvent` (livelli 1-3, 30 giorni, 14 codici), `root/SecurityCenter2` con riserva `Get-MpComputerStatus`, `Get-HotFix`, `Win32_Processor`, `Win32_VideoController` | ogni sezione protetta da `try`; timeout di 40 s; niente numeri di serie |
 | Computer: SMART (da amministratore) | apertura del disco fisico in sola lettura, in parallelo allo script; `IOCTL_STORAGE_QUERY_PROPERTY` per il tipo di bus e, sugli NVMe, per il registro di salute (log 02h); sui SATA `IOCTL_ATA_PASS_THROUGH` (comandi SMART READ DATA e READ THRESHOLDS) con riserva `SMART_RCV_DRIVE_DATA` | stato Buono/Attenzione/Critico con le regole di CrystalDiskInfo: attributo guasto se l'attuale scende alla soglia; 05, C5, C6 e BB non nulli danno "Attenzione"; bit di avviso critico NVMe |
+| Computer: file delle schermate blu | chiave `CrashControl` del registro in sola lettura (tipo di dump, cartella e file con le variabili espanse, riavvio, sovrascrittura, registrazione nell'evento); elenco dei `.dmp` della cartella dei minidump (i 50 più recenti) e intestazione di `MEMORY.DMP`, aperti in sola lettura con condivisione completa. Intestazione `DUMP_HEADER64` (firme `PAGE` e `DU64`, 0x2000 byte: codice a 0x38, parametri da 0x40, tipo a 0xF98, ora a 0xFA8) o a 32 bit (`DUMP`); per i minidump a 64 bit la sezione triage a 0x2000 con i driver caricati (voci da 0x90 byte, nomi UTF-16 dal pool di stringhe), i driver scaricati e lo stack salvato. Driver indicato: il parametro con l'indirizzo che Microsoft documenta per il codice (0xA e 0xD1: P4; 0x1E, 0x7E, 0x8E, 0x3B e varianti: P2; 0x50: P3), altrimenti il primo indirizzo dello stack in un modulo fuori dal nucleo (kernel, HAL, PSHED); niente per 0x124 e per gli arresti provocati di proposito | layout da documentazione pubblica e fonti aperte, nessun binario proprietario esaminato; ogni lettura controllata nei limiti (al massimo 64 MiB, 2048 driver, 1 MiB di stringhe, 64 KiB di stack), con un'incoerenza restano i soli dati dell'intestazione e il motivo; dump a 32 bit, kernel e completi: solo intestazione. Senza amministratore la cartella di solito non si legge: `needsAdmin`, mai un errore dell'analisi. Durante l'analisi 10 s più 3 di tolleranza, poi il risultato parziale. Nomi dei driver e dei file senza percorsi, nomi utente tolti dalle impostazioni; date dei driver mai mostrate |
 | Computer: scheda tecnica | `GetLogicalProcessorInformationEx` (core per classe di efficienza, cache per livello e tipo), istruzioni lette con CPUID, `GetFirmwareType`, Secure Boot dal registro, memoria video dal registro (`qwMemorySize`); nello script `Win32_ComputerSystem`, `Win32_BaseBoard`, `Win32_BIOS`, `Win32_PhysicalMemory`, `Win32_PhysicalMemoryArray`, TPM da `Win32_PnPEntity` | sola lettura; niente numeri di serie |
 | Microsoft Defender | `Get-MpComputerStatus`, `Get-MpThreat` e `Get-MpThreatDetection` nello script; su richiesta `MpCmdRun.exe -Scan -ScanType 1\|2`, `-SignatureUpdate`, `-Scan -Cancel`, poi nuova lettura di stato e minacce | delle minacce solo nome, gravità, stato e date: niente percorsi dei file né nomi utente; non si sovrappone ai test di velocità |
 | Cassetta degli attrezzi | `ShellExecute` di una voce della lista bianca (comando di Windows, indirizzo `ms-settings:`, programma trovato tra le voci di disinstallazione con un eseguibile ammesso, programma incluso o scaricato, sito https del produttore), con la cartella del programma come cartella di lavoro | da amministratore i siti si aprono tramite Esplora risorse, con i permessi normali; i programmi inclusi in `strumenti/` partono solo se l'eseguibile ha l'impronta SHA-256 scritta nell'agente; precedenza: incluso, poi scaricato, poi installato |
@@ -229,7 +257,8 @@ PowerShell 7 la eredita con i moduli di PowerShell 7 in testa, e Windows PowerSh
 script si aggiunge la prima riga scritta da PowerShell.
 
 Modalità del programma: `Polaris.exe` (finestra), `report` (anche `--html`), `serve`, `bench cpu`, `bench disk`,
-`defender status|quick|full|update`, `tools status|kit`, `clock` e `sensors` (anche `--csv`). La finestra usa WebView2; se il runtime manca (o non
+`defender status|quick|full|update`, `tools status|kit`, `clock` e `sensors` (anche `--csv`), `space`, `certs`, `crashes`,
+`wifi-survey` e `speedtest` (senza `--accetto` mostra solo il consenso). La finestra usa WebView2; se il runtime manca (o non
 funziona) STARNET Polaris lo dice con un messaggio e apre l'interfaccia nel browser predefinito. `Polaris.exe` è compilato come
 applicazione grafica e si aggancia alla console del prompt quando riceve un comando; `polaris-cli.exe` è la stessa cosa compilata
 per la console, comoda negli script.
@@ -240,7 +269,7 @@ per la console, comoda negli script.
 | --- | --- |
 | `GET /api/info` | nome, versione, piattaforma, host |
 | `GET /api/scan` | ultimo `Scan`, oppure `204` se non c'è ancora |
-| `POST /api/scan` | `202` avvia un'analisi, `409` se è già in corso |
+| `POST /api/scan` | `202` avvia un'analisi, `409` se è già in corso o se è in corso un test di velocità, una misura del Wi-Fi o il test di velocità di Internet |
 | `GET /api/progress` | fasi dell'analisi con stato reale (`pending`, `running`, `done`, `error`) |
 | `GET /api/ping?target=gateway\|internet` | un singolo tempo di risposta per il monitor; usa la riserva TCP se nell'analisi l'host rispondeva solo così |
 | `POST /api/inventory` | corpo `{"authorized": true}`: `202` avvia l'inventario della sottorete del PC; `400` senza conferma, `415` senza JSON, `422` se la rete non è privata o non ha altri indirizzi, `409` se è già in corso |
@@ -249,7 +278,14 @@ per la console, comoda negli script.
 | `GET /api/reach` | ultime verifiche, oppure `204` |
 | `POST /api/certs` | corpo `{"targets": [{"label", "host", "port"}]}` (`host` anche come `nome:porta` o `https://…`, porta predefinita 443): esito per ogni servizio (sincrono, al massimo 2 minuti, 4 servizi alla volta); `400` se i servizi non sono validi (più di 20, porta fuori intervallo, nome non valido), `409` se ne è già in corso uno, `501` se non disponibile |
 | `GET /api/certs` | ultimo controllo dei certificati, oppure `204` |
-| `POST /api/bench` | corpo `{"kind": "cpu"}` oppure `{"kind": "disk", "drive": "C:", "confirm": true}`: `202` avvia il test; `400` senza conferma o con unità non valida, `422` se l'unità non è un disco locale o rimovibile, `409` se c'è un test, un'analisi o un'analisi dello spazio in corso |
+| `GET /api/crashes` | lettura nuova di impostazioni e file delle schermate blu (`CrashData`: `settings`, `folder`, `needsAdmin`, `total`, `dumps`, `memoryDump`, `partial`); le richieste si fanno una alla volta, al massimo 20 s; `501` se non disponibile, `500` se la lettura non riesce |
+| `POST /api/wifi/survey` | corpo `{"room": "Studio", "seconds": 15, "scan": true}` (stanza da 1 a 40 caratteri, da 10 a 20 secondi): `202` avvia la misura di un punto; `400` con dati non validi, `409` se c'è già una misura, un'analisi, un inventario, un test della CPU o del disco o il test di velocità di Internet, `501` se non disponibile |
+| `GET /api/wifi/survey` | misura in corso con fase (`misura`, `scansione`), secondi, letture del segnale, cambi di access point e ping; eventuale errore ed esito dell'ultima (`SurveySample`) |
+| `DELETE /api/wifi/survey` | interrompe la misura |
+| `POST /api/speedtest` | corpo `{"consent": true}` (esattamente `true`): `202` avvia il test con M-Lab; `400` senza consenso, `415` senza JSON, `403` da un'altra origine, `409` se c'è già un test, un'analisi, un test della CPU o del disco o una misura del Wi-Fi, `429` con `Retry-After` per i limiti (un test ogni 2 minuti, 10 al giorno), `501` se non disponibile |
+| `GET /api/speedtest` | test in corso con fase (`locate`, `idle`, `download`, `upload`), Mbit/s e latenza; eventuale errore, esito dell'ultimo (`SpeedTest`, senza IP), secondi di attesa e test rimasti oggi |
+| `DELETE /api/speedtest` | interrompe il test |
+| `POST /api/bench` | corpo `{"kind": "cpu"}` oppure `{"kind": "disk", "drive": "C:", "confirm": true}`: `202` avvia il test; `400` senza conferma o con unità non valida, `422` se l'unità non è un disco locale o rimovibile, `409` se c'è un test, un'analisi, un'analisi dello spazio, una misura del Wi-Fi o il test di velocità di Internet in corso |
 | `GET /api/bench` | test in corso con fase e avanzamento (campioni al secondo per il processore), eventuale errore e ultimi risultati |
 | `DELETE /api/bench` | interrompe il test in corso; il file temporaneo del test del disco viene cancellato |
 | `POST /api/defender` | corpo `{"action": "quick"\|"full"\|"update"}`: `202` avvia l'operazione; `400` per un'azione non valida, `422` se Defender non è disponibile, `409` se c'è già un'operazione o un test di velocità in corso |
@@ -282,6 +318,13 @@ eventuali altri agenti esporranno la stessa API, quindi l'interfaccia non cambia
 - **Go invece di C#/.NET**: un solo eseguibile statico, nessun runtime da installare, compilazione incrociata da qualunque sistema.
 - **WebView2 invece di Electron**: l'eseguibile pesa ~16 MB invece di ~150 MB; il motore di rendering è lo stesso Chromium.
 - **goja invece di riscrivere il motore in Go**: una sola implementazione delle spiegazioni e delle soglie.
+- **Client ndt7 proprio invece di `m-lab/ndt7-client-go`**: la libreria ufficiale (Apache-2.0) dalla versione 0.10 chiede Go
+  1.25.5 e una versione non rilasciata di `gorilla/websocket`, più altri moduli di M-Lab. Il protocollo è breve e pubblico: un
+  client minimo scritto dalla specifica, con la sola `gorilla/websocket` 1.5.3 (BSD-2-Clause, rilasciata il 14/06/2024), legge
+  solo i campi che servono e non tocca quelli che identificano il PC.
+- **Minidump letti in Go invece di `dbghelp.dll`**: `MiniDumpReadDumpStream` di `dbghelp` legge i dump dei programmi (formato
+  `MDMP`), non quelli del kernel scritti dalle schermate blu; per questi servirebbe il motore di debug di WinDbg (`dbgeng`), con
+  i simboli e molto più codice. I pochi campi che servono si leggono dai layout pubblici, con i limiti detti sopra.
 - **IcmpSendEcho invece di `ping.exe`**: niente output localizzato da interpretare, nessuna finestra di console, tempi sotto il millisecondo.
 - **Motion invece di GSAP**: copre da sola animazioni React, layout e SVG; GSAP avrebbe duplicato le stesse funzioni con una licenza
   propria non OSI. Nessun framework CSS (Tailwind, shadcn/ui, daisyUI): i componenti sono pochi e su misura, e i token CSS bastano.

@@ -339,6 +339,116 @@ jobs:
           $p = (./polaris-cli.exe certs 1.1.1.1 --json | ConvertFrom-Json).results[0]
           if ($p.ok -or $p.error -notmatch 'pubblico') { throw "indirizzo pubblico non rifiutato" }
           "Indirizzo pubblico: $($p.error)"
+      - name: Schermate blu (come BlueScreenView)
+        timeout-minutes: 20
+        run: |
+          $raw = (./polaris-cli.exe crashes --json) -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw "crashes fallito" }
+          $c = $raw | ConvertFrom-Json
+          $set = $c.settings
+          "Impostazioni lette da Polaris: dump=$($set.dumpEnabled) cartella='$($set.minidumpDir)' file='$($set.dumpFile)' riavvio=$($set.autoReboot) sovrascrivi=$($set.overwrite) registro=$($set.logEvent)"
+          "Cartella dei minidump: $($c.folder); serve l'amministratore: $($c.needsAdmin); file: $($c.total); MEMORY.DMP: $(if ($c.memoryDump) { "$($c.memoryDump.code) $($c.memoryDump.dumpType)" } else { 'no' })"
+          if ($null -eq $c.dumps) { throw "elenco dei dump mancante" }
+          if ($null -eq $set -or $null -eq $set.dumpEnabled) { throw "impostazioni dei dump non lette" }
+          if ($c.folder -notin @('ok', 'missing', 'denied', 'error')) { throw "stato della cartella inatteso: '$($c.folder)'" }
+          if ($raw -match '\\Users\\') { throw "percorso di un profilo nel JSON" }
+          # Gli stessi valori letti da PowerShell, e i permessi della cartella, per confronto.
+          $cc = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl'
+          "CrashControl (PowerShell): CrashDumpEnabled=$($cc.CrashDumpEnabled) MinidumpDir='$($cc.MinidumpDir)' DumpFile='$($cc.DumpFile)' AutoReboot=$($cc.AutoReboot) Overwrite=$($cc.Overwrite) LogEvent=$($cc.LogEvent)"
+          if ($null -ne $cc.CrashDumpEnabled -and $cc.CrashDumpEnabled -ne $set.dumpEnabled) { throw "CrashDumpEnabled letto male: $($set.dumpEnabled) invece di $($cc.CrashDumpEnabled)" }
+          $md = Join-Path $env:SystemRoot 'Minidump'
+          if (Test-Path $md) { icacls $md } else { "Cartella $md assente" }
+          # Il rapporto completo contiene la lettura.
+          $s = Get-Content scan.json -Raw | ConvertFrom-Json
+          if ($null -eq $s.pc.crashes) { throw "pc.crashes assente nel rapporto" }
+          "Nel rapporto: $($s.pc.crashes.total) file, cartella $($s.pc.crashes.folder), parziale=$($s.pc.crashes.partial)"
+          # Un dump vero di Windows: istantanea del kernel senza arresto (Get-StorageDiagnosticInfo
+          # -IncludeLiveDump), letta da Polaris mettendo la sua cartella come cartella dei minidump.
+          # Se Windows non la crea si dice e si prosegue; se c'è, va letta bene.
+          $ld = Join-Path $env:RUNNER_TEMP 'livedump'
+          New-Item -ItemType Directory -Force $ld | Out-Null
+          $job = Start-Job -ArgumentList $ld -ScriptBlock {
+            param($d)
+            Get-StorageSubSystem | Where-Object FriendlyName -like 'Windows Storage*' | Select-Object -First 1 |
+              Get-StorageDiagnosticInfo -DestinationPath $d -IncludeLiveDump -ExcludeOperationalLog -ExcludeDiagnosticLog -TimeSpan 1 -ErrorAction Stop
+          }
+          if (Wait-Job $job -Timeout 600) { Receive-Job $job -ErrorAction SilentlyContinue -ErrorVariable je | Out-Null; if ($je) { "Istantanea del kernel: $($je[0])" } }
+          else { Stop-Job $job; "Istantanea del kernel: tempo scaduto" }
+          $dmp = Get-ChildItem $ld -Recurse -Filter *.dmp -ErrorAction SilentlyContinue | Sort-Object Length | Select-Object -First 1
+          if (-not $dmp) {
+            "Nessun dump vero creato su questo runner: lettura di un dump reale non provata"
+          } else {
+            "Dump vero: $($dmp.Name), $([math]::Round($dmp.Length / 1MB)) MB"
+            $key = 'HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl'
+            $old = (Get-Item $key).GetValue('MinidumpDir', $null, 'DoNotExpandEnvironmentNames')
+            Set-ItemProperty $key -Name MinidumpDir -Value $dmp.DirectoryName -Type ExpandString
+            try {
+              $c2 = ./polaris-cli.exe crashes --json | ConvertFrom-Json
+              $x = $c2.dumps | Where-Object file -eq $dmp.Name
+              if (-not $x) { throw "dump vero non elencato (cartella $($c2.folder), $($c2.total) file)" }
+              "Letto da Polaris: codice $($x.code) parametri $($x.params -join ' ') bit $($x.bits) macchina $($x.machine) build $($x.build) processori $($x.processors) tipo $($x.dumpType) limitato '$($x.limited)' ora $($x.time) errore '$($x.error)'"
+              if ($x.error) { throw "dump vero non letto: $($x.error)" }
+              if ($x.bits -ne 64 -or $x.machine -ne 'x64' -or -not $x.code) { throw "intestazione del dump letta male" }
+              $build = [Environment]::OSVersion.Version.Build
+              if ($x.build -ne $build) { throw "build $($x.build) diversa da quella del sistema ($build)" }
+              if ($x.processors -ne [Environment]::ProcessorCount) { "Processori: $($x.processors) nel dump, $([Environment]::ProcessorCount) per .NET" }
+              $age = ([datetime]::UtcNow - ([datetime]$x.time).ToUniversalTime()).TotalMinutes
+              "Ora del dump: $([math]::Round($age, 1)) minuti fa"
+              if ([math]::Abs($age) -gt 60) { throw "ora del dump letta male" }
+            } finally {
+              if ($null -eq $old) { Remove-ItemProperty $key -Name MinidumpDir }
+              else { Set-ItemProperty $key -Name MinidumpDir -Value $old -Type ExpandString }
+              Remove-Item $ld -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+      - name: Mappa del Wi-Fi e test di velocità di Internet (senza M-Lab)
+        timeout-minutes: 6
+        run: |
+          # Mappa del Wi-Fi: i runner non hanno una scheda Wi-Fi; la misura deve fallire in modo pulito,
+          # in italiano, senza errori interni, entro il tempo della misura.
+          $t0 = Get-Date
+          $o = (./polaris-cli.exe wifi-survey Prova CI --secondi 10 --senza-scansione --json 2>&1) -join "`n"
+          $code = $LASTEXITCODE
+          "wifi-survey: uscita $code in $([math]::Round(((Get-Date) - $t0).TotalSeconds, 1)) s"
+          $o
+          if ($o -match 'panic|goroutine') { throw "errore interno nella misura del Wi-Fi" }
+          if ($code -eq 0) {
+            $w = $o.Substring($o.IndexOf('{')) | ConvertFrom-Json
+            if ($w.rssi.Count -lt 5 -or -not $w.ssid) { throw "misura incompleta" }
+            if ($o -match '\b[0-9a-f]{2}(:[0-9a-f]{2}){5}\b' -and -not $w.bssids) { throw "BSSID fuori posto" }
+          } elseif ($o -notmatch 'Wi-Fi|wlanapi|WLAN|posizione') { throw "messaggio di errore inatteso" }
+          # Test di velocità: senza --accetto si mostra solo il consenso, nessun traffico.
+          $tx = (./polaris-cli.exe speedtest) -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw "speedtest senza consenso: uscita $LASTEXITCODE" }
+          if ($tx -notmatch 'speedtest --accetto' -or $tx -notmatch 'measurementlab\.net/privacy') { throw "testo del consenso incompleto" }
+          "Consenso mostrato ($($tx.Length) caratteri), nessun test avviato"
+          # API: richieste non valide rifiutate; nessun test reale (pubblicherebbe l'indirizzo del runner).
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve', '--port', '8738' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $base = 'http://127.0.0.1:8738/api'
+            foreach ($case in @(@{ u = "$base/speedtest"; b = '{}'; code = 400 }, @{ u = "$base/speedtest"; b = '{"consent":"si"}'; code = 400 }, @{ u = "$base/wifi/survey"; b = '{"room":""}'; code = 400 }, @{ u = "$base/wifi/survey"; b = '{"room":"Studio","seconds":5}'; code = 400 })) {
+              try {
+                Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $case.b $case.u | Out-Null
+                throw "accettato: $($case.u) $($case.b)"
+              } catch {
+                if ($_.Exception.Response.StatusCode.value__ -ne $case.code) { throw "atteso $($case.code) per $($case.u) $($case.b): $($_.Exception.Message)" }
+              }
+            }
+            $st = Invoke-RestMethod "$base/speedtest"
+            "Stato del test di velocità: in corso=$($st.running), test rimasti oggi=$($st.left)"
+            if ($st.running -or $st.left -ne 10) { throw "stato iniziale del test di velocità inatteso" }
+            # Una misura del Wi-Fi via API: parte e finisce (con un errore, senza scheda Wi-Fi); intanto il test di
+            # velocità è rifiutato con 409 senza consumare un test.
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"room":"Studio","seconds":10,"scan":false}' "$base/wifi/survey" | Out-Null
+            $t = 0
+            do { Start-Sleep 1; $t++; $sv = Invoke-RestMethod "$base/wifi/survey" } while ($sv.running -and $t -lt 40)
+            "Misura via API: in corso=$($sv.running) errore='$($sv.error)' esito=$(if ($sv.result) { 'sì' } else { 'no' })"
+            if ($sv.running) { throw "la misura del Wi-Fi non è finita" }
+            if (-not $sv.error -and -not $sv.result) { throw "misura senza esito né errore" }
+            $st = Invoke-RestMethod "$base/speedtest"
+            if ($st.left -ne 10) { throw "un test di velocità è stato consumato" }
+          } finally { Stop-Process $p -ErrorAction SilentlyContinue }
       - name: Test di velocità da riga di comando
         run: |
           $c = ./polaris-cli.exe bench cpu --quick --json | ConvertFrom-Json
