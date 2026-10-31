@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 
+	"lanterna/internal/crash"
 	"lanterna/internal/scan"
 	"lanterna/internal/winps"
 )
@@ -49,6 +50,15 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	go func() {
 		defer wg.Done()
 		smart = readSmart(ctx)
+	}()
+	// Schermate blu (minidump e impostazioni), in parallelo e con un tempo
+	// massimo: di solito sono pochi file piccoli.
+	crashes := make(chan *scan.CrashData, 1)
+	go func() {
+		cctx, cancel := context.WithTimeout(ctx, crashTimeout)
+		defer cancel()
+		d, _ := crash.Read(cctx)
+		crashes <- d
 	}()
 
 	pc.OS = osInfo()
@@ -91,8 +101,20 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 			pc.Notes = append(pc.Notes, "Temperatura, usura e ore di funzionamento dei dischi (dati SMART) si leggono solo avviando Polaris come amministratore.")
 		}
 	}
+	select {
+	case pc.Crashes = <-crashes:
+	case <-time.After(crashGrace):
+		pc.Notes = append(pc.Notes, "I file delle schermate blu non sono stati letti in tempo.")
+	}
 	return pc, nil
 }
+
+// crashTimeout limita la lettura dei file delle schermate blu; crashGrace è
+// l'attesa massima dopo la fine delle altre letture.
+const (
+	crashTimeout = 10 * time.Second
+	crashGrace   = 3 * time.Second
+)
 
 // SampleLoad misura per la durata indicata il carico della CPU e i processi
 // che la usano di più. Va eseguito quando le altre misure sono finite, per non

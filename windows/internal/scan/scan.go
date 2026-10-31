@@ -400,6 +400,9 @@ type PcData struct {
 	// Space è l'analisi di ciò che occupa spazio, un rapporto per unità: si
 	// esegue su richiesta e la unisce l'interfaccia, come i test di velocità.
 	Space []SpaceReport `json:"space,omitempty"`
+	// Crashes sono le schermate blu lette dai file di Windows (minidump) e le
+	// impostazioni con cui Windows li salva; nil se non lette.
+	Crashes *CrashData `json:"crashes,omitempty"`
 	// Notes spiega i limiti della raccolta (dati SMART solo da amministratore...).
 	Notes []string `json:"notes,omitempty"`
 }
@@ -832,4 +835,89 @@ type SpaceHint struct {
 	Alloc  int64  `json:"alloc"`
 	Files  int64  `json:"files,omitempty"`
 	NodeID int    `json:"nodeId,omitempty"`
+}
+
+// CrashData raccoglie le schermate blu (arresti di sistema, "bug check")
+// dai file che Windows salva dopo l'arresto: i minidump della cartella
+// indicata in CrashControl (di solito C:\Windows\Minidump) e l'intestazione
+// di MEMORY.DMP. Dei driver si tengono solo i nomi dei file, senza percorsi;
+// nessun nome di processo, nessun dato del debugger.
+type CrashData struct {
+	ReadAt   string         `json:"readAt"`
+	Settings *CrashSettings `json:"settings,omitempty"`
+	// Folder è lo stato della cartella dei minidump: ok | missing (non
+	// esiste: nessun arresto salvato) | denied (serve l'amministratore) |
+	// error.
+	Folder string `json:"folder,omitempty"`
+	// NeedsAdmin: la cartella o i file non sono leggibili con i permessi di
+	// chi usa Polaris (normale senza amministratore).
+	NeedsAdmin bool `json:"needsAdmin,omitempty"`
+	// Total è il numero di file .dmp nella cartella; Dumps ne contiene al
+	// massimo 50, i più recenti prima.
+	Total int         `json:"total"`
+	Dumps []CrashDump `json:"dumps"`
+	// MemoryDump è l'intestazione di MEMORY.DMP, se il file esiste.
+	MemoryDump *CrashDump `json:"memoryDump,omitempty"`
+	// Partial: lettura interrotta prima della fine (tempo scaduto).
+	Partial bool `json:"partial,omitempty"`
+}
+
+// CrashSettings sono i valori di HKLM\SYSTEM\CurrentControlSet\Control\
+// CrashControl, letti senza modificarli. I puntatori sono nil se il valore
+// non c'è.
+type CrashSettings struct {
+	// DumpEnabled è CrashDumpEnabled: 0 nessun file, 1 dump completo (della
+	// memoria attiva con FilterPages), 2 dump del kernel, 3 dump piccolo
+	// (minidump), 7 dump automatico.
+	DumpEnabled *int `json:"dumpEnabled,omitempty"`
+	FilterPages bool `json:"filterPages,omitempty"`
+	// MinidumpDir e DumpFile sono come nel registro (%SystemRoot%\Minidump),
+	// con la cartella dell'utente sostituita da %USERPROFILE%.
+	MinidumpDir string `json:"minidumpDir,omitempty"`
+	DumpFile    string `json:"dumpFile,omitempty"`
+	AutoReboot  *bool  `json:"autoReboot,omitempty"`
+	Overwrite   *bool  `json:"overwrite,omitempty"`
+	LogEvent    *bool  `json:"logEvent,omitempty"`
+}
+
+// CrashDump è un file di dump: codice di arresto e parametri dall'intestazione
+// e, per i minidump a 64 bit, il driver indicato come probabile causa.
+type CrashDump struct {
+	File     string `json:"file"` // solo il nome del file
+	Size     int64  `json:"size"`
+	Modified string `json:"modified,omitempty"` // data del file, RFC 3339
+	// Time è l'ora dell'arresto scritta nel file (UTC), vuota se assente.
+	Time string `json:"time,omitempty"`
+	// Code e Params sono esadecimali ("0x000000d1", "0xfffff8800a1b2c3d"):
+	// i parametri a 64 bit superano gli interi esatti di JavaScript.
+	Code       string   `json:"code,omitempty"`
+	Params     []string `json:"params,omitempty"`
+	Bits       int      `json:"bits,omitempty"`    // 64 | 32
+	Machine    string   `json:"machine,omitempty"` // x64 | x86 | arm64
+	Build      int      `json:"build,omitempty"`   // build di base di Windows
+	Processors int      `json:"processors,omitempty"`
+	// DumpType: triage (dump piccolo, minidump) | kernel | full | header |
+	// bitmap-full | bitmap-kernel | automatic | kernel-user | unknown.
+	DumpType string `json:"dumpType,omitempty"`
+	// Drivers è il numero di driver caricati elencati nel minidump.
+	Drivers  int           `json:"drivers,omitempty"`
+	Probable *CrashCulprit `json:"probable,omitempty"`
+	// Stack: moduli diversi dal kernel trovati nello stack salvato, in
+	// ordine, al massimo 6.
+	Stack []string `json:"stack,omitempty"`
+	// Limited dice perché ci sono solo i dati dell'intestazione: not-triage
+	// (dump del kernel o completo), 32bit, too-large, inconsistent.
+	Limited string `json:"limited,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+// CrashCulprit è il driver indicato come probabile causa: un indizio, non una
+// certezza. Method: param (indirizzo nel parametro che la documentazione del
+// codice indica) | stack (primo modulo non del kernel nello stack salvato).
+type CrashCulprit struct {
+	Driver   string `json:"driver"`
+	Method   string `json:"method"`
+	Param    int    `json:"param,omitempty"`
+	Offset   string `json:"offset,omitempty"` // distanza dall'inizio del driver
+	Unloaded bool   `json:"unloaded,omitempty"`
 }
