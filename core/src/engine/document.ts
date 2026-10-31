@@ -7,6 +7,7 @@ import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } 
 import { dateIt } from './pc';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import { pctText, sizeText, SPACE_CATEGORY_LABEL, SPACE_HINTS, SPACE_RISK_LABEL, unattributedBytes } from './space';
+import { SPEED_LEGAL_NOTE, speedDocRows } from './speedtest';
 import type { Analysis, EventKind, Finding, Scan, Severity } from './types';
 
 // Documento stampabile ed esportabile sullo stato del PC (e della rete): HTML
@@ -332,6 +333,19 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
       );
     });
     out.push(`<section><h2>Cosa occupa spazio</h2>${parts.join('')}</section>`);
+  }
+
+  // Test di velocità di Internet con M-Lab: misure e server, mai l'indirizzo
+  // IP del PC né l'identificativo del test; con la nota sul valore legale.
+  const speed = scan.internet?.speed;
+  if (speed) {
+    const sf = f('net.speed');
+    const bf = f('net.bufferbloat');
+    out.push(
+      `<section><h2>Velocità di Internet</h2><table class="pd-kv"><tbody>${speedDocRows(speed)
+        .map(([k, v]) => `<tr><th scope="row">${esc(k)}</th><td>${t(v)}</td><td class="pd-c">${k === 'Download' && sf ? sev(sf.severity) : k === 'Latenza sotto carico' && bf ? sev(bf.severity) : ''}</td></tr>`)
+        .join('')}</tbody></table><p class="pd-muted pd-small">Test del ${esc(dateIt(speed.startedAt))}${speed.simulated ? ' (simulazione)' : ''}${speed.viaProxy ? ', attraverso il proxy' : ''}. ${esc(SPEED_LEGAL_NOTE)}</p></section>`,
+    );
   }
 
   // Certificati dei servizi interni: scadenza, emittente, TLS ed esito. Niente

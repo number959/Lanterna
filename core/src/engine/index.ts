@@ -28,6 +28,29 @@ export {
   certWhere,
 } from './certs';
 export type { CertExpiry, CertIssue } from './certs';
+export {
+  analyzeSpeed,
+  BLOAT_LABEL,
+  bloatSeverity,
+  bloatValue,
+  mbpsText,
+  SPEED_BLOAT_CRIT_MS,
+  SPEED_BLOAT_WARN_MS,
+  SPEED_FAST_MBPS,
+  SPEED_LEGAL_NOTE,
+  SPEED_RETRANS_INFO_PCT,
+  speedBloat,
+  speedBytes,
+  speedCaveats,
+  speedCity,
+  speedDocRows,
+  speedErr,
+  speedMs,
+  speedTextLines,
+  speedValue,
+  speedWhere,
+} from './speedtest';
+export type { SpeedBloat } from './speedtest';
 export { documentParts, renderDocument } from './document';
 export type { DocOptions } from './document';
 export { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';

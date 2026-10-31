@@ -25,7 +25,7 @@ import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apCount, ownRadios, phyLabel, primaryAdapter, secFamily } from '../engine';
-import type { Analysis, AnswerValue, Band, Bss, Category, CertData, CpuBench, DiskBench, InfraData, PcData, Scan, Severity, SpaceReport } from '../engine';
+import type { Analysis, AnswerValue, Band, Bss, Category, CertData, CpuBench, DiskBench, InfraData, PcData, Scan, Severity, SpaceReport, SpeedTest } from '../engine';
 import { download, openTool } from './api';
 import { ACTION_TOOLS, WINDOWS_TOOLS } from '../tools';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
@@ -39,6 +39,8 @@ import { monitorCsv, summarize } from './monitor';
 import type { MonitorEvent, MonitorSession } from './monitor';
 import type { SpaceTarget } from './space';
 import type { CertTargetRef } from './certs';
+import { SpeedCard } from './speedtest';
+import type { SpeedTargetRef } from './speedtest';
 import { cascade, ease, rise, spring, stagger } from './motion';
 
 export type View = 'overview' | 'pc' | 'wifi' | 'lan' | 'internet' | 'router' | 'infra' | 'plan' | 'monitor' | 'guide';
@@ -83,6 +85,12 @@ export interface ViewProps {
    * e, se non è richiesto il silenzio, lo dice all'utente.
    */
   addCerts: (r: CertData, target: CertTargetRef, quiet?: boolean) => boolean;
+  /**
+   * Unisce al rapporto un test di velocità di Internet, solo se il rapporto
+   * mostrato è ancora del PC e della rete su cui è partito; altrimenti
+   * restituisce false e, se non è richiesto il silenzio, lo dice all'utente.
+   */
+  addSpeed: (r: SpeedTest, target: SpeedTargetRef, quiet?: boolean) => boolean;
   /** Aggiorna parti dei dati del computer (per esempio lo stato di Defender dopo una scansione). */
   patchPc: (p: Partial<PcData>) => void;
   assessment: AssessmentState;
@@ -669,7 +677,7 @@ export function LanView({ scan, analysis: a, go, gwMacChange }: ViewProps) {
 // Serie dei grafici: il ciano del marchio per la prima, poi tinte ben distinte e adatte a entrambi i temi.
 const SERIES_COLORS = ['var(--accent)', 'var(--signal)', 'var(--p1)', 'var(--p4)'];
 
-export function InternetView({ scan, analysis: a, go }: ViewProps) {
+export function InternetView({ scan, analysis: a, go, ...rest }: ViewProps) {
   const reduce = useReducedMotion();
   const net = scan.internet;
   const dns = scan.dns;
@@ -702,6 +710,8 @@ export function InternetView({ scan, analysis: a, go }: ViewProps) {
           </div>
         </m.section>
       )}
+
+      <SpeedCard scan={scan} analysis={a} go={go} {...rest} />
 
       <m.div className="grid cols-2" style={{ marginTop: 16 }} variants={cascade(0.06)}>
         {net?.traceroute && (

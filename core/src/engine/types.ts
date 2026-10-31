@@ -234,6 +234,75 @@ export interface InternetData {
   traceTarget?: string;
   mtu?: MtuResult;
   http?: HttpCheck[];
+  /**
+   * Test di velocità con M-Lab: non lo esegue l'analisi automatica ma
+   * l'utente, su richiesta e dopo il consenso; lo unisce l'interfaccia.
+   */
+  speed?: SpeedTest;
+}
+
+/** Server di M-Lab usato dal test, come lo indica il servizio Locate. */
+export interface SpeedServer {
+  /** In inglese, come la dà M-Lab ("Milan"). */
+  city?: string;
+  /** Codice ISO del paese ("IT"). */
+  country?: string;
+  /** Sito di M-Lab ("mil05"). */
+  site?: string;
+  /** Nome pubblico del server. */
+  machine?: string;
+}
+
+/** Latenza di una fase del test: i campioni senza risposta contano in sent ma non in received. */
+export interface SpeedLatency {
+  sent: number;
+  received: number;
+  minMs?: number;
+  medianMs?: number;
+  p95Ms?: number;
+}
+
+/** Un verso del test: mbps è il goodput (dati utili al secondo). */
+export interface SpeedDir {
+  mbps: number;
+  bytes: number;
+  ms: number;
+  /** "client": byte contati dal PC; "server": byte ricevuti dal server (upload). */
+  source?: 'client' | 'server';
+  /** Fermato al limite di dati (250 MB). */
+  capped?: boolean;
+  /** Dal TCP_INFO del server: RTT minimo e medio, ritrasmissioni (solo download). */
+  minRttMs?: number;
+  rttMs?: number;
+  retransPct?: number;
+  /** Latenza durante il trasferimento e latenza aggiunta rispetto al riposo (mediana e 95° percentile). */
+  latency?: SpeedLatency;
+  bloatMs?: number;
+  bloatP95Ms?: number;
+  error?: string;
+}
+
+/**
+ * Test di velocità di Internet con Measurement Lab (M-Lab, ndt7): una
+ * connessione per verso, latenza a riposo e sotto carico. Non contiene mai
+ * l'indirizzo IP del PC né l'identificativo del test.
+ */
+export interface SpeedTest {
+  startedAt: string;
+  durationMs: number;
+  /** "mlab-ndt7". */
+  provider: string;
+  server?: SpeedServer;
+  /** Server pubblico delle sonde di latenza ("1.1.1.1") e metodo. */
+  probe?: string;
+  probeMethod?: 'icmp' | 'tcp' | '';
+  idle?: SpeedLatency;
+  download?: SpeedDir;
+  upload?: SpeedDir;
+  /** Il test è passato da un proxy: misura il percorso attraverso il proxy. */
+  viaProxy?: boolean;
+  /** Risultato simulato dall'interfaccia nelle demo, mai dall'agente. */
+  simulated?: boolean;
 }
 
 export interface DnsServerResult {

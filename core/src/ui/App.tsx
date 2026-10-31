@@ -27,7 +27,7 @@ import { AnimatePresence, LazyMotion, MotionConfig, domMax, m, useReducedMotion,
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { analyze, ENGINE_VERSION, primaryAdapter, renderText } from '../engine';
-import type { AnswerValue, CertData, CpuBench, DiskBench, Finding, InfraData, PcData, Scan, Severity, SpaceReport } from '../engine';
+import type { AnswerValue, CertData, CpuBench, DiskBench, Finding, InfraData, PcData, Scan, Severity, SpaceReport, SpeedTest } from '../engine';
 import { clinicScan } from '../demo/clinic';
 import { demoScan } from '../demo/sample';
 import { agentInfo, download, isScan, lastScan, runScan } from './api';
@@ -46,6 +46,8 @@ import { ScanOrbit } from './scan';
 import { sameSpaceTarget } from './space';
 import { sameCertTarget } from './certs';
 import type { CertTargetRef } from './certs';
+import { sameSpeedTarget } from './speedtest';
+import type { SpeedTargetRef } from './speedtest';
 import type { SpaceTarget } from './space';
 import { useTheme } from './theme';
 import type { ThemePref } from './theme';
@@ -195,6 +197,9 @@ function Shell() {
         if (prev?.pc?.bench && s.pc && !s.pc.bench && prev.agent.host === s.agent.host) next = { ...next, pc: { ...next.pc, bench: prev.pc.bench } };
         // E le analisi dello spazio, che possono durare minuti.
         if (prev?.pc?.space?.length && next.pc && !next.pc.space && prev.agent.host === next.agent.host) next = { ...next, pc: { ...next.pc, space: prev.pc.space } };
+        // E il test di velocità di Internet, se PC e rete sono gli stessi.
+        if (prev?.internet?.speed && next.internet && !next.internet.speed && prev.agent.host === next.agent.host && prev.gateway?.ip === next.gateway?.ip)
+          next = { ...next, internet: { ...next.internet, speed: prev.internet.speed } };
         return next;
       });
       setSource('agent');
@@ -312,6 +317,22 @@ function Shell() {
     [toast],
   );
 
+  // Il test di velocità riguarda PC e rete: come i certificati, si unisce solo
+  // se il rapporto mostrato è ancora quello su cui è partito.
+  const addSpeed = useCallback(
+    (r: SpeedTest, target: SpeedTargetRef, quiet = false) => {
+      if (!sameSpeedTarget(target, scanRef.current, sourceRef.current)) {
+        if (!quiet) toast('Test di velocità finito, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto', 'warn');
+        return false;
+      }
+      setScan((s) =>
+        s && s.agent.host === target.host && s.gateway?.ip === target.gateway ? { ...s, internet: { ...(s.internet ?? { targets: [] }), speed: r } } : s,
+      );
+      return true;
+    },
+    [toast],
+  );
+
   const patchPc = useCallback((p: Partial<PcData>) => setScan((s) => (s ? { ...s, pc: { ...s.pc, ...p } } : s)), []);
 
   const analysis = useMemo(() => (effective ? analyze(effective) : null), [effective]);
@@ -394,7 +415,7 @@ function Shell() {
   };
   const scanning = busy || (agent === undefined && slow);
   const props: ViewProps | null =
-    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, patchPc, assessment, monitor, gwMacChange } : null;
+    effective && analysis ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, addSpeed, patchPc, assessment, monitor, gwMacChange } : null;
   const pickDemo = (k: DemoKind) => {
     setDemoKind(k);
     setScan(DEMOS[k]);
