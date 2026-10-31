@@ -232,7 +232,7 @@ jobs:
           if ($c.tree.id -ne 1 -or @($c.tree.children).Count -lt 3) { throw "albero delle cartelle mancante" }
           if ($raw -match [regex]::Escape($env:USERNAME)) { throw "nome utente nei percorsi" }
           if ($raw -match 'S-1-5-21-\d+-\d+-\d+-\d+') { throw "SID completo nei percorsi" }
-          "Cartelle non lette per errori del disco: $([int]$c.errors)
+          "Cartelle non lette per errori del disco: $([int]$c.errors)"
           if (@($c.hints | ForEach-Object { $_.id }) -notcontains 'pagefile' -and -not (Test-Path "$env:SystemDrive\pagefile.sys")) { "Nessun file di paging su $env:SystemDrive" }
 
           # API: analisi di un'altra unità in background, interruzione, apertura solo per numero.
