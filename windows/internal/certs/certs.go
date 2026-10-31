@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -175,29 +176,33 @@ func Check(ctx context.Context, targets []scan.CertTarget, opt Options) (*scan.C
 func checkOne(ctx context.Context, t scan.CertTarget, opt Options) scan.CertResult {
 	host, port, _ := Target(t)
 	r := scan.CertResult{CertTarget: scan.CertTarget{Label: t.Label, Host: host, Port: port}}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		ips, err := opt.Resolve(ctx, host)
-		if err != nil || len(ips) == 0 {
+	var ips []net.IP
+	if ip := net.ParseIP(host); ip != nil {
+		if !allowed(ip) {
+			r.Error = "indirizzo pubblico: si controllano solo i servizi della rete locale"
+			return r
+		}
+		ips = []net.IP{ip}
+	} else {
+		found, err := opt.Resolve(ctx, host)
+		if err != nil || len(found) == 0 {
 			r.Error = "nome non risolto"
 			return r
 		}
 		// Tutti gli indirizzi del nome devono essere privati: un nome che
 		// punta (anche) a Internet non si controlla.
-		for _, x := range ips {
+		for _, x := range found {
 			if !allowed(x) {
 				r.Error = "il nome porta a un indirizzo pubblico: si controllano solo i servizi della rete locale"
 				return r
 			}
 		}
-		ip = ips[0]
-	} else if !allowed(ip) {
-		r.Error = "indirizzo pubblico: si controllano solo i servizi della rete locale"
-		return r
+		// Prima gli indirizzi IPv4: molti servizi della rete locale non
+		// ascoltano su IPv6 anche se il nome ne ha uno (per esempio
+		// "localhost" su Windows risponde prima con ::1).
+		sort.SliceStable(found, func(i, j int) bool { return found[i].To4() != nil && found[j].To4() == nil })
+		ips = found
 	}
-	r.IP = ip.String()
-	// Ci si collega all'indirizzo controllato, non di nuovo al nome.
-	addr := net.JoinHostPort(r.IP, strconv.Itoa(port))
 	sni := ""
 	if net.ParseIP(host) == nil {
 		sni = host
@@ -205,8 +210,17 @@ func checkOne(ctx context.Context, t scan.CertTarget, opt Options) scan.CertResu
 	if port == 25 || port == 587 {
 		r.StartTLS = "smtp"
 	}
-
-	p := probe(ctx, addr, sni, r.StartTLS, modern, opt)
+	// Ci si collega agli indirizzi controllati, non di nuovo al nome: il
+	// primo che accetta la connessione.
+	var p probeResult
+	var addr string
+	for _, ip := range ips {
+		r.IP = ip.String()
+		addr = net.JoinHostPort(r.IP, strconv.Itoa(port))
+		if p = probe(ctx, addr, sni, r.StartTLS, modern, opt); p.connected || ctx.Err() != nil {
+			break
+		}
+	}
 	switch {
 	case p.leaf != nil:
 		r.OK = true

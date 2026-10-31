@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"math/big"
 	"net"
 	"strings"
@@ -321,4 +322,40 @@ func TestTrustOf(t *testing.T) {
 			t.Errorf("%#x: %s, atteso %s", status, got, want)
 		}
 	}
+}
+
+func TestFirstAddressThatAnswers(t *testing.T) {
+	leaf, key := makeCert(t, certSpec{cn: "localhost", dns: []string{"localhost"}, notBefore: now.AddDate(0, -1, 0), notAfter: now.AddDate(0, 6, 0)}, nil, nil)
+	addr := serve(t, &tls.Config{Certificates: []tls.Certificate{tlsCert([]*x509.Certificate{leaf}, key)}})
+	_, port, _ := net.SplitHostPort(addr)
+	o := opts()
+	// Come "localhost" su Windows: prima ::1 (qui nessuno ascolta), poi 127.0.0.1;
+	// e un altro indirizzo IPv4 privato che non risponde va provato dopo.
+	o.Resolve = func(context.Context, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.2"), net.ParseIP("127.0.0.1")}, nil
+	}
+	var tried []string
+	o.Dial = func(ctx context.Context, a string) (net.Conn, error) {
+		tried = append(tried, a)
+		d := net.Dialer{Timeout: time.Second}
+		if strings.HasPrefix(a, "127.0.0.2:") || strings.HasPrefix(a, "[::1]:") {
+			return nil, &net.OpError{Op: "dial", Err: errors.New("connection refused")}
+		}
+		return d.DialContext(ctx, "tcp", a)
+	}
+	r := check(t, o, scan.CertTarget{Host: "localhost", Port: atoi(port)})[0]
+	if !r.OK || r.IP != "127.0.0.1" || !r.NameMatch {
+		t.Fatalf("primo indirizzo che risponde: %+v (provati %v)", r, tried)
+	}
+	if len(tried) < 2 || !strings.HasPrefix(tried[0], "127.0.0.2:") {
+		t.Errorf("ordine dei tentativi: %v", tried)
+	}
+}
+
+func atoi(s string) int {
+	n := 0
+	for _, c := range s {
+		n = n*10 + int(c-'0')
+	}
+	return n
 }

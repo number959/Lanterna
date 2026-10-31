@@ -198,7 +198,9 @@ jobs:
             if ($a.at -eq $b.at -or $b.groups.Count -lt 3) { throw "letture via API non aggiornate" }
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
       - name: Cosa occupa spazio (come WizTree)
-        timeout-minutes: 25
+        # L'unità intera ha 1,15 milioni di file: di solito 7-9 minuti, ma il disco delle macchine virtuali
+        # a volte è molto più lento (run 45: la sola cartella di Windows in 198 s invece di 51-64).
+        timeout-minutes: 45
         run: |
           # Cartella di Windows: i file di WinSxS e System32 con più nomi (collegamenti fisici) si contano una volta.
           $w = ./polaris-cli.exe space $env:SystemRoot --json | ConvertFrom-Json
