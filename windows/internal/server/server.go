@@ -110,6 +110,12 @@ type Server struct {
 	certsBusy bool
 	certsLast *scan.CertData
 
+	// Crashes rilegge i file delle schermate blu e le impostazioni dei dump
+	// (nil = non disponibile). Solo letture: si serializzano per non
+	// leggere gli stessi file due volte insieme.
+	Crashes   func(ctx context.Context) (*scan.CrashData, error)
+	crashesMu sync.Mutex
+
 	// Test di velocità (nil = non disponibili). Non partono durante
 	// un'analisi e viceversa: si falserebbero a vicenda.
 	BenchCPU  func(ctx context.Context, report bench.Report) (*scan.CPUBench, error)
@@ -1198,6 +1204,22 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		writeJSON(w, 200, last)
+	})
+	mux.HandleFunc("GET /api/crashes", func(w http.ResponseWriter, r *http.Request) {
+		if s.Crashes == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "lettura delle schermate blu non disponibile"})
+			return
+		}
+		s.crashesMu.Lock()
+		defer s.crashesMu.Unlock()
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		res, err := s.Crashes(ctx)
+		if res == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": errText(err)})
+			return
+		}
+		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("GET /api/reach", func(w http.ResponseWriter, r *http.Request) {
 		s.reachMu.Lock()

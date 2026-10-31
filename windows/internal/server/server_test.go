@@ -1064,3 +1064,38 @@ func TestCertsEndpoint(t *testing.T) {
 		t.Fatalf("da altra origine: %d", r.Code)
 	}
 }
+
+func TestCrashesEndpoint(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	if r := do(t, h, "GET", "/api/crashes", nil); r.Code != http.StatusNotImplemented {
+		t.Fatalf("non disponibile: %d", r.Code)
+	}
+	calls := 0
+	s.Crashes = func(ctx context.Context) (*scan.CrashData, error) {
+		calls++
+		if _, ok := ctx.Deadline(); !ok {
+			t.Error("lettura senza tempo massimo")
+		}
+		three := 3
+		return &scan.CrashData{ReadAt: "2026-10-31T09:00:00Z", Folder: "denied", NeedsAdmin: true, Settings: &scan.CrashSettings{DumpEnabled: &three}, Dumps: []scan.CrashDump{}}, nil
+	}
+	r := do(t, h, "GET", "/api/crashes", nil)
+	if r.Code != 200 || !strings.Contains(r.Body.String(), `"needsAdmin":true`) || !strings.Contains(r.Body.String(), `"dumps":[]`) {
+		t.Fatalf("lettura: %d %s", r.Code, r.Body)
+	}
+	// Ogni richiesta rilegge i file.
+	do(t, h, "GET", "/api/crashes", nil)
+	if calls != 2 {
+		t.Fatalf("letture: %d", calls)
+	}
+	s.Crashes = func(context.Context) (*scan.CrashData, error) {
+		return nil, errors.New("lettura delle schermate blu disponibile solo su Windows")
+	}
+	if r := do(t, h, "GET", "/api/crashes", nil); r.Code != http.StatusInternalServerError || !strings.Contains(r.Body.String(), "solo su Windows") {
+		t.Fatalf("errore: %d %s", r.Code, r.Body)
+	}
+	if r := do(t, h, "GET", "/api/crashes", map[string]string{"Host": "evil.example:8737"}); r.Code == 200 {
+		t.Fatalf("da un altro nome: %d", r.Code)
+	}
+}

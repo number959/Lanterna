@@ -1,4 +1,5 @@
 import type { PcData, SmartAttr, StartupItem } from '../engine/types';
+import { clinicCrashes, homeCrashes } from './crashes';
 
 // Dati dimostrativi del computer, plausibili ma inventati. Il portatile di
 // casa ha i problemi tipici di un PC trascurato (versione di Windows scaduta,
@@ -150,6 +151,8 @@ export const homePc: PcData = {
   // Un programma con pubblicità bloccato da un installatore scaricato.
   threats: [{ name: 'PUA:Win32/Presenoker', severity: 'low', status: 'quarantined', detected: '2026-10-04T16:22:10Z', changed: '2026-10-04T16:22:14Z' }],
   updates: { lastInstalled: '2025-11-11', lastKB: 'KB5068865', pendingReboot: true, rebootReasons: ['Windows Update'] },
+  // Schermate blu lette dai minidump: vedi demo/crashes.ts.
+  crashes: homeCrashes,
 };
 
 export const clinicPc: PcData = {
@@ -317,4 +320,5 @@ export const clinicPc: PcData = {
   },
   threats: [],
   updates: { lastInstalled: '2026-09-09', lastKB: 'KB5065429', pendingReboot: false },
+  crashes: clinicCrashes,
 };

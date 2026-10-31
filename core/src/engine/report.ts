@@ -1,4 +1,5 @@
 import { certSeverity, certSummary, certWhere } from './certs';
+import { crashFolderText, crashSetting, crashSummary, crashWhen } from './crash';
 import { ACTIONS } from './kb/actions';
 import { scoreAssessment } from './kb/assessment';
 import { METRICS } from './kb/metrics';
@@ -243,6 +244,25 @@ function pcDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
     out.push(` Eventi rilevanti negli ultimi ${pc.eventsDays} giorni: ${pc.events?.length ? '' : 'nessuno'}`.trimEnd());
     for (const e of pc.events ?? [])
       out.push(wrap(`${dateIt(e.last)}  ${e.source} ${e.id}  x${e.count}  ${EVENT_TEXT[e.kind]}${e.detail ? `: ${e.detail}` : ''}`, W - 4, '   '));
+  }
+  const cr = pc.crashes;
+  if (cr) {
+    // Schermate blu dai minidump: nomi dei file e dei driver, nessun percorso.
+    out.push(
+      wrap(
+        `Schermate blu nei minidump: ${crashFolderText(cr)}; salvataggio: ${crashSetting(cr.settings)}`,
+        W - 2,
+        ' ',
+      ),
+    );
+    const dumps = cr.dumps ?? [];
+    const files = [...dumps.slice(0, verbose ? 50 : 8), ...(cr.memoryDump ? [cr.memoryDump] : [])];
+    for (const d of files) {
+      const when = crashWhen(d);
+      out.push(hang(`${when ? dateIt(when) : '-'.padEnd(10)}  ${crashSummary(d)} (${d.file})`, W, '   ', '               '));
+    }
+    if (dumps.length > 8 && !verbose) out.push(`   ... altri ${dumps.length - 8} (con --verbose)`);
+    if (cr.needsAdmin) out.push(wrap('Per leggere i file delle schermate blu serve avviare Polaris come amministratore.', W - 4, '   '));
   }
   const d = pc.defender;
   if (d || pc.threats) {

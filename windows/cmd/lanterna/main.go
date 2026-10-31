@@ -37,6 +37,7 @@ import (
 	"lanterna/internal/certs"
 	"lanterna/internal/collect"
 	"lanterna/internal/cpuclock"
+	"lanterna/internal/crash"
 	"lanterna/internal/defender"
 	"lanterna/internal/engine"
 	"lanterna/internal/gui"
@@ -102,6 +103,11 @@ Uso:
                                  emittente, versione di TLS; solo indirizzi privati.
                                  Esempi: nas.local  192.168.1.10:8443  https://pacs.local
       --json                     stampa il risultato in JSON
+  polaris-cli crashes            schermate blu salvate da Windows (come BlueScreenView):
+                                 codice di arresto, parametri, driver indicato come
+                                 indizio, impostazioni dei dump; i file si leggono solo
+                                 avviando il Prompt dei comandi come amministratore
+      --json                     stampa il risultato in JSON
   polaris-cli tools status       versioni portable scaricate (su questo PC e nel kit)
   polaris-cli tools kit [ID...]  prepara il kit per l'uso senza Internet: scarica dai
                                  siti ufficiali e verifica i programmi nella cartella
@@ -151,6 +157,8 @@ func main() {
 		err = runSpace(args[1:])
 	case args[0] == "certs":
 		err = runCerts(args[1:])
+	case args[0] == "crashes":
+		err = runCrashes(args[1:])
 	case args[0] == "version" || args[0] == "--version":
 		eng, e := engine.Load(nil)
 		ev := "non incluso"
@@ -299,6 +307,7 @@ func startServer(port int) (*server.Server, string, error) {
 		Certs: func(ctx context.Context, t []scan.CertTarget) (*scan.CertData, error) {
 			return certs.Check(ctx, t, certs.Options{})
 		},
+		Crashes:   crash.Read,
 		SpaceOpen: space.Open,
 		OpenTool:  func(id, target string) error { return tools.Open(id, target, fetcher) },
 	}

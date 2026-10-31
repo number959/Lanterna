@@ -1,6 +1,7 @@
 import { BRAND_CYAN, BRAND_NAVY, CYAN_FRAME, CYAN_STAR, FRAME, LETTERS, LOGO_VIEWBOX, STAR_LEFT, STAR_RIGHT } from '../ui/brand-paths';
 import { ENGINE_VERSION } from './analyze';
 import { certExpiryText, certSeverity, certWhere } from './certs';
+import { bugcheckInfo, CRASH_DUMP_TYPE, CRASH_LIMITED, crashSetting, crashWhen, culpritHow } from './crash';
 import { THREAT_SEVERITY, THREAT_STATUS } from './defender';
 import { fmt, thousands } from './fmt';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
@@ -281,6 +282,41 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
               .map((x) => `<tr><td>${x.detected ? dateIt(x.detected) : '—'}</td><td><b>${t(x.name)}</b></td><td>gravità ${esc(THREAT_SEVERITY[x.severity])}</td><td>${esc(THREAT_STATUS[x.status])}${x.active ? ', ancora attiva' : ''}</td></tr>`)
               .join('')}</tbody></table>`
           : ''
+      }</section>`,
+    );
+  }
+
+  // Schermate blu lette dai minidump: solo nomi dei file e dei driver, nessun
+  // percorso (nemmeno la cartella dei minidump).
+  const crashes = pc?.crashes;
+  const crashDumps = crashes?.dumps ?? [];
+  const crashFiles = crashes ? [...crashDumps, ...(crashes.memoryDump ? [crashes.memoryDump] : [])] : [];
+  if (crashes && (crashFiles.length || crashes.needsAdmin || crashes.settings?.dumpEnabled === 0)) {
+    const row = (d: (typeof crashFiles)[number]) => {
+      const when = crashWhen(d);
+      const date = when ? dateIt(when) : '—';
+      if (d.error) return `<tr><td>${date}</td><td colspan="2" class="pd-small">non letto: ${t(d.error)}</td><td>${t(d.file)}</td></tr>`;
+      const info = bugcheckInfo(d.code);
+      const code = info.code ? `<b>${esc(info.code)}</b>${info.name ? `<br><span class="pd-small">${esc(info.name)}</span>` : '<br><span class="pd-small">non nell\'elenco di Polaris</span>'}` : '—';
+      const p = d.probable;
+      const drv = p ? `${t(p.driver)}<br><span class="pd-small">${esc(culpritHow(p))}${p.unloaded ? ', già scaricato' : ''}</span>` : d.limited ? `<span class="pd-small">${esc(CRASH_LIMITED[d.limited])}</span>` : '—';
+      return `<tr><td>${date}</td><td>${code}</td><td>${drv}</td><td>${t(d.file)}<br><span class="pd-small">${esc(CRASH_DUMP_TYPE[d.dumpType ?? 'unknown'])}</span></td></tr>`;
+    };
+    const s = crashes.settings;
+    const shown = crashDumps.slice(0, 15);
+    out.push(
+      `<section><h2>Schermate blu (file di Windows)</h2>${
+        crashFiles.length
+          ? `<table class="pd-table"><thead><tr><th>Data</th><th>Codice di arresto</th><th>Driver indicato (indizio)</th><th>File</th></tr></thead><tbody>${[...shown, ...(crashes.memoryDump ? [crashes.memoryDump] : [])]
+              .map(row)
+              .join('')}</tbody></table>${crashes.total > shown.length ? `<p class="pd-muted pd-small">Mostrati i ${shown.length} minidump più recenti su ${crashes.total}.</p>` : ''}${
+              crashes.partial ? '<p class="pd-muted pd-small">Lettura interrotta prima della fine: l\'elenco può essere incompleto.</p>' : ''
+            }`
+          : ''
+      }<p class="pd-small">Salvataggio dopo una schermata blu: ${esc(crashSetting(s))}${s?.autoReboot !== undefined ? `; riavvio automatico ${s.autoReboot ? 'sì' : 'no'}` : ''}${s?.logEvent === false ? '; evento nel registro di sistema disattivato' : ''}.</p>${
+        crashes.needsAdmin ? '<p class="pd-small"><b>Per leggere i file delle schermate blu serve avviare Polaris come amministratore.</b></p>' : ''
+      }${
+        crashFiles.length ? '<p class="pd-muted pd-small">Il driver indicato è un indizio, non una certezza: Polaris non usa i simboli di debug e non ricostruisce lo stack completo.</p>' : ''
       }</section>`,
     );
   }

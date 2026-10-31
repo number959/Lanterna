@@ -55,6 +55,7 @@ import { Anim } from './anim';
 import { CoreClock } from './clock';
 import { SensorsCard } from './sensors';
 import { SpaceCard, useSpaceRun } from './space';
+import { CrashesCard } from './crashes';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -156,6 +157,13 @@ export function PcView(props: ViewProps) {
           <EventsCard pc={pc} />
         </Section>
       ) : null}
+
+      {pc && (
+        <Section title="Schermate blu">
+          <CrashesCard {...props} />
+          <ToolShortcut id="bluescreenview" live={props.live} text="per un secondo parere e l'elenco completo dei driver di ogni file" />
+        </Section>
+      )}
 
       {pc?.hardware && (
         <Section title="Scheda tecnica">

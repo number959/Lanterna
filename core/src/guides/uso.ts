@@ -176,7 +176,7 @@ export const uso: Guide[] = [
     title: 'La riga di comando (polaris-cli)',
     summary: 'I comandi di polaris-cli.exe per rapporti e documento stampabile, interfaccia nel browser, test di velocità, Microsoft Defender, certificati dei servizi interni e kit per i PC senza Internet, con esempi per raccogliere rapporti da più PC.',
     level: 'avanzato',
-    tags: ['riga di comando', 'cli', 'polaris-cli', 'prompt dei comandi', 'powershell', 'report', 'json', 'html', 'documento', 'serve', 'bench', 'space', 'spazio', 'certs', 'certificati', 'tools', 'kit', 'senza internet', 'script', 'automazione', 'utilità di pianificazione', 'codici di uscita'],
+    tags: ['riga di comando', 'cli', 'polaris-cli', 'prompt dei comandi', 'powershell', 'report', 'json', 'html', 'documento', 'serve', 'bench', 'space', 'spazio', 'certs', 'certificati', 'crashes', 'schermate blu', 'tools', 'kit', 'senza internet', 'script', 'automazione', 'utilità di pianificazione', 'codici di uscita'],
     blocks: [
       { t: 'p', text: 'Nella cartella del programma, accanto a Polaris.exe, c\'è **polaris-cli.exe**: accetta gli stessi comandi ma scrive nella console, utile per script, assistenza remota e raccolta di rapporti.' },
       { t: 'table', head: ['Comando', 'Che cosa fa'], rows: [
@@ -198,6 +198,7 @@ export const uso: Guide[] = [
         ['`polaris-cli sensors`', 'monitor dei sensori senza driver (come HWiNFO): una lettura al secondo e, alla fine, attuale, minimo, massimo e media di ogni sensore; `--seconds N` per la durata (predefinita 10, fino a 24 ore), `--all` per le righe di dettaglio, `--csv FILE` per il registro da aprire con Excel, scritto riga per riga, `--json` per i dati (vedi [[sensori]])'],
         ['`polaris-cli space [C:|CARTELLA]`', 'cosa occupa spazio (come WizTree): cartelle principali, file più grandi, tipi di file, cartelle note; `--top N` file più grandi da mostrare (predefinito 20, fino a 100), `--json` per il risultato completo (vedi [[spazio-disco]])'],
         ['`polaris-cli certs SERVIZIO... [--json]`', 'certificati TLS dei servizi della rete locale (gestionale, PACS, NAS, pannello del router, posta): scadenza, nomi, emittente, versione di TLS, attendibilità su questo PC e impronta SHA-256. Un servizio si indica con nome, indirizzo, `nome:porta` o `https://...` (porta predefinita 443); solo indirizzi privati, al massimo 20 servizi; `--json` per il risultato completo (vedi [[certificati-servizi-interni]])'],
+        ['`polaris-cli crashes [--json]`', 'schermate blu salvate da Windows (come BlueScreenView): impostazioni dei dump, poi per ogni minidump data, codice di arresto, parametri e driver indicato come indizio. I file si leggono solo da un Prompt dei comandi aperto come amministratore; `--json` per il risultato completo (vedi [[minidump-schermate-blu]])'],
         ['`polaris-cli tools status`', 'versioni portable scaricate, sul PC e nel kit, con versione, firma e data'],
         ['`polaris-cli tools kit`', 'prepara il kit per i PC senza Internet nella cartella strumenti-scaricati; si possono indicare i programmi, per esempio `tools kit cpu-z autoruns`'],
         ['`--all` con tools kit', 'aggiunge Microsoft Safety Scanner (circa 230 MB, scade dopo 10 giorni)'],

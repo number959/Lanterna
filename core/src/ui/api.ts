@@ -1,4 +1,5 @@
 import type { CertData, CertTarget, CpuBench, DefenderInfo, DiskBench, Inventory, ReachData, ReachTarget, Scan, SpaceReport, Threat } from '../engine';
+import type { CrashData } from '../engine';
 
 // Comunicazione con l'agente locale (Polaris.exe serve / finestra).
 // L'interfaccia è servita dallo stesso agente, quindi i percorsi sono relativi.
@@ -134,6 +135,13 @@ export async function lastCerts(): Promise<CertData | null> {
   if (r.status === 204 || r.status === 404) return null;
   if (!r.ok) throw await errorOf(r);
   return (await r.json()) as CertData;
+}
+
+/** Rilegge subito impostazioni e file delle schermate blu (solo letture); 501 se l'agente non lo offre. */
+export async function readCrashes(): Promise<CrashData> {
+  const r = await fetch('api/crashes', { cache: 'no-store' });
+  if (!r.ok) throw await errorOf(r);
+  return (await r.json()) as CrashData;
 }
 
 // ---- Test di velocità: partono solo su richiesta esplicita dell'utente.
