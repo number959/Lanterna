@@ -42,6 +42,17 @@ type fakeMLab struct {
 	// locateStatus diverso da 200 sostituisce la risposta di Locate.
 	locateStatus int
 	dur          time.Duration
+	// later: i server proposti dalle richieste a Locate dopo la prima (nil =
+	// sempre machines).
+	later []string
+	// appInfo: i messaggi di misura portano anche AppInfo (facoltativo nella
+	// specifica; il server di M-Lab non lo invia).
+	appInfo bool
+	// ackExtra si aggiunge ai byte confermati in download (early_exit).
+	ackExtra int64
+	// closeAfter: in upload il server avvia la chiusura dopo questo tempo,
+	// come ndt-server allo scadere dei suoi 10 secondi.
+	closeAfter time.Duration
 
 	mu       sync.Mutex
 	queries  []url.Values
@@ -68,6 +79,10 @@ func (f *fakeMLab) locate(w http.ResponseWriter, r *http.Request) {
 	f.locates++
 	f.agents = append(f.agents, r.UserAgent())
 	f.queries = append(f.queries, r.URL.Query())
+	machines := f.machines
+	if f.locates > 1 && f.later != nil {
+		machines = f.later
+	}
 	f.mu.Unlock()
 	if f.locateStatus != 0 {
 		w.WriteHeader(f.locateStatus)
@@ -87,7 +102,7 @@ func (f *fakeMLab) locate(w http.ResponseWriter, r *http.Request) {
 		Results []res `json:"results"`
 	}
 	cities := []string{"Milan", "Turin", "Rome", "Milan", "Paris"}
-	for i, m := range f.machines {
+	for i, m := range machines {
 		u := func(kind string) string {
 			return fmt.Sprintf("wss://%s/%s/ndt/v7/%s?access_token=tok-%d", host, m, kind, i)
 		}
@@ -135,17 +150,25 @@ func (f *fakeMLab) ndt7(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// measurementJSON imita un messaggio del server, con indirizzo del client e
-// identificativo del test che Polaris non deve conservare.
-func measurementJSON(test string, elapsed time.Duration, bytes int64, tcp bool) []byte {
-	m := map[string]any{
-		"AppInfo":        map[string]int64{"ElapsedTime": elapsed.Microseconds(), "NumBytes": bytes},
-		"ConnectionInfo": map[string]string{"Client": fakeClient, "Server": "192.0.2.10:443", "UUID": fakeUUID},
-		"Origin":         "server",
-		"Test":           test,
+// measurementJSON imita un messaggio di misura del server di M-Lab
+// (ndt-server v0.25.0: TCPInfo, BBRInfo e ConnectionInfo, senza AppInfo),
+// con indirizzo del client e identificativo del test che Polaris non deve
+// conservare. I byte di TCPInfo comprendono TLS e WebSocket: qui 2 KB in più.
+func (f *fakeMLab) measurementJSON(upload bool, elapsed time.Duration, bytes int64) []byte {
+	us := elapsed.Microseconds()
+	tcp := map[string]int64{"State": 1, "MinRTT": 9000, "RTT": 15400, "RTTVar": 2100, "ElapsedTime": us}
+	if upload {
+		tcp["BytesReceived"], tcp["BytesAcked"], tcp["BytesSent"] = bytes+2048, 1500, 1800
+	} else {
+		tcp["BytesAcked"], tcp["BytesSent"], tcp["BytesRetrans"], tcp["BytesReceived"] = bytes+2048+f.ackExtra, bytes*102/100, bytes*3/100, 600
 	}
-	if tcp {
-		m["TCPInfo"] = map[string]int64{"BytesSent": bytes * 102 / 100, "BytesRetrans": bytes * 3 / 100, "MinRTT": 9000, "RTT": 15400, "ElapsedTime": elapsed.Microseconds()}
+	m := map[string]any{
+		"BBRInfo":        map[string]int64{"BW": 12_500_000, "MinRTT": 9000, "PacingGain": 256, "CwndGain": 512, "ElapsedTime": us},
+		"ConnectionInfo": map[string]string{"Client": fakeClient, "Server": "192.0.2.10:443", "UUID": fakeUUID, "StartTime": "2026-10-31T09:10:00.123456789Z"},
+		"TCPInfo":        tcp,
+	}
+	if f.appInfo {
+		m["AppInfo"] = map[string]int64{"ElapsedTime": us, "NumBytes": bytes}
 	}
 	b, _ := json.Marshal(m)
 	return b
@@ -170,11 +193,11 @@ func (f *fakeMLab) download(w http.ResponseWriter, r *http.Request) {
 		sent += int64(len(buf))
 		if time.Since(last) > 50*time.Millisecond {
 			last = time.Now()
-			_ = conn.WriteMessage(websocket.TextMessage, measurementJSON("download", time.Since(start), sent, true))
+			_ = conn.WriteMessage(websocket.TextMessage, f.measurementJSON(false, time.Since(start), sent))
 		}
 		time.Sleep(200 * time.Microsecond)
 	}
-	_ = conn.WriteMessage(websocket.TextMessage, measurementJSON("download", time.Since(start), sent, true))
+	_ = conn.WriteMessage(websocket.TextMessage, f.measurementJSON(false, time.Since(start), sent))
 	_ = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	for {
@@ -201,6 +224,7 @@ func (f *fakeMLab) upload(w http.ResponseWriter, r *http.Request) {
 		f.uploaded = recv
 		f.mu.Unlock()
 	}()
+	closing := false
 	for {
 		kind, rd, err := conn.NextReader()
 		if err != nil {
@@ -211,9 +235,19 @@ func (f *fakeMLab) upload(w http.ResponseWriter, r *http.Request) {
 		}
 		n, _ := io.Copy(io.Discard, rd)
 		recv += n
+		if closing {
+			continue
+		}
 		if time.Since(last) > 50*time.Millisecond {
 			last = time.Now()
-			_ = conn.WriteMessage(websocket.TextMessage, measurementJSON("upload", time.Since(start), recv, true))
+			_ = conn.WriteMessage(websocket.TextMessage, f.measurementJSON(true, time.Since(start), recv))
+		}
+		// Come ndt-server: allo scadere del suo tempo invia la chiusura e
+		// continua a leggere finché il client non risponde.
+		if f.closeAfter > 0 && time.Since(start) >= f.closeAfter {
+			_ = conn.WriteMessage(websocket.TextMessage, f.measurementJSON(true, time.Since(start), recv))
+			_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Done sending"), time.Now().Add(time.Second))
+			closing = true
 		}
 	}
 }
@@ -285,12 +319,15 @@ func TestFullTest(t *testing.T) {
 	if u.Latency == nil || u.BloatMs == nil || *u.BloatMs != 35 {
 		t.Errorf("bufferbloat in upload: %+v %v", u.Latency, u.BloatMs)
 	}
+	if res.ProbeTimeoutMs != 1000 || d.Latency.MedianAtLeast || u.Latency.MedianAtLeast || u.Server != nil || d.Capped {
+		t.Errorf("attesa delle sonde %d, valori minimi %v %v, server dell'upload %+v, limite %v", res.ProbeTimeoutMs, d.Latency.MedianAtLeast, u.Latency.MedianAtLeast, u.Server, d.Capped)
+	}
 	if res.ViaProxy {
 		t.Error("nessun proxy configurato")
 	}
 	// Mai indirizzo del PC, porta o identificativo del test.
 	b, _ := json.Marshal(res)
-	for _, bad := range []string{"203.0.113.7", "54321", "TEST-UUID", "192.0.2.10", "access_token", "tok-"} {
+	for _, bad := range []string{"203.0.113.7", "54321", "TEST-UUID", "192.0.2.10", "access_token", "tok-", "09:10:00.123456789"} {
 		if strings.Contains(string(b), bad) {
 			t.Errorf("il risultato contiene %q: %s", bad, b)
 		}
@@ -299,8 +336,15 @@ func TestFullTest(t *testing.T) {
 
 func TestMetadataAndEarlyExit(t *testing.T) {
 	f := newFakeMLab(t, "mlab2-trn02.mlab-oti.measurement-lab.org")
-	if _, err := Run(context.Background(), f.options()); err != nil {
+	// Il server dice di aver ricevuto la conferma di 250 MB (TCPInfo.BytesAcked):
+	// il download si è fermato per early_exit.
+	f.ackExtra = earlyExitBytes
+	res, err := Run(context.Background(), f.options())
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !res.Download.Capped {
+		t.Errorf("limite di 250 MB in download: %+v", res.Download)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -457,7 +501,10 @@ func TestUploadCap(t *testing.T) {
 	f.mu.Lock()
 	got := f.uploaded
 	f.mu.Unlock()
-	if !u.Capped || u.Bytes > opt.UploadCap || u.Bytes < opt.UploadCap-minMessage || got > opt.UploadCap || u.Ms >= 3000 {
+	// Il server riceve tutto ciò che il PC ha scritto, fino al limite e non
+	// oltre. Bytes è il conteggio dell'ultimo messaggio del server (con 2 KB
+	// di TLS e WebSocket nel finto M-Lab), che può precedere gli ultimi invii.
+	if !u.Capped || got > opt.UploadCap || got < opt.UploadCap-minMessage || u.Bytes > opt.UploadCap+2048 || u.Ms >= 3000 {
 		t.Errorf("limite di upload: %+v, ricevuti dal server %d", u, got)
 	}
 }
@@ -670,3 +717,168 @@ func TestConsentText(t *testing.T) {
 }
 
 func serverOf(m string) scan.SpeedServer { return scan.SpeedServer{Machine: m} }
+
+// Coda oltre il secondo (per esempio ADSL o FTTC con l'upload pieno): a
+// riposo le sonde rispondono, durante i trasferimenti nessuna risposta entro
+// l'attesa. Il bufferbloat deve risultare di almeno 990 ms, non mancare.
+func TestLostProbesUnderLoad(t *testing.T) {
+	f := newFakeMLab(t, "mlab1-mil05.mlab-oti.measurement-lab.org")
+	opt := f.options()
+	opt.Ping = func(ctx context.Context, tcp bool) *float64 {
+		if f.active.Load() {
+			return nil
+		}
+		v := 10.0
+		return &v
+	}
+	res, err := Run(context.Background(), opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ProbeTimeoutMs != 1000 || res.Idle == nil || *res.Idle.MedianMs != 10 || res.ProbeMethod != "icmp" {
+		t.Fatalf("riposo: %+v, attesa %d, metodo %s", res.Idle, res.ProbeTimeoutMs, res.ProbeMethod)
+	}
+	for name, d := range map[string]*scan.SpeedDir{"download": res.Download, "upload": res.Upload} {
+		l := d.Latency
+		if l == nil || l.Sent < 5 || 2*l.Received >= l.Sent || !l.MedianAtLeast || !l.P95AtLeast || *l.MedianMs != 1000 || d.BloatMs == nil || *d.BloatMs != 990 || *d.BloatP95Ms != 990 {
+			t.Errorf("%s: %+v, bufferbloat %v", name, l, d.BloatMs)
+		}
+	}
+}
+
+func TestLoadedLatencyCountsLostProbes(t *testing.T) {
+	f := func(v float64) *float64 { return &v }
+	lost := func(n int) []*float64 { return make([]*float64, n) }
+	idle := &scan.SpeedLatency{Sent: 20, Received: 20, MedianMs: f(10)}
+	// Tutte senza risposta: almeno 1000 ms.
+	l := loadedLatencyOf(lost(12), idle, 1000)
+	if l.Sent != 12 || l.Received != 0 || l.MinMs != nil || *l.MedianMs != 1000 || !l.MedianAtLeast || *l.P95Ms != 1000 || !l.P95AtLeast {
+		t.Errorf("tutte perse: %+v", l)
+	}
+	// Più della metà senza risposta: la mediana cade sulle sonde perse.
+	l = loadedLatencyOf(append([]*float64{f(40), f(50), f(60), f(70), f(80)}, lost(6)...), idle, 1000)
+	if *l.MedianMs != 1000 || !l.MedianAtLeast || *l.MinMs != 40 {
+		t.Errorf("metà più una: %+v", l)
+	}
+	// Poche senza risposta: mediana dalle risposte, spostata in alto dalle
+	// perse (31 invece di 29), 95° percentile minimo.
+	some := append([]*float64{f(20), f(22), f(24), f(26), f(28), f(30), f(32), f(34), f(36), f(38)}, lost(2)...)
+	l = loadedLatencyOf(some, idle, 1000)
+	if *l.MedianMs != 31 || l.MedianAtLeast || *l.P95Ms != 1000 || !l.P95AtLeast {
+		t.Errorf("poche perse: %+v %v %v", l, *l.MedianMs, *l.P95Ms)
+	}
+	if plain := latencyOf(some); *plain.MedianMs != 29 {
+		t.Errorf("senza conteggio: %v", *plain.MedianMs)
+	}
+	// Perdite anche a riposo (metà): la stessa quota non conta come coda.
+	l = loadedLatencyOf(append([]*float64{f(20), f(30)}, lost(2)...), &scan.SpeedLatency{Sent: 20, Received: 10, MedianMs: f(10)}, 1000)
+	if *l.MedianMs != 25 || l.MedianAtLeast || l.P95AtLeast {
+		t.Errorf("perdite casuali: %+v", l)
+	}
+	// Senza latenza a riposo non si può dire che cosa sia una sonda persa.
+	if l := loadedLatencyOf(lost(5), nil, 1000); l.Received != 0 || l.MedianMs != nil || l.MedianAtLeast {
+		t.Errorf("senza riposo: %+v", l)
+	}
+	if loadedLatencyOf(nil, idle, 1000) != nil {
+		t.Error("senza campioni")
+	}
+}
+
+// In upload la velocità è quella ricevuta dal server, dal suo TCPInfo (come
+// lo invia ndt-server, senza AppInfo): i byte scritti dal PC comprendono
+// quelli ancora in coda quando smette di inviare.
+func TestUploadSpeedFromServer(t *testing.T) {
+	msg := func(s string) *measurement {
+		var m measurement
+		if err := json.Unmarshal([]byte(s), &m); err != nil {
+			t.Fatal(err)
+		}
+		return &m
+	}
+	r := &dirResult{bytes: 13_000_000, elapsed: 10 * time.Second, upload: true,
+		server: msg(`{"ConnectionInfo":{"Client":"203.0.113.7:54321","UUID":"x"},"BBRInfo":{"BW":1},"TCPInfo":{"BytesReceived":11000000,"ElapsedTime":9900000,"MinRTT":21000}}`)}
+	if d := r.dir(nil, 1000); d.Source != "server" || d.Mbps != 8.9 || d.Bytes != 11_000_000 || d.Ms != 9900 || *d.MinRTTMs != 21 {
+		t.Errorf("da TCPInfo: %+v", d)
+	}
+	// AppInfo, facoltativo nella specifica, se TCPInfo non ha i byte ricevuti.
+	r.server = msg(`{"AppInfo":{"NumBytes":12000000,"ElapsedTime":10000000},"TCPInfo":{"MinRTT":21000}}`)
+	if d := r.dir(nil, 1000); d.Source != "server" || d.Mbps != 9.6 {
+		t.Errorf("da AppInfo: %+v", d)
+	}
+	// Un messaggio dei primi istanti non basta, e senza messaggi conta il PC.
+	r.server = msg(`{"TCPInfo":{"BytesReceived":500000,"ElapsedTime":1000000}}`)
+	if d := r.dir(nil, 1000); d.Source != "client" || d.Mbps != 10.4 || d.Bytes != 13_000_000 {
+		t.Errorf("messaggio troppo vecchio: %+v", d)
+	}
+	r.server = nil
+	if d := r.dir(nil, 1000); d.Source != "client" || d.Mbps != 10.4 {
+		t.Errorf("senza messaggi: %+v", d)
+	}
+	// In download conta il PC, che riceve i dati.
+	r.upload = false
+	r.server = msg(`{"TCPInfo":{"BytesReceived":600,"BytesAcked":13100000,"BytesSent":13300000,"BytesRetrans":133000,"ElapsedTime":10000000}}`)
+	if d := r.dir(nil, 1000); d.Source != "client" || d.Mbps != 10.4 || d.RetransPct == nil || *d.RetransPct != 1 {
+		t.Errorf("download: %+v", d)
+	}
+}
+
+// ndt-server avvia la chiusura allo scadere dei suoi 10 secondi, a volte
+// prima che il client smetta di inviare: è una fine regolare, non un
+// trasferimento interrotto.
+func TestServerClosesDuringUpload(t *testing.T) {
+	for i := 0; i < 3; i++ {
+		f := newFakeMLab(t, "mlab1-mil05.mlab-oti.measurement-lab.org")
+		f.dur = 200 * time.Millisecond
+		f.closeAfter = 250 * time.Millisecond
+		opt := f.options()
+		opt.Duration = 1500 * time.Millisecond
+		opt.UploadCap = 1 << 40
+		res, err := Run(context.Background(), opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u := res.Upload; u.Error != "" || u.Mbps <= 0 || u.Ms >= 1500 || u.Source != "server" {
+			t.Fatalf("prova %d: %+v", i+1, u)
+		}
+	}
+}
+
+// Gli indirizzi scadono prima dell'upload e M-Lab non propone più il server
+// del download: l'upload va su un altro server e il risultato lo dice; il
+// server del download resta quello.
+func TestUploadServerChange(t *testing.T) {
+	old := tokenTTL
+	tokenTTL = 400 * time.Millisecond
+	t.Cleanup(func() { tokenTTL = old })
+	const a, b = "mlab1-mil05.mlab-oti.measurement-lab.org", "mlab2-trn02.mlab-oti.measurement-lab.org"
+	f := newFakeMLab(t, a)
+	f.later = []string{b}
+	res, err := Run(context.Background(), f.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Server.Machine != a || res.Server.Site != "mil05" || res.Upload.Server == nil || res.Upload.Server.Site != "trn02" || res.Upload.Error != "" || res.Download.Server != nil {
+		t.Errorf("server: %+v, upload %+v su %+v", res.Server, res.Upload, res.Upload.Server)
+	}
+	f.mu.Lock()
+	paths, locates := slices.Clone(f.paths), f.locates
+	f.mu.Unlock()
+	if !slices.Equal(paths, []string{a + "/ndt/v7/download", b + "/ndt/v7/upload"}) || locates != 2 {
+		t.Errorf("tentativi %v, richieste a Locate %d", paths, locates)
+	}
+	// Se Locate propone ancora lo stesso server, l'upload resta lì.
+	g := newFakeMLab(t, a)
+	g.later = []string{b, a}
+	res, err = Run(context.Background(), g.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Upload.Server != nil || res.Server.Machine != a {
+		t.Errorf("stesso server: %+v %+v", res.Server, res.Upload.Server)
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !slices.Equal(g.paths, []string{a + "/ndt/v7/download", a + "/ndt/v7/upload"}) {
+		t.Errorf("tentativi %v", g.paths)
+	}
+}

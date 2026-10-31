@@ -163,6 +163,9 @@ func printSpeed(w io.Writer, r *scan.SpeedTest) {
 			note = ", fermato al limite di 250 MB"
 		}
 		fmt.Fprintf(w, "%-9s %s (%s in %s%s)\n", name+":", mbpsText(d.Mbps), bytesText(d.Bytes), secondsText(d.Ms), note)
+		if d.Server != nil {
+			fmt.Fprintf(w, "          su un altro server di M-Lab: %s\n", serverText(d.Server))
+		}
 		if d.Error != "" {
 			fmt.Fprintf(w, "          %s\n", d.Error)
 		}
@@ -175,23 +178,49 @@ func printSpeed(w io.Writer, r *scan.SpeedTest) {
 			how = "connessioni TCP"
 		}
 		fmt.Fprintf(w, "Latenza a riposo: %s (mediana, %s verso %s)\n", msText(*r.Idle.MedianMs), how, r.Probe)
-		worst := -1.0
+		// Una sonda senza risposta durante i trasferimenti conta come latenza
+		// di almeno l'attesa della sonda: i valori segnati "almeno" sono minimi.
+		wait := "1 s"
+		if r.ProbeTimeoutMs > 0 && r.ProbeTimeoutMs != 1000 {
+			wait = msText(float64(r.ProbeTimeoutMs))
+		}
+		least := func(b bool) string {
+			if b {
+				return "almeno "
+			}
+			return ""
+		}
+		worst, worstLeast := -1.0, false
 		for _, x := range []struct {
 			name string
 			d    *scan.SpeedDir
 		}{{"durante il download", r.Download}, {"durante l'upload", r.Upload}} {
-			if x.d == nil || x.d.Latency == nil || x.d.Latency.MedianMs == nil || x.d.BloatMs == nil {
+			if x.d == nil || x.d.Latency == nil || x.d.Latency.Sent == 0 {
 				continue
 			}
+			l := x.d.Latency
 			lost := ""
-			if l := x.d.Latency; l.Sent > l.Received {
-				lost = fmt.Sprintf(", %d su %d senza risposta", l.Sent-l.Received, l.Sent)
+			if l.Sent > l.Received {
+				lost = fmt.Sprintf(", %d sonde su %d senza risposta entro %s", l.Sent-l.Received, l.Sent, wait)
 			}
-			fmt.Fprintf(w, "Latenza %s: %s (+%s; 95° percentile +%s%s)\n", x.name, msText(*x.d.Latency.MedianMs), msText(*x.d.BloatMs), msText(*x.d.BloatP95Ms), lost)
-			worst = max(worst, *x.d.BloatMs)
+			if l.MedianMs == nil || x.d.BloatMs == nil {
+				fmt.Fprintf(w, "Latenza %s: non misurata%s\n", x.name, lost)
+				continue
+			}
+			p95 := ""
+			if x.d.BloatP95Ms != nil {
+				p95 = fmt.Sprintf("; 95° percentile %s+%s", least(l.P95AtLeast), msText(*x.d.BloatP95Ms))
+			}
+			fmt.Fprintf(w, "Latenza %s: %s%s (%s+%s%s)%s\n", x.name, least(l.MedianAtLeast), msText(*l.MedianMs), least(l.MedianAtLeast), msText(*x.d.BloatMs), p95, lost)
+			if *x.d.BloatMs > worst {
+				worst, worstLeast = *x.d.BloatMs, l.MedianAtLeast
+			}
 		}
 		if worst >= 0 {
-			fmt.Fprintf(w, "Latenza sotto carico (bufferbloat): %s, +%s nel caso peggiore (soglie di Polaris: sotto 30 ms va bene, oltre 100 ms è alta)\n", bloatGrade(worst), msText(worst))
+			fmt.Fprintf(w, "Latenza sotto carico (bufferbloat): %s, %s+%s nel caso peggiore (soglie di Polaris: sotto 30 ms va bene, oltre 100 ms è alta)\n", bloatGrade(worst), least(worstLeast), msText(worst))
+			if worstLeast {
+				fmt.Fprintln(w, wrapText("Con la linea piena la maggior parte delle sonde non ha avuto risposta entro "+wait+": la coda supera probabilmente questo tempo, oppure il modem scarta i pacchetti.", 78, ""))
+			}
 		}
 	} else {
 		fmt.Fprintln(w, "Latenza: non misurata (nessuna risposta né ai ping né alle connessioni TCP)")

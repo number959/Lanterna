@@ -69,4 +69,24 @@ func TestSpeedInGoja(t *testing.T) {
 			t.Error("indirizzo IP nel rapporto o nel documento")
 		}
 	}
+
+	// Coda oltre il secondo in upload: nessuna sonda ha risposto. Il giudizio
+	// è alto con un valore minimo, anche se il download va bene.
+	lost := strings.Replace(scan, `"latency":{"sent":40,"received":38,"medianMs":153,"p95Ms":198.8},"bloatMs":142.6,"bloatP95Ms":188.4,`,
+		`"latency":{"sent":20,"received":0,"medianMs":1000,"p95Ms":1000,"medianAtLeast":true,"p95AtLeast":true},"bloatMs":989.6,"bloatP95Ms":989.6,`, 1)
+	lost = strings.Replace(lost, `"probeMethod":"icmp",`, `"probeMethod":"icmp","probeTimeoutMs":1000,`, 1)
+	txt, err = e.Report([]byte(lost), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat := strings.Join(strings.Fields(txt), " ")
+	for _, want := range []string{
+		"[CRIT] Latenza sotto carico (bufferbloat): +19 ms in download · almeno +990 ms in upload",
+		"Latenza sotto carico: alta, almeno +990 ms in upload",
+		"20 sonde su 20 senza risposta entro 1 s",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("manca %q nel rapporto:\n%s", want, txt)
+		}
+	}
 }

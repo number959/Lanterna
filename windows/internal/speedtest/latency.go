@@ -23,6 +23,9 @@ type prober struct {
 	ping  func(ctx context.Context, tcp bool) *float64
 	every time.Duration
 	now   func() time.Time
+	// timeout: quanto la sonda aspetta la risposta (le sonde dell'agente,
+	// QuickPing, aspettano un secondo); il contesto le ferma poco dopo.
+	timeout time.Duration
 
 	mu      sync.Mutex
 	tcp     bool
@@ -62,7 +65,11 @@ func (p *prober) run(ctx context.Context, d time.Duration, sample func(v *float6
 			break
 		}
 		t0 := p.now()
-		pctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+		wait := p.timeout
+		if wait <= 0 {
+			wait = time.Second
+		}
+		pctx, cancel := context.WithTimeout(ctx, wait+500*time.Millisecond)
 		v := p.ping(pctx, tcp)
 		cancel()
 		if ctx.Err() != nil {
@@ -140,6 +147,47 @@ func latencyOf(samples []*float64) *scan.SpeedLatency {
 	l.MinMs = scan.Ptr(round1(ok[0]))
 	l.MedianMs = scan.Ptr(round1(percentile(ok, 50)))
 	l.P95Ms = scan.Ptr(round1(percentile(ok, 95)))
+	return l
+}
+
+// loadedLatencyOf riassume i campioni presi durante un trasferimento. Se a
+// riposo le sonde rispondevano, una sonda che ora resta senza risposta entro
+// timeoutMs indica con ogni probabilità una coda più lunga dell'attesa (o un
+// pacchetto scartato dalla coda piena): conta come latenza pari a timeoutMs,
+// che è un minimo. Le perdite casuali, nella quota vista a riposo, restano
+// fuori. Mediana e 95° percentile si calcolano su risposte e sonde contate
+// così: se cadono su una sonda senza risposta valgono timeoutMs e sono
+// segnati come valori minimi (MedianAtLeast, P95AtLeast). Senza questo
+// conteggio una coda oltre il secondo, con tutte le sonde perse, non avrebbe
+// mediana e sembrerebbe contenuta.
+func loadedLatencyOf(samples []*float64, idle *scan.SpeedLatency, timeoutMs float64) *scan.SpeedLatency {
+	l := latencyOf(samples)
+	if l == nil || l.Received == l.Sent || timeoutMs <= 0 || idle == nil || idle.Sent == 0 || idle.MedianMs == nil {
+		return l
+	}
+	lost := l.Sent - l.Received
+	random := int(math.Round(float64(l.Sent) * float64(idle.Sent-idle.Received) / float64(idle.Sent)))
+	censored := lost - random
+	if censored <= 0 {
+		return l
+	}
+	vals := make([]float64, 0, l.Received+censored)
+	for _, s := range samples {
+		if s != nil {
+			vals = append(vals, *s)
+		}
+	}
+	for i := 0; i < censored; i++ {
+		vals = append(vals, timeoutMs)
+	}
+	sort.Float64s(vals)
+	n := len(vals)
+	l.MedianMs = scan.Ptr(round1(percentile(vals, 50)))
+	l.P95Ms = scan.Ptr(round1(percentile(vals, 95)))
+	// Le sonde contate a timeoutMs sono in fondo: il valore è un minimo se
+	// il suo rango (per la mediana pari, il centrale più alto) cade tra loro.
+	l.MedianAtLeast = n/2 >= l.Received
+	l.P95AtLeast = int(math.Ceil(0.95*float64(n)))-1 >= l.Received
 	return l
 }
 

@@ -253,29 +253,43 @@ export interface SpeedServer {
   machine?: string;
 }
 
-/** Latenza di una fase del test: i campioni senza risposta contano in sent ma non in received. */
+/**
+ * Latenza di una fase del test: i campioni senza risposta contano in sent ma
+ * non in received. Durante i trasferimenti (se a riposo le sonde
+ * rispondevano) una sonda senza risposta conta come latenza pari all'attesa
+ * della sonda (SpeedTest.probeTimeoutMs), tolta la quota persa anche a
+ * riposo: medianAtLeast e p95AtLeast dicono che il valore è un minimo.
+ */
 export interface SpeedLatency {
   sent: number;
   received: number;
   minMs?: number;
   medianMs?: number;
   p95Ms?: number;
+  medianAtLeast?: boolean;
+  p95AtLeast?: boolean;
 }
 
-/** Un verso del test: mbps è il goodput (dati utili al secondo). */
+/** Un verso del test: mbps è il goodput (dati utili al secondo); bytes e ms sono i valori da cui si calcola. */
 export interface SpeedDir {
   mbps: number;
   bytes: number;
   ms: number;
-  /** "client": byte contati dal PC; "server": byte ricevuti dal server (upload). */
+  /**
+   * "client": byte contati dal PC; "server" (upload): byte ricevuti dal
+   * server nel suo tempo, dal suo TCP_INFO (comprendono le intestazioni di
+   * TLS e WebSocket, di solito meno dell'1 %).
+   */
   source?: 'client' | 'server';
+  /** Server di questo verso, solo se diverso da SpeedTest.server (l'upload passato a un altro server). */
+  server?: SpeedServer;
   /** Fermato al limite di dati (250 MB). */
   capped?: boolean;
   /** Dal TCP_INFO del server: RTT minimo e medio, ritrasmissioni (solo download). */
   minRttMs?: number;
   rttMs?: number;
   retransPct?: number;
-  /** Latenza durante il trasferimento e latenza aggiunta rispetto al riposo (mediana e 95° percentile). */
+  /** Latenza durante il trasferimento e latenza aggiunta rispetto al riposo (mediana e 95° percentile; minimi quando lo sono quelli di latency). */
   latency?: SpeedLatency;
   bloatMs?: number;
   bloatP95Ms?: number;
@@ -296,6 +310,8 @@ export interface SpeedTest {
   /** Server pubblico delle sonde di latenza ("1.1.1.1") e metodo. */
   probe?: string;
   probeMethod?: 'icmp' | 'tcp' | '';
+  /** Quanto una sonda aspetta la risposta (1000 ms). */
+  probeTimeoutMs?: number;
   idle?: SpeedLatency;
   download?: SpeedDir;
   upload?: SpeedDir;

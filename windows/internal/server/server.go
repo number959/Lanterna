@@ -444,6 +444,10 @@ func (s *Server) startBench(kind, drive string) error {
 	if spaceBusy {
 		return errors.New("analisi dello spazio in corso: il test di velocità ne sarebbe falsato")
 	}
+	// Ordine dei lock: mu, benchMu, speedMu (come in startSpeed).
+	if s.speedBusy() {
+		return errors.New("test di velocità di Internet in corso: il test della CPU o del disco ne sarebbe falsato, attendi che finisca")
+	}
 	timeout := 2 * time.Minute
 	if kind == "disk" {
 		timeout = 3 * time.Minute

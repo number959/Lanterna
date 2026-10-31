@@ -14,15 +14,18 @@ import {
   SPEED_BLOAT_CRIT_MS,
   SPEED_BLOAT_WARN_MS,
   speedBloat,
+  speedDocRows,
   speedErr,
+  speedLoadedText,
   speedValue,
   speedWhere,
+  waitLabel,
 } from '../src/engine';
 import type { Finding, Scan, SpeedTest } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { simulatedSpeed } from '../src/demo/simulate';
-import { AUP_URL, CONSENT_CHECK, CONSENT_TEXT, PHASES, PRIVACY_URL, sameSpeedTarget, waitText } from '../src/ui/speedtest';
+import { AUP_URL, CONSENT_CHECK, CONSENT_TEXT, dayLimitReached, PHASES, PRIVACY_URL, sameSpeedTarget, speedFitsScan, waitText } from '../src/ui/speedtest';
 import { GLOSSARY, guideById, guidesForMetric } from '../src/guides';
 
 // Test di velocità di Internet con M-Lab: giudizi e soglie del motore,
@@ -100,6 +103,12 @@ describe('soglie del bufferbloat (P)', () => {
     expect(m.scale?.map((s) => s.range).join(' ')).toMatch(/30 ms.*\(P\).*30 a 100 ms.*\(P\).*100 ms.*\(P\)/);
     expect(m.limits).toContain('scelta di Polaris');
     expect(m.limits).toContain('da verificare');
+    // Nessuna affermazione senza fonte sulla percezione dei 30 ms: è una scelta.
+    expect(m.limits).toContain('30 ms è una soglia prudente scelta da Polaris');
+    expect(m.limits).not.toContain('variazione che si nota');
+    // Le sonde senza risposta durante i trasferimenti sono spiegate come sono contate.
+    expect(m.limits).toContain('almeno un secondo');
+    expect(m.limits).not.toContain('non entrano nella mediana');
     expect(METRICS['net.speed.retrans'].limits).toContain('scelta di Polaris');
     expect(METRICS['net.speed'].scale?.[0].severity).toBe('info');
     expect(METRICS['net.speed'].limits).toContain('Ne.Me.Sys.');
@@ -112,6 +121,7 @@ describe('giudizi del motore', () => {
     const s = byId(fs, 'net.speed')!;
     expect(s).toMatchObject({ severity: 'info', category: 'internet', value: 'download 245 · upload 48,2 Mbit/s', numeric: 245.3, actions: ['speed-compare-contract'] });
     expect(s.verdict).toContain('Milano (mil05)');
+    expect(s.verdict).toContain('una sola connessione per verso: 245 Mbit/s in download e 48,2 Mbit/s in upload.');
     expect(s.verdict).toContain('non conosce la velocità del tuo contratto');
     expect(s.verdict).toContain('Ne.Me.Sys.');
     expect(s.verdict).toContain('misurainternet.it');
@@ -204,6 +214,114 @@ describe('unione al rapporto (come addCerts)', () => {
     expect(sameSpeedTarget(home, demoScan, 'demo')).toBe(true);
     expect(sameSpeedTarget(home, clinicScan, 'demo')).toBe(false);
   });
+
+  it('l\'ultimo test dell\'agente si recupera solo in un rapporto più vecchio del test', () => {
+    // Analisi B fatta alle 21 (dopo un cambio di rete), test fatto alle 10 sulla rete A.
+    const b = scanWith(undefined);
+    b.agent.startedAt = '2026-10-31T21:00:00Z';
+    expect(speedFitsScan(speed({ startedAt: '2026-10-31T10:00:00Z' }), b)).toBe(false);
+    expect(speedFitsScan(speed({ startedAt: '2026-10-31T21:05:00Z' }), b)).toBe(true);
+    expect(speedFitsScan(speed({ startedAt: '2026-10-31T21:00:00Z' }), b)).toBe(true);
+    expect(speedFitsScan(speed({ startedAt: 'non è una data' }), b)).toBe(false);
+  });
+
+  it('il limite di oggi vale solo nel giorno in cui l\'agente l\'ha detto', () => {
+    const now = Date.parse('2026-10-31T15:00:00');
+    const today = new Date(now).toDateString();
+    expect(dayLimitReached(0, today, now)).toBe(true);
+    expect(dayLimitReached(1, today, now)).toBe(false);
+    expect(dayLimitReached(undefined, today, now)).toBe(false);
+    expect(dayLimitReached(0, today, Date.parse('2026-11-01T00:01:00'))).toBe(false);
+  });
+});
+
+describe('sonde senza risposta durante i trasferimenti', () => {
+  // ADSL o FTTC con l'upload pieno: coda oltre il secondo, nessuna sonda
+  // risponde durante l'upload mentre a riposo rispondevano tutte.
+  const lostUp = (agent: boolean): SpeedTest =>
+    speed({
+      probeTimeoutMs: 1000,
+      download: { ...base.download!, latency: { sent: 40, received: 40, medianMs: 25.4, p95Ms: 31 }, bloatMs: 15, bloatP95Ms: 20.6 },
+      upload: agent
+        ? { ...base.upload!, latency: { sent: 20, received: 0, medianMs: 1000, p95Ms: 1000, medianAtLeast: true, p95AtLeast: true }, bloatMs: 989.6, bloatP95Ms: 989.6 }
+        : { ...base.upload!, latency: { sent: 12, received: 0 }, bloatMs: undefined, bloatP95Ms: undefined },
+    });
+
+  it('come le conta l\'agente: giudizio alto con un valore minimo, mai "contenuta"', () => {
+    const f = byId(findings(scanWith(lostUp(true))), 'net.bufferbloat')!;
+    expect(f).toMatchObject({ severity: 'crit', value: '+15 ms in download · almeno +990 ms in upload', actions: ['enable-sqm', 'reduce-load'] });
+    expect(f.verdict).toContain('la maggior parte delle sonde in upload non ha avuto risposta entro 1 s');
+    expect(f.verdict).toContain('almeno 990 ms');
+    expect(f.verdict).not.toContain('reggono');
+    expect(speedBloat(lostUp(true))).toMatchObject({ severity: 'crit', atLeast: true, dir: 'upload', lost: 20, sent: 60 });
+    expect(speedLoadedText(lostUp(true), lostUp(true).upload)).toBe('almeno 1000 ms (almeno +990 ms; 95° percentile almeno +990 ms), 20 sonde su 20 senza risposta entro 1 s');
+  });
+
+  it('dati senza mediana sotto carico: il motore ricava lo stesso minimo', () => {
+    const r = lostUp(false);
+    const f = byId(findings(scanWith(r)), 'net.bufferbloat')!;
+    expect(f).toMatchObject({ severity: 'crit', value: '+15 ms in download · almeno +990 ms in upload' });
+    expect(speedLoadedText(r, r.upload)).toBe('12 sonde su 12 senza risposta entro 1 s: almeno +990 ms rispetto al riposo');
+    // Anche con tutte le sonde perse in entrambi i versi c'è un giudizio.
+    const both = speed({
+      download: { ...base.download!, latency: { sent: 20, received: 1 }, bloatMs: undefined, bloatP95Ms: undefined },
+      upload: { ...base.upload!, latency: { sent: 12, received: 0 }, bloatMs: undefined, bloatP95Ms: undefined },
+    });
+    expect(byId(findings(scanWith(both)), 'net.bufferbloat')).toMatchObject({ severity: 'crit', value: 'almeno +990 ms in download · almeno +990 ms in upload' });
+    // Senza latenza a riposo non si può dire che cosa sia una sonda persa.
+    expect(byId(findings(scanWith({ ...r, idle: { sent: 20, received: 0 } })), 'net.bufferbloat')).toBeUndefined();
+  });
+
+  it('nel rapporto di testo e nel documento con il conteggio delle sonde', () => {
+    const s = scanWith(lostUp(false));
+    const txt = renderText(s, analyze(s), { verbose: true });
+    // Le righe vanno a capo a 90 colonne: si confronta il testo con gli spazi uniti.
+    const flat = txt.replace(/\s+/g, ' ');
+    expect(flat).toContain('Latenza sotto carico: alta, almeno +990 ms in upload');
+    expect(flat).toContain('latenza 12 sonde su 12 senza risposta entro 1 s: almeno +990 ms rispetto al riposo');
+    expect(flat).not.toContain('Latenza sotto carico: contenuta');
+    expect(flat).not.toContain('la latenza resta contenuta');
+    const rows = speedDocRows(lostUp(false));
+    expect(rows.find(([k]) => k === 'Latenza sotto carico')![1]).toBe(
+      'download: 25 ms (+15 ms; 95° percentile +21 ms); upload: 12 sonde su 12 senza risposta entro 1 s: almeno +990 ms rispetto al riposo',
+    );
+    const { body } = documentParts(s, analyze(s), { version: '0.10.0', generated: 'oggi' });
+    expect(body).toContain('almeno +990 ms rispetto al riposo');
+  });
+
+  it('oltre il 10 % di sonde senza risposta (P) il giudizio è almeno da migliorare', () => {
+    const r = speed({
+      download: { ...base.download!, latency: { sent: 40, received: 30, medianMs: 22.4, p95Ms: 1000, p95AtLeast: true }, bloatMs: 12, bloatP95Ms: 989.6 },
+      upload: { ...base.upload!, latency: { sent: 40, received: 40, medianMs: 28.4, p95Ms: 35 }, bloatMs: 18, bloatP95Ms: 24.6 },
+    });
+    const f = byId(findings(scanWith(r)), 'net.bufferbloat')!;
+    expect(f.severity).toBe('warn');
+    expect(f.verdict).toContain('10 sonde su 80 non hanno avuto risposta entro 1 s');
+    expect(f.verdict).toContain('picchi di coda oltre 1 s');
+    expect(f.verdict).not.toContain('reggono');
+    // Se se ne perdevano altrettante a riposo sono perdite sulla linea, non coda.
+    const lossy = { ...r, idle: { sent: 20, received: 15, medianMs: 10.4 } };
+    const g = byId(findings(scanWith(lossy)), 'net.bufferbloat')!;
+    expect(g.severity).toBe('ok');
+    expect(g.verdict).toContain('se ne perdevano anche a riposo');
+  });
+
+  it('attesa delle sonde', () => {
+    expect(waitLabel(1000)).toBe('1 s');
+    expect(waitLabel(1500)).toBe('1,5 s');
+    expect(waitLabel(800)).toBe('800 ms');
+  });
+});
+
+describe('upload su un altro server', () => {
+  it('il risultato dice dove è stato misurato l\'upload', () => {
+    const r = speed({ upload: { ...base.upload!, server: { city: 'Turin', country: 'IT', site: 'trn02' } } });
+    const s = scanWith(r);
+    expect(byId(findings(s), 'net.speed')!.verdict).toContain('L\'upload è stato misurato su un altro server: Torino (trn02), perché M-Lab non proponeva più quello del download.');
+    expect(renderText(s, analyze(s), { verbose: true })).toContain('Upload: su un altro server di M-Lab, Torino (trn02)');
+    expect(speedDocRows(r).find(([k]) => k === 'Server')![1]).toBe('M-Lab, Milano (mil05); upload: Torino (trn02)');
+    expect(speedDocRows(base).find(([k]) => k === 'Server')![1]).toBe('M-Lab, Milano (mil05)');
+  });
 });
 
 describe('demo', () => {
@@ -252,7 +370,7 @@ describe('documento e rapporto senza indirizzi', () => {
     expect(txt).toContain(' TEST DI VELOCITÀ DI INTERNET (M-LAB)');
     expect(txt).toContain('Server M-Lab: Milano (mil05)');
     expect(txt).toContain('Download: 245 Mbit/s, 307 MB in 10,0 s; latenza 22 ms (+12 ms');
-    expect(txt).toContain('Latenza sotto carico: da migliorare (soglie di Polaris');
+    expect(txt).toContain('Latenza sotto carico: da migliorare, +82 ms in upload (soglie di Polaris');
     expect(txt).toContain('valore legale');
     expect(txt).not.toContain('198.51.100.4');
     for (const line of txt.split('\n')) expect(line.length, line).toBeLessThanOrEqual(90);
@@ -272,6 +390,18 @@ describe('documento e rapporto senza indirizzi', () => {
     expect(JSON.parse(engine.analyzeJson(json))).toEqual(JSON.parse(JSON.stringify(analyze(hs))));
     expect(engine.reportText(json, true)).toBe(renderText(hs, analyze(hs), { verbose: true }));
     expect(engine.reportHtml(json, '0.10.0', 'oggi')).toContain('<h2>Velocità di Internet</h2>');
+    // Sonde senza risposta in upload (con e senza i valori minimi dell'agente) e upload su un altro server.
+    for (const up of [
+      { ...base.upload!, latency: { sent: 20, received: 0, medianMs: 1000, p95Ms: 1000, medianAtLeast: true, p95AtLeast: true }, bloatMs: 989.6, bloatP95Ms: 989.6 },
+      { ...base.upload!, latency: { sent: 12, received: 0 }, bloatMs: undefined, bloatP95Ms: undefined, server: { city: 'Turin', country: 'IT', site: 'trn02' } },
+    ]) {
+      const ls = scanWith(speed({ probeTimeoutMs: 1000, upload: up }));
+      const lj = JSON.stringify(ls);
+      const la = JSON.parse(engine.analyzeJson(lj)) as { findings: Finding[] };
+      expect(la).toEqual(JSON.parse(JSON.stringify(analyze(ls))));
+      expect(la.findings.find((f) => f.id === 'net.bufferbloat')!.severity).toBe('crit');
+      expect(engine.reportText(lj, true)).toBe(renderText(ls, analyze(ls), { verbose: true }));
+    }
   });
 });
 

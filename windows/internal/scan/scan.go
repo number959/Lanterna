@@ -225,6 +225,10 @@ type SpeedTest struct {
 	// "icmp" o "tcp" (connessioni TCP quando i ping sono bloccati).
 	Probe       string `json:"probe,omitempty"`
 	ProbeMethod string `json:"probeMethod,omitempty"`
+	// ProbeTimeoutMs: quanto una sonda aspetta la risposta (1000). Durante i
+	// trasferimenti una sonda senza risposta conta come latenza di almeno
+	// questo valore (vedi SpeedLatency).
+	ProbeTimeoutMs int `json:"probeTimeoutMs,omitempty"`
 	// Idle: latenza a riposo, prima dei trasferimenti.
 	Idle     *SpeedLatency `json:"idle,omitempty"`
 	Download *SpeedDir     `json:"download,omitempty"`
@@ -244,24 +248,38 @@ type SpeedServer struct {
 }
 
 // SpeedLatency riassume le misure di latenza di una fase; i campioni senza
-// risposta contano in Sent ma non in Received.
+// risposta contano in Sent ma non in Received. A riposo mediana e 95°
+// percentile sono quelli delle risposte. Durante i trasferimenti, se a
+// riposo le sonde rispondevano, una sonda senza risposta conta come latenza
+// pari all'attesa della sonda (SpeedTest.ProbeTimeoutMs), tolta la quota
+// persa anche a riposo: MedianAtLeast e P95AtLeast dicono che il valore cade
+// su sonde senza risposta, quindi è un minimo ("almeno").
 type SpeedLatency struct {
-	Sent     int      `json:"sent"`
-	Received int      `json:"received"`
-	MinMs    *float64 `json:"minMs,omitempty"`
-	MedianMs *float64 `json:"medianMs,omitempty"`
-	P95Ms    *float64 `json:"p95Ms,omitempty"`
+	Sent          int      `json:"sent"`
+	Received      int      `json:"received"`
+	MinMs         *float64 `json:"minMs,omitempty"`
+	MedianMs      *float64 `json:"medianMs,omitempty"`
+	P95Ms         *float64 `json:"p95Ms,omitempty"`
+	MedianAtLeast bool     `json:"medianAtLeast,omitempty"`
+	P95AtLeast    bool     `json:"p95AtLeast,omitempty"`
 }
 
 // SpeedDir è un verso del test (download o upload). Mbps è il goodput,
-// cioè i dati utili al secondo (senza le intestazioni di TLS e TCP).
+// cioè i dati utili al secondo; Bytes e Ms sono i valori da cui si calcola.
 type SpeedDir struct {
 	Mbps  float64 `json:"mbps"`
 	Bytes int64   `json:"bytes"`
 	Ms    int64   `json:"ms"`
-	// Source: "client" (byte contati dal PC) o "server" (byte ricevuti dal
-	// server, per l'upload, dai suoi messaggi di misura).
+	// Source: "client" (byte contati dal PC, senza le intestazioni di TLS e
+	// WebSocket) o "server" (in upload: byte ricevuti dal server nel tempo
+	// del server, dal suo TCP_INFO; comprendono le intestazioni di TLS e
+	// WebSocket, di solito meno dell'1 %). In upload i byte scritti dal PC
+	// comprenderebbero anche quelli ancora in coda quando smette di inviare.
 	Source string `json:"source,omitempty"`
+	// Server: il server di questo verso, solo se diverso da SpeedTest.Server
+	// (l'upload passa a un altro server quando M-Lab non propone più quello
+	// del download).
+	Server *SpeedServer `json:"server,omitempty"`
 	// Capped: il trasferimento si è fermato al limite di dati (250 MB).
 	Capped bool `json:"capped,omitempty"`
 	// Dal TCP_INFO del server: RTT minimo e medio, ritrasmissioni (solo download).
@@ -270,7 +288,8 @@ type SpeedDir struct {
 	RetransPct *float64 `json:"retransPct,omitempty"`
 	// Latency: latenza misurata durante il trasferimento; BloatMs e
 	// BloatP95Ms la latenza aggiunta rispetto al riposo (mediana e 95°
-	// percentile meno la mediana a riposo).
+	// percentile meno la mediana a riposo): sono valori minimi quando lo
+	// sono quelli di Latency (MedianAtLeast, P95AtLeast).
 	Latency    *SpeedLatency `json:"latency,omitempty"`
 	BloatMs    *float64      `json:"bloatMs,omitempty"`
 	BloatP95Ms *float64      `json:"bloatP95Ms,omitempty"`

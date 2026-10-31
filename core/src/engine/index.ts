@@ -33,11 +33,15 @@ export {
   BLOAT_LABEL,
   bloatSeverity,
   bloatValue,
+  dirBloat,
   mbpsText,
+  probeWait,
   SPEED_BLOAT_CRIT_MS,
   SPEED_BLOAT_WARN_MS,
   SPEED_FAST_MBPS,
   SPEED_LEGAL_NOTE,
+  SPEED_LOST_NOTE_PCT,
+  SPEED_PROBE_TIMEOUT_MS,
   SPEED_RETRANS_INFO_PCT,
   speedBloat,
   speedBytes,
@@ -45,12 +49,14 @@ export {
   speedCity,
   speedDocRows,
   speedErr,
+  speedLoadedText,
   speedMs,
   speedTextLines,
   speedValue,
   speedWhere,
+  waitLabel,
 } from './speedtest';
-export type { SpeedBloat } from './speedtest';
+export type { DirBloat, SpeedBloat } from './speedtest';
 export { documentParts, renderDocument } from './document';
 export type { DocOptions } from './document';
 export { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';

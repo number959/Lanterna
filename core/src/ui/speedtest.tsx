@@ -3,7 +3,7 @@ import { AnimatePresence, m } from 'motion/react';
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { BLOAT_LABEL, mbpsText, primaryAdapter, SPEED_LEGAL_NOTE, speedBloat, speedBytes, speedCaveats, speedErr, speedMs, speedWhere } from '../engine';
+import { BLOAT_LABEL, mbpsText, primaryAdapter, SPEED_LEGAL_NOTE, speedBloat, speedBytes, speedCaveats, speedErr, speedLoadedText, speedMs, speedWhere } from '../engine';
 import type { Scan, SpeedDir, SpeedServer, SpeedTest } from '../engine';
 import { simulatedSpeed } from '../demo/simulate';
 import { HexLoader } from './anim';
@@ -184,6 +184,23 @@ export interface SpeedTargetRef {
 export const sameSpeedTarget = (t: SpeedTargetRef | undefined, scan: Scan | null | undefined, source: 'agent' | 'demo' | 'file') =>
   !!t && !!scan && source === (t.live ? 'agent' : 'demo') && t.host === scan.agent.host && t.gateway === scan.gateway?.ip;
 
+/**
+ * L'ultimo test che l'agente ricorda si recupera solo in un rapporto più
+ * vecchio del test: il risultato non dice in che rete è stato misurato, e un
+ * test precedente all'analisi mostrata può appartenerle solo per la regola
+ * di App sulle nuove analisi nella stessa sessione (stesso PC e stesso
+ * gateway), che dopo un ricaricamento della pagina non c'è più. Test e
+ * analisi non girano mai insieme (l'agente lo impedisce).
+ */
+export function speedFitsScan(r: SpeedTest, scan: Scan): boolean {
+  const test = Date.parse(r.startedAt);
+  const taken = Date.parse(scan.agent.startedAt);
+  return !isNaN(test) && !isNaN(taken) && test >= taken;
+}
+
+/** Test rimasti oggi finiti: vale solo per il giorno (locale) in cui l'agente l'ha detto. */
+export const dayLimitReached = (left: number | undefined, leftDay: string | undefined, now: number) => left === 0 && leftDay === new Date(now).toDateString();
+
 export interface SpeedRun {
   phase: SpeedPhase;
   mbps?: number;
@@ -197,9 +214,10 @@ interface SpeedJob {
   run: SpeedRun | null;
   target?: SpeedTargetRef;
   error?: string;
-  /** Quando l'agente accetta il prossimo test (ms), e quanti test restano oggi. */
+  /** Quando l'agente accetta il prossimo test (ms), e quanti test restano oggi (nel giorno leftDay). */
   nextAt?: number;
   left?: number;
+  leftDay?: string;
 }
 
 // Il test continua anche se si cambia sezione: lo stato vive fuori dal
@@ -229,7 +247,7 @@ function useSpeedJob(): SpeedJob {
 
 /** Stato dell'agente: avanzamento, attesa prima del prossimo test, test rimasti oggi. */
 function applyState(st: SpeedState) {
-  const patch: Partial<SpeedJob> = { nextAt: st.waitSec ? Date.now() + st.waitSec * 1000 : undefined, left: st.left };
+  const patch: Partial<SpeedJob> = { nextAt: st.waitSec ? Date.now() + st.waitSec * 1000 : undefined, left: st.left, leftDay: new Date().toDateString() };
   const g = st.progress;
   if (st.running && g) patch.run = { phase: g.phase, mbps: g.mbps, latencyMs: g.latencyMs, elapsedMs: g.elapsedMs, phaseMs: g.phaseMs, server: g.server };
   publish(patch);
@@ -346,9 +364,13 @@ export function SpeedCard({ scan, live, source, addSpeed }: ViewProps) {
   const [asking, setAsking] = useState(false);
   const [focusStop, setFocusStop] = useState(false);
   const resultHead = useRef<HTMLHeadingElement>(null);
-  // L'orologio gira solo finché c'è un'attesa da mostrare.
-  const now = useNow(live && job.nextAt && job.nextAt > Date.now() ? 1000 : 0);
+  // L'orologio gira solo finché c'è un'attesa da mostrare (ogni minuto, per
+  // il limite di oggi che a mezzanotte decade).
+  const counting = live && !!job.nextAt && job.nextAt > Date.now();
+  const now = useNow(counting ? 1000 : live && job.left === 0 ? 60000 : 0);
   const waitSec = live && job.nextAt ? Math.max(0, Math.ceil((job.nextAt - now) / 1000)) : 0;
+  // Dieci test oggi: l'agente rifiuterebbe il prossimo, quindi niente consenso da chiedere.
+  const dayDone = live && dayLimitReached(job.left, job.leftDay, now);
   const error = mine && !busy ? job.error : undefined;
   const wifi = primaryAdapter(scan)?.kind === 'wifi';
 
@@ -363,7 +385,8 @@ export function SpeedCard({ scan, live, source, addSpeed }: ViewProps) {
         if (!alive) return;
         applyState(st);
         if (st.running) startSpeed(target, scan, addSpeed, toast, true);
-        else if (!restoreTried && st.result && st.result.startedAt !== scan.internet?.speed?.startedAt) addSpeed(st.result, target, true);
+        // Solo un test fatto dopo l'analisi mostrata: uno più vecchio può essere di un'altra rete.
+        else if (!restoreTried && st.result && st.result.startedAt !== scan.internet?.speed?.startedAt && speedFitsScan(st.result, scan)) addSpeed(st.result, target, true);
         restoreTried = true;
       })
       .catch(() => undefined);
@@ -434,17 +457,27 @@ export function SpeedCard({ scan, live, source, addSpeed }: ViewProps) {
       )}
       {!readOnly && (
         <div className="speed-controls">
-          <button className="btn primary" disabled={busy || waitSec > 0} onClick={start} aria-describedby={waitSec > 0 && !busy ? 'speed-wait' : undefined}>
+          <button
+            className="btn primary"
+            disabled={busy || waitSec > 0 || dayDone}
+            onClick={start}
+            aria-describedby={busy ? undefined : dayDone ? 'speed-day' : waitSec > 0 ? 'speed-wait' : undefined}
+          >
             <Play size={16} className="nudge" aria-hidden /> {busy ? 'Test in corso…' : live ? (result ? 'Ripeti il test…' : 'Avvia il test…') : 'Simula il test'}
           </button>
-          {waitSec > 0 && !busy && (
-            <span id="speed-wait" className="faint">
-              Il prossimo test si può avviare tra {waitText(waitSec)}: Polaris ne consente uno ogni due minuti e dieci al giorno, per non pesare sui server di M-Lab.
+          {dayDone && !busy ? (
+            <span id="speed-day" className="faint">
+              Per oggi sono già stati fatti tutti i test consentiti: Polaris ne consente dieci al giorno, per non pesare sui server di M-Lab. Si potrà ripetere domani.
             </span>
+          ) : (
+            waitSec > 0 &&
+            !busy && (
+              <span id="speed-wait" className="faint">
+                Il prossimo test si può avviare tra {waitText(waitSec)}: Polaris ne consente uno ogni due minuti e dieci al giorno, per non pesare sui server di M-Lab.
+              </span>
+            )
           )}
-          {live && !waitSec && job.left !== undefined && job.left <= 3 && (
-            <span className="faint">{job.left ? `Test ancora possibili oggi: ${job.left}.` : 'Per oggi sono già stati fatti tutti i test consentiti.'}</span>
-          )}
+          {live && !waitSec && !dayDone && job.left !== undefined && job.left > 0 && job.left <= 3 && <span className="faint">Test ancora possibili oggi: {job.left}.</span>}
         </div>
       )}
       {/* Annuncia solo le fasi: velocità e latenza cambiano di continuo e non vanno lette. */}
@@ -543,10 +576,8 @@ function SpeedResult({ r, wifi, headRef }: { r: SpeedTest; wifi: boolean; headRe
   const u = r.upload;
   const caveats = speedCaveats(r, wifi);
   const ok = (x?: SpeedDir) => !!x && x.bytes > 0 && x.mbps > 0;
-  const loaded = (x?: SpeedDir) =>
-    x?.latency?.medianMs !== undefined
-      ? `${speedMs(x.latency.medianMs)}${x.bloatMs !== undefined ? ` (+${speedMs(x.bloatMs)}; 95° percentile +${speedMs(x.bloatP95Ms ?? x.bloatMs)})` : ''}${x.latency.sent > x.latency.received ? `, ${x.latency.sent - x.latency.received} sonde su ${x.latency.sent} senza risposta` : ''}`
-      : '—';
+  // Con le sonde senza risposta anche quando manca la mediana (coda oltre l'attesa).
+  const loaded = (x?: SpeedDir) => speedLoadedText(r, x) || '—';
   return (
     <div className="speed-result">
       <h3 ref={headRef} tabIndex={-1}>
@@ -574,14 +605,18 @@ function SpeedResult({ r, wifi, headRef }: { r: SpeedTest; wifi: boolean; headRe
             </span>
             {b.worst !== undefined && (
               <span className="speed-sub">
-                +{speedMs(b.worst)} {b.dir === 'upload' ? 'in upload' : 'in download'}
+                {b.atLeast ? 'almeno ' : ''}+{speedMs(b.worst)} {b.dir === 'upload' ? 'in upload' : 'in download'}
+                {b.raised ? `, ${b.excess} sonde su ${b.sent} senza risposta` : ''}
               </span>
             )}
           </div>
         </div>
         <div className="stat">
           <div className="k">Server M-Lab</div>
-          <div className="v speed-server">{speedWhere(r.server)}</div>
+          <div className="v speed-server">
+            {speedWhere(r.server)}
+            {u?.server && <span className="speed-sub">upload: {speedWhere(u.server)}</span>}
+          </div>
         </div>
       </div>
       <dl className="speed-facts">
@@ -596,7 +631,10 @@ function SpeedResult({ r, wifi, headRef }: { r: SpeedTest; wifi: boolean; headRe
         <div>
           <dt>Dati trasferiti</dt>
           <dd>
-            {[ok(d) ? `${speedBytes(d!.bytes)} in download${d!.capped ? ' (limite di 250 MB)' : ''}` : '', ok(u) ? `${speedBytes(u!.bytes)} in upload${u!.capped ? ' (limite di 250 MB)' : ''}` : '']
+            {[
+              ok(d) ? `${speedBytes(d!.bytes)} in download${d!.capped ? ' (limite di 250 MB)' : ''}` : '',
+              ok(u) ? `${speedBytes(u!.bytes)} in upload${u!.source === 'server' ? ', ricevuti dal server' : ''}${u!.capped ? ' (limite di 250 MB)' : ''}` : '',
+            ]
               .filter(Boolean)
               .join(', ') || '—'}
           </dd>

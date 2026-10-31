@@ -18,8 +18,14 @@ export const SPEED_BLOAT_CRIT_MS = 100;
 export const SPEED_RETRANS_INFO_PCT = 5;
 /** Oltre questa velocità una sola connessione può restare sotto la linea (2,5-10 Gbit/s). */
 export const SPEED_FAST_MBPS = 700;
-/** Sonde perse sotto carico oltre cui la coda può essere più lunga di quanto misurato. */
+/**
+ * Sonde senza risposta durante i trasferimenti, oltre la quota persa a
+ * riposo, da cui il giudizio è almeno "da migliorare" (P): picchi di coda
+ * oltre l'attesa delle sonde, anche se la mediana è bassa.
+ */
 export const SPEED_LOST_NOTE_PCT = 10;
+/** Attesa delle sonde di latenza dell'agente, se il risultato non la dice. */
+export const SPEED_PROBE_TIMEOUT_MS = 1000;
 
 /** Città dei server di M-Lab in italiano (Locate le dà in inglese). */
 const CITY_IT: { [en: string]: string } = {
@@ -104,20 +110,69 @@ export function bloatSeverity(ms: number): Severity {
 /** Come si legge la latenza sotto carico, per icona e testo. */
 export const BLOAT_LABEL: { [s: string]: string } = { ok: 'contenuta', warn: 'da migliorare', crit: 'alta', unknown: 'non misurata' };
 
+/** Attesa delle sonde del test (ms). */
+export const probeWait = (r: SpeedTest) => r.probeTimeoutMs || SPEED_PROBE_TIMEOUT_MS;
+
+/** "1 s", "1,5 s", "800 ms". */
+export function waitLabel(ms: number): string {
+  return ms >= 1000 ? `${fmt(ms / 1000, ms % 1000 ? 1 : 0)} s` : `${Math.round(ms)} ms`;
+}
+
+const least = (b?: boolean) => (b ? 'almeno ' : '');
+
+/** Latenza aggiunta in un verso; atLeast: è un minimo, perché cade su sonde senza risposta. */
+export interface DirBloat {
+  ms: number;
+  p95?: number;
+  atLeast: boolean;
+  p95AtLeast: boolean;
+}
+
+/**
+ * Latenza aggiunta in un verso, come la calcola l'agente (che conta le sonde
+ * senza risposta come latenza di almeno l'attesa). Per dati senza mediana
+ * sotto carico ma con la maggior parte delle sonde senza risposta, mentre a
+ * riposo rispondevano, è l'attesa meno la mediana a riposo, come minimo: una
+ * coda oltre l'attesa non deve sembrare contenuta.
+ */
+export function dirBloat(r: SpeedTest, d?: SpeedDir): DirBloat | undefined {
+  if (!d) return undefined;
+  const l = d.latency;
+  if (d.bloatMs !== undefined) return { ms: d.bloatMs, p95: d.bloatP95Ms, atLeast: !!(l && l.medianAtLeast), p95AtLeast: !!(l && l.p95AtLeast) };
+  const idle = r.idle;
+  if (l && l.sent > 0 && l.received * 2 < l.sent && idle && idle.received > 0 && idle.medianMs !== undefined) {
+    const ms = Math.max(0, Math.round((probeWait(r) - idle.medianMs) * 10) / 10);
+    return { ms, p95: ms, atLeast: true, p95AtLeast: true };
+  }
+  return undefined;
+}
+
 export interface SpeedBloat {
   /** Latenza aggiunta mediana nel verso peggiore. */
   worst?: number;
   worstP95?: number;
+  /** Il valore peggiore (o il suo 95° percentile) è un minimo: cade su sonde senza risposta entro l'attesa. */
+  atLeast: boolean;
+  p95AtLeast: boolean;
   dir?: 'download' | 'upload';
   severity: Severity;
   /** Sonde senza risposta sotto carico, su quelle inviate. */
   lost: number;
   sent: number;
+  /** Sonde senza risposta oltre la quota persa anche a riposo. */
+  excess: number;
+  /** Giudizio alzato a "da migliorare" per le sonde senza risposta (P), con la mediana sotto 30 ms. */
+  raised: boolean;
 }
 
-/** Il bufferbloat del test: il verso con più latenza aggiunta decide la gravità. */
+/**
+ * Il bufferbloat del test: il verso con più latenza aggiunta decide la
+ * gravità (P). Se oltre il 10 % delle sonde resta senza risposta durante i
+ * trasferimenti, al netto della quota persa a riposo, il giudizio è almeno
+ * "da migliorare": ci sono picchi di coda oltre l'attesa delle sonde.
+ */
 export function speedBloat(r: SpeedTest): SpeedBloat {
-  const out: SpeedBloat = { severity: 'unknown', lost: 0, sent: 0 };
+  const out: SpeedBloat = { severity: 'unknown', atLeast: false, p95AtLeast: false, lost: 0, sent: 0, excess: 0, raised: false };
   const dirs: ['download' | 'upload', SpeedDir | undefined][] = [
     ['download', r.download],
     ['upload', r.upload],
@@ -126,14 +181,26 @@ export function speedBloat(r: SpeedTest): SpeedBloat {
     if (!d || !d.latency) continue;
     out.sent += d.latency.sent;
     out.lost += d.latency.sent - d.latency.received;
-    if (d.bloatMs === undefined) continue;
-    if (out.worst === undefined || d.bloatMs > out.worst) {
-      out.worst = d.bloatMs;
-      out.worstP95 = d.bloatP95Ms;
+    const b = dirBloat(r, d);
+    if (!b) continue;
+    if (out.worst === undefined || b.ms > out.worst) {
+      out.worst = b.ms;
+      out.worstP95 = b.p95;
+      out.atLeast = b.atLeast;
+      out.p95AtLeast = b.p95AtLeast;
       out.dir = name;
     }
   }
-  if (out.worst !== undefined) out.severity = bloatSeverity(out.worst);
+  const idle = r.idle;
+  const idleLost = idle && idle.sent > 0 ? (idle.sent - idle.received) / idle.sent : 0;
+  out.excess = Math.max(0, out.lost - Math.round(out.sent * idleLost));
+  if (out.worst !== undefined) {
+    out.severity = bloatSeverity(out.worst);
+    if (out.severity === 'ok' && out.sent > 0 && (100 * out.excess) / out.sent > SPEED_LOST_NOTE_PCT) {
+      out.severity = 'warn';
+      out.raised = true;
+    }
+  }
   return out;
 }
 
@@ -163,12 +230,35 @@ export function speedValue(r: SpeedTest): string {
   return `download ${mbpsText(d!.mbps)} · upload ${mbpsText(u!.mbps)}`;
 }
 
-/** "+26 ms in download · +128 ms in upload". */
+/** "+26 ms in download · +128 ms in upload", "+15 ms in download · almeno +976 ms in upload". */
 export function bloatValue(r: SpeedTest): string {
   const parts: string[] = [];
-  if (r.download && r.download.bloatMs !== undefined) parts.push(`+${speedMs(r.download.bloatMs)} in download`);
-  if (r.upload && r.upload.bloatMs !== undefined) parts.push(`+${speedMs(r.upload.bloatMs)} in upload`);
+  const bd = dirBloat(r, r.download);
+  const bu = dirBloat(r, r.upload);
+  if (bd) parts.push(`${least(bd.atLeast)}+${speedMs(bd.ms)} in download`);
+  if (bu) parts.push(`${least(bu.atLeast)}+${speedMs(bu.ms)} in upload`);
   return parts.length ? parts.join(' · ') : 'non misurata';
+}
+
+/**
+ * Latenza durante un trasferimento, con le sonde senza risposta:
+ * "43 ms (+19 ms; 95° percentile +31 ms)", "almeno 1000 ms (almeno +976
+ * ms; …), 12 sonde su 12 senza risposta entro 1 s". '' senza sonde.
+ */
+export function speedLoadedText(r: SpeedTest, d?: SpeedDir): string {
+  const l = d && d.latency;
+  if (!d || !l || !l.sent) return '';
+  const wait = waitLabel(probeWait(r));
+  const lost = l.sent > l.received ? `${l.sent - l.received} sonde su ${l.sent} senza risposta entro ${wait}` : '';
+  if (l.medianMs === undefined) {
+    const b = dirBloat(r, d);
+    return b ? `${lost}: almeno +${speedMs(b.ms)} rispetto al riposo` : `non misurata${lost ? `: ${lost}` : ''}`;
+  }
+  const add =
+    d.bloatMs !== undefined
+      ? ` (${least(l.medianAtLeast)}+${speedMs(d.bloatMs)}${d.bloatP95Ms !== undefined ? `; 95° percentile ${least(l.p95AtLeast)}+${speedMs(d.bloatP95Ms)}` : ''})`
+      : '';
+  return `${least(l.medianAtLeast)}${speedMs(l.medianMs)}${add}${lost ? `, ${lost}` : ''}`;
 }
 
 /** Note di metodo che valgono per ogni risultato: Wi-Fi, proxy, linee molto veloci, simulazione. */
@@ -212,8 +302,9 @@ export function analyzeSpeed(scan: Scan, add: (f: Omit<Finding, 'actions'> & { a
     return;
   }
   const parts = [
-    `Misura con il server M-Lab di ${where}${r.startedAt ? `, il ${dateIt(r.startedAt)}` : ''}, una sola connessione per verso:${mbpsText(d!.mbps)} in download${measured(u) ? ` e ${mbpsText(u!.mbps)} in upload` : ''}.`,
+    `Misura con il server M-Lab di ${where}${r.startedAt ? `, il ${dateIt(r.startedAt)}` : ''}, una sola connessione per verso: ${mbpsText(d!.mbps)} in download${measured(u) ? ` e ${mbpsText(u!.mbps)} in upload` : ''}.`,
   ];
+  if (u && u.server) parts.push(`L'upload è stato misurato su un altro server: ${speedWhere(u.server)}, perché M-Lab non proponeva più quello del download.`);
   if (u && !measured(u)) parts.push(`Upload non misurato${u.error ? `: ${speedErr(u.error)}` : ''}.`);
   if (d!.error) parts.push(`Download: ${speedErr(d!.error)}.`);
   if (u && measured(u) && u.error) parts.push(`Upload: ${speedErr(u.error)}.`);
@@ -240,19 +331,32 @@ export function analyzeSpeed(scan: Scan, add: (f: Omit<Finding, 'actions'> & { a
   const b = speedBloat(r);
   if (b.worst !== undefined && r.idle && r.idle.medianMs !== undefined) {
     const idle = speedMs(r.idle.medianMs);
+    const wait = waitLabel(probeWait(r));
+    const idleLost = r.idle.received < r.idle.sent;
     const worst = `+${speedMs(b.worst)}`;
-    const p95 = b.worstP95 !== undefined ? ` (95° percentile +${speedMs(b.worstP95)})` : '';
+    const p95 = b.worstP95 !== undefined ? ` (95° percentile ${least(b.p95AtLeast)}+${speedMs(b.worstP95)})` : '';
     const dirText = b.dir === 'upload' ? 'in upload' : 'in download';
-    let verdict =
-      b.severity === 'ok'
-        ? `Con la linea satura la latenza resta contenuta: al massimo ${worst} ${dirText}${p95} rispetto ai ${idle} a riposo. Chiamate e videochiamate reggono anche mentre qualcuno scarica o carica file.`
-        : b.severity === 'warn'
-          ? `Con la linea satura la latenza sale di ${speedMs(b.worst)} ${dirText}${p95} rispetto ai ${idle} a riposo: si nota nelle videochiamate e nei giochi quando qualcuno scarica o carica file.`
-          : `Con la linea satura la latenza sale di ${speedMs(b.worst)} ${dirText}${p95} rispetto ai ${idle} a riposo: chiamate e videochiamate si spezzano quando la linea è piena (backup, aggiornamenti, caricamenti).`;
+    let verdict: string;
+    if (b.atLeast)
+      // Coda oltre l'attesa delle sonde: la maggior parte non ha avuto risposta.
+      verdict = `Con la linea satura la maggior parte delle sonde ${dirText} non ha avuto risposta entro ${wait}, mentre a riposo rispondevano in ${idle}: la latenza aggiunta è di almeno ${speedMs(b.worst)}. La coda supera probabilmente ${wait}, oppure il modem o il router scartano i pacchetti: chiamate e videochiamate si bloccano quando la linea è piena (backup, aggiornamenti, caricamenti).`;
+    else if (b.raised)
+      verdict = `Con la linea satura la latenza mediana sale di ${speedMs(b.worst)} ${dirText} rispetto ai ${idle} a riposo, ma ${b.excess} sonde su ${b.sent} non hanno avuto risposta entro ${wait}${idleLost ? ' (oltre a quelle perse anche a riposo)' : ', mentre a riposo rispondevano'}: probabilmente ci sono picchi di coda oltre ${wait} (o pacchetti scartati), che disturbano chiamate e videochiamate.`;
+    else
+      verdict =
+        b.severity === 'ok'
+          ? `Con la linea satura la latenza resta contenuta: al massimo ${worst} ${dirText}${p95} rispetto ai ${idle} a riposo. Chiamate e videochiamate reggono anche mentre qualcuno scarica o carica file.`
+          : b.severity === 'warn'
+            ? `Con la linea satura la latenza sale di ${speedMs(b.worst)} ${dirText}${p95} rispetto ai ${idle} a riposo: si nota nelle videochiamate e nei giochi quando qualcuno scarica o carica file.`
+            : `Con la linea satura la latenza sale di ${speedMs(b.worst)} ${dirText}${p95} rispetto ai ${idle} a riposo: chiamate e videochiamate si spezzano quando la linea è piena (backup, aggiornamenti, caricamenti).`;
     if (b.severity !== 'ok')
       verdict += b.dir === 'upload' ? ' La coda si forma di solito nel modem o nel router, nel verso dell\'upload.' : ' La coda si forma nel router, nel modem o presso l\'operatore.';
-    if (b.sent > 0 && (100 * b.lost) / b.sent > SPEED_LOST_NOTE_PCT)
-      verdict += ` ${b.lost} sonde su ${b.sent} sono rimaste senza risposta durante i trasferimenti: la coda può essere anche più lunga di quanto misurato.`;
+    if (!b.atLeast && !b.raised && b.sent > 0) {
+      if ((100 * b.excess) / b.sent > SPEED_LOST_NOTE_PCT)
+        verdict += ` ${b.lost} sonde su ${b.sent} non hanno avuto risposta entro ${wait} durante i trasferimenti: nel calcolo contano come latenza di almeno ${wait}${idleLost ? ', tolta la quota persa anche a riposo' : ''}.`;
+      else if ((100 * b.lost) / b.sent > SPEED_LOST_NOTE_PCT)
+        verdict += ` ${b.lost} sonde su ${b.sent} sono rimaste senza risposta durante i trasferimenti, ma se ne perdevano anche a riposo: indicano perdite sulla linea più che una coda.`;
+    }
     if (wifi && b.severity !== 'ok') verdict += ' Parte della coda può essere nel Wi-Fi: confronta con un test via cavo.';
     if (r.simulated) verdict = `Simulazione. ${verdict}`;
     const actions: string[] = b.severity === 'ok' ? [] : ['enable-sqm', 'reduce-load'];
@@ -297,8 +401,9 @@ export function speedTextLines(r: SpeedTest): string[] {
       out.push(`${name}: non misurato${d.error ? ` (${speedErr(d.error)})` : ''}`);
       return;
     }
-    const lat = d.latency && d.latency.medianMs !== undefined ? `; latenza ${speedMs(d.latency.medianMs)}${d.bloatMs !== undefined ? ` (+${speedMs(d.bloatMs)}, 95° percentile +${speedMs(d.bloatP95Ms || 0)})` : ''}` : '';
-    out.push(`${name}: ${mbpsText(d.mbps)}, ${speedBytes(d.bytes)} in ${fmt(d.ms / 1000, 1)} s${d.capped ? ' (limite di 250 MB)' : ''}${lat}`);
+    const loaded = speedLoadedText(r, d);
+    out.push(`${name}: ${mbpsText(d.mbps)}, ${speedBytes(d.bytes)} in ${fmt(d.ms / 1000, 1)} s${d.capped ? ' (limite di 250 MB)' : ''}${loaded ? `; latenza ${loaded}` : ''}`);
+    if (d.server) out.push(`${name}: su un altro server di M-Lab, ${speedWhere(d.server)}`);
     if (d.error) out.push(`${name}: ${speedErr(d.error)}`);
   };
   dir('Download', r.download);
@@ -306,7 +411,10 @@ export function speedTextLines(r: SpeedTest): string[] {
   if (r.idle && r.idle.medianMs !== undefined)
     out.push(`Latenza a riposo: ${speedMs(r.idle.medianMs)} (mediana, ${r.probeMethod === 'tcp' ? 'connessioni TCP' : 'ping'} verso ${r.probe || 'un server pubblico'})`);
   const b = speedBloat(r);
-  if (b.worst !== undefined) out.push(`Latenza sotto carico: ${BLOAT_LABEL[b.severity]} (soglie di Polaris: sotto ${SPEED_BLOAT_WARN_MS} ms in più va bene, oltre ${SPEED_BLOAT_CRIT_MS} ms è alta)`);
+  if (b.worst !== undefined)
+    out.push(
+      `Latenza sotto carico: ${BLOAT_LABEL[b.severity]}, ${least(b.atLeast)}+${speedMs(b.worst)} ${b.dir === 'upload' ? 'in upload' : 'in download'}${b.raised ? `, ${b.excess} sonde su ${b.sent} senza risposta` : ''} (soglie di Polaris: sotto ${SPEED_BLOAT_WARN_MS} ms in più va bene, oltre ${SPEED_BLOAT_CRIT_MS} ms è alta)`,
+    );
   const d = r.download;
   if (d && d.minRttMs !== undefined) out.push(`Andata e ritorno minimo verso il server: ${speedMs(d.minRttMs)}`);
   if (d && d.retransPct !== undefined) out.push(`Dati ritrasmessi in download: ${fmt(d.retransPct, 1)} %`);
@@ -325,11 +433,10 @@ export function speedDocRows(r: SpeedTest): [string, string][] {
   dirRow('Download', r.download);
   dirRow('Upload', r.upload);
   if (r.idle && r.idle.medianMs !== undefined) rows.push(['Latenza a riposo', `${speedMs(r.idle.medianMs)} (mediana)`]);
-  const loaded = (d?: SpeedDir) =>
-    d && d.latency && d.latency.medianMs !== undefined ? `${speedMs(d.latency.medianMs)}${d.bloatMs !== undefined ? ` (+${speedMs(d.bloatMs)})` : ''}` : '';
-  const ld = loaded(r.download);
-  const lu = loaded(r.upload);
-  if (ld || lu) rows.push(['Latenza sotto carico', [ld ? `${ld} in download` : '', lu ? `${lu} in upload` : ''].filter(Boolean).join('; ')]);
-  rows.push(['Server', `M-Lab, ${speedWhere(r.server)}`]);
+  const ld = speedLoadedText(r, r.download);
+  const lu = speedLoadedText(r, r.upload);
+  if (ld || lu) rows.push(['Latenza sotto carico', [ld ? `download: ${ld}` : '', lu ? `upload: ${lu}` : ''].filter(Boolean).join('; ')]);
+  const up = r.upload && r.upload.server;
+  rows.push(['Server', `M-Lab, ${speedWhere(r.server)}${up ? `; upload: ${speedWhere(up)}` : ''}`]);
   return rows;
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"lanterna/internal/bench"
 	"lanterna/internal/scan"
 	"lanterna/internal/speedtest"
 )
@@ -134,4 +135,58 @@ func waitFor(t *testing.T, ok func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("tempo scaduto")
+}
+
+// Il test di Internet e quelli della CPU o del disco non girano insieme: si
+// falserebbero a vicenda.
+func TestSpeedTestExcludesBench(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	s.SpeedLimit = speedtest.NewLimiter()
+	release := make(chan struct{})
+	s.BenchCPU = func(ctx context.Context, _ bench.Report) (*scan.CPUBench, error) {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return &scan.CPUBench{}, nil
+	}
+	speedCalls := 0
+	s.SpeedTest = func(ctx context.Context, _ func(speedtest.Progress)) (*scan.SpeedTest, error) {
+		speedCalls++
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return &scan.SpeedTest{Provider: "mlab-ndt7", Download: &scan.SpeedDir{Mbps: 50, Bytes: 1, Ms: 1}}, nil
+	}
+	// CPU in corso: niente test di Internet, e il rifiuto non conta per i limiti.
+	if r := doBody(t, h, "POST", "/api/bench", "application/json", `{"kind":"cpu"}`); r.Code != http.StatusAccepted {
+		t.Fatalf("avvio del test della CPU: %d %s", r.Code, r.Body)
+	}
+	r := doBody(t, h, "POST", "/api/speedtest", "application/json", `{"consent":true}`)
+	if r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "test della CPU o del disco in corso") {
+		t.Fatalf("test di Internet durante quello della CPU: %d %s", r.Code, r.Body)
+	}
+	if st := speedGet(t, h); st.Left != speedtest.DefaultPerDay || st.WaitSec != 0 || speedCalls != 0 {
+		t.Fatalf("il rifiuto ha contato: %+v, chiamate %d", st, speedCalls)
+	}
+	close(release)
+	s.WaitBench()
+	// Test di Internet in corso: niente test della CPU.
+	release = make(chan struct{})
+	if r := doBody(t, h, "POST", "/api/speedtest", "application/json", `{"consent":true}`); r.Code != http.StatusAccepted {
+		t.Fatalf("avvio del test di Internet: %d %s", r.Code, r.Body)
+	}
+	r = doBody(t, h, "POST", "/api/bench", "application/json", `{"kind":"cpu"}`)
+	if r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "test di velocità di Internet in corso") {
+		t.Fatalf("test della CPU durante quello di Internet: %d %s", r.Code, r.Body)
+	}
+	close(release)
+	s.WaitSpeed()
+	if st := speedGet(t, h); st.Result == nil || st.Error != "" {
+		t.Fatalf("esito: %+v", st)
+	}
 }

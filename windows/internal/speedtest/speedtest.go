@@ -46,10 +46,12 @@ const (
 	earlyExit = "250"
 	// maxResults: Locate ne restituisce al massimo quattro.
 	maxResults = 4
-	// tokenTTL: gli indirizzi di Locate scadono dopo un minuto; oltre questo
-	// margine si chiede di nuovo a Locate prima di collegarsi.
-	tokenTTL = 55 * time.Second
 )
+
+// tokenTTL: gli indirizzi di Locate scadono dopo un minuto; oltre questo
+// margine si chiede di nuovo a Locate prima di collegarsi. È una variabile
+// solo perché i test la accorciano.
+var tokenTTL = 55 * time.Second
 
 // Fasi del test, nell'ordine.
 const (
@@ -98,6 +100,10 @@ type Options struct {
 	// ProbeEvery: intervallo delle sonde ICMP (250 ms); quelle TCP vanno a
 	// metà ritmo.
 	ProbeEvery time.Duration
+	// ProbeTimeout: quanto Ping aspetta la risposta (1 s, come QuickPing).
+	// Durante i trasferimenti una sonda senza risposta conta come latenza
+	// di almeno questo valore.
+	ProbeTimeout time.Duration
 	// UploadCap: byte al massimo in upload (DefaultUploadCap).
 	UploadCap int64
 	Progress  func(Progress)
@@ -125,6 +131,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.ProbeEvery <= 0 {
 		o.ProbeEvery = 250 * time.Millisecond
+	}
+	if o.ProbeTimeout <= 0 {
+		o.ProbeTimeout = time.Second
 	}
 	if o.UploadCap <= 0 {
 		o.UploadCap = DefaultUploadCap
@@ -157,7 +166,7 @@ func Run(ctx context.Context, opt Options) (*scan.SpeedTest, error) {
 	locatedAt := opt.Now()
 
 	// Latenza a riposo: prima di ogni trasferimento, con la linea libera.
-	p := &prober{ping: opt.Ping, every: opt.ProbeEvery, now: opt.Now}
+	p := &prober{ping: opt.Ping, every: opt.ProbeEvery, now: opt.Now, timeout: opt.ProbeTimeout}
 	idle := p.run(ctx, opt.Idle, func(v *float64, el time.Duration) {
 		opt.Progress(Progress{Phase: PhaseIdle, LatencyMs: v, ElapsedMs: el.Milliseconds(), PhaseMs: opt.Idle.Milliseconds()})
 	})
@@ -166,6 +175,10 @@ func Run(ctx context.Context, opt Options) (*scan.SpeedTest, error) {
 	}
 	res.ProbeMethod = p.method()
 	res.Idle = latencyOf(idle)
+	timeoutMs := float64(opt.ProbeTimeout.Milliseconds())
+	if res.Idle != nil {
+		res.ProbeTimeoutMs = int(timeoutMs)
+	}
 
 	// Download sul primo server che accetta, poi upload sullo stesso. Un
 	// server può rifiutare il test (capacità esaurita): si passa al successivo.
@@ -201,11 +214,15 @@ func Run(ctx context.Context, opt Options) (*scan.SpeedTest, error) {
 	if dl == nil {
 		return nil, noServer(lastErr)
 	}
-	res.Server = &used.server
+	// Copia: used può cambiare prima dell'upload, il server del download no.
+	dlServer := used.server
+	res.Server = &dlServer
 	res.ViaProxy = t.viaProxy(used.download)
-	res.Download = dl.dir(res.Idle)
+	res.Download = dl.dir(res.Idle, timeoutMs)
 
 	if opt.Now().Sub(locatedAt) > tokenTTL {
+		// Gli indirizzi sono scaduti: si chiedono di nuovo, restando se
+		// possibile sullo stesso server.
 		if fresh, err := t.locate(ctx); err == nil {
 			used = preferSame(fresh, []target{used})[0]
 		}
@@ -217,7 +234,13 @@ func Run(ctx context.Context, opt Options) (*scan.SpeedTest, error) {
 	if err != nil {
 		res.Upload = &scan.SpeedDir{Error: "upload non riuscito: " + describe(err)}
 	} else {
-		res.Upload = ul.dir(res.Idle)
+		res.Upload = ul.dir(res.Idle, timeoutMs)
+	}
+	// M-Lab non proponeva più il server del download: l'upload è stato
+	// misurato su un altro, e il risultato lo dice.
+	if used.server.Machine != dlServer.Machine {
+		upServer := used.server
+		res.Upload.Server = &upServer
 	}
 	res.DurationMs = opt.Now().Sub(start).Milliseconds()
 	return res, nil

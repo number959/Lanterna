@@ -21,7 +21,9 @@ import (
 
 // measurement è il messaggio di misura di ndt7 (testo JSON). Si leggono solo
 // AppInfo e TCPInfo: ConnectionInfo (indirizzo e porta del PC, identificativo
-// del test) non ha un campo qui e quindi non viene mai conservato.
+// del test) non ha un campo qui e quindi non viene mai conservato. Il server
+// di M-Lab (ndt-server) invia TCPInfo, BBRInfo e ConnectionInfo, non AppInfo,
+// che la specifica lascia facoltativo.
 type measurement struct {
 	AppInfo *struct {
 		ElapsedTime int64 `json:"ElapsedTime"` // µs
@@ -29,12 +31,21 @@ type measurement struct {
 	} `json:"AppInfo"`
 	Origin  string `json:"Origin"`
 	TCPInfo *struct {
-		BytesSent    *int64 `json:"BytesSent"`
-		BytesRetrans *int64 `json:"BytesRetrans"`
-		MinRTT       *int64 `json:"MinRTT"` // µs
-		RTT          *int64 `json:"RTT"`    // µs
+		// Byte a livello TCP (comprese le intestazioni di TLS e WebSocket):
+		// confermati dal PC in download, ricevuti dal server in upload.
+		BytesAcked    *int64 `json:"BytesAcked"`
+		BytesReceived *int64 `json:"BytesReceived"`
+		BytesSent     *int64 `json:"BytesSent"`
+		BytesRetrans  *int64 `json:"BytesRetrans"`
+		ElapsedTime   *int64 `json:"ElapsedTime"` // µs dall'inizio del test, orologio del server
+		MinRTT        *int64 `json:"MinRTT"`      // µs
+		RTT           *int64 `json:"RTT"`         // µs
 	} `json:"TCPInfo"`
 }
+
+// earlyExitBytes: il server ferma il download quando il PC ha confermato
+// 250 MB (TCPInfo.BytesAcked, early_exit=250).
+const earlyExitBytes = 250_000_000
 
 // dirResult è l'esito grezzo di un verso del test.
 type dirResult struct {
@@ -57,6 +68,9 @@ const (
 	maxMessage = 1 << 20
 	// readLimit: la specifica chiede di accettare messaggi fino a 1<<24 byte.
 	readLimit = 1 << 25
+	// closeGrace: dopo una scrittura fallita in upload, quanto si aspetta il
+	// messaggio di chiusura del server prima di dire il trasferimento interrotto.
+	closeGrace = 500 * time.Millisecond
 )
 
 // testURL aggiunge all'indirizzo di Locate (che porta il gettone di
@@ -267,8 +281,10 @@ func (t *tester) receiveDownload(ctx context.Context, conn *websocket.Conn, star
 	if !normalEnd(endErr) {
 		r.partial = describe(endErr)
 	}
-	// early_exit: il server si ferma dopo 250 MB.
-	if r.bytes >= 250_000_000 || (r.server != nil && r.server.AppInfo != nil && r.server.AppInfo.NumBytes >= 250_000_000) {
+	// early_exit: il server si ferma dopo 250 MB confermati dal PC (contati
+	// con le intestazioni di TLS, quindi i byte utili sono un po' meno).
+	if r.bytes >= earlyExitBytes || (r.server != nil && r.server.TCPInfo != nil && r.server.TCPInfo.BytesAcked != nil && *r.server.TCPInfo.BytesAcked >= earlyExitBytes) ||
+		(r.server != nil && r.server.AppInfo != nil && r.server.AppInfo.NumBytes >= earlyExitBytes) {
 		r.capped = true
 	}
 	return r, nil
@@ -351,6 +367,22 @@ loop:
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+	if sendErr != nil && !serverClosed {
+		// Il server può avviare la chiusura in qualunque momento (specifica;
+		// ndt-server lo fa dopo 10 secondi del suo orologio): una scrittura
+		// che fallisce subito dopo il suo messaggio di chiusura è una fine
+		// regolare. Si aspetta un attimo che il lettore lo riceva.
+		select {
+		case readErr = <-readDone:
+			serverClosed = true
+		case <-time.After(closeGrace):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		if errors.Is(sendErr, websocket.ErrCloseSent) || (serverClosed && websocket.IsCloseError(readErr, websocket.CloseNormalClosure, websocket.CloseGoingAway)) {
+			sendErr = nil
+		}
+	}
 	if !serverClosed {
 		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), hard)
 		wait := time.Until(hard)
@@ -388,20 +420,42 @@ func normalEnd(err error) bool {
 	return errors.As(err, &ne) && ne.Timeout()
 }
 
+// serverCount: byte ricevuti dal server e tempo trascorso sul suo orologio,
+// dall'ultimo messaggio di misura: prima TCPInfo (BytesReceived ed
+// ElapsedTime, che il server di M-Lab invia), poi AppInfo (facoltativo).
+// Vale solo se copre almeno metà del tempo misurato dal PC: un messaggio
+// dei primi istanti direbbe poco.
+func (r *dirResult) serverCount() (bytes int64, elapsed time.Duration, ok bool) {
+	m := r.server
+	if m == nil {
+		return 0, 0, false
+	}
+	if ti := m.TCPInfo; ti != nil && ti.BytesReceived != nil && ti.ElapsedTime != nil && *ti.BytesReceived > 0 && *ti.ElapsedTime > 0 {
+		bytes, elapsed = *ti.BytesReceived, time.Duration(*ti.ElapsedTime)*time.Microsecond
+	} else if a := m.AppInfo; a != nil && a.NumBytes > 0 && a.ElapsedTime > 0 {
+		bytes, elapsed = a.NumBytes, time.Duration(a.ElapsedTime)*time.Microsecond
+	} else {
+		return 0, 0, false
+	}
+	return bytes, elapsed, 2*elapsed >= r.elapsed
+}
+
 // dir trasforma l'esito grezzo nel risultato, con il bufferbloat rispetto
-// alla latenza a riposo.
-func (r *dirResult) dir(idle *scan.SpeedLatency) *scan.SpeedDir {
+// alla latenza a riposo; timeoutMs è l'attesa delle sonde di latenza.
+func (r *dirResult) dir(idle *scan.SpeedLatency, timeoutMs float64) *scan.SpeedDir {
 	d := &scan.SpeedDir{Bytes: r.bytes, Ms: r.elapsed.Milliseconds(), Source: "client", Capped: r.capped}
 	if r.elapsed > 0 {
 		d.Mbps = round1(float64(r.bytes) * 8 / r.elapsed.Seconds() / 1e6)
 	}
+	// In upload conta ciò che il server ha ricevuto, nel suo tempo: i byte
+	// scritti dal PC comprendono quelli ancora in coda (nel buffer di invio
+	// di Windows e nel modem) quando smette di inviare, e su un upload lento
+	// o con molta coda darebbero una velocità più alta del vero.
+	if b, el, ok := r.serverCount(); r.upload && ok {
+		d.Bytes, d.Ms, d.Source = b, el.Milliseconds(), "server"
+		d.Mbps = round1(float64(b) * 8 / el.Seconds() / 1e6)
+	}
 	if m := r.server; m != nil {
-		// In upload conta ciò che il server ha ricevuto: i byte scritti dal
-		// PC includono quelli ancora in coda nel suo buffer di invio.
-		if r.upload && m.AppInfo != nil && m.AppInfo.ElapsedTime > 0 && m.AppInfo.NumBytes > 0 {
-			d.Mbps = round1(float64(m.AppInfo.NumBytes) * 8 / float64(m.AppInfo.ElapsedTime))
-			d.Source = "server"
-		}
 		if ti := m.TCPInfo; ti != nil {
 			if ti.MinRTT != nil && *ti.MinRTT > 0 {
 				d.MinRTTMs = scan.Ptr(round1(float64(*ti.MinRTT) / 1000))
@@ -415,7 +469,7 @@ func (r *dirResult) dir(idle *scan.SpeedLatency) *scan.SpeedDir {
 			}
 		}
 	}
-	d.Latency = latencyOf(r.loaded)
+	d.Latency = loadedLatencyOf(r.loaded, idle, timeoutMs)
 	if idle != nil && idle.MedianMs != nil && d.Latency != nil && d.Latency.MedianMs != nil {
 		d.BloatMs = scan.Ptr(round1(max(0, *d.Latency.MedianMs-*idle.MedianMs)))
 		d.BloatP95Ms = scan.Ptr(round1(max(0, *d.Latency.P95Ms-*idle.MedianMs)))

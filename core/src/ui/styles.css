@@ -942,6 +942,7 @@ select.field { cursor: pointer; }
 .speed-bloat .sev { font-size: 13px; }
 .speed-sub { font-size: 13px; font-weight: 500; color: var(--text-3); }
 .speed-server { font-size: 16px; overflow-wrap: anywhere; }
+.speed-server .speed-sub { display: block; margin-top: 4px; }
 .speed-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 8px 18px; margin: 0; }
 .speed-facts > div { min-width: 0; }
 .speed-facts dt { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }

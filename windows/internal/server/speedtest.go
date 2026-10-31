@@ -45,13 +45,22 @@ func (s *Server) speedLimiter() *speedtest.Limiter {
 }
 
 // startSpeed avvia il test in background. Ordine dei lock come in
-// startBench: prima mu (l'analisi), poi speedMu.
+// startBench: prima mu (l'analisi), poi benchMu, poi speedMu. Non parte
+// durante un'analisi né durante il test della CPU o del disco: si
+// falserebbero a vicenda (la cifratura del test pesa sulla CPU alle velocità
+// alte, il punteggio della CPU dipende dal carico).
 func (s *Server) startSpeed() (int, error) {
 	lim := s.speedLimiter()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.running {
 		return http.StatusConflict, errors.New("analisi in corso: il test di velocità ne falserebbe le misure")
+	}
+	s.benchMu.Lock()
+	benchBusy := s.benchRunning
+	s.benchMu.Unlock()
+	if benchBusy {
+		return http.StatusConflict, errors.New("test della CPU o del disco in corso: il test di velocità di Internet ne sarebbe falsato, attendi che finisca")
 	}
 	s.speedMu.Lock()
 	defer s.speedMu.Unlock()
