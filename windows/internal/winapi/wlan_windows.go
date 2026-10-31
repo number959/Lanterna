@@ -199,11 +199,10 @@ func Wifi(ctx context.Context, rescan bool) (*scan.WifiData, error) {
 		if !found && c.Channel > 0 {
 			// La rete collegata non è nella scansione (permessi o scansione
 			// incompleta): la si aggiunge con i dati della connessione, senza
-			// inventare la larghezza di canale (0 = sconosciuta).
-			band := "2.4"
-			if c.Channel > 14 {
-				band = "5"
-			}
+			// inventare la larghezza di canale (0 = sconosciuta). Senza la
+			// frequenza la banda si deduce dal canale: "oltre 14 = 5 GHz"
+			// scambierebbe il 6 GHz per il 5 GHz.
+			band := wlan.BandFor(0, c.Channel)
 			c.Band = band
 			bs := scan.Bss{SSID: c.SSID, BSSID: c.BSSID, FreqMhz: wlan.ChannelToFreq(c.Channel, band), Channel: c.Channel, Band: band, Phy: c.Phy, Connected: true}
 			switch {

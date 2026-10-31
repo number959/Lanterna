@@ -32,6 +32,11 @@
 //	POST /api/open      apre uno strumento di Windows, un programma incluso,
 //	                    scaricato o installato, o il sito ufficiale
 //	                    ({"tool": "cpu-z", "target": "site"})
+//	GET  /api/crashes  rilegge file e impostazioni delle schermate blu (solo letture)
+//	POST /api/wifi/survey misura il Wi-Fi in un punto per la mappa per stanza
+//	                    ({"room": "Soggiorno", "seconds": 15, "scan": true})
+//	GET  /api/wifi/survey avanzamento ed esito della misura
+//	DELETE /api/wifi/survey interrompe la misura
 //
 // Ascolta solo su 127.0.0.1 e rifiuta richieste con Host diverso (difesa dal
 // DNS rebinding) e POST provenienti da altre origini (difesa dal CSRF). Le
@@ -66,6 +71,7 @@ import (
 	"lanterna/internal/scan"
 	"lanterna/internal/sensors"
 	"lanterna/internal/space"
+	"lanterna/internal/survey"
 	"lanterna/internal/tools"
 )
 
@@ -115,6 +121,10 @@ type Server struct {
 	// leggere gli stessi file due volte insieme.
 	Crashes   func(ctx context.Context) (*scan.CrashData, error)
 	crashesMu sync.Mutex
+	// Survey misura il Wi-Fi in un punto per la mappa per stanza (nil = non
+	// disponibile). Non si sovrappone a un'analisi o a un inventario.
+	Survey func(ctx context.Context, opt survey.Options) (*scan.SurveySample, error)
+	survey surveyJob
 
 	// Test di velocità (nil = non disponibili). Non partono durante
 	// un'analisi e viceversa: si falserebbero a vicenda.
@@ -238,6 +248,10 @@ func (s *Server) startScan() error {
 	if busy {
 		s.mu.Unlock()
 		return errBenchRunning
+	}
+	if s.surveyBusy() {
+		s.mu.Unlock()
+		return errSurveyRunning
 	}
 	s.running, s.runErr, s.steps = true, "", nil
 	s.scanDone = make(chan struct{})
@@ -428,6 +442,9 @@ func (s *Server) startBench(kind, drive string) error {
 	s.spaceMu.Unlock()
 	if spaceBusy {
 		return errors.New("analisi dello spazio in corso: il test di velocità ne sarebbe falsato")
+	}
+	if s.surveyBusy() {
+		return errors.New("misura del Wi-Fi in corso: il test di velocità ne falserebbe i valori. Riprova quando la misura è finita")
 	}
 	timeout := 2 * time.Minute
 	if kind == "disk" {
@@ -750,6 +767,10 @@ func (s *Server) Handler() http.Handler {
 		}
 		if err != nil {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
+		if s.surveyBusy() {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": errSurveyRunning.Error()})
 			return
 		}
 		if !s.startInventory(req) {
@@ -1238,6 +1259,7 @@ func (s *Server) Handler() http.Handler {
 			files.ServeHTTP(w, r)
 		}))
 	}
+	s.surveyRoutes(mux)
 	return guard(mux)
 }
 

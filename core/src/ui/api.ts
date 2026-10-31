@@ -1,4 +1,4 @@
-import type { CertData, CertTarget, CpuBench, DefenderInfo, DiskBench, Inventory, ReachData, ReachTarget, Scan, SpaceReport, Threat } from '../engine';
+import type { CertData, CertTarget, CpuBench, DefenderInfo, DiskBench, Inventory, ReachData, ReachTarget, Scan, SpaceReport, SurveySample, Threat } from '../engine';
 import type { CrashData } from '../engine';
 
 // Comunicazione con l'agente locale (Polaris.exe serve / finestra).
@@ -142,6 +142,65 @@ export async function readCrashes(): Promise<CrashData> {
   const r = await fetch('api/crashes', { cache: 'no-store' });
   if (!r.ok) throw await errorOf(r);
   return (await r.json()) as CrashData;
+}
+
+// ---- Mappa del Wi-Fi per stanza: una misura alla volta, su richiesta.
+
+export interface SurveyProgress {
+  /** "misura" (segnale e ping) o "scansione" (alla fine). */
+  phase: 'misura' | 'scansione';
+  elapsedMs: number;
+  seconds: number;
+  /** Ultima lettura del segnale; rssi: tutte quelle fatte finora. */
+  dbm?: number;
+  rssi: number[];
+  roams: number;
+  pings: number;
+  replies: number;
+}
+
+export interface SurveyState {
+  running: boolean;
+  room?: string;
+  progress?: SurveyProgress;
+  error?: string;
+  /** Esito dell'ultima misura (l'agente lo toglie all'avvio della successiva). */
+  result?: SurveySample;
+}
+
+export interface SurveyRequest {
+  room: string;
+  /** Da 10 a 20 secondi (predefiniti 15). */
+  seconds?: number;
+  /** Una scansione delle reti alla fine (predefinita sì). */
+  scan?: boolean;
+}
+
+export const surveyStatus = () => getJson<SurveyState>('api/wifi/survey');
+
+/** Interrompe la misura in corso. */
+export async function stopSurvey(): Promise<void> {
+  const r = await fetch('api/wifi/survey', { method: 'DELETE', cache: 'no-store' });
+  if (!r.ok) throw await errorOf(r);
+}
+
+/**
+ * Avvia la misura di un punto e ne attende la fine (circa 15 secondi, più
+ * la scansione); `resume` segue una misura già avviata. 409 se è in corso
+ * un'altra misura, un'analisi o un inventario.
+ */
+export async function runSurvey(req: SurveyRequest, onProgress: (st: SurveyState) => void, opts: { resume?: boolean } = {}): Promise<SurveySample> {
+  if (!opts.resume) await postJson<{ started: boolean }>('api/wifi/survey', req);
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 400));
+    const st = await surveyStatus();
+    onProgress(st);
+    if (!st.running) {
+      if (st.error) throw new Error(st.error);
+      if (!st.result) throw new Error('Misura terminata senza risultato');
+      return st.result;
+    }
+  }
 }
 
 // ---- Test di velocità: partono solo su richiesta esplicita dell'utente.

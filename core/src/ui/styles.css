@@ -923,6 +923,75 @@ select.field { cursor: pointer; }
 .crash-empty svg { flex: none; margin-top: 3px; }
 .crash-admin { margin-top: 4px; }
 .crash-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 14px; }
+/* Mappa del Wi-Fi per stanza */
+.wifimap-title { display: flex; align-items: center; gap: 9px; }
+.wifimap-desc { margin-top: 0; }
+.wifimap-before { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 12px 14px; margin: 4px 0 14px; }
+.wifimap-before h3 { margin-bottom: 6px; }
+.wifimap-before ol { margin: 0; padding-left: 20px; display: grid; gap: 3px; font-size: 14px; color: var(--text-2); }
+.wifimap-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; }
+.wifimap-field { display: grid; gap: 5px; min-width: 0; flex: 1 1 100%; }
+.wifimap-field label, .wifimap-secs > span { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.wifimap-hint { font-size: 12.5px; color: var(--text-3); }
+.wifimap-field .reach-err { grid-column: auto; }
+.wifimap-secs { display: grid; gap: 5px; flex: none; }
+.wifimap-secs select { min-width: 132px; }
+.wifimap-scan { flex: 1 1 240px; align-self: center; }
+.wifimap-form .btn.primary { flex: none; }
+.wifimap-note { font-size: 13px; margin: 10px 0 0; }
+.wifimap-live .wifimap-now { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.wifimap-dbm { font-size: 14px; color: var(--text-2); }
+.wifimap-dbm b { font-family: var(--display); font-size: 28px; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; }
+.wifimap-bars { flex: 1 1 160px; display: flex; align-items: flex-end; gap: 3px; height: 36px; min-width: 0; }
+.wifimap-bars i { flex: 1 1 0; min-width: 3px; max-width: 14px; border-radius: 3px 3px 1px 1px; background: var(--accent); }
+.wifimap-bars i.wait { height: 12%; background: var(--surface-3); }
+.wifimap-bars i.info { background: var(--info); }
+.wifimap-bars i.warn { background: var(--warn); }
+.wifimap-bars i.crit { background: var(--crit); }
+.wifimap-bars i.ok { background: var(--ok); }
+.wifimap-results { margin-top: 20px; }
+.wifimap-empty { padding: 20px; }
+.wifimap-list { list-style: none; margin: 10px 0 14px; padding: 0; display: grid; gap: 10px; }
+.wifimap-room { border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); padding: 12px 14px; min-width: 0; }
+.wifimap-room[data-sev='crit'] { border-left-color: var(--crit); }
+.wifimap-room[data-sev='warn'] { border-left-color: var(--warn); }
+.wifimap-room[data-sev='info'] { border-left-color: var(--info); }
+.wifimap-room[data-sev='ok'] { border-left-color: var(--ok); }
+.wifimap-room-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.wifimap-room-name { display: grid; gap: 1px; min-width: 0; flex: 1 1 180px; }
+.wifimap-room-name strong { font-weight: 620; overflow-wrap: anywhere; }
+.wifimap-room-name .faint { font-size: 12.5px; }
+.wifimap-room-dbm { font-size: 14px; color: var(--text-2); white-space: nowrap; }
+.wifimap-room-dbm b { font-family: var(--display); font-size: 19px; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; }
+.wifimap-scale { position: relative; display: flex; height: 8px; margin: 10px 0 2px; border-radius: 8px; overflow: visible; }
+.wifimap-scale .zone { height: 100%; opacity: 0.32; }
+.wifimap-scale .zone:first-child { border-radius: 8px 0 0 8px; }
+.wifimap-scale .zone.ok { border-radius: 0 8px 8px 0; background: var(--ok); }
+.wifimap-scale .zone.info { background: var(--info); }
+.wifimap-scale .zone.warn { background: var(--warn); }
+.wifimap-scale .zone.crit { background: var(--crit); }
+.wifimap-scale .range { position: absolute; top: 2px; height: 4px; border-radius: 4px; background: var(--text-2); opacity: 0.7; }
+.wifimap-scale .dot { position: absolute; top: -3px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--text); border: 2px solid var(--surface); }
+.wifimap-details { margin-top: 10px; }
+.wifimap-details summary { cursor: pointer; color: var(--accent-text); font-weight: 600; font-size: 14px; border-radius: 6px; width: fit-content; }
+.wifimap-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.wifimap-sample { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.wifimap-sample h4, .wifimap-why h4 { margin: 0; font-size: 13px; font-weight: 650; color: var(--text-2); }
+.wifimap-sample .cert-facts { margin-top: 8px; }
+.wifimap-sample .cert-facts .wide { grid-column: 1 / -1; }
+.wifimap-sample > .btn { margin-top: 10px; }
+.wifimap-alt { display: block; margin-top: 3px; }
+.wifimap-why { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.wifimap-why ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; color: var(--text-2); }
+.wifimap-room-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.wifimap-plan ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.wifimap-plan li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; }
+.wifimap-plan li > .sev { padding: 4px 6px; flex: none; }
+.wifimap-plan .link-btn { display: inline; }
+@media (max-width: 560px) {
+  .wifimap-secs { flex: 1 1 100%; }
+  .wifimap-room-dbm { white-space: normal; }
+}
 .roam { display: inline-flex; gap: 3px; }
 .rb { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; font: 650 11.5px/1 var(--mono); color: var(--text-3); border: 1px dashed var(--line-strong); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-3) 70%, transparent); }
 .rb.on { color: var(--ok); border: 1px solid var(--ok-line); background: var(--ok-bg); text-decoration: none; }

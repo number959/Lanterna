@@ -154,6 +154,121 @@ export interface WifiData {
   connected?: WifiConnection;
   networks: Bss[];
   error?: string;
+  /**
+   * Mappa del Wi-Fi per stanza: non la produce l'analisi automatica ma
+   * l'utente, una misura alla volta, dalla sezione Wi-Fi; l'interfaccia la
+   * unisce al rapporto.
+   */
+  survey?: WifiSurvey;
+}
+
+// ---------- Mappa del Wi-Fi per stanza ----------
+
+/** Le misure fatte stanza per stanza con questo PC. */
+export interface WifiSurvey {
+  rooms: SurveyRoom[];
+}
+
+/** Una stanza (nome di luogo scelto dall'utente) con uno o più punti misurati. */
+export interface SurveyRoom {
+  name: string;
+  samples: SurveySample[];
+}
+
+/** Un cambio di access point durante la misura. */
+export interface SurveyRoam {
+  atMs: number;
+  from: string;
+  to: string;
+  fromDbm?: number;
+  toDbm?: number;
+}
+
+/** Ping al router durante la misura, ogni 200 ms, solo verso indirizzi privati o link-local. */
+export interface SurveyPing {
+  target?: string;
+  sent: number;
+  received: number;
+  lossPct: number;
+  medianMs?: number;
+  p95Ms?: number;
+  /** Media delle differenze assolute tra tempi consecutivi (IPDV, RFC 5481). */
+  jitterMs?: number;
+  /** Perché il router non è stato misurato. */
+  skipped?: string;
+  error?: string;
+  /**
+   * I ping sono partiti ma il router non ha risposto a nessuno: molti router
+   * e firewall li ignorano, quindi da solo non è una perdita.
+   */
+  noReply?: boolean;
+}
+
+/** Un altro access point della propria rete (stesso SSID), il migliore della sua banda. */
+export interface SurveyAlt {
+  bssid: string;
+  band: Band;
+  channel: number;
+  rssiDbm: number;
+}
+
+/** Le reti dei vicini, solo come numeri: mai nomi o BSSID. */
+export interface SurveyNeighbors {
+  /** Altre reti sentite, su tutte le bande. */
+  visible: number;
+  /** Reti sullo stesso spettro della rete collegata, quelle sopra -75 dBm e i loro canali. */
+  cochannel: number;
+  strong: number;
+  strongestDbm?: number;
+  channels?: number[];
+}
+
+/** La scansione fatta dopo la misura; le voci sentite più di 10 secondi prima sono scartate (stale). */
+export interface SurveyScan {
+  fresh: number;
+  stale: number;
+  connectedDbm?: number;
+  /** Occupazione del canale dichiarata dall'access point collegato (BSS Load). */
+  utilizationPct?: number;
+  stations?: number;
+  alternatives?: SurveyAlt[];
+  neighbors: SurveyNeighbors;
+  error?: string;
+}
+
+/**
+ * Una misura di 10-20 secondi fatta restando fermi in un punto. I BSSID sono
+ * solo quelli della propria rete e servono alla vista locale: documento ed
+ * esportazioni li sostituiscono con "AP A", "AP B"...
+ */
+export interface SurveySample {
+  room: string;
+  startedAt: string;
+  durationMs: number;
+  seconds: number;
+  ssid: string;
+  band?: Band;
+  channel?: number;
+  widthMhz?: number;
+  phy?: string;
+  /** Segnale ricevuto dal PC, una lettura al secondo (dBm). */
+  rssi: number[];
+  medianDbm: number;
+  minDbm: number;
+  maxDbm: number;
+  p10Dbm: number;
+  spreadDb: number;
+  /** Letture tutte identiche: la scheda forse non aggiorna il valore ogni secondo. */
+  stuck?: boolean;
+  /** La scheda non fornisce i dBm: valori stimati dalla qualità del segnale di Windows (0-100 = da -100 a -50 dBm). */
+  estimated?: boolean;
+  rxMbps?: number;
+  txMbps?: number;
+  bssids: string[];
+  roams: SurveyRoam[];
+  gateway?: SurveyPing;
+  scan?: SurveyScan;
+  notes?: string[];
 }
 
 // ---------- Rete ----------

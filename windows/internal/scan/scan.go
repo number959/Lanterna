@@ -125,6 +125,127 @@ type WifiData struct {
 	Connected *WifiConnection `json:"connected,omitempty"`
 	Networks  []Bss           `json:"networks"`
 	Error     string          `json:"error,omitempty"`
+	// Survey è la mappa del Wi-Fi per stanza: l'analisi automatica non la
+	// produce mai, la compila l'interfaccia una misura alla volta.
+	Survey *WifiSurvey `json:"survey,omitempty"`
+}
+
+// ---------- mappa del Wi-Fi per stanza ----------
+
+// WifiSurvey raccoglie le misure fatte stanza per stanza con questo PC.
+type WifiSurvey struct {
+	Rooms []SurveyRoom `json:"rooms"`
+}
+
+// SurveyRoom è una stanza (nome di luogo scelto dall'utente) con uno o più
+// punti misurati: il giudizio della stanza è quello del punto peggiore.
+type SurveyRoom struct {
+	Name    string         `json:"name"`
+	Samples []SurveySample `json:"samples"`
+}
+
+// SurveySample è una misura di 10-20 secondi fatta restando fermi in un
+// punto. I BSSID sono solo quelli della rete a cui il PC è collegato e
+// servono per la vista locale; le reti dei vicini compaiono solo come
+// conteggi, canali e dBm, mai con nome o BSSID.
+type SurveySample struct {
+	Room       string `json:"room"`
+	StartedAt  string `json:"startedAt"`
+	DurationMs int64  `json:"durationMs"`
+	Seconds    int    `json:"seconds"`
+	SSID       string `json:"ssid"`
+	Band       string `json:"band,omitempty"`
+	Channel    int    `json:"channel,omitempty"`
+	WidthMhz   int    `json:"widthMhz,omitempty"`
+	Phy        string `json:"phy,omitempty"`
+	// Rssi: segnale ricevuto dal PC, una lettura al secondo (dBm).
+	Rssi      []int   `json:"rssi"`
+	MedianDbm float64 `json:"medianDbm"`
+	MinDbm    int     `json:"minDbm"`
+	MaxDbm    int     `json:"maxDbm"`
+	P10Dbm    int     `json:"p10Dbm"`
+	SpreadDb  int     `json:"spreadDb"`
+	// Stuck: tutte le letture identiche, la scheda forse non aggiorna il
+	// valore ogni secondo: instabilità e cali non sono valutabili.
+	Stuck bool `json:"stuck,omitempty"`
+	// Estimated: la scheda non fornisce il segnale in dBm e i valori sono
+	// ricavati dalla qualità del segnale riportata da Windows (0-100 da -100
+	// a -50 dBm, interpolazione lineare documentata da Microsoft).
+	Estimated bool `json:"estimated,omitempty"`
+	// Velocità radio negoziate (mediana, Mbit/s).
+	RxMbps int `json:"rxMbps,omitempty"`
+	TxMbps int `json:"txMbps,omitempty"`
+	// BSSIDs: access point della propria rete a cui il PC è stato collegato
+	// durante la misura, nell'ordine; Roams: i passaggi dall'uno all'altro.
+	BSSIDs  []string     `json:"bssids"`
+	Roams   []SurveyRoam `json:"roams"`
+	Gateway *SurveyPing  `json:"gateway,omitempty"`
+	// Scan: la scansione fatta dopo la misura (assente se esclusa).
+	Scan  *SurveyScan `json:"scan,omitempty"`
+	Notes []string    `json:"notes,omitempty"`
+}
+
+// SurveyRoam è un cambio di access point durante la misura.
+type SurveyRoam struct {
+	AtMs    int64  `json:"atMs"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	FromDbm *int   `json:"fromDbm,omitempty"`
+	ToDbm   *int   `json:"toDbm,omitempty"`
+}
+
+// SurveyPing sono i ping al router (gateway IPv4) durante la misura, ogni
+// 200 ms, solo se il suo indirizzo è privato o link-local. Jitter: media
+// delle differenze assolute tra tempi consecutivi (IPDV, RFC 5481).
+type SurveyPing struct {
+	Target   string   `json:"target,omitempty"`
+	Sent     int      `json:"sent"`
+	Received int      `json:"received"`
+	LossPct  float64  `json:"lossPct"`
+	MedianMs *float64 `json:"medianMs,omitempty"`
+	P95Ms    *float64 `json:"p95Ms,omitempty"`
+	JitterMs *float64 `json:"jitterMs,omitempty"`
+	// Skipped: perché il router non è stato misurato.
+	Skipped string `json:"skipped,omitempty"`
+	Error   string `json:"error,omitempty"`
+	// NoReply: i ping sono partiti ma il router non ha risposto a nessuno.
+	// Molti router e firewall ignorano i ping: da soli non sono perdite.
+	NoReply bool `json:"noReply,omitempty"`
+}
+
+// SurveyScan è ciò che una scansione dopo la misura dice di quel punto.
+// Le voci sentite più di 10 secondi prima si scartano (Stale).
+type SurveyScan struct {
+	Fresh int `json:"fresh"`
+	Stale int `json:"stale"`
+	// La rete collegata vista dalla scansione.
+	ConnectedDbm   *int `json:"connectedDbm,omitempty"`
+	UtilizationPct *int `json:"utilizationPct,omitempty"`
+	Stations       *int `json:"stations,omitempty"`
+	// Alternatives: il miglior altro access point della stessa rete per banda.
+	Alternatives []SurveyAlt     `json:"alternatives,omitempty"`
+	Neighbors    SurveyNeighbors `json:"neighbors"`
+	Error        string          `json:"error,omitempty"`
+}
+
+// SurveyAlt è un altro access point della propria rete (stesso SSID).
+type SurveyAlt struct {
+	BSSID   string `json:"bssid"`
+	Band    string `json:"band"`
+	Channel int    `json:"channel"`
+	RssiDbm int    `json:"rssiDbm"`
+}
+
+// SurveyNeighbors riassume le reti dei vicini, senza nomi né BSSID.
+type SurveyNeighbors struct {
+	// Visible: altre reti sentite, su tutte le bande.
+	Visible int `json:"visible"`
+	// Cochannel: reti che occupano lo stesso spettro della rete collegata;
+	// Strong quelle sopra -75 dBm; Channels i loro canali.
+	Cochannel    int   `json:"cochannel"`
+	Strong       int   `json:"strong"`
+	StrongestDbm *int  `json:"strongestDbm,omitempty"`
+	Channels     []int `json:"channels,omitempty"`
 }
 
 type PingStats struct {

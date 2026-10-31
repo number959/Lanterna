@@ -86,6 +86,7 @@ func ParseInterfaceList(b []byte) ([]Interface, error) {
 
 // Connection è il contenuto utile di WLAN_CONNECTION_ATTRIBUTES.
 type Connection struct {
+	State       uint32 // isState: StateConnected se collegata
 	SSID, BSSID string
 	PhyType     uint32
 	Quality     int
@@ -102,6 +103,7 @@ func ParseConnection(b []byte) (Connection, error) {
 	}
 	const assoc, sec = 520, 588
 	return Connection{
+		State:      u32(b, 0),
 		SSID:       ssid(b[assoc:]),
 		BSSID:      MAC(b[assoc+40 : assoc+46]),
 		PhyType:    u32(b, assoc+48),

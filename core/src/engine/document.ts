@@ -8,6 +8,7 @@ import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } 
 import { dateIt } from './pc';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import { pctText, sizeText, SPACE_CATEGORY_LABEL, SPACE_HINTS, SPACE_RISK_LABEL, unattributedBytes } from './space';
+import { dbmText, gatewayText, radioText, rssiWord, surveyAliases, surveyRooms } from './survey';
 import type { Analysis, EventKind, Finding, Scan, Severity } from './types';
 
 // Documento stampabile ed esportabile sullo stato del PC (e della rete): HTML
@@ -387,6 +388,29 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
         })
         .join('')}</tbody></table><p class="pd-muted pd-small">Controllo del ${esc(dateIt(scan.infra?.certs?.checkedAt ?? ''))}. Attendibilità valutata da Windows su questo PC, senza controllo della revoca.</p></section>`,
     );
+
+  // Mappa del Wi-Fi per stanza: nomi delle stanze scelti dall'utente, access
+  // point come "AP A", "AP B" (mai i BSSID), delle reti vicine solo i numeri.
+  const survey = scan.wifi?.survey;
+  if (survey?.rooms?.length) {
+    const al = surveyAliases(survey);
+    out.push(
+      `<section><h2>Mappa del Wi-Fi per stanza</h2><table class="pd-table"><thead><tr><th>Stanza</th><th>Segnale</th><th>Radio</th><th>Router</th><th>Esito</th></tr></thead><tbody>${surveyRooms(survey, al)
+        .map((r) => {
+          const s = r.worst;
+          const n = r.room.samples.length;
+          const notes = r.issues.filter((i) => i.id !== 'signal').map((i) => i.short);
+          return (
+            `<tr><td><b>${t(r.room.name)}</b>${n > 1 ? `<br><span class="pd-small">il peggiore di ${n} punti</span>` : ''}</td>` +
+            `<td>${esc(dbmText(s.medianDbm))} dBm, ${esc(rssiWord(s.medianDbm))}<br><span class="pd-small">cali fino a ${s.p10Dbm} dBm</span></td>` +
+            `<td>${esc(radioText(s) || '—')}${s.bssids.length ? `<br><span class="pd-small">${esc(s.bssids.map(al).join(' → '))}</span>` : ''}</td>` +
+            `<td class="pd-small">${t(gatewayText(s, r.answering) || '—')}</td>` +
+            `<td>${sev(r.severity)}${notes.length ? `<br><span class="pd-small">${esc(notes.join(', '))}</span>` : ''}</td></tr>`
+          );
+        })
+        .join('')}</tbody></table><p class="pd-muted pd-small">Misure fatte con questo PC, fermo nel punto in cui si lavora, circa 15 secondi per punto; con più punti in una stanza conta il peggiore. I valori valgono per questo dispositivo: un altro, con altre antenne, riceve in modo diverso. Gli access point sono indicati come AP A, AP B; delle reti vicine si riporta solo il numero.</p></section>`,
+    );
+  }
 
   // Piano d'azione con le caselle da spuntare a mano.
   if (a.plan.length)

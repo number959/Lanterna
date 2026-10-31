@@ -52,6 +52,46 @@ export {
   parseBugcheckEvent,
 } from './crash';
 export type { BugcheckInfo, CrashFamily, CrashGroup } from './crash';
+export {
+  analyzeSurvey,
+  bandText,
+  dbmText,
+  dipSeverity,
+  gatewayText,
+  pingAnswerers,
+  pingMeasured,
+  radioText,
+  roomKey,
+  routerSilent,
+  roomSlug,
+  roomValue,
+  rssiMeaning,
+  rssiSeverity,
+  rssiWord,
+  sampleIssues,
+  sampleSeverity,
+  surveyAliases,
+  surveyForExport,
+  surveyRooms,
+  worstSample,
+  SURVEY_CRIT_DBM,
+  SURVEY_GREAT_DBM,
+  SURVEY_INFO_DBM,
+  SURVEY_JITTER_CRIT,
+  SURVEY_JITTER_WARN,
+  SURVEY_LOSS_CRIT,
+  SURVEY_LOSS_WARN,
+  SURVEY_MAX_ROOM,
+  SURVEY_OK_DBM,
+  SURVEY_RTT_CRIT,
+  SURVEY_RTT_WARN,
+  SURVEY_SECONDS,
+  SURVEY_SPREAD_DB,
+  SURVEY_STICKY_DB,
+  SURVEY_STRONG_DBM,
+  SURVEY_UTIL_WARN,
+} from './survey';
+export type { RoomResult, SurveyAliases, SurveyIssue } from './survey';
 export { documentParts, renderDocument } from './document';
 export type { DocOptions } from './document';
 export { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';

@@ -25,7 +25,7 @@ import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apCount, ownRadios, phyLabel, primaryAdapter, secFamily } from '../engine';
-import type { Analysis, AnswerValue, Band, Bss, Category, CertData, CpuBench, DiskBench, InfraData, PcData, Scan, Severity, SpaceReport } from '../engine';
+import type { Analysis, AnswerValue, Band, Bss, Category, CertData, CpuBench, DiskBench, InfraData, PcData, Scan, Severity, SpaceReport, SurveySample, WifiSurvey } from '../engine';
 import { download, openTool } from './api';
 import { ACTION_TOOLS, WINDOWS_TOOLS } from '../tools';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
@@ -41,6 +41,8 @@ import type { SpaceTarget } from './space';
 import type { CertTargetRef } from './certs';
 import type { CrashTargetRef } from './crashes';
 import type { CrashData } from '../engine';
+import { WifiMapCard } from './wifimap';
+import type { SurveyTargetRef } from './wifimap';
 import { cascade, ease, rise, spring, stagger } from './motion';
 
 export type View = 'overview' | 'pc' | 'wifi' | 'lan' | 'internet' | 'router' | 'infra' | 'plan' | 'monitor' | 'guide';
@@ -91,6 +93,14 @@ export interface ViewProps {
    * altrimenti lo dice all'utente e restituisce false.
    */
   addCrashes: (r: CrashData, target: CrashTargetRef) => boolean;
+  /**
+   * Unisce al rapporto una misura della mappa del Wi-Fi (nella sua stanza),
+   * solo se il rapporto mostrato è ancora della rete su cui è partita;
+   * altrimenti restituisce false e, se non è richiesto il silenzio, lo dice.
+   */
+  addSurvey: (r: SurveySample, target: SurveyTargetRef, quiet?: boolean) => boolean;
+  /** Sostituisce la mappa del Wi-Fi del rapporto mostrato (stanze tolte, mappa ripresa dal PC). */
+  setSurvey: (survey?: WifiSurvey) => void;
   /** Aggiorna parti dei dati del computer (per esempio lo stato di Defender dopo una scansione). */
   patchPc: (p: Partial<PcData>) => void;
   assessment: AssessmentState;
@@ -476,7 +486,7 @@ function SignalMeter({ rssi }: { rssi: number }) {
   );
 }
 
-export function WifiView({ scan, analysis: a, go }: ViewProps) {
+export function WifiView({ scan, analysis: a, go, ...rest }: ViewProps) {
   const wifi = scan.wifi;
   const conn = wifi?.connected;
   const me = wifi?.networks.find((b) => b.connected) ?? wifi?.networks.find((b) => b.bssid === conn?.bssid);
@@ -545,6 +555,10 @@ export function WifiView({ scan, analysis: a, go }: ViewProps) {
       )}
 
       {conn && ownRadios(wifi.networks, conn.ssid).length > 1 && <OwnApsCard nets={wifi.networks} me={me} ssid={conn.ssid} />}
+
+      <m.div variants={rise} style={{ marginTop: 16 }}>
+        <WifiMapCard scan={scan} analysis={a} go={go} {...rest} />
+      </m.div>
 
       <Section title="Valutazione">
         <FindingList findings={a.findings.filter((x) => x.id.startsWith('wifi.'))} onAction={(id) => go('plan', id)} />
