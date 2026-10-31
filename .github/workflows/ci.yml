@@ -207,11 +207,15 @@ jobs:
           if ($w.files -lt 10000 -or $w.allocBytes -le 0) { throw "cartella di Windows letta male" }
           if ($w.linkedBytes -le 0) { throw "nessun collegamento fisico contato una volta (WinSxS/System32)" }
           if (@($w.hints | ForEach-Object { $_.id }) -notcontains 'winsxs') { throw "manca WinSxS tra le cartelle note" }
-          # Stesso numero di file di .NET nella cartella System32 (senza sottocartelle).
+          # Stesso numero di file di .NET nella cartella System32 analizzata da sola (senza sottocartelle). Dentro
+          # l'analisi di Windows ne risultano meno: un file con un altro nome che viene prima in ordine alfabetico
+          # (per esempio in Microsoft.NET) si conta là.
+          $s = ./polaris-cli.exe space "$env:SystemRoot\System32" --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "space su System32 fallito" }
           $s32 = $w.tree.children | Where-Object { $_.name -eq 'System32' }
           $net = [System.IO.Directory]::GetFiles("$env:SystemRoot\System32").Count
-          "System32: $($s32.ownFiles) file letti da Polaris, $net da .NET"
-          if (-not $s32 -or [math]::Abs($s32.ownFiles - $net) -gt [math]::Max(5, $net * 0.01)) { throw "conteggio dei file di System32 diverso da .NET" }
+          "System32: $($s.tree.ownFiles) file letti da Polaris ($($s32.ownFiles) nell'analisi di Windows), $net da .NET"
+          if ([math]::Abs($s.tree.ownFiles - $net) -gt [math]::Max(3, $net * 0.002)) { throw "conteggio dei file di System32 diverso da .NET" }
           ./polaris-cli.exe space $env:SystemRoot --top 5
           if ($LASTEXITCODE -ne 0) { throw "space in testo fallito" }
 
@@ -227,6 +231,8 @@ jobs:
           if ($c.allocBytes -lt $used * 0.5) { throw "letto meno della metà dello spazio occupato" }
           if ($c.tree.id -ne 1 -or @($c.tree.children).Count -lt 3) { throw "albero delle cartelle mancante" }
           if ($raw -match [regex]::Escape($env:USERNAME)) { throw "nome utente nei percorsi" }
+          if ($raw -match 'S-1-5-21-\d+-\d+-\d+-\d+') { throw "SID completo nei percorsi" }
+          "Cartelle non lette per errori del disco: $([int]$c.errors)
           if (@($c.hints | ForEach-Object { $_.id }) -notcontains 'pagefile' -and -not (Test-Path "$env:SystemDrive\pagefile.sys")) { "Nessun file di paging su $env:SystemDrive" }
 
           # API: analisi di un'altra unità in background, interruzione, apertura solo per numero.

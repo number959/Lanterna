@@ -17,8 +17,20 @@ import (
 const (
 	fileListDirectory       = 0x0001
 	fileIDBothDirectoryInfo = 10
+	fileFullDirectoryInfo   = 14
 	listBuffer              = 64 << 10
 )
+
+// classify traduce gli errori di Windows in quelli del pacchetto.
+func classify(err error) error {
+	switch {
+	case errors.Is(err, windows.ERROR_FILE_NOT_FOUND), errors.Is(err, windows.ERROR_PATH_NOT_FOUND):
+		return fmt.Errorf("%w: %v", errGone, err)
+	case errors.Is(err, windows.ERROR_ACCESS_DENIED), errors.Is(err, windows.ERROR_PRIVILEGE_NOT_HELD), errors.Is(err, windows.ERROR_SHARING_VIOLATION):
+		return fmt.Errorf("%w: %v", errDenied, err)
+	}
+	return err
+}
 
 // winLister legge le cartelle con GetFileInformationByHandleEx: una sola
 // chiamata restituisce decine o centinaia di voci, con dimensione, spazio
@@ -43,7 +55,7 @@ func (w *winLister) List(path string) ([]entry, error) {
 	// Senza il privilegio di backup attivo i permessi delle cartelle valgono.
 	h, err := windows.CreateFile(p, fileListDirectory, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
 	if err != nil {
-		return nil, err
+		return nil, classify(err)
 	}
 	defer windows.CloseHandle(h)
 	bp, _ := w.bufs.Get().(*[]byte)
@@ -54,17 +66,27 @@ func (w *winLister) List(path string) ([]entry, error) {
 	defer w.bufs.Put(bp)
 	buf := *bp
 	var out []entry
+	class, parse := uint32(fileIDBothDirectoryInfo), parseDirInfo
 	for first := true; ; first = false {
-		err := windows.GetFileInformationByHandleEx(h, fileIDBothDirectoryInfo, &buf[0], uint32(len(buf)))
+		err := windows.GetFileInformationByHandleEx(h, class, &buf[0], uint32(len(buf)))
 		// La radice di un'unità vuota non ha "." e "..": la prima lettura
 		// risponde "file non trovato" (come gestisce anche os.ReadDir).
 		if errors.Is(err, windows.ERROR_NO_MORE_FILES) || first && errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
 			return out, nil
 		}
-		if err != nil {
-			return out, err
+		// File system senza la classe con il numero del file: si riprova
+		// con quella senza, sulla stessa cartella appena aperta.
+		if first && class == fileIDBothDirectoryInfo && (errors.Is(err, windows.ERROR_INVALID_PARAMETER) || errors.Is(err, windows.ERROR_NOT_SUPPORTED) || errors.Is(err, windows.ERROR_INVALID_FUNCTION)) {
+			class, parse, first = fileFullDirectoryInfo, parseFullDirInfo, true
+			err = windows.GetFileInformationByHandleEx(h, class, &buf[0], uint32(len(buf)))
+			if errors.Is(err, windows.ERROR_NO_MORE_FILES) || errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
+				return out, nil
+			}
 		}
-		out = parseDirInfo(buf, out)
+		if err != nil {
+			return out, classify(err)
+		}
+		out = parse(buf, out)
 	}
 }
 
@@ -189,6 +211,14 @@ func Scan(ctx context.Context, root string, opt Options) (*Result, error) {
 // Open apre una cartella in Esplora file, o la cartella di un file con il
 // file selezionato.
 func Open(path string, selectFile bool) error {
+	// Esplora file divide gli argomenti alle virgole e apre ciò che riceve:
+	// un nome con le virgolette (possibile su una chiavetta preparata ad
+	// arte) uscirebbe dalle virgolette. Su NTFS non ci sono nomi così.
+	for _, r := range path {
+		if r == '"' || r < 0x20 {
+			return errors.New("percorso non valido")
+		}
+	}
 	args := `"` + path + `"`
 	if selectFile {
 		args = `/select,"` + path + `"`

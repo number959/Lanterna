@@ -1,8 +1,8 @@
 # Verifiche
 
-Cosa è stato verificato, come, e cosa resta da provare. Versione attuale: 0.6.0 (19 ottobre 2026), con SMART completo, profilo di
-CrystalDiskMark, scheda tecnica, Microsoft Defender, cassetta degli attrezzi e CrystalDiskInfo e CrystalDiskMark inclusi nel
-pacchetto (sezione 10). Fino alla versione 0.2.0 il programma si chiamava LANterna:
+Cosa è stato verificato, come, e cosa resta da provare. Versione attuale: 0.9.0 (31 ottobre 2026), con "Cosa occupa spazio",
+l'analisi dello spazio su disco come WizTree (sezione 13); le sezioni dalla 10 alla 12 descrivono le versioni dalla 0.6.0 alla
+0.8.0. Fino alla versione 0.2.0 il programma si chiamava LANterna:
 le sezioni che descrivono prove precedenti riportano i nomi di allora.
 
 ## 1. Test automatici

@@ -15,6 +15,7 @@ import (
 
 	"lanterna/internal/scan"
 	"lanterna/internal/space"
+	"lanterna/internal/winapi"
 )
 
 // runSpace mostra cosa occupa spazio in un'unità o in una cartella, come
@@ -72,7 +73,7 @@ func runSpace(args []string) error {
 		b, _ := json.MarshalIndent(res.Report, "", "  ")
 		fmt.Println(string(b))
 	} else {
-		printSpace(&res.Report, *top)
+		printSpace(&res.Report, *top, winapi.Elevated())
 	}
 	if errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "Analisi interrotta: i valori sono parziali.")
@@ -81,7 +82,7 @@ func runSpace(args []string) error {
 	return err
 }
 
-func printSpace(r *scan.SpaceReport, top int) {
+func printSpace(r *scan.SpaceReport, top int, elevated bool) {
 	fs := ""
 	if r.FS != "" {
 		fs = " (" + r.FS + ")"
@@ -102,7 +103,14 @@ func printSpace(r *scan.SpaceReport, top int) {
 		fmt.Printf("File solo online: %s, %s nel cloud, quasi nulla su questo disco.\n", thousands(r.CloudFiles), bytesText(r.CloudBytes))
 	}
 	if r.Denied > 0 {
-		fmt.Printf("Cartelle non leggibili con i permessi attuali: %s (da amministratore se ne leggono di più).\n", thousands(r.Denied))
+		if elevated {
+			fmt.Printf("Cartelle riservate al sistema, non leggibili nemmeno da amministratore: %s.\n", thousands(r.Denied))
+		} else {
+			fmt.Printf("Cartelle non leggibili con i permessi attuali: %s (da amministratore se ne leggono di più).\n", thousands(r.Denied))
+		}
+	}
+	if r.Errors > 0 {
+		fmt.Printf("Cartelle non lette per errori del disco o del file system: %s.\n", thousands(r.Errors))
 	}
 	if un := unattributed(r); un > 0 {
 		fmt.Printf("Spazio occupato non attribuito a file leggibili: %s (cartelle protette, metadati del file system, copie shadow).\n", bytesText(un))

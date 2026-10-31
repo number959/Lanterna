@@ -700,6 +700,9 @@ type SpaceReport struct {
 	// Polaris; DeniedPaths ne riporta alcune.
 	Denied      int64    `json:"denied,omitempty"`
 	DeniedPaths []string `json:"deniedPaths,omitempty"`
+	// Errors: cartelle non lette per errori del disco o del file system (non
+	// per i permessi). Le cartelle sparite durante l'analisi non si contano.
+	Errors int64 `json:"errors,omitempty"`
 	// File solo online (OneDrive e simili): non occupano spazio sul disco.
 	CloudFiles int64 `json:"cloudFiles,omitempty"`
 	CloudBytes int64 `json:"cloudBytes,omitempty"`

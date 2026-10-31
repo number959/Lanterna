@@ -964,6 +964,9 @@ func TestSpaceEndpoint(t *testing.T) {
 	if r := post("/api/space/open", `{"drive":"D:","id":1}`); r.Code != http.StatusNotFound {
 		t.Fatalf("altra unità: %d", r.Code)
 	}
+	if r := post("/api/space/open", `{"drive":"C:","id":2,"startedAt":"2020-01-01T00:00:00Z"}`); r.Code != http.StatusNotFound {
+		t.Fatalf("numero di un'altra analisi: %d", r.Code)
+	}
 	if len(opened) != 2 || opened[0] != `C:\Users\mario\Video false` || opened[1] != `C:\Users\mario\Video\film.mkv true` {
 		t.Fatalf("aperture: %q", opened)
 	}
@@ -975,14 +978,15 @@ func TestSpaceEndpoint(t *testing.T) {
 		t.Fatalf("apertura da altra origine: %d", r.Code)
 	}
 
-	// Interruzione: errore chiaro, risultato parziale conservato.
+	// Interruzione: errore chiaro, risultato parziale conservato. Il canale
+	// si rifà prima dell'avvio, che lo legge da un'altra goroutine.
+	release = make(chan struct{})
 	if r := post("/api/space", `{"drive":"C:"}`); r.Code != http.StatusAccepted {
 		t.Fatalf("secondo avvio: %d", r.Code)
 	}
 	if r := do(t, h, "DELETE", "/api/space", map[string]string{"Origin": "https://evil.example"}); r.Code != http.StatusForbidden {
 		t.Fatalf("DELETE da altra origine: %d", r.Code)
 	}
-	release = make(chan struct{}) // il secondo giro attende l'interruzione
 	if r := do(t, h, "DELETE", "/api/space", nil); r.Code != 200 {
 		t.Fatalf("interruzione: %d", r.Code)
 	}

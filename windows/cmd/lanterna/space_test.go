@@ -35,7 +35,7 @@ func TestPrintSpace(t *testing.T) {
 	r := &scan.SpaceReport{
 		Root: `C:\`, Drive: "C:", FS: "NTFS", TotalBytes: 500_000_000_000, FreeBytes: 100_000_000_000,
 		AllocBytes: 380_000_000_000, SizeBytes: 379_000_000_000, Files: 412345, Dirs: 98765, Denied: 3,
-		CloudFiles: 2, CloudBytes: 5_000_000_000, LinkedBytes: 6_100_000_000, DurationMs: 52_000,
+		Errors: 2, CloudFiles: 2, CloudBytes: 5_000_000_000, LinkedBytes: 6_100_000_000, DurationMs: 52_000,
 		Tree: &scan.SpaceNode{ID: 1, Name: `C:\`, Alloc: 380_000_000_000, OwnAlloc: 14_000_000_000, OwnFiles: 3,
 			Children: []*scan.SpaceNode{{ID: 2, Name: "Users", Alloc: 210_000_000_000, Files: 300000}, {ID: 3, Name: "Windows", Alloc: 30_000_000_000, Files: 100000, Denied: true}},
 			More:     &scan.SpaceMore{Dirs: 4, Alloc: 1_000_000}},
@@ -43,7 +43,7 @@ func TestPrintSpace(t *testing.T) {
 		Categories: []scan.SpaceType{{ID: "video", Alloc: 120_000_000_000, Files: 1234}, {ID: "nuova", Alloc: 1}},
 		Hints:      []scan.SpaceHint{{ID: "recycle-bin", Path: `C:\$Recycle.Bin`, Alloc: 4_200_000_000}, {ID: "browser-cache", Alloc: 900_000_000}},
 	}
-	out := capture(t, func() { printSpace(r, 1) })
+	out := capture(t, func() { printSpace(r, 1, false) })
 	for _, want := range []string{
 		`Cosa occupa spazio in C:\ (NTFS)`,
 		"Unità C: 500,0 GB in tutto, liberi 100,0 GB (20,0 %)",
@@ -51,6 +51,7 @@ func TestPrintSpace(t *testing.T) {
 		"Collegamenti fisici contati una volta sola: 6,1 GB",
 		"File solo online: 2, 5,0 GB",
 		"Cartelle non leggibili con i permessi attuali: 3",
+		"Cartelle non lette per errori del disco o del file system: 2",
 		"Spazio occupato non attribuito a file leggibili: 20,0 GB",
 		"Users", "55,3 %", "(in parte non leggibile)", "altre 4 cartelle", "(file nella cartella stessa)",
 		`48,2 GB  %USERPROFILE%\Video\film.mkv`,
@@ -68,7 +69,7 @@ func TestPrintSpace(t *testing.T) {
 	}
 	// Analisi di una cartella o parziale: niente spazio non attribuito.
 	r.Root, r.Partial = `C:\Users`, false
-	if out := capture(t, func() { printSpace(r, 0) }); strings.Contains(out, "non attribuito") || strings.Contains(out, "File più grandi") {
+	if out := capture(t, func() { printSpace(r, 0, true) }); strings.Contains(out, "non attribuito") || strings.Contains(out, "File più grandi") || !strings.Contains(out, "riservate al sistema") {
 		t.Errorf("cartella:\n%s", out)
 	}
 }

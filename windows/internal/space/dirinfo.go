@@ -23,18 +23,30 @@ const (
 	attrDirectory = 0x10
 )
 
+// FILE_FULL_DIR_INFO ha gli stessi campi fino a EaSize, poi subito il nome
+// e nessun numero del file: si usa sui file system che non accettano la
+// classe con il numero (come fa os.ReadDir).
+const offFullName = 68
+
 // parseDirInfo legge le voci FILE_ID_BOTH_DIR_INFO concatenate nel buffer.
-func parseDirInfo(buf []byte, out []entry) []entry {
+func parseDirInfo(buf []byte, out []entry) []entry { return parseEntries(buf, out, offName, true) }
+
+// parseFullDirInfo legge le voci FILE_FULL_DIR_INFO.
+func parseFullDirInfo(buf []byte, out []entry) []entry {
+	return parseEntries(buf, out, offFullName, false)
+}
+
+func parseEntries(buf []byte, out []entry, nameOff int, hasID bool) []entry {
 	le := binary.LittleEndian
-	for off := 0; off+offName <= len(buf); {
+	for off := 0; off+nameOff <= len(buf); {
 		b := buf[off:]
 		n := int(le.Uint32(b[offNameLen:]))
-		if offName+n > len(b) {
+		if nameOff+n > len(b) {
 			break
 		}
 		u := make([]uint16, n/2)
 		for i := range u {
-			u[i] = le.Uint16(b[offName+2*i:])
+			u[i] = le.Uint16(b[nameOff+2*i:])
 		}
 		name := string(utf16.Decode(u))
 		if name != "." && name != ".." {
@@ -45,7 +57,9 @@ func parseDirInfo(buf []byte, out []entry) []entry {
 				Size:  int64(le.Uint64(b[offEndOfFile:])),
 				Alloc: int64(le.Uint64(b[offAlloc:])),
 				Attrs: attrs,
-				ID:    le.Uint64(b[offFileID:]),
+			}
+			if hasID {
+				e.ID = le.Uint64(b[offFileID:])
 			}
 			// Tutti 1: il file system non ha un numero univoco per il file.
 			if e.ID == ^uint64(0) {

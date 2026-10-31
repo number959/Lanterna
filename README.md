@@ -110,7 +110,8 @@ script PowerShell nascosto: nessuna impostazione viene modificata.
   impostazione" e "non toccare", ognuna con il modo sicuro di recuperare spazio. Conta lo spazio occupato davvero sul disco, i
   file di Windows con più nomi (collegamenti fisici tra WinSxS e System32) una volta sola e i file solo online di OneDrive a
   parte, senza scaricarli; non segue giunzioni e link simbolici; dice quanto spazio non si vede dai file leggibili. Nei percorsi
-  il profilo diventa `%USERPROFILE%` e gli altri utenti `‹utente N›`. Il motore stima lo spazio recuperabile e aggiunge al piano
+  il profilo diventa `%USERPROFILE%`, gli altri utenti `‹utente N›` (anche in Windows.old e sulle altre unità), gli indirizzi
+  e-mail `‹e-mail›` e i SID del Cestino perdono la parte che identifica il PC. Il motore stima lo spazio recuperabile e aggiunge al piano
   le azioni mirate (rimuovere Windows.old, liberare i file temporanei, rivedere i download, compattare i dischi virtuali).
 - **Alimentazione**: salute della batteria, piano di alimentazione, driver della scheda video.
 - **Test di velocità** (solo su richiesta): il processore comprime dati con un thread e con tutti per circa 25 secondi e rivela

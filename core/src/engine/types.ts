@@ -826,6 +826,8 @@ export interface SpaceReport {
   /** Cartelle non leggibili con i permessi di chi usa Polaris. */
   denied?: number;
   deniedPaths?: string[];
+  /** Cartelle non lette per errori del disco o del file system (non per i permessi). */
+  errors?: number;
   /** File solo online (OneDrive e simili): non occupano spazio sul disco. */
   cloudFiles?: number;
   cloudBytes?: number;

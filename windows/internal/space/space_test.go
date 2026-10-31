@@ -29,11 +29,11 @@ type fakeFS struct {
 func (f *fakeFS) List(path string) ([]entry, error) {
 	l := strings.ToLower(path)
 	if f.denied[l] {
-		return nil, errors.New("accesso negato")
+		return nil, errDenied
 	}
 	e, found := f.dirs[l]
 	if !found {
-		return nil, fmt.Errorf("cartella inesistente: %s", path)
+		return nil, fmt.Errorf("%w: %s", errGone, path)
 	}
 	return e, nil
 }
@@ -371,10 +371,44 @@ func TestHelpers(t *testing.T) {
 		`D:\foto di anna 2024.jpg`: `D:\foto di ‹utente 1› 2024.jpg`,
 		`C:\Users\Public`:          `C:\Users\Public`,
 		`C:\Windows`:               `C:\Windows`,
+		// Profili che in C:\Users non ci sono più, anche su altre unità.
+		`C:\Windows.old\Users\Giulia\Videos\matrimonio.mp4`: `C:\Windows.old\Users\‹utente›\Videos\matrimonio.mp4`,
+		`C:\Windows.old\Users\mario\x`:                      `C:\Windows.old\Users\%USERNAME%\x`,
+		`E:\Backup\PC-07\Users\Luca\y`:                      `E:\Backup\PC-07\Users\‹utente›\y`,
+		`C:\Program Files\App\Dati\Utenti\Users\cfg`:        `C:\Program Files\App\Dati\Utenti\Users\cfg`,
+		// Indirizzi e-mail (Outlook) e SID del Cestino.
+		`C:\Users\Mario\AppData\Local\Microsoft\Outlook\mario.rossi@studio-bianchi.it.ost`: `%USERPROFILE%\AppData\Local\Microsoft\Outlook\‹e-mail›.ost`,
+		`D:\Posta\archivio info@studio.it 2024.pst`:                                        `D:\Posta\archivio ‹e-mail› 2024.pst`,
+		`D:\info@studio.it`: `D:\‹e-mail›`,
+		`C:\$Recycle.Bin\S-1-5-21-3623811015-3361044348-30300820-1013\$RAB12.mkv`: `C:\$Recycle.Bin\S-1-5-21-…-1013\$RAB12.mkv`,
+		// Lettere che cambiano lunghezza in minuscolo.
+		`D:\Foto\İstanbul_mario.jpg`: `D:\Foto\İstanbul_%USERNAME%.jpg`,
+		`D:\Ⱥ\mario\Ⱥⱥ.txt`:          `D:\Ⱥ\%USERNAME%\Ⱥⱥ.txt`,
 	} {
 		if got := z.path(in); got != want {
 			t.Errorf("path(%q) = %q, atteso %q", in, got, want)
 		}
+	}
+	// Profili con lettere speciali e nomi generici.
+	tr := newSanitizer(Env{UserProfile: `C:\Users\İlker`, ProfilesDir: `C:\Users`, Username: "İlker", OtherProfiles: []string{"TEMP", "defaultuser0", "Ⱥnna", "Studio"}})
+	for in, want := range map[string]string{
+		`C:\Users\İlker\Documents`:       `%USERPROFILE%\Documents`,
+		`C:\Users\İLKER`:                 `%USERPROFILE%`,
+		`C:\Users\Ⱥnna`:                  `C:\Users\‹utente 2›`,
+		`C:\Users\Studio\x`:              `C:\Users\‹utente 1›\x`, // "studio" viene prima di "ⱥnna"
+		`C:\Windows\Temp`:                `C:\Windows\Temp`,
+		`C:\Users\TEMP\AppData`:          `C:\Users\TEMP\AppData`,
+		`C:\Program Files\Visual Studio`: `C:\Program Files\Visual Studio`,
+		`D:\Ⱥnna\foto.jpg`:               `D:\‹utente 2›\foto.jpg`,
+	} {
+		if got := tr.path(in); got != want {
+			t.Errorf("path(%q) = %q, atteso %q", in, got, want)
+		}
+	}
+	// Con un nome utente generico, "User Data" resta com'è.
+	u := newSanitizer(Env{UserProfile: `C:\Users\User`, ProfilesDir: `C:\Users`, Username: "User"})
+	if got := u.path(`C:\Users\User\AppData\Local\Google\Chrome\User Data`); got != `%USERPROFILE%\AppData\Local\Google\Chrome\User Data` {
+		t.Errorf("nome generico: %q", got)
 	}
 }
 
@@ -468,5 +502,103 @@ func TestLabels(t *testing.T) {
 	}
 	if len(CategoryLabels) != len(cats) {
 		t.Errorf("categorie in più: %d contro %d", len(CategoryLabels), len(cats))
+	}
+}
+
+// errFS restituisce un errore del disco per una cartella.
+type errFS struct {
+	*fakeFS
+	broken map[string]error
+}
+
+func (f *errFS) List(path string) ([]entry, error) {
+	if err := f.broken[strings.ToLower(path)]; err != nil {
+		return nil, err
+	}
+	return f.fakeFS.List(path)
+}
+
+func TestScanPrivacyAndErrors(t *testing.T) {
+	sid := "S-1-5-21-3623811015-3361044348-30300820-1013"
+	other := "S-1-5-21-3623811015-3361044348-30300820-1014"
+	fs := &errFS{fakeFS: &fakeFS{
+		dirs: map[string][]entry{
+			`d:\`:                                     {dir("Windows.old"), dir("$Recycle.Bin"), dir("Backup"), dir("Rotta"), dir("Sparita"), dir("Hyper-V")},
+			`d:\windows.old`:                          {dir("Users")},
+			`d:\windows.old\users`:                    {dir("Giulia"), dir("mario")},
+			`d:\windows.old\users\giulia`:             {dir("Videos"), file("giulia.rossi@studio.it.ost", 6*gb, 1)},
+			`d:\windows.old\users\giulia\videos`:      {file("matrimonio.mp4", 5*gb, 2)},
+			`d:\windows.old\users\mario`:              {file("note.txt", 2*mb, 3)},
+			`d:\$recycle.bin`:                         {dir(sid), dir(other)},
+			`d:\$recycle.bin\` + strings.ToLower(sid): {file("$RAB12.mkv", 3*gb, 4)},
+			`d:\backup`:                               {dir("WindowsImageBackup")},
+			`d:\backup\windowsimagebackup`:            {file("PC.vhdx", 40*gb, 5)},
+			`d:\hyper-v`:                              {file("vm.vhdx", 12*gb, 6)},
+			`d:\rotta`:                                {},
+		},
+		denied: map[string]bool{`d:\$recycle.bin\` + strings.ToLower(other): true},
+	}, broken: map[string]error{
+		`d:\rotta`:   errors.New("errore di I/O"),
+		`d:\sparita`: fmt.Errorf("%w: rimossa", errGone),
+	}}
+	// Su questo PC c'è solo il profilo di mario: Giulia esiste solo in Windows.old.
+	e := Env{SystemRoot: `C:\Windows`, UserProfile: `C:\Users\mario`, ProfilesDir: `C:\Users`, Username: "mario"}
+	res, err := scanWith(context.Background(), fs, `D:\`, Volume{Drive: "D:", TotalBytes: 500 * gb, FreeBytes: 400 * gb}, e, Options{Workers: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := res.Report
+	raw, _ := json.Marshal(r)
+	for _, leak := range []string{"Giulia", "giulia", "rossi", "studio.it", "3623811015", "mario"} {
+		if strings.Contains(string(raw), leak) {
+			t.Errorf("%q nel rapporto: %s", leak, raw)
+		}
+	}
+	if !strings.Contains(string(raw), `Users\\‹utente 1›`) || !strings.Contains(string(raw), `Users\\%USERNAME%`) || !strings.Contains(string(raw), `S-1-5-21-…-1013`) || !strings.Contains(string(raw), `‹e-mail›.ost`) {
+		t.Errorf("alias mancanti: %s", raw)
+	}
+	// I percorsi veri restano nell'agente.
+	found := false
+	for _, p := range res.NodePaths {
+		found = found || strings.Contains(p, `Users\Giulia`)
+	}
+	if !found {
+		t.Error("percorso vero perso")
+	}
+	// Permessi, errori del disco e cartelle sparite sono cose diverse.
+	if r.Denied != 1 || r.Errors != 1 || len(r.DeniedPaths) != 1 || r.DeniedPaths[0] != `D:\$Recycle.Bin\S-1-5-21-…-1014` {
+		t.Errorf("negate %d %v, errori %d", r.Denied, r.DeniedPaths, r.Errors)
+	}
+	// Windows.old su un'unità che non è quella di Windows non è una cartella nota;
+	// il backup d'immagine non è un disco virtuale da compattare.
+	if hint(r, "windows-old") != nil {
+		t.Error("Windows.old su D:")
+	}
+	if h := hint(r, "virtual-disks"); h == nil || h.Alloc != 12*gb || h.Files != 1 {
+		t.Errorf("dischi virtuali: %+v", h)
+	}
+}
+
+func TestParseFullDirInfo(t *testing.T) {
+	// FILE_FULL_DIR_INFO: stessi campi fino a EaSize, poi il nome a 68.
+	mk := func(name string, attrs uint32, alloc int64) []byte {
+		u := utf16.Encode([]rune(name))
+		n := (offFullName + 2*len(u) + 7) &^ 7
+		b := make([]byte, n)
+		le := binary.LittleEndian
+		le.PutUint64(b[offAlloc:], uint64(alloc))
+		le.PutUint64(b[offEndOfFile:], uint64(alloc-10))
+		le.PutUint32(b[offAttrs:], attrs)
+		le.PutUint32(b[offNameLen:], uint32(2*len(u)))
+		for i, c := range u {
+			le.PutUint16(b[offFullName+2*i:], c)
+		}
+		return b
+	}
+	a, b := mk("..", 0x10, 0), mk("FOTO.JPG", 0x20, 32768)
+	binary.LittleEndian.PutUint32(a[offNext:], uint32(len(a)))
+	got := parseFullDirInfo(append(a, b...), nil)
+	if len(got) != 1 || got[0].Name != "FOTO.JPG" || got[0].Alloc != 32768 || got[0].ID != 0 || got[0].Dir {
+		t.Fatalf("voci: %+v", got)
 	}
 }

@@ -40,10 +40,20 @@ type entry struct {
 	Mod   int64  // ultima modifica, secondi Unix
 }
 
-// lister legge l'elenco di una cartella, senza "." e "..".
+// lister legge l'elenco di una cartella, senza "." e "..". Gli errori si
+// distinguono con errGone e errDenied; gli altri sono errori del disco o del
+// file system. Con un errore a metà restituisce le voci già lette.
 type lister interface {
 	List(path string) ([]entry, error)
 }
+
+var (
+	// errGone: la cartella è sparita tra la lettura della cartella che la
+	// contiene e la sua (succede di continuo in Temp e nelle cache).
+	errGone = errors.New("cartella non più presente")
+	// errDenied: non leggibile con i permessi di chi usa Polaris.
+	errDenied = errors.New("accesso negato")
+)
 
 // Attributi dei file (winnt.h).
 const (
@@ -183,8 +193,11 @@ type acc struct {
 	links      []linkRec
 	known      []fileRec // file noti nella radice e nella cartella di Windows
 	denied     []*node
+	failed     int64 // cartelle non lette per errori del disco o del file system
 	cloudFiles int64
 	cloudBytes int64
+	// imageBackups: dischi virtuali dei backup d'immagine di sistema.
+	imageBackups typeAcc
 }
 
 type job struct {
@@ -410,11 +423,17 @@ func scanWith(ctx context.Context, l lister, root string, vol Volume, env Env, o
 
 func readDir(l lister, j job, a *acc, q *queue, topN int, root *node, sysRoot string, dirs, files, alloc *atomic.Int64) {
 	ents, err := l.List(j.path)
-	if err != nil {
+	switch {
+	case err == nil:
+	case errors.Is(err, errGone):
+		return
+	case errors.Is(err, errDenied):
 		j.n.denied = true
 		a.denied = append(a.denied, j.n)
-		return
+	default:
+		a.failed++
 	}
+	imageBackup := strings.Contains(strings.ToLower(j.path), `\windowsimagebackup`)
 	known := j.n == root || strings.ToLower(j.path) == sysRoot
 	for _, e := range ents {
 		if e.Dir {
@@ -448,6 +467,10 @@ func readDir(l lister, j job, a *acc, q *queue, topN int, root *node, sysRoot st
 		}
 		t.alloc += fa
 		t.files++
+		if imageBackup && isVirtualDisk(ext) {
+			a.imageBackups.alloc += fa
+			a.imageBackups.files++
+		}
 		rec := fileRec{n: j.n, name: e.Name, alloc: fa, size: size, mod: e.Mod, id: e.ID, cloud: cloud}
 		if len(a.top) < topN {
 			heap.Push(&a.top, rec)
@@ -466,13 +489,14 @@ func readDir(l lister, j job, a *acc, q *queue, topN int, root *node, sysRoot st
 
 // build unisce i dati dei lettori e prepara il rapporto.
 func build(root *node, accs []*acc, rootPath string, vol Volume, env Env, opt Options, topN int) *Result {
-	z := newSanitizer(env)
+	z := newSanitizer(env, profileNames(root, baseName(env.ProfilesDir))...)
 	r := scan.SpaceReport{Root: z.path(rootPath), Drive: vol.Drive, FS: vol.FS, TotalBytes: vol.TotalBytes, FreeBytes: vol.FreeBytes}
 	exts := map[string]*typeAcc{}
 	var top []fileRec
 	var links []linkRec
 	var known []fileRec
 	var denied []*node
+	var imageBackups typeAcc
 	for _, a := range accs {
 		for k, v := range a.exts {
 			t := exts[k]
@@ -487,6 +511,9 @@ func build(root *node, accs []*acc, rootPath string, vol Volume, env Env, opt Op
 		links = append(links, a.links...)
 		known = append(known, a.known...)
 		denied = append(denied, a.denied...)
+		r.Errors += a.failed
+		imageBackups.alloc += a.imageBackups.alloc
+		imageBackups.files += a.imageBackups.files
 		r.CloudFiles += a.cloudFiles
 		r.CloudBytes += a.cloudBytes
 	}
@@ -513,7 +540,7 @@ func build(root *node, accs []*acc, rootPath string, vol Volume, env Env, opt Op
 	r.Tree = prune(root, limit, z, res.NodePaths, ids)
 	r.TopFiles = topFiles(top, topN, z, res.FilePaths)
 	r.Types, r.Categories = typeStats(exts)
-	r.Hints = hints(root, known, exts, rootPath, env, z, ids)
+	r.Hints = hints(root, known, exts, imageBackups, rootPath, env, z, ids)
 	res.Report = r
 	return res
 }

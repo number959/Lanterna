@@ -906,6 +906,8 @@ func (s *Server) Handler() http.Handler {
 			Drive string `json:"drive"`
 			ID    int    `json:"id"`
 			File  bool   `json:"file"`
+			// StartedAt dell'analisi mostrata: i numeri valgono solo per quella.
+			StartedAt string `json:"startedAt"`
 		}
 		if code, err := readJSON(w, r, &body); err != nil {
 			writeJSON(w, code, map[string]string{"error": err.Error()})
@@ -917,7 +919,7 @@ func (s *Server) Handler() http.Handler {
 		res := s.spaceResults[strings.ToUpper(body.Drive)]
 		var path string
 		var found bool
-		if res != nil {
+		if res != nil && (body.StartedAt == "" || body.StartedAt == res.Report.StartedAt) {
 			if body.File {
 				path, found = res.FilePaths[body.ID]
 			} else {
