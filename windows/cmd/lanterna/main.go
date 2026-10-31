@@ -47,6 +47,7 @@ import (
 	"lanterna/internal/sensors"
 	"lanterna/internal/server"
 	"lanterna/internal/space"
+	"lanterna/internal/survey"
 	"lanterna/internal/tools"
 	"lanterna/internal/winapi"
 )
@@ -102,6 +103,13 @@ Uso:
                                  emittente, versione di TLS; solo indirizzi privati.
                                  Esempi: nas.local  192.168.1.10:8443  https://pacs.local
       --json                     stampa il risultato in JSON
+  polaris-cli wifi-survey STANZA misura il Wi-Fi nel punto in cui ti trovi, per la mappa
+                                 per stanza: segnale una volta al secondo, cambi di access
+                                 point, ping al router ogni 200 ms, poi una scansione.
+                                 Resta fermo; Windows mostra l'icona della posizione
+      --secondi N                durata da 10 a 20 secondi (predefinita 15)
+      --senza-scansione          niente scansione delle reti alla fine
+      --json                     stampa il risultato in JSON
   polaris-cli tools status       versioni portable scaricate (su questo PC e nel kit)
   polaris-cli tools kit [ID...]  prepara il kit per l'uso senza Internet: scarica dai
                                  siti ufficiali e verifica i programmi nella cartella
@@ -151,6 +159,8 @@ func main() {
 		err = runSpace(args[1:])
 	case args[0] == "certs":
 		err = runCerts(args[1:])
+	case args[0] == "wifi-survey":
+		err = runWifiSurvey(args[1:])
 	case args[0] == "version" || args[0] == "--version":
 		eng, e := engine.Load(nil)
 		ev := "non incluso"
@@ -301,6 +311,7 @@ func startServer(port int) (*server.Server, string, error) {
 		},
 		SpaceOpen: space.Open,
 		OpenTool:  func(id, target string) error { return tools.Open(id, target, fetcher) },
+		Survey:    survey.Sample,
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = httpSrv.Serve(ln) }()
