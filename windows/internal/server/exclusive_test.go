@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"lanterna/internal/scan"
@@ -66,4 +68,48 @@ func TestSurveyAndSpeedExclusive(t *testing.T) {
 	if st := speedGet(t, h); st.Result == nil || st.Error != "" {
 		t.Fatalf("esito del test: %+v", st)
 	}
+}
+
+// Un rifiuto di POST /api/scan dice perché: busy "scan" solo se è già in
+// corso un'analisi (l'interfaccia ne segue l'avanzamento e mostra l'esito);
+// se l'analisi non parte per un'altra attività (test della CPU o del disco,
+// misura del Wi-Fi, test di Internet) niente busy, e l'interfaccia mostra il
+// messaggio invece di ricaricare l'analisi precedente come se fosse nuova.
+func TestScanConflictReason(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	set := func(mu *sync.Mutex, flag *bool, v bool) {
+		mu.Lock()
+		*flag = v
+		mu.Unlock()
+	}
+	for _, c := range []struct {
+		what     string
+		mu       *sync.Mutex
+		flag     *bool
+		busy     string
+		contains string
+	}{
+		{"analisi in corso", &s.mu, &s.running, "scan", "analisi già in corso"},
+		{"test della CPU o del disco", &s.benchMu, &s.benchRunning, "", "test della CPU o del disco in corso"},
+		{"misura del Wi-Fi", &s.survey.mu, &s.survey.running, "", "misura del Wi-Fi in corso"},
+		{"test di Internet", &s.speedMu, &s.speedRunning, "", "test di velocità di Internet in corso"},
+	} {
+		set(c.mu, c.flag, true)
+		r := doBody(t, h, "POST", "/api/scan", "", "")
+		set(c.mu, c.flag, false)
+		var body map[string]string
+		if err := json.Unmarshal(r.Body.Bytes(), &body); err != nil || r.Code != http.StatusConflict {
+			t.Fatalf("%s: %d %s", c.what, r.Code, r.Body)
+		}
+		busy, has := body["busy"]
+		if busy != c.busy || has != (c.busy != "") || !strings.Contains(body["error"], c.contains) {
+			t.Errorf("%s: %s", c.what, r.Body)
+		}
+	}
+	// Con l'agente libero l'analisi parte.
+	if r := doBody(t, h, "POST", "/api/scan", "", ""); r.Code != http.StatusAccepted {
+		t.Fatalf("avvio: %d %s", r.Code, r.Body)
+	}
+	s.Wait()
 }

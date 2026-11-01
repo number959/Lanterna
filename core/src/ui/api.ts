@@ -48,10 +48,25 @@ export async function lastScan(): Promise<Scan | null> {
   return (await r.json()) as Scan;
 }
 
-/** Avvia una nuova analisi e attende la fine, notificando l'avanzamento reale. */
+/**
+ * Avvia una nuova analisi e attende la fine, notificando l'avanzamento reale.
+ * Un 409 perché un'analisi è già in corso (busy "scan"; un agente precedente,
+ * senza busy, lo dice con il solo messaggio) se ne segue l'avanzamento; ogni
+ * altro 409 (test della CPU o del disco, misura del Wi-Fi, test di Internet)
+ * è un rifiuto, con il messaggio dell'agente.
+ */
 export async function runScan(onProgress: (p: Progress) => void): Promise<Scan> {
   const start = await fetch('api/scan', { method: 'POST' });
-  if (!start.ok && start.status !== 409) throw new Error(`Avvio analisi: HTTP ${start.status}`);
+  if (start.status === 409) {
+    let body: { error?: string; busy?: string } = {};
+    try {
+      body = (await start.json()) ?? {};
+    } catch {
+      // corpo non JSON
+    }
+    const running = body.busy === 'scan' || (body.busy === undefined && body.error === 'analisi già in corso');
+    if (!running) throw new Error(body.error || 'Avvio analisi: HTTP 409');
+  } else if (!start.ok) throw new Error(`Avvio analisi: HTTP ${start.status}`);
   for (;;) {
     await new Promise((r) => setTimeout(r, 400));
     const p = await getJson<Progress>('api/progress');
