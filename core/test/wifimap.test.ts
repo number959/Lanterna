@@ -385,6 +385,48 @@ describe('documento, rapporto ed esportazione', () => {
     expect(documentParts(s, analyze(s)).body).not.toContain('Mappa del Wi-Fi per stanza');
   });
 
+  it('il documento dichiara i dBm stimati anche nelle stanze a posto, e al massimo della scala scrive "almeno"', () => {
+    // La cella "Segnale" della stanza: nel documento il giudizio delle stanze a posto non compare.
+    const cell = (s: SurveySample) => {
+      const scan = withSurvey({ rooms: [{ name: 'Studio', samples: [s] }] });
+      const body = documentParts(scan, analyze(scan)).body;
+      const sec = body.slice(body.indexOf('<h2>Mappa del Wi-Fi per stanza</h2>'));
+      const row = sec.slice(sec.indexOf('<b>Studio</b>'));
+      return row.slice(row.indexOf('</td><td>') + 9, row.indexOf('</td>', row.indexOf('</td><td>') + 9));
+    };
+    const all = (v: number) => ({ rssi: Array(15).fill(v), medianDbm: v, minDbm: v, maxDbm: v, p10Dbm: v, spreadDb: 0 });
+    // Misurati: nessuna stima dichiarata, -50 è un valore esatto.
+    expect(cell(pt({}))).toMatch(/^-63 dBm, buono/);
+    expect(cell(pt({}))).not.toContain('stimati');
+    expect(cell(pt({ ...all(-50), stuck: true }))).toMatch(/^-50 dBm, ottimo/);
+    // Stimati dalla qualità di Windows: lo dice la cella, anche se la stanza è a posto e il giudizio non si stampa.
+    const studio = (s: SurveySample) => analyze(withSurvey({ rooms: [{ name: 'Studio', samples: [s] }] })).findings.find((f) => f.id === 'wifi.room.studio')!;
+    expect(studio(pt({ estimated: true })).severity).toBe('ok');
+    expect(studio(pt({ ...all(-50), estimated: true })).severity).toBe('ok');
+    const est = cell(pt({ estimated: true }));
+    expect(est).toMatch(/^-63 dBm, buono/);
+    expect(est).toContain('cali fino a -64 dBm');
+    expect(est).toContain('stimati dalla qualità del segnale di Windows');
+    // Qualità al 100 %: -50 dBm è solo un minimo, e i cali sopra -50 dBm non si vedono.
+    const top = cell(pt({ ...all(-50), estimated: true }));
+    expect(top).toMatch(/^almeno -50 dBm, ottimo/);
+    expect(top).not.toContain('cali fino a -50');
+    expect(top).toContain('cali non misurabili sopra -50 dBm');
+    expect(top).toContain('stimati dalla qualità del segnale di Windows');
+    // Mediana al massimo ma cali sotto: i cali restano un valore stimato.
+    const dip = cell(pt({ rssi: [-50, -50, -50, -50, -50, -50, -50, -50, -50, -50, -50, -50, -53, -54, -55], medianDbm: -50, minDbm: -55, maxDbm: -50, p10Dbm: -54, spreadDb: 5, estimated: true }));
+    expect(dip).toMatch(/^almeno -50 dBm, ottimo/);
+    expect(dip).toContain('cali fino a -54 dBm');
+    // La nota in fondo spiega la stima solo se c'è.
+    const note = (s: SurveySample) => {
+      const scan = withSurvey({ rooms: [{ name: 'Studio', samples: [s] }] });
+      const body = documentParts(scan, analyze(scan)).body;
+      return body.slice(body.indexOf('<h2>Mappa del Wi-Fi per stanza</h2>')).split('</section>')[0];
+    };
+    expect(note(pt({ estimated: true }))).toContain('da -100 a -50 dBm');
+    expect(note(pt({}))).not.toContain('da -100 a -50 dBm');
+  });
+
   it('il rapporto di testo elenca le stanze entro 90 colonne, con gli alias', () => {
     const txt = renderText(demoScan, analyze(demoScan), { verbose: true });
     expect(txt).toContain('MAPPA DEL WI-FI PER STANZA');
