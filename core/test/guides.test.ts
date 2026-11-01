@@ -133,3 +133,44 @@ describe('ricerca', () => {
     expect(search('  ')).toEqual([]);
   });
 });
+
+describe('due test di velocità: del PC e di Internet', () => {
+  const texts = (id: string) => allTexts(id).map(plainText);
+  const blocksOf = (id: string) => guideById(id)!.blocks;
+
+  it('nessuna frase dice che "i test di velocità non partono": il test di Internet non si ferma', () => {
+    // L'agente blocca durante una scansione di Defender o un'analisi dello spazio solo i test della CPU e del disco.
+    for (const g of GUIDES) for (const t of allTexts(g.id)) expect(plainText(t), g.id).not.toMatch(/test di velocità non partono/i);
+    expect(texts('strumenti-avanzati').join(' ')).toContain('durante una scansione i test del processore e del disco non partono');
+    expect(texts('spazio-disco').join(' ')).toContain('i test del processore e del disco non partono');
+  });
+
+  it('titoli e intestazioni distinguono i test del PC da quello di Internet', () => {
+    const heads = blocksOf('strumenti-avanzati').filter((b) => b.t === 'h').map((b) => (b.t === 'h' ? b.text : ''));
+    expect(heads).not.toContain('Test di velocità');
+    expect(heads).toContain('Test del processore e del disco');
+    expect(guideById('test-velocita')!.title).toMatch(/processore e del disco/);
+    expect(guideById('velocita-internet')!.title).toMatch(/di Internet/);
+  });
+
+  it('la tabella delle sezioni elenca schermate blu, mappa del Wi-Fi e test di velocità di Internet', () => {
+    const table = blocksOf('sezioni-del-programma').find((b) => b.t === 'table');
+    const rows = table && table.t === 'table' ? table.rows : [];
+    const row = (section: string) => rows.find((r) => r[1] === section)!;
+    expect(row('Computer')[2]).toContain('file delle schermate blu');
+    expect(row('Computer')[2]).toContain('test di velocità del processore e del disco');
+    expect(row('Wi-Fi')[2]).toContain('mappa del Wi-Fi per stanza');
+    expect(row('Internet e DNS')[2]).toContain('test di velocità di Internet');
+  });
+
+  it('le domande frequenti e la privacy non negano il test di velocità di Internet', () => {
+    const faq = blocksOf('domande-frequenti');
+    const i = faq.findIndex((b) => b.t === 'h' && b.text === 'Misura la velocità della mia linea Internet?');
+    const answer = faq[i + 1];
+    expect(answer.t === 'p' && answer.text).toMatch(/^Sì/);
+    expect(answer.t === 'p' && linksIn(answer.text)).toContain('velocita-internet');
+    const privacy = blocksOf('primi-passi').find((b) => b.t === 'note' && b.title === 'I tuoi dati');
+    expect(privacy && privacy.t === 'note' && privacy.text).toContain('M-Lab');
+    expect(privacy && privacy.t === 'note' && privacy.text).toContain('indirizzo IP pubblico');
+  });
+});

@@ -203,7 +203,7 @@ export const pc: Guide[] = [
     blocks: [
       { t: 'p', text: 'Quando un\'unità si riempie la domanda è sempre la stessa: che cosa occupa tutto quello spazio? Nella sezione Computer il riquadro **Cosa occupa spazio** risponde come WizTree: cartelle e file più grandi, tipi di file e cartelle note di Windows, con il modo sicuro di recuperare spazio. Polaris legge e basta: non apre i file, non ne legge il contenuto e non cancella nulla. La salute del disco è un altro argomento (vedi [[salute-dischi-smart]]).' },
       { t: 'h', text: 'Che cosa fa l\'analisi' },
-      { t: 'p', text: 'Polaris legge l\'elenco di file e cartelle dell\'unità, con più letture in parallelo: per ogni cartella chiede a Windows le voci con `GetFileInformationByHandleEx` nel formato `FILE_ID_BOTH_DIR_INFO`, 64 KB per chiamata, ciascuna con nome, dimensione, spazio occupato, attributi, data di modifica e numero del file. Su un SSD dura da qualche secondo a qualche minuto, secondo il numero di file (valori indicativi). **Interrompi** la ferma lasciando i valori letti, dichiarati come parziali; mentre è in corso i test di velocità non partono. Nella demo l\'analisi è simulata e lo dichiara.' },
+      { t: 'p', text: 'Polaris legge l\'elenco di file e cartelle dell\'unità, con più letture in parallelo: per ogni cartella chiede a Windows le voci con `GetFileInformationByHandleEx` nel formato `FILE_ID_BOTH_DIR_INFO`, 64 KB per chiamata, ciascuna con nome, dimensione, spazio occupato, attributi, data di modifica e numero del file. Su un SSD dura da qualche secondo a qualche minuto, secondo il numero di file (valori indicativi). **Interrompi** la ferma lasciando i valori letti, dichiarati come parziali; mentre è in corso, i test del processore e del disco non partono. Nella demo l\'analisi è simulata e lo dichiara.' },
       { t: 'p', text: 'Il risultato entra nel rapporto. La scheda **Spazio recuperabile** somma ciò che si libera con gli strumenti di Windows senza toccare i tuoi file: sotto i 5 GB c\'è poco da recuperare, da 5 GB in su Polaris lo segnala come consiglio. Se l\'analisi è stata interrotta non dice che non c\'è nulla: la segnala come consiglio, perché i valori possono essere più alti, e propone di ripeterla. Con lo spazio libero scarso, la scheda dello spazio libero indica anche le cartelle più grandi su cui intervenire (soglie in [[dischi-hdd-ssd]]).' },
       { t: 'h', text: 'Perché i numeri non coincidono con Esplora file' },
       { t: 'list', items: [
@@ -270,7 +270,7 @@ export const pc: Guide[] = [
   {
     id: 'test-velocita',
     chapter: 'pc',
-    title: 'Test di velocità: cosa misurano e come leggerli',
+    title: 'Test del processore e del disco: cosa misurano e come leggerli',
     summary: 'Il test del processore e quello del disco: che cosa fanno, perché i valori differiscono da quelli dichiarati, come ottenere misure confrontabili e quanto sono sicuri.',
     level: 'intermedio',
     metrics: ['pc.cpubench', 'pc.diskbench'],
