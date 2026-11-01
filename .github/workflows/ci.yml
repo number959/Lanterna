@@ -371,13 +371,13 @@ jobs:
           New-Item -ItemType Directory -Force $ld | Out-Null
           $want = @{ code = '0x00000161'; p = @('0x0000000000001111', '0x0000000000002222', '0x0000000000003333', '0x0000000000004444') }
           try {
-            Add-Type -TypeDefinition @(
+            Add-Type -TypeDefinition (@(
               'using System; using System.Runtime.InteropServices;',
               'public static class PolarisLiveDump {',
               '  [StructLayout(LayoutKind.Sequential)] public struct Control { public uint Version; public uint Code; public ulong P1, P2, P3, P4; public IntPtr File; public IntPtr Cancel; public uint Flags; public uint AddPages; }',
               '  [DllImport("ntdll.dll")] public static extern int NtSystemDebugControl(int cmd, ref Control input, int inLen, IntPtr output, int outLen, out int retLen);',
               '  [DllImport("ntdll.dll")] public static extern int RtlAdjustPrivilege(int privilege, bool enable, bool currentThread, out bool wasEnabled);',
-              '}') -join "`n"
+              '}') -join "`n")
             $was = $false
             $pr = [PolarisLiveDump]::RtlAdjustPrivilege(20, $true, $false, [ref]$was)
             $fs = [IO.File]::Open((Join-Path $ld 'livedump.dmp'), 'Create', 'ReadWrite', 'None')
