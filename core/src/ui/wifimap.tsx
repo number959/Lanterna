@@ -186,6 +186,37 @@ function writeStored(key: string, survey?: WifiSurvey) {
   }
 }
 
+const BSSID = /^[0-9a-f]{2}([:-][0-9a-f]{2}){5}$/i;
+
+/** Mappa riaperta da un rapporto esportato: al posto dei BSSID ci sono gli alias (AP A, AP B). */
+export function aliasedSurvey(survey?: WifiSurvey): boolean {
+  return (survey?.rooms ?? []).some((r) =>
+    r.samples.some((s) =>
+      s.bssids
+        .concat(s.roams.flatMap((x) => [x.from, x.to]))
+        .concat((s.scan?.alternatives ?? []).map((a) => a.bssid))
+        .some((b) => !!b && !BSSID.test(b)),
+    ),
+  );
+}
+
+/**
+ * Allinea mappa del rapporto e mappa salvata sul PC (solo con l'agente).
+ * `first`: la scheda incontra questa rete per la prima volta. Una mappa con
+ * gli alias non viene da questo PC: non sostituisce mai quella salvata, che
+ * si mostra al suo posto.
+ */
+export function syncStored(target: SurveyTargetRef, survey: WifiSurvey | undefined, first: boolean, setSurvey: (s?: WifiSurvey) => void) {
+  const aliased = aliasedSurvey(survey);
+  if (first && (!survey || aliased)) {
+    const saved = readStored(target);
+    if (saved || survey) setSurvey(saved);
+    return;
+  }
+  if (aliased) return;
+  writeStored(storeKey(target), onlyNetwork(survey, target.ssid));
+}
+
 /** Misura simulata per la demo: secondi accelerati, poi la scansione. */
 function simulate(scan: Scan, room: string, seconds: number, withScan: boolean): Promise<SurveySample> {
   const sample = simulatedSample(scan, room, seconds, withScan);
@@ -304,20 +335,14 @@ export function WifiMapCard({ scan, analysis, go, live, source, addSurvey, setSu
   // riavvio dell'interfaccia. Le misure nuove le salva la misura stessa,
   // anche a scheda chiusa; qui si salvano le stanze tolte. Quando cambia la
   // rete del rapporto (nuova analisi altrove) si riprende la mappa di quella
-  // rete, senza cancellarla.
+  // rete, senza cancellarla. Una mappa importata non la sovrascrive mai.
   const key = storeKey(target);
   const restored = useRef<string>();
   useEffect(() => {
     if (source !== 'agent') return;
-    if (restored.current !== key) {
-      restored.current = key;
-      if (!survey) {
-        const saved = readStored(target);
-        if (saved) setSurvey(saved);
-        return;
-      }
-    }
-    writeStored(key, onlyNetwork(survey, target.ssid));
+    const first = restored.current !== key;
+    restored.current = key;
+    syncStored(target, survey, first, setSurvey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, key, survey]);
 

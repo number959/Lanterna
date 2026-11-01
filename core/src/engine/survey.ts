@@ -87,27 +87,30 @@ const MAC = /^[0-9a-f]{2}([:-][0-9a-f]{2}){5}$/i;
 /**
  * Gli alias si danno solo ai BSSID: un valore che non lo è (per esempio
  * "AP A" in un rapporto già esportato) resta com'è, così una seconda
- * esportazione non cambia nulla.
+ * esportazione non cambia nulla. Le lettere già scritte così in un punto
+ * importato si saltano: "AP A" resta di quell'access point.
  */
 export function surveyAliases(survey?: WifiSurvey): SurveyAliases {
-  const map: { [bssid: string]: string } = {};
-  let n = 0;
-  const add = (b?: string) => {
-    if (!b || !MAC.test(b)) return;
-    const k = b.toLowerCase();
-    if (map[k]) return;
-    map[k] = n < 26 ? `AP ${String.fromCharCode(65 + n)}` : `AP ${n + 1}`;
-    n++;
-  };
+  const all: string[] = [];
   for (const r of survey?.rooms ?? [])
     for (const s of r.samples) {
-      for (const b of s.bssids) add(b);
-      for (const x of s.roams) {
-        add(x.from);
-        add(x.to);
-      }
-      for (const a of s.scan?.alternatives ?? []) add(a.bssid);
+      for (const b of s.bssids) all.push(b);
+      for (const x of s.roams) all.push(x.from, x.to);
+      for (const a of s.scan?.alternatives ?? []) all.push(a.bssid);
     }
+  const taken: { [alias: string]: boolean } = {};
+  for (const b of all) if (b && !MAC.test(b)) taken[b] = true;
+  const map: { [bssid: string]: string } = {};
+  let n = 0;
+  const label = (i: number) => (i < 26 ? `AP ${String.fromCharCode(65 + i)}` : `AP ${i + 1}`);
+  for (const b of all) {
+    if (!b || !MAC.test(b)) continue;
+    const k = b.toLowerCase();
+    if (map[k]) continue;
+    while (taken[label(n)]) n++;
+    map[k] = label(n);
+    n++;
+  }
   return (b: string) => (MAC.test(b) ? map[b.toLowerCase()] || 'AP' : b);
 }
 

@@ -1,7 +1,7 @@
 import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ACTIONS,
   analyze,
@@ -26,7 +26,7 @@ import type { Scan, SurveySample, WifiSurvey } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { clinicSurvey, homeSurvey, seriesStats, simulatedSample } from '../src/demo/survey';
-import { cleanRoom, mergeSample, onlyNetwork, removeFromSurvey, roomNameError, sameSurveyTarget, storeKey, surveyRefusal, surveyTargetOf } from '../src/ui/wifimap';
+import { cleanRoom, mergeSample, onlyNetwork, removeFromSurvey, roomNameError, sameSurveyTarget, storeKey, surveyRefusal, surveyTargetOf, syncStored } from '../src/ui/wifimap';
 import { GLOSSARY, guideById, guidesForMetric } from '../src/guides';
 import { base } from './fixtures';
 
@@ -311,6 +311,59 @@ describe('protezione dal cambio di rapporto', () => {
   });
 });
 
+describe('mappa salvata sul PC e rapporti esportati', () => {
+  let store: Record<string, string>;
+  beforeEach(() => {
+    store = {};
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => {
+        store[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete store[k];
+      },
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const t = { live: true, host: 'PC-1', gateway: '192.168.1.1', ssid: 'Casa' };
+  const studio = pt({ room: 'Studio', bssids: ['aa:bb:cc:00:00:10'] });
+  const cucina = pt({ room: 'Cucina', startedAt: '2026-10-31T11:00:00Z', bssids: ['aa:bb:cc:00:00:20'] });
+
+  it("una mappa riaperta da un rapporto esportato non sostituisce quella salvata, più recente", () => {
+    // Salvata sul PC: Studio, poi Cucina misurata dopo l'esportazione.
+    const saved: WifiSurvey = { rooms: [{ name: 'Studio', samples: [studio] }, { name: 'Cucina', samples: [cucina] }] };
+    store[storeKey(t)] = JSON.stringify(saved);
+    // Il rapporto esportato prima della Cucina: al posto dei BSSID ci sono gli alias.
+    const exported = surveyForExport(withSurvey({ rooms: [{ name: 'Studio', samples: [studio] }] })).wifi!.survey!;
+    expect(exported.rooms[0].samples[0].bssids).toEqual(['AP A']);
+    let shown: WifiSurvey | undefined = exported;
+    syncStored(t, exported, true, (s) => (shown = s));
+    expect(JSON.parse(store[storeKey(t)])).toEqual(saved);
+    // Al suo posto si mostra la mappa salvata per questo PC e questa rete.
+    expect(shown).toEqual(saved);
+    // Nemmeno dopo, con una misura nuova aggiunta alla mappa importata.
+    const salotto = pt({ room: 'Salotto', startedAt: '2026-10-31T12:00:00Z', bssids: ['aa:bb:cc:00:00:30'] });
+    syncStored(t, mergeSample(exported, salotto), false, () => undefined);
+    expect(JSON.parse(store[storeKey(t)])).toEqual(saved);
+  });
+
+  it("con l'agente la mappa del rapporto si salva, e senza mappa si riprende quella salvata", () => {
+    const mine: WifiSurvey = { rooms: [{ name: 'Studio', samples: [studio] }] };
+    let shown: WifiSurvey | undefined;
+    syncStored(t, undefined, true, (s) => (shown = s));
+    expect(shown).toBeUndefined(); // niente da riprendere
+    syncStored(t, mine, false, (s) => (shown = s));
+    expect(JSON.parse(store[storeKey(t)])).toEqual(mine);
+    syncStored(t, undefined, true, (s) => (shown = s));
+    expect(shown).toEqual(mine);
+    // Stanze tolte: si tolgono anche dalla memoria.
+    syncStored(t, undefined, false, () => undefined);
+    expect(store[storeKey(t)]).toBeUndefined();
+  });
+});
+
 describe('demo', () => {
   it('casa: quattro stanze dalla più debole, con un punto in più nello studio', () => {
     const rooms = surveyRooms(demoScan.wifi!.survey);
@@ -420,6 +473,24 @@ describe('documento, rapporto ed esportazione', () => {
     expect(surveyForExport(out)).toEqual(out);
     // I BSSID veri hanno sempre un alias.
     expect(al('44:48:C1:A0:20:D0')).toMatch(/^AP [A-Z]$/);
+  });
+
+  it('un alias scritto in un punto importato non va a un altro access point', () => {
+    // Un punto riaperto da un rapporto esportato ("AP A") e uno misurato dopo, con il BSSID vero.
+    const old = pt({ bssids: ['AP A'], scan: { ...good.scan!, alternatives: [{ bssid: 'AP B', band: '5', channel: 44, rssiDbm: -70 }] } });
+    const now = pt({ startedAt: '2026-10-31T10:00:00Z', bssids: ['aa:bb:cc:00:00:30'], roams: [] });
+    for (const samples of [
+      [old, now],
+      [now, old],
+    ]) {
+      const sv: WifiSurvey = { rooms: [{ name: 'Studio', samples }] };
+      const al = surveyAliases(sv);
+      expect(al('AP A')).toBe('AP A');
+      expect(al('AP B')).toBe('AP B');
+      expect(al('aa:bb:cc:00:00:30')).toBe('AP C');
+      const out = surveyForExport(withSurvey(sv)).wifi!.survey!.rooms[0].samples;
+      expect(out.map((s) => s.bssids[0]).sort()).toEqual(['AP A', 'AP C']);
+    }
   });
 
   it('il motore della riga di comando (ES2015, goja) dà gli stessi giudizi, documento e rapporto', async () => {
