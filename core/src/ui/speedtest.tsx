@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { BLOAT_LABEL, mbpsText, primaryAdapter, SPEED_LEGAL_NOTE, speedBloat, speedBytes, speedCaveats, speedErr, speedLoadedText, speedMs, speedWhere } from '../engine';
 import type { Scan, SpeedDir, SpeedServer, SpeedTest } from '../engine';
 import { simulatedSpeed } from '../demo/simulate';
+import { lossText } from '../engine/speedtest';
 import { HexLoader } from './anim';
 import { runSpeed, speedStatus, stopSpeed } from './api';
 import type { SpeedState } from './api';
@@ -606,7 +607,7 @@ function SpeedResult({ r, wifi, headRef }: { r: SpeedTest; wifi: boolean; headRe
             {b.worst !== undefined && (
               <span className="speed-sub">
                 {b.atLeast ? 'almeno ' : ''}+{speedMs(b.worst)} {b.dir === 'upload' ? 'in upload' : 'in download'}
-                {b.raised ? `, ${b.excess} sonde su ${b.sent} senza risposta` : ''}
+                {b.raised ? `, ${lossText(b.heavy, 'excess')} senza risposta` : ''}
               </span>
             )}
           </div>

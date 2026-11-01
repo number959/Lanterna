@@ -1,0 +1,93 @@
+{
+  "nota": "Casi del giudizio sulla latenza sotto carico, condivisi dal motore (core/test/speedtest.test.ts) e dalla riga di comando (windows/cmd/lanterna/speedtest_test.go): stesse soglie di Polaris (P), stessa regola delle sonde senza risposta per verso.",
+  "casi": [
+    {
+      "nome": "upload con 7 sonde su 40 senza risposta, download pulito",
+      "speed": {
+        "startedAt": "2026-10-31T09:10:00Z", "durationMs": 27800, "provider": "mlab-ndt7", "probe": "1.1.1.1", "probeMethod": "icmp", "probeTimeoutMs": 1000,
+        "idle": { "sent": 20, "received": 20, "minMs": 11.2, "medianMs": 12, "p95Ms": 14.8 },
+        "download": { "mbps": 245.3, "bytes": 306600000, "ms": 10000, "latency": { "sent": 40, "received": 40, "minMs": 14, "medianMs": 22, "p95Ms": 30 }, "bloatMs": 10, "bloatP95Ms": 18 },
+        "upload": { "mbps": 48.2, "bytes": 60250000, "ms": 10000, "latency": { "sent": 40, "received": 33, "minMs": 15, "medianMs": 30, "p95Ms": 1000, "p95AtLeast": true }, "bloatMs": 18, "bloatP95Ms": 988 }
+      },
+      "severity": "warn", "grade": "da migliorare", "worst": 18, "dir": "upload", "atLeast": false,
+      "heavy": [{ "dir": "upload", "lost": 7, "sent": 40, "excess": 7 }]
+    },
+    {
+      "nome": "download con 6 sonde su 40 senza risposta, upload pulito",
+      "speed": {
+        "startedAt": "2026-10-31T09:10:00Z", "durationMs": 27800, "provider": "mlab-ndt7", "probe": "1.1.1.1", "probeMethod": "icmp", "probeTimeoutMs": 1000,
+        "idle": { "sent": 20, "received": 20, "minMs": 11.2, "medianMs": 12, "p95Ms": 14.8 },
+        "download": { "mbps": 245.3, "bytes": 306600000, "ms": 10000, "latency": { "sent": 40, "received": 34, "minMs": 15, "medianMs": 26, "p95Ms": 1000, "p95AtLeast": true }, "bloatMs": 14, "bloatP95Ms": 988 },
+        "upload": { "mbps": 48.2, "bytes": 60250000, "ms": 10000, "latency": { "sent": 40, "received": 40, "minMs": 13, "medianMs": 21, "p95Ms": 27 }, "bloatMs": 9, "bloatP95Ms": 15 }
+      },
+      "severity": "warn", "grade": "da migliorare", "worst": 14, "dir": "download", "atLeast": false,
+      "heavy": [{ "dir": "download", "lost": 6, "sent": 40, "excess": 6 }]
+    },
+    {
+      "nome": "oltre il 10 % in entrambi i versi",
+      "speed": {
+        "startedAt": "2026-10-31T09:10:00Z", "durationMs": 27800, "provider": "mlab-ndt7", "probe": "1.1.1.1", "probeMethod": "icmp", "probeTimeoutMs": 1000,
+        "idle": { "sent": 20, "received": 20, "minMs": 11.2, "medianMs": 12, "p95Ms": 14.8 },
+        "download": { "mbps": 245.3, "bytes": 306600000, "ms": 10000, "latency": { "sent": 40, "received": 35, "minMs": 14, "medianMs": 24, "p95Ms": 1000, "p95AtLeast": true }, "bloatMs": 12, "bloatP95Ms": 988 },
+        "upload": { "mbps": 48.2, "bytes": 60250000, "ms": 10000, "latency": { "sent": 40, "received": 34, "minMs": 15, "medianMs": 29, "p95Ms": 1000, "p95AtLeast": true }, "bloatMs": 17, "bloatP95Ms": 988 }
+      },
+      "severity": "warn", "grade": "da migliorare", "worst": 17, "dir": "upload", "atLeast": false,
+      "heavy": [{ "dir": "download", "lost": 5, "sent": 40, "excess": 5 }, { "dir": "upload", "lost": 6, "sent": 40, "excess": 6 }]
+    },
+    {
+      "nome": "esattamente il 10 % per verso: resta contenuta",
+      "speed": {
+        "startedAt": "2026-10-31T09:10:00Z", "durationMs": 27800, "provider": "mlab-ndt7", "probe": "1.1.1.1", "probeMethod": "icmp", "probeTimeoutMs": 1000,
+        "idle": { "sent": 20, "received": 20, "minMs": 11.2, "medianMs": 12, "p95Ms": 14.8 },
+        "download": { "mbps": 245.3, "bytes": 306600000, "ms": 10000, "latency": { "sent": 40, "received": 36, "minMs": 14, "medianMs": 23, "p95Ms": 1000, "p95AtLeast": true }, "bloatMs": 11, "bloatP95Ms": 988 },
+        "upload": { "mbps": 48.2, "bytes": 60250000, "ms": 10000, "latency": { "sent": 40, "received": 36, "minMs": 15, "medianMs": 27, "p95Ms": 1000, "p95AtLeast": true }, "bloatMs": 15, "bloatP95Ms": 988 }
+      },
+      "severity": "ok", "grade": "contenuta", "worst": 15, "dir": "upload", "atLeast": false,
+      "heavy": []
+    },
+    {
+      "nome": "sonde perse anche a riposo: la stessa quota non conta",
+      "speed": {
+        "startedAt": "2026-10-31T09:10:00Z", "durationMs": 27800, "provider": "mlab-ndt7", "probe": "1.1.1.1", "probeMethod": "icmp", "probeTimeoutMs": 1000,
+        "idle": { "sent": 20, "received": 18, "minMs": 11.2, "medianMs": 12, "p95Ms": 14.8 },
+        "download": { "mbps": 245.3, "bytes": 306600000, "ms": 10000, "latency": { "sent": 40, "received": 40, "minMs": 14, "medianMs": 22, "p95Ms": 30 }, "bloatMs": 10, "bloatP95Ms": 18 },
+        "upload": { "mbps": 48.2, "bytes": 60250000, "ms": 10000, "latency": { "sent": 40, "received": 33, "minMs": 15, "medianMs": 28, "p95Ms": 1000, "p95AtLeast": true }, "bloatMs": 16, "bloatP95Ms": 988 }
+      },
+      "severity": "ok", "grade": "contenuta", "worst": 16, "dir": "upload", "atLeast": false,
+      "heavy": []
+    },
+    {
+      "nome": "mediana da migliorare, nessuna sonda persa",
+      "speed": {
+        "startedAt": "2026-10-31T09:10:00Z", "durationMs": 27800, "provider": "mlab-ndt7", "probe": "1.1.1.1", "probeMethod": "icmp", "probeTimeoutMs": 1000,
+        "idle": { "sent": 20, "received": 20, "minMs": 11.2, "medianMs": 12, "p95Ms": 14.8 },
+        "download": { "mbps": 245.3, "bytes": 306600000, "ms": 10000, "latency": { "sent": 40, "received": 40, "minMs": 20, "medianMs": 57, "p95Ms": 80 }, "bloatMs": 45, "bloatP95Ms": 68 },
+        "upload": { "mbps": 48.2, "bytes": 60250000, "ms": 10000, "latency": { "sent": 40, "received": 40, "minMs": 13, "medianMs": 21, "p95Ms": 27 }, "bloatMs": 9, "bloatP95Ms": 15 }
+      },
+      "severity": "warn", "grade": "da migliorare", "worst": 45, "dir": "download", "atLeast": false,
+      "heavy": []
+    },
+    {
+      "nome": "mediana alta in upload",
+      "speed": {
+        "startedAt": "2026-10-31T09:10:00Z", "durationMs": 27800, "provider": "mlab-ndt7", "probe": "1.1.1.1", "probeMethod": "icmp", "probeTimeoutMs": 1000,
+        "idle": { "sent": 20, "received": 20, "minMs": 11.2, "medianMs": 12, "p95Ms": 14.8 },
+        "download": { "mbps": 245.3, "bytes": 306600000, "ms": 10000, "latency": { "sent": 40, "received": 40, "minMs": 14, "medianMs": 22, "p95Ms": 30 }, "bloatMs": 10, "bloatP95Ms": 18 },
+        "upload": { "mbps": 48.2, "bytes": 60250000, "ms": 10000, "latency": { "sent": 40, "received": 40, "minMs": 60, "medianMs": 140, "p95Ms": 190 }, "bloatMs": 128, "bloatP95Ms": 178 }
+      },
+      "severity": "crit", "grade": "alta", "worst": 128, "dir": "upload", "atLeast": false,
+      "heavy": []
+    },
+    {
+      "nome": "coda oltre l'attesa in upload: nessuna sonda risponde",
+      "speed": {
+        "startedAt": "2026-10-31T09:10:00Z", "durationMs": 27800, "provider": "mlab-ndt7", "probe": "1.1.1.1", "probeMethod": "icmp", "probeTimeoutMs": 1000,
+        "idle": { "sent": 20, "received": 20, "minMs": 11.2, "medianMs": 12, "p95Ms": 14.8 },
+        "download": { "mbps": 245.3, "bytes": 306600000, "ms": 10000, "latency": { "sent": 40, "received": 40, "minMs": 14, "medianMs": 22, "p95Ms": 30 }, "bloatMs": 10, "bloatP95Ms": 18 },
+        "upload": { "mbps": 9.1, "bytes": 11375000, "ms": 10000, "latency": { "sent": 20, "received": 0, "medianMs": 1000, "p95Ms": 1000, "medianAtLeast": true, "p95AtLeast": true }, "bloatMs": 988, "bloatP95Ms": 988 }
+      },
+      "severity": "crit", "grade": "alta", "worst": 988, "dir": "upload", "atLeast": true,
+      "heavy": [{ "dir": "upload", "lost": 20, "sent": 20, "excess": 20 }]
+    }
+  ]
+}

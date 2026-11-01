@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import {
   ACTIONS,
+  BLOAT_LABEL,
   analyze,
   bloatSeverity,
   documentParts,
@@ -33,6 +34,21 @@ import { GLOSSARY, guideById, guidesForMetric } from '../src/guides';
 // testo del consenso uguale a quello dell'agente.
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
+
+/** Casi del giudizio condivisi con la riga di comando (windows/cmd/lanterna/speedtest_test.go). */
+interface BloatCase {
+  nome: string;
+  speed: SpeedTest;
+  severity: string;
+  grade: string;
+  worst: number;
+  dir: string;
+  atLeast: boolean;
+  heavy: { dir: string; lost: number; sent: number; excess: number }[];
+}
+const bloatCases = (
+  JSON.parse(readFileSync(fileURLToPath(new URL('../../windows/internal/speedtest/testdata/bufferbloat.json', import.meta.url)), 'utf8')) as { casi: BloatCase[] }
+).casi;
 
 /** Risultato tipico: fibra, cavo, coda contenuta in download e alta in upload. */
 const base: SpeedTest = {
@@ -93,7 +109,11 @@ describe('soglie del bufferbloat (P)', () => {
 
   it('decide il verso peggiore e conta le sonde perse', () => {
     const b = speedBloat(base);
-    expect(b).toMatchObject({ worst: 82, worstP95: 129.6, dir: 'upload', severity: 'warn', lost: 1, sent: 80 });
+    expect(b).toMatchObject({ worst: 82, worstP95: 129.6, dir: 'upload', severity: 'warn', heavy: [] });
+    expect(b.loss).toEqual([
+      { dir: 'download', lost: 0, sent: 40, excess: 0 },
+      { dir: 'upload', lost: 1, sent: 40, excess: 1 },
+    ]);
     expect(speedBloat(speed({ download: undefined, upload: undefined })).severity).toBe('unknown');
   });
 
@@ -141,7 +161,7 @@ describe('giudizi del motore', () => {
     const crit = byId(findings(scanWith(speed({ upload: { ...base.upload!, bloatMs: 240, bloatP95Ms: 410, latency: { sent: 40, received: 30, medianMs: 250 } } }))), 'net.bufferbloat')!;
     expect(crit.severity).toBe('crit');
     expect(crit.verdict).toContain('si spezzano');
-    expect(crit.verdict).toContain('10 sonde su 80');
+    expect(crit.verdict).toContain('10 sonde su 40 in upload');
     // Senza latenza a riposo non si calcola.
     expect(byId(findings(scanWith(speed({ idle: undefined }))), 'net.bufferbloat')).toBeUndefined();
   });
@@ -253,7 +273,7 @@ describe('sonde senza risposta durante i trasferimenti', () => {
     expect(f.verdict).toContain('la maggior parte delle sonde in upload non ha avuto risposta entro 1 s');
     expect(f.verdict).toContain('almeno 990 ms');
     expect(f.verdict).not.toContain('reggono');
-    expect(speedBloat(lostUp(true))).toMatchObject({ severity: 'crit', atLeast: true, dir: 'upload', lost: 20, sent: 60 });
+    expect(speedBloat(lostUp(true))).toMatchObject({ severity: 'crit', atLeast: true, dir: 'upload', heavy: [{ dir: 'upload', lost: 20, sent: 20, excess: 20 }] });
     expect(speedLoadedText(lostUp(true), lostUp(true).upload)).toBe('almeno 1000 ms (almeno +990 ms; 95° percentile almeno +990 ms), 20 sonde su 20 senza risposta entro 1 s');
   });
 
@@ -296,7 +316,7 @@ describe('sonde senza risposta durante i trasferimenti', () => {
     });
     const f = byId(findings(scanWith(r)), 'net.bufferbloat')!;
     expect(f.severity).toBe('warn');
-    expect(f.verdict).toContain('10 sonde su 80 non hanno avuto risposta entro 1 s');
+    expect(f.verdict).toContain('10 sonde su 40 in download non hanno avuto risposta entro 1 s');
     expect(f.verdict).toContain('picchi di coda oltre 1 s');
     expect(f.verdict).not.toContain('reggono');
     // Se se ne perdevano altrettante a riposo sono perdite sulla linea, non coda.
@@ -304,6 +324,38 @@ describe('sonde senza risposta durante i trasferimenti', () => {
     const g = byId(findings(scanWith(lossy)), 'net.bufferbloat')!;
     expect(g.severity).toBe('ok');
     expect(g.verdict).toContain('se ne perdevano anche a riposo');
+  });
+
+  it('la regola del 10 % (P) vale per verso: un download pulito non nasconde un upload con sonde perse', () => {
+    // Download pulito, upload con 7 sonde su 40 senza risposta (17,5 %):
+    // sommati i due versi sarebbero 7 su 80, sotto il 10 %.
+    const r = bloatCases[0].speed;
+    const f = byId(findings(scanWith(r)), 'net.bufferbloat')!;
+    expect(f.severity).toBe('warn');
+    expect(f.verdict).toContain('ma 7 sonde su 40 in upload non hanno avuto risposta entro 1 s, mentre a riposo rispondevano');
+    expect(f.verdict).not.toContain('reggono');
+    expect(f.verdict).not.toContain('su 80');
+    const s = scanWith(r);
+    const flat = renderText(s, analyze(s), { verbose: true }).replace(/\s+/g, ' ');
+    expect(flat).toContain('Latenza sotto carico: da migliorare, +18 ms in upload, 7 sonde su 40 in upload senza risposta');
+    // Le note sulle sonde perse nominano il verso e i suoi conteggi.
+    const both = speed({ upload: { ...base.upload!, latency: { sent: 40, received: 30, medianMs: 92.4 } } });
+    expect(byId(findings(scanWith(both)), 'net.bufferbloat')!.verdict).toContain('10 sonde su 40 in upload non hanno avuto risposta entro 1 s durante i trasferimenti');
+  });
+
+  it('stessi giudizi della riga di comando (casi condivisi con il Go)', () => {
+    expect(bloatCases.length).toBeGreaterThan(5);
+    for (const c of bloatCases) {
+      const b = speedBloat(c.speed);
+      expect({ severity: b.severity, grade: BLOAT_LABEL[b.severity], worst: b.worst, dir: b.dir, atLeast: b.atLeast, heavy: b.heavy }, c.nome).toEqual({
+        severity: c.severity,
+        grade: c.grade,
+        worst: c.worst,
+        dir: c.dir,
+        atLeast: c.atLeast,
+        heavy: c.heavy,
+      });
+    }
   });
 
   it('attesa delle sonde', () => {
