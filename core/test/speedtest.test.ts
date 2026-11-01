@@ -397,6 +397,19 @@ describe('demo', () => {
     expect(clinic.download!.mbps).toBeLessThan(link);
   });
 
+  it('la latenza a riposo è quella misurata dalla demo verso 1.1.1.1, e sotto carico non è mai più bassa', () => {
+    for (const s of [demoScan, clinicScan]) {
+      const t = s.internet!.targets.find((x) => x.target === '1.1.1.1')!;
+      const r = simulatedSpeed(s);
+      expect(r.probe).toBe('1.1.1.1');
+      expect(r.idle!.medianMs, s.agent.host).toBe(t.avgMs);
+      for (const d of [r.download!, r.upload!]) {
+        expect(d.latency!.medianMs!, s.agent.host).toBeGreaterThan(t.avgMs!);
+        expect(d.latency!.minMs!, s.agent.host).toBeGreaterThanOrEqual(r.idle!.minMs!);
+      }
+    }
+  });
+
   it('i dati delle demo non contengono già un test (lo si simula a richiesta)', () => {
     expect(demoScan.internet?.speed).toBeUndefined();
     expect(clinicScan.internet?.speed).toBeUndefined();
