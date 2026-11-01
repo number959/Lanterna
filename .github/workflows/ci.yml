@@ -456,8 +456,8 @@ jobs:
             $st = Invoke-RestMethod "$base/speedtest"
             "Stato del test di velocità: in corso=$($st.running), test rimasti oggi=$($st.left)"
             if ($st.running -or $st.left -ne 10) { throw "stato iniziale del test di velocità inatteso" }
-            # Una misura del Wi-Fi via API: parte e finisce (con un errore, senza scheda Wi-Fi); intanto il test di
-            # velocità è rifiutato con 409 senza consumare un test.
+            # Una misura del Wi-Fi via API: parte e finisce (con un errore, senza scheda Wi-Fi) e non consuma
+            # test di velocità (l'esclusione reciproca è provata nei test Go dell'agente).
             Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"room":"Studio","seconds":10,"scan":false}' "$base/wifi/survey" | Out-Null
             $t = 0
             do { Start-Sleep 1; $t++; $sv = Invoke-RestMethod "$base/wifi/survey" } while ($sv.running -and $t -lt 40)
