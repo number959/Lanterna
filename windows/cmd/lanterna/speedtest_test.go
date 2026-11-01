@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -69,6 +72,66 @@ func TestPrintSpeed(t *testing.T) {
 	}
 	if got := bloatGrade(29.9) + "/" + bloatGrade(30) + "/" + bloatGrade(100) + "/" + bloatGrade(100.1); got != "contenuta/da migliorare/da migliorare/alta" {
 		t.Errorf("soglie: %s", got)
+	}
+}
+
+// bloatCase: un caso condiviso con il motore (core/test/speedtest.test.ts):
+// gli stessi dati devono dare lo stesso giudizio nella riga di comando, nel
+// rapporto, nel documento e nell'interfaccia.
+type bloatCase struct {
+	Nome    string         `json:"nome"`
+	Speed   scan.SpeedTest `json:"speed"`
+	Grade   string         `json:"grade"`
+	Worst   float64        `json:"worst"`
+	AtLeast bool           `json:"atLeast"`
+	Heavy   []struct {
+		Dir                string
+		Lost, Sent, Excess int
+	} `json:"heavy"`
+}
+
+func bloatCases(t *testing.T) []bloatCase {
+	t.Helper()
+	b, err := os.ReadFile("../../internal/speedtest/testdata/bufferbloat.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fx struct {
+		Casi []bloatCase `json:"casi"`
+	}
+	if err := json.Unmarshal(b, &fx); err != nil || len(fx.Casi) < 6 {
+		t.Fatalf("casi: %v (%d)", err, len(fx.Casi))
+	}
+	return fx.Casi
+}
+
+// Stesso giudizio del motore: soglie della mediana e, verso per verso, oltre
+// il 10 % di sonde senza risposta (al netto di quelle perse a riposo) almeno
+// "da migliorare", anche con la mediana sotto 30 ms.
+func TestBloatGradeMatchesEngine(t *testing.T) {
+	for _, c := range bloatCases(t) {
+		var b bytes.Buffer
+		printSpeed(&b, &c.Speed)
+		flat := strings.Join(strings.Fields(b.String()), " ")
+		least := ""
+		if c.AtLeast {
+			least = "almeno "
+		}
+		want := fmt.Sprintf("Latenza sotto carico (bufferbloat): %s, %s+%s nel caso peggiore", c.Grade, least, msText(c.Worst))
+		if !strings.Contains(flat, want) {
+			t.Errorf("%s: manca %q in:\n%s", c.Nome, want, b.String())
+		}
+		// Giudizio alzato dalle sonde senza risposta: il verso e i conteggi.
+		if c.Grade == "da migliorare" && c.Worst < 30 {
+			for _, h := range c.Heavy {
+				if w := fmt.Sprintf("%d sonde su %d in %s", h.Excess, h.Sent, h.Dir); !strings.Contains(flat, w) {
+					t.Errorf("%s: manca %q in:\n%s", c.Nome, w, b.String())
+				}
+			}
+			if !strings.Contains(flat, "soglia di Polaris") {
+				t.Errorf("%s: la regola del 10 %% non è detta scelta di Polaris:\n%s", c.Nome, b.String())
+			}
+		}
 	}
 }
 
