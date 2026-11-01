@@ -1,8 +1,8 @@
 # Verifiche
 
-Cosa è stato verificato, come, e cosa resta da provare. Versione attuale: 0.9.0 (31 ottobre 2026), con "Cosa occupa spazio",
-l'analisi dello spazio su disco come WizTree (sezione 13); le sezioni dalla 10 alla 12 descrivono le versioni dalla 0.6.0 alla
-0.8.0. Fino alla versione 0.2.0 il programma si chiamava LANterna:
+Cosa è stato verificato, come, e cosa resta da provare. Versione attuale: 0.10.0 (1 novembre 2026), con le schermate blu lette
+come BlueScreenView, la mappa del Wi-Fi per stanza, il test di velocità di Internet e i certificati dei servizi interni (sezione
+14); le sezioni dalla 10 alla 13 descrivono le versioni dalla 0.6.0 alla 0.9.0. Fino alla versione 0.2.0 il programma si chiamava LANterna:
 le sezioni che descrivono prove precedenti riportano i nomi di allora.
 
 ## 1. Test automatici
@@ -845,3 +845,147 @@ eseguito come amministratore. Run 39 (commit `db20adc`) e run 44 (commit `67c373
   analisi e, con un agente simulato, che l'interfaccia invii solo il numero.
 - **Consigli.** Nomi di menu e voci cambiano con gli aggiornamenti di Windows; i flussi alternativi dei file non si contano;
   lo spazio dei file compressi da WOF si legge dalle voci delle cartelle senza aprire i file.
+
+## 14. Versione 0.10.0: schermate blu come BlueScreenView, mappa del Wi-Fi, velocità di Internet e certificati
+
+**Cosa è nuovo.**
+- **Schermate blu** (Computer > File delle schermate blu, `polaris-cli crashes`, `GET /api/crashes`): l'agente legge da solo,
+  in sola lettura, le impostazioni dei dump (chiave `CrashControl`), i 50 minidump più recenti e l'intestazione di
+  `MEMORY.DMP`. Per ogni file data, codice con nome e significato, parametri, versione di Windows e tipo; per i minidump a 64
+  bit anche driver caricati, driver scaricati, stack salvato e il driver indicato come indizio, sempre con il metodo. Il
+  motore segnala driver e codici ricorrenti, le impostazioni che impediscono di salvare i file e l'accesso che richiede
+  l'amministratore; il conteggio resta in "Schermate blu" (il maggiore tra eventi 1001 e minidump del periodo).
+- **Mappa del Wi-Fi per stanza** (sezione Wi-Fi, `polaris-cli wifi-survey`, `POST/GET/DELETE /api/wifi/survey`): segnale una
+  volta al secondo, cambi di access point e ping al router ogni 200 ms per circa 15 secondi, poi una scansione; un giudizio
+  per stanza con le azioni. Corretto anche il riconoscimento della banda a 6 GHz quando il canale arriva senza la frequenza.
+- **Velocità di Internet** (sezione Internet, `polaris-cli speedtest --accetto`, `POST/GET/DELETE /api/speedtest`): client
+  ndt7 di Measurement Lab scritto dalla specifica, con il consenso chiesto a ogni test; latenza a riposo e sotto carico
+  (bufferbloat), ritrasmissioni, server usato. Nessun IP salvato o stampato.
+- **Certificati dei servizi interni** (Infrastruttura, `polaris-cli certs`, `POST/GET /api/certs`): lettura del certificato
+  durante la negoziazione TLS, solo verso indirizzi privati, con l'attendibilità calcolata da Windows su questo PC.
+- **Motore 1.4.0**, 72 guide (nuove: certificati dei servizi interni, file delle schermate blu, Wi-Fi stanza per stanza, test
+  di velocità di Internet) e 230 voci di glossario. Nuova dipendenza: `github.com/gorilla/websocket` 1.5.3 (BSD-2-Clause, del
+  14/06/2024), solo per il test di velocità.
+
+**Fonti**, verificate prima di scrivere il codice (dal 30/10/2026):
+- **Minidump.** Intestazione `DUMP_HEADER64` e sezione triage dai layout pubblici (documentazione Microsoft e fonti aperte),
+  senza esaminare binari proprietari; parametri con l'indirizzo per ogni codice dalle pagine dei codici di arresto di
+  learn.microsoft.com (0xA, 0xD1, 0x1E, 0x7E, 0x8E, 0x3B, 0x50 e varianti); valori confrontati con un log pubblico di
+  `.dumpdebug` (Windows 7 SP1 e Windows 10 19041), per esempio la dimensione del pool di stringhe e la regione dei driver
+  scaricati. Pagina "Event ID 41" di Microsoft per il codice di arresto nell'evento Kernel-Power 41.
+- **Wi-Fi.** Opcode di `WlanQueryInterface` (`current_connection` 7, `channel_number` 8, `rssi` 0x10000102), `dot11_BSS_type_any`
+  3 e scostamenti di `WLAN_BSS_ENTRY` (BSSID 40, RSSI 56, `ullTimestamp` 72, `ullHostTimestamp` 80, frequenza 92, dimensione
+  360), `WLAN_CONNECTION_ATTRIBUTES` (associazione 520, qualità +56) **confrontati con le intestazioni mingw-w64** con
+  asserzioni statiche, per amd64 (gcc) e per arm64 e 386 (clang): tutti coincidono. Qualità in dBm con la regola lineare
+  documentata da Microsoft (0 = -100 dBm, 100 = -50 dBm); jitter come in RFC 5481. Soglie: -67 dBm (Cisco, voce su Wi-Fi),
+  -72 dBm (Juniper Mist, copertura predefinita), perdite sotto l'1 % e jitter sotto 30 ms (Microsoft Teams); le altre sono
+  dichiarate come scelte di Polaris.
+- **Velocità di Internet.** Specifica ndt7 (`ndt-server` v0.25.0: durata di 10 s per verso, chiusura entro 13-15 s, messaggi
+  con `TCPInfo` e `BBRInfo`), Locate v2 (token di 60 s, fino a 4 server), informativa e regole d'uso di M-Lab (pubblicazione
+  dell'IP, contributo per gli usi commerciali). La libreria ufficiale `ndt7-client-go` (Apache-2.0) dalla versione 0.10 chiede
+  Go 1.25.5 e una versione non rilasciata di `gorilla/websocket`: per questo un client proprio.
+- **Certificati.** `crypto/tls` di Go (lettura della catena senza rifiutarla, seconda negoziazione limitata a TLS 1.0/1.1) e
+  `CertGetCertificateChain` con il solo archivio locale, senza download (`CACHE_ONLY_URL_RETRIEVAL`,
+  `DISABLE_AUTH_ROOT_AUTO_UPDATE`).
+
+**Test automatici.**
+
+| Insieme | Esito |
+| --- | --- |
+| Motore, guide, interfaccia (vitest) | 354 test superati (138 in più della 0.9.0), tra cui: certificati 31 (soglie di scadenza, righe non valide sul campo giusto, porta del Desktop remoto, rapporto mostrato diverso, demo coerenti); schermate blu 28 (codici e famiglie, driver e codici ricorrenti, nessun doppio conteggio con gli eventi, conteggio "non verificabile" quando i file non si leggono e Windows non annota, registro eventi non letto, scheda resa in HTML per le letture interrotte, documento e rapporto senza percorsi, motore ES2015 in `node:vm`); mappa del Wi-Fi 34 (soglie, punto peggiore della stanza, router che ignora i ping, rete diversa rifiutata, alias degli access point senza doppioni e nessun BSSID negli export, mappa importata che non sostituisce quella salvata, dBm stimati dichiarati nel documento, motore ES2015); velocità di Internet 33 (bufferbloat anche con le sonde perse, contate per verso, avvertenze, consenso uguale tra interfaccia e agente, rapporto mostrato diverso, limite giornaliero, nessun IP nel documento); nuova analisi 5 (che cosa passa dal rapporto precedente: solo dall'agente, dallo stesso PC e dalla stessa rete, compresi nome della rete Wi-Fi e MAC del router); avvio dell'analisi 3 (un rifiuto per un'altra attività si mostra invece di sembrare un'analisi finita) |
+| Agente (Go, anche con `-race`) | 268 test superati (92 in più), tra cui: minidump costruiti byte per byte a 64 e 32 bit, intestazione sola, dati incoerenti e limiti, driver dal parametro e dallo stack, lettura con permessi negati e interrotta (risultato parziale), e tre giri di fuzzing del parser (da 30 a 60 s) senza errori; misura del Wi-Fi con una radio e un pinger finti (roaming, scollegamento, cambio di rete, router muto, qualità al posto dei dBm, scansione con voci vecchie scartate) e 6 GHz dal solo canale; client ndt7 contro un M-Lab finto in TLS (Locate con 204/429/407/503, più server, token scaduti, upload dai contatori TCP del server, chiusura regolare avviata dal server, chiusura con un codice d'errore, connessione caduta senza chiusura, proxy CONNECT e 407, interruzione, nessun IP, porta, UUID o token nel risultato; limiti salvati su file e condivisi tra agente e riga di comando, file rovinato, cambio di giorno; giudizio della riga di comando uguale a quello del motore su 8 casi comuni); API con validazione, limiti, `Retry-After` ed esclusioni reciproche tra analisi, test della CPU o del disco, misura del Wi-Fi e test di velocità di Internet; certificati con servizi TLS veri su localhost |
+| `go vet` (Linux e Windows amd64), `gofmt`, `tsc`, build Windows amd64 e arm64 | nessun problema |
+
+**Revisione indipendente.** Ogni funzione ha avuto un costruttore, un revisore e un correttore separati, ognuno sulla propria
+copia del repository; poi una seconda revisione sul codice unito. Rilievi della prima revisione: schermate blu 8 (7 corretti,
+uno era un avviso sui conflitti di unione), mappa del Wi-Fi 9 (8 corretti, uno lasciato come scelta dichiarata: come pesare il
+10° percentile del segnale), velocità di Internet 9 (tutti corretti). I principali:
+- **velocità di Internet**: un bufferbloat grave (coda oltre un secondo, tipica dei collegamenti ADSL e FTTC in upload) risultava
+  "contenuto" perché le sonde perse sotto carico venivano scartate; ora contano come "almeno" il tempo di attesa. L'upload
+  "misurato dal server" usava un campo che il server vero di M-Lab non manda: ora viene dai contatori TCP del server. Un
+  risultato vecchio si univa, riaprendo la pagina, al rapporto di un'altra rete;
+- **mappa del Wi-Fi**: un router che ignora i ping rendeva critica ogni stanza (100 % di perdite); la mappa di una rete si
+  ritrovava nel rapporto di un'altra con lo stesso gateway 192.168.1.1 (ora conta anche il nome della rete); nessuna stima
+  quando la scheda non dà i dBm;
+- **schermate blu**: un codice ripetuto spariva se il più frequente era un arresto provocato di proposito; "nessuna schermata
+  blu" accanto a minidump recenti quando il registro eventi era stato svuotato; "nessun driver di terze parti" quando Polaris
+  salta solo kernel e HAL.
+- **Seconda revisione, sul codice unito**: quattro revisori (uno per funzione, uno per i punti di contatto) hanno trovato altri
+  14 difetti reali, tutti riprodotti con prove: 3 sulle schermate blu, 2 sulla mappa del Wi-Fi, 4 sul test di velocità e 5 di
+  integrazione. Tutti corretti, ognuno con un test che fallisce prima della correzione; poi un verificatore indipendente per
+  gruppo ha cercato di smontare le correzioni. I principali:
+  - **conteggi onesti**: senza amministratore e con Windows impostato per non annotare le schermate blu, il conteggio diceva
+    "nessuna" e "Polaris le conta dai minidump" senza averli letti; ora è "non verificabile". Con il registro eventi non letto,
+    i minidump recenti contano lo stesso e il giudizio lo dice;
+  - **sonde perse per verso**: un download pulito nascondeva un upload con il 17,5 % di sonde perse e il giudizio diceva
+    "contenuta"; la riga di comando non applicava la regola. Ora valgono per ogni verso e Go e TypeScript leggono gli stessi 8
+    casi di prova;
+  - **nuova analisi**: il test di velocità restava attaccato a un'altra rete con lo stesso indirizzo del router (192.168.1.1);
+    inventario e certificati di un rapporto importato di un altro PC passavano nel rapporto di questo; una mappa importata
+    sovrascriveva quella salvata; "Nuova analisi" rifiutata durante un test diceva "Analisi completata". Ora passa al rapporto
+    nuovo solo ciò che viene dall'agente, dallo stesso PC e dalla stessa rete, e il rifiuto si mostra con il messaggio
+    dell'agente;
+  - **limiti del test di velocità**: valevano solo in memoria e non da riga di comando; ora sono in un piccolo file (giorno,
+    numero, ora dell'ultimo test) condiviso da interfaccia e riga di comando.
+  Il verificatore ha trovato un errore introdotto da una correzione (una connessione caduta descritta come "chiusa dal server
+  con il codice 1006"), corretto con un test che lo riproduce. La verifica indipendente delle modifiche ai testi (documento e
+  guide) non è stata completata per un limite di utilizzo degli agenti: sono state rilette a mano.
+
+**Unione dei tre rami.** Conflitti solo additivi (import, esportazioni del motore, proprietà delle viste, stili, riga di comando,
+server). L'unione ha mostrato due lacune, corrette: misura del Wi-Fi e test di velocità di Internet potevano partire insieme
+(il traffico del test falsa ping e perdite della misura) e i rifiuti del test della CPU o del disco parlavano di "test di
+velocità", ora ambiguo.
+
+**Interfaccia**, Chromium 141 sulla build di produzione, axe-core (WCAG 2.1 A/AA e buone pratiche):
+- ogni scheda nuova, durante il lavoro: demo di casa e della clinica, tema scuro e chiaro, 1366 e 390 px, stati iniziale, in
+  corso, errore e risultato; agente simulato (lettura delle schermate blu senza e con amministratore, misura del Wi-Fi con
+  avanzamento e salvataggio, finestra del consenso con il fuoco intrappolato, Esc e ritorno del fuoco, nessuna richiesta senza
+  consenso);
+- sulla build finale, l'intera pagina delle sezioni Computer, Wi-Fi, Internet e Infrastruttura, con misura e test simulati:
+  **0 violazioni** e nessuno scorrimento orizzontale. Gli unici errori della console sono i 404 voluti dell'agente assente;
+- la revisione d'integrazione ha riprodotto in Chromium, con un agente finto, i tre difetti della nuova analisi; il
+  verificatore ha confermato che sulla build corretta non si ripresentano.
+
+**Exe sotto Wine 9.0.** `polaris-cli version` dice 0.10.0 con il motore 1.4.0; `crashes` dice che le impostazioni dei dump non
+si leggono e che la cartella non c'è (Wine non ha la chiave `CrashControl`); `wifi-survey` esce con codice 1 e "nessuna scheda
+Wi-Fi presente", rifiuta una stanza vuota e 30 secondi; `speedtest` senza `--accetto` stampa il consenso e non contatta nessuno.
+
+**Windows reale (CI).** Windows Server 2025 su una macchina virtuale Azure, eseguito come amministratore.
+- **Certificati** (run 46-48): la run 47 ha trovato un difetto vero, corretto: "localhost" su Windows si risolve prima in `::1` e
+  Polaris provava solo il primo indirizzo; ora prova gli indirizzi privati del nome uno dopo l'altro, prima gli IPv4. Dalla
+  run 48 il servizio di prova con un certificato autofirmato risulta letto per indirizzo e per nome, con giorni alla scadenza
+  e nome giusti, `untrusted-root` per Windows e `trusted` dopo l'importazione tra le radici del computer; un indirizzo
+  pubblico è rifiutato senza collegarsi. La run 45 ha mostrato che il passo "Cosa occupa spazio" può superare i 25 minuti su
+  un disco molto lento (cartella di Windows in 198 s invece di 51-64): il limite è salito a 45 minuti.
+- **Schermate blu** (run 52): impostazioni lette da Polaris uguali a quelle di PowerShell (`CrashDumpEnabled` 7, dump
+  automatico; cartella `%SystemRoot%\Minidump`; `LogEvent` 1), cartella dei minidump assente sul runner, nessun percorso di
+  profilo nel JSON, lettura presente nel rapporto completo. **Dump vero di Windows** (run 55): un'istantanea del kernel creata senza
+  arresto (la funzione usata da Gestione attività per "Crea file di dump della memoria del kernel in tempo reale"), di 1157 MB,
+  con codice 0x161 e parametri scelti dalla prova; Polaris la legge dalla cartella dei minidump e ritrova esattamente codice e
+  quattro parametri, 64 bit x64, build 26100 (uguale a quella del sistema), 4 processori (come per .NET), tipo "kernel a
+  bitmap", ora giusta, sola intestazione perché non è un minidump. `Get-StorageDiagnosticInfo -IncludeLiveDump` invece non
+  riesce a crearla su quella macchina (errore 0x85309c52).
+- **Mappa del Wi-Fi** (run 52): il runner non ha il servizio WLAN; la misura finisce in 0,1 s con "il servizio Configurazione
+  automatica WLAN (WlanSvc) non è attivo", codice 1, senza errori interni; via API la misura parte e finisce con lo stesso
+  messaggio; dati non validi rifiutati con 400.
+- **Velocità di Internet** (run 52): senza `--accetto` solo il testo del consenso (1440 caratteri, con l'informativa di M-Lab);
+  via API consenso mancante o non `true` rifiutato con 400, 10 test disponibili anche dopo una misura del Wi-Fi.
+  L'esclusione reciproca tra misura e test è provata nei test Go. **Nessun test reale verso M-Lab in CI**: pubblicherebbe l'indirizzo del runner.
+- Tutte le run dalla 48 in poi verdi: la 51 sul codice unito, la 52 con i passi nuovi, la 55 con il dump vero.
+
+**Avvertenze: cosa resta da provare su PC fisici.**
+- **Schermate blu.** L'intestazione è provata su un dump vero di Windows Server 2025; la sezione dei minidump con driver e
+  stack no: non esistono minidump pubblici con una licenza che ne consenta l'uso, e una schermata blu non si può provocare
+  sulle macchine della CI. Quella parte si basa su file costruiti dai layout pubblici e sui valori di un log pubblico; da
+  provare su un PC con schermate blu vere, anche ARM64. I permessi
+  predefiniti della cartella dei minidump non sono documentati da Microsoft: che serva l'amministratore è il caso osservato
+  comunemente, e Polaris lo dice così.
+- **Mappa del Wi-Fi.** I runner della CI non hanno Wi-Fi: frequenza di aggiornamento del segnale, ora dell'ultimo ascolto delle
+  reti, stima dalla qualità, roaming reale e ping concorrenti vanno provati su un portatile con Wi-Fi e il permesso di
+  posizione (Windows 11 24H2).
+- **Velocità di Internet.** Mai provato contro M-Lab vero, per scelta. Nomi e unità dei campi `TCPInfo` vengono dalla
+  specifica e dal sorgente di `ndt-server`; proxy con PAC o autenticazione NTLM/Kerberos non sono gestiti (il 407 è
+  spiegato); i limiti salvati su file non sono un blocco tra processi: due avvii nello stesso istante possono passare entrambi.
+- **Decisioni per STARNET.** Le regole d'uso di M-Lab chiedono a chi integra il test un'informativa sulla privacy propria,
+  coerente con quella di M-Lab e con una parte sul GDPR, e un contributo agli usi commerciali (hello@measurementlab.net):
+  vanno decisi prima di distribuire la versione. Indicazioni generali, da verificare, non una consulenza legale.

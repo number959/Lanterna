@@ -93,8 +93,9 @@ script PowerShell nascosto: nessuna impostazione viene modificata.
   segnalati dall'hardware (0x124) e per gli arresti provocati di proposito. Il motore segnala lo stesso driver o lo stesso
   codice in più schermate blu e le impostazioni che impediscono di salvare i file; mostra anche le impostazioni dei dump
   (lette, mai cambiate). Leggere i file richiede di avviare Polaris come amministratore: senza, la scheda lo dice e mostra
-  codice e parametri dal registro eventi. Il formato è ricostruito da documentazione pubblica e provato su file costruiti ad
-  arte (vedi Verifiche); per l'analisi completa dello stack serve WinDbg, e BlueScreenView resta nel pacchetto.
+  codice e parametri dal registro eventi. Il formato è ricostruito da documentazione pubblica, provato su file costruiti ad
+  arte e, per l'intestazione, su un dump vero di Windows creato in CI (vedi Verifiche); per l'analisi completa dello stack
+  serve WinDbg, e BlueScreenView resta nel pacchetto.
 - **Microsoft Defender**: protezione in tempo reale e da manomissioni, firme, ultime scansioni e cronologia delle minacce (nome,
   gravità e stato, senza percorsi dei file né nomi utente). Su richiesta, scansione rapida o completa e aggiornamento delle firme
   con lo strumento ufficiale `MpCmdRun`; una scansione si può interrompere.
