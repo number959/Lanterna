@@ -971,7 +971,8 @@ Wi-Fi presente", rifiuta una stanza vuota e 30 secondi; `speedtest` senza `--acc
 - **Velocità di Internet** (run 52): senza `--accetto` solo il testo del consenso (1440 caratteri, con l'informativa di M-Lab);
   via API consenso mancante o non `true` rifiutato con 400, 10 test disponibili anche dopo una misura del Wi-Fi.
   L'esclusione reciproca tra misura e test è provata nei test Go. **Nessun test reale verso M-Lab in CI**: pubblicherebbe l'indirizzo del runner.
-- Tutte le run dalla 48 in poi verdi: la 51 sul codice unito, la 52 con i passi nuovi, la 55 con il dump vero.
+- Tutte le run dalla 48 in poi verdi: la 51 sul codice unito, la 52 con i passi nuovi, la 55 con il dump vero, la 56 con
+  tutte le correzioni della seconda revisione.
 
 **Avvertenze: cosa resta da provare su PC fisici.**
 - **Schermate blu.** L'intestazione è provata su un dump vero di Windows Server 2025; la sezione dei minidump con driver e
