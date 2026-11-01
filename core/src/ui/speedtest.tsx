@@ -189,8 +189,9 @@ export const sameSpeedTarget = (t: SpeedTargetRef | undefined, scan: Scan | null
  * L'ultimo test che l'agente ricorda si recupera solo in un rapporto più
  * vecchio del test: il risultato non dice in che rete è stato misurato, e un
  * test precedente all'analisi mostrata può appartenerle solo per la regola
- * di App sulle nuove analisi nella stessa sessione (stesso PC e stesso
- * gateway), che dopo un ricaricamento della pagina non c'è più. Test e
+ * di App sulle nuove analisi nella stessa sessione (carryOver: rapporto
+ * dell'agente, stesso PC e stessa rete), che dopo un ricaricamento della
+ * pagina non c'è più. Test e
  * analisi non girano mai insieme (l'agente lo impedisce).
  */
 export function speedFitsScan(r: SpeedTest, scan: Scan): boolean {

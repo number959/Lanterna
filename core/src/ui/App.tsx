@@ -153,10 +153,11 @@ export function carryOver(prev: Scan | null, from: Source, s: Scan): Scan {
   const net = agent && sameNetwork(prev, s);
   // Inventario e verifiche della stessa rete restano validi: si conservano (con la loro data).
   if (net && !s.infra && prev.infra && prev.agent.platform === s.agent.platform) next = { ...next, infra: { ...prev.infra, assessment: undefined } };
-  // Anche i test di velocità dello stesso PC, finché non se ne esegue uno nuovo.
-  if (prev.pc?.bench && s.pc && !s.pc.bench && prev.agent.host === s.agent.host) next = { ...next, pc: { ...next.pc, bench: prev.pc.bench } };
+  // Anche i test del processore e del disco dello stesso PC, finché non se ne
+  // esegue uno nuovo (solo dall'agente: un rapporto importato è di allora).
+  if (agent && prev.pc?.bench && s.pc && !s.pc.bench && prev.agent.host === s.agent.host) next = { ...next, pc: { ...next.pc, bench: prev.pc.bench } };
   // E le analisi dello spazio, che possono durare minuti.
-  if (prev.pc?.space?.length && next.pc && !next.pc.space && prev.agent.host === next.agent.host) next = { ...next, pc: { ...next.pc, space: prev.pc.space } };
+  if (agent && prev.pc?.space?.length && next.pc && !next.pc.space && prev.agent.host === next.agent.host) next = { ...next, pc: { ...next.pc, space: prev.pc.space } };
   // E la mappa del Wi-Fi per stanza, dello stesso PC e della stessa rete (come la mappa salvata sul PC).
   if (agent && prev.wifi?.survey && next.wifi && !next.wifi.survey && prev.agent.host === next.agent.host && prev.gateway?.ip === next.gateway?.ip && prev.wifi.connected?.ssid === next.wifi.connected?.ssid)
     next = { ...next, wifi: { ...next.wifi, survey: prev.wifi.survey } };

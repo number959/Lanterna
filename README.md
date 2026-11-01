@@ -206,7 +206,7 @@ serie.
   protocollo ndt7 di [Measurement Lab](https://www.measurementlab.net/) (M-Lab), un progetto senza scopo di lucro: latenza a
   riposo per 5 secondi, poi 10 secondi di download e 10 di upload (fino a circa 250 MB per verso) mentre continua a misurare la
   latenza, così si vede quanto cresce sotto carico (bufferbloat). M-Lab **pubblica** ogni risultato con l'indirizzo IP pubblico
-  della connessione; Polaris non salva né stampa l'IP. Dall'interfaccia, al massimo un test ogni 2 minuti e 10 al giorno. La velocità è sempre
+  della connessione; Polaris non salva né stampa l'IP. Al massimo un test ogni 2 minuti e 10 al giorno, anche da riga di comando (il conteggio sta in un piccolo file locale con giorno, numero e ora dell'ultimo test). La velocità è sempre
   informativa: Polaris non conosce il contratto; per le contestazioni vale la misura certificata di AGCOM (Ne.Me.Sys.).
 
 ## Reti complesse e strutture sanitarie

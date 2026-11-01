@@ -111,6 +111,23 @@ describe('nuova analisi: che cosa resta del rapporto mostrato', () => {
     expect(carryOver(live, 'agent', report('PC-1', 'Ufficio-Bianchi')).wifi!.survey).toBeUndefined();
   });
 
+  it('test del processore e del disco e analisi dello spazio passano solo da un rapporto dell\'agente dello stesso PC', () => {
+    const prev = report('PC-1', 'Casa-Rossi');
+    prev.pc = { ...prev.pc, bench: { cpu: { singleMBs: 1, multiMBs: 2 } } as never, space: [{ drive: 'C:' }] as never };
+    const fresh = () => {
+      const s = report('PC-1', 'Casa-Rossi');
+      s.pc = { ...s.pc };
+      return s;
+    };
+    expect(carryOver(prev, 'agent', fresh()).pc!.bench).toEqual(prev.pc!.bench);
+    expect(carryOver(prev, 'agent', fresh()).pc!.space).toEqual(prev.pc!.space);
+    expect(carryOver(prev, 'file', fresh()).pc!.bench).toBeUndefined();
+    expect(carryOver(prev, 'file', fresh()).pc!.space).toBeUndefined();
+    const other = report('PC-2', 'Casa-Rossi');
+    other.pc = { ...other.pc };
+    expect(carryOver(prev, 'agent', other).pc!.bench).toBeUndefined();
+  });
+
   it('senza rapporto precedente la nuova analisi resta com\'è', () => {
     const s = report('PC-1', 'Casa-Rossi');
     expect(carryOver(null, 'demo', s)).toBe(s);
