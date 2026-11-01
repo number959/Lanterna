@@ -1,5 +1,5 @@
 import { num } from './fmt';
-import { BUGCHECKS, dateIt, on } from './pc';
+import { BUGCHECKS, crashDumpsVerified, dateIt, on } from './pc';
 import type { CrashCulprit, CrashData, CrashDump, CrashDumpType, CrashSettings, EventGroup, Finding, Scan, Severity } from './types';
 
 // Schermate blu lette dai file di Windows, come BlueScreenView: l'agente
@@ -369,7 +369,9 @@ export function analyzeCrashes(scan: Scan, add: Add) {
         ? `Windows è impostato per non salvare nulla dopo una schermata blu: se ne capita un'altra non resterà un file da esaminare${s.logEvent === false ? ' né un evento nel registro di sistema' : ', solo il codice nel registro eventi'}.` +
           (hadCrashes ? ' Su questo PC ci sono già state schermate blu: conviene riattivarlo.' : '') +
           ' Il dump piccolo (minidump) occupa poco spazio e basta per una prima analisi. Polaris non cambia l\'impostazione: è un passo da fare a mano.'
-        : 'Windows salva i file delle schermate blu ma non le annota nel registro di sistema: Polaris le conta dai minidump, quindi se un file manca anche il conteggio risulta incompleto.',
+        : crashDumpsVerified(c)
+          ? 'Windows salva i file delle schermate blu ma non le annota nel registro di sistema: Polaris le conta dai minidump, quindi se un file manca anche il conteggio risulta incompleto.'
+          : `Windows salva i file delle schermate blu ma non le annota nel registro di sistema, e i minidump ${c.needsAdmin ? 'si leggono solo avviando Polaris come amministratore' : 'non si sono potuti leggere per intero'}: il numero di schermate blu non si può verificare.`,
       actions: ['enable-minidump'],
     });
   }

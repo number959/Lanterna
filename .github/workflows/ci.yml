@@ -362,19 +362,36 @@ jobs:
           $s = Get-Content scan.json -Raw | ConvertFrom-Json
           if ($null -eq $s.pc.crashes) { throw "pc.crashes assente nel rapporto" }
           "Nel rapporto: $($s.pc.crashes.total) file, cartella $($s.pc.crashes.folder), parziale=$($s.pc.crashes.partial)"
-          # Un dump vero di Windows: istantanea del kernel senza arresto (Get-StorageDiagnosticInfo
-          # -IncludeLiveDump), letta da Polaris mettendo la sua cartella come cartella dei minidump.
+          # Un dump vero di Windows: istantanea del kernel senza arresto, come "Crea file di dump della memoria
+          # del kernel in tempo reale" di Gestione attività (NtSystemDebugControl, comando 37, struttura
+          # SYSDBG_LIVEDUMP_CONTROL versione 1 come negli header aperti phnt), con codice e parametri scelti qui.
+          # Polaris la legge mettendo la sua cartella come cartella dei minidump e deve ritrovare gli stessi valori.
           # Se Windows non la crea si dice e si prosegue; se c'è, va letta bene.
           $ld = Join-Path $env:RUNNER_TEMP 'livedump'
           New-Item -ItemType Directory -Force $ld | Out-Null
-          $job = Start-Job -ArgumentList $ld -ScriptBlock {
-            param($d)
-            Get-StorageSubSystem | Where-Object FriendlyName -like 'Windows Storage*' | Select-Object -First 1 |
-              Get-StorageDiagnosticInfo -DestinationPath $d -IncludeLiveDump -ExcludeOperationalLog -ExcludeDiagnosticLog -TimeSpan 1 -ErrorAction Stop
-          }
-          if (Wait-Job $job -Timeout 600) { Receive-Job $job -ErrorAction SilentlyContinue -ErrorVariable je | Out-Null; if ($je) { "Istantanea del kernel: $($je[0])" } }
-          else { Stop-Job $job; "Istantanea del kernel: tempo scaduto" }
-          $dmp = Get-ChildItem $ld -Recurse -Filter *.dmp -ErrorAction SilentlyContinue | Sort-Object Length | Select-Object -First 1
+          $want = @{ code = '0x00000161'; p = @('0x0000000000001111', '0x0000000000002222', '0x0000000000003333', '0x0000000000004444') }
+          try {
+            Add-Type -TypeDefinition @(
+              'using System; using System.Runtime.InteropServices;',
+              'public static class PolarisLiveDump {',
+              '  [StructLayout(LayoutKind.Sequential)] public struct Control { public uint Version; public uint Code; public ulong P1, P2, P3, P4; public IntPtr File; public IntPtr Cancel; public uint Flags; public uint AddPages; }',
+              '  [DllImport("ntdll.dll")] public static extern int NtSystemDebugControl(int cmd, ref Control input, int inLen, IntPtr output, int outLen, out int retLen);',
+              '  [DllImport("ntdll.dll")] public static extern int RtlAdjustPrivilege(int privilege, bool enable, bool currentThread, out bool wasEnabled);',
+              '}') -join "`n"
+            $was = $false
+            $pr = [PolarisLiveDump]::RtlAdjustPrivilege(20, $true, $false, [ref]$was)
+            $fs = [IO.File]::Open((Join-Path $ld 'livedump.dmp'), 'Create', 'ReadWrite', 'None')
+            try {
+              $ctl = New-Object PolarisLiveDump+Control
+              $ctl.Version = 1; $ctl.Code = 0x161; $ctl.P1 = 0x1111; $ctl.P2 = 0x2222; $ctl.P3 = 0x3333; $ctl.P4 = 0x4444
+              $ctl.File = $fs.SafeFileHandle.DangerousGetHandle()
+              $rl = 0
+              $st = [PolarisLiveDump]::NtSystemDebugControl(37, [ref]$ctl, [Runtime.InteropServices.Marshal]::SizeOf($ctl), [IntPtr]::Zero, 0, [ref]$rl)
+              "Istantanea del kernel: privilegio 0x$('{0:X8}' -f $pr), NtSystemDebugControl 0x$('{0:X8}' -f $st), $([math]::Round($fs.Length / 1MB)) MB"
+            } finally { $fs.Dispose() }
+            if ((Get-Item (Join-Path $ld 'livedump.dmp')).Length -eq 0) { Remove-Item (Join-Path $ld 'livedump.dmp') }
+          } catch { "Istantanea del kernel non creata: $($_.Exception.Message)" }
+          $dmp = Get-ChildItem $ld -Recurse -Filter *.dmp -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $dmp) {
             "Nessun dump vero creato su questo runner: lettura di un dump reale non provata"
           } else {
@@ -389,6 +406,7 @@ jobs:
               "Letto da Polaris: codice $($x.code) parametri $($x.params -join ' ') bit $($x.bits) macchina $($x.machine) build $($x.build) processori $($x.processors) tipo $($x.dumpType) limitato '$($x.limited)' ora $($x.time) errore '$($x.error)'"
               if ($x.error) { throw "dump vero non letto: $($x.error)" }
               if ($x.bits -ne 64 -or $x.machine -ne 'x64' -or -not $x.code) { throw "intestazione del dump letta male" }
+              if ($x.code -ne $want.code -or ($x.params -join ' ') -ne ($want.p -join ' ')) { throw "codice o parametri letti male: $($x.code) $($x.params -join ' ')" }
               $build = [Environment]::OSVersion.Version.Build
               if ($x.build -ne $build) { throw "build $($x.build) diversa da quella del sistema ($build)" }
               if ($x.processors -ne [Environment]::ProcessorCount) { "Processori: $($x.processors) nel dump, $([Environment]::ProcessorCount) per .NET" }

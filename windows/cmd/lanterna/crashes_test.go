@@ -96,4 +96,12 @@ func TestPrintCrashes(t *testing.T) {
 	if !strings.Contains(out, "Lettura dei file delle schermate blu non finita in tempo.") || strings.Contains(out, "Nessun file") || strings.Contains(out, "Lettura interrotta") {
 		t.Errorf("lettura non finita:\n%s", out)
 	}
+	// Cartella elencata ma nessun file letto prima della scadenza: non "0 più recenti".
+	out = capture(t, func() {
+		printCrashes(&scan.CrashData{Folder: "ok", Total: 3, Partial: true, Dumps: []scan.CrashDump{}}, time.UTC)
+	})
+	if !strings.Contains(out, "Nella cartella dei minidump ci sono 3 file, ma nessuno è stato letto.") || !strings.Contains(out, "Lettura interrotta") ||
+		strings.Contains(out, "mostrati i 0") || strings.Contains(out, "Nessun file") {
+		t.Errorf("cartella elencata, nessun file letto:\n%s", out)
+	}
 }

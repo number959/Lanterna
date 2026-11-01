@@ -194,8 +194,10 @@ export function CrashesCard({ scan, live, source, addCrashes }: ViewProps) {
   const read = dumps.filter(crashRead);
   const shown = all ? dumps : dumps.slice(0, CRASH_SHOWN);
   const canRead = live && source === 'agent';
-  // Lettura fermata dall'agente prima di arrivare alla cartella (tempo scaduto).
-  const unfinished = !!c && !!c.partial && !c.folder && !dumps.length;
+  // Lettura fermata dall'agente prima di leggere un file (tempo scaduto): o
+  // prima di arrivare alla cartella (nessuna impostazione), o dopo averla
+  // elencata (total > 0 ma nessun file letto).
+  const unfinished = !!c && !!c.partial && !dumps.length;
 
   const refresh = () => {
     const target: CrashTargetRef = { host: scan.agent.host, startedAt: scan.agent.startedAt };
@@ -241,7 +243,10 @@ export function CrashesCard({ scan, live, source, addCrashes }: ViewProps) {
         <div className="notice">
           <TriangleAlert size={18} aria-hidden />
           <span>
-            La lettura dei file delle schermate blu non è finita in tempo durante l'analisi.{canRead ? ' Puoi leggerli ora.' : ''}
+            {c!.folder === 'ok' && c!.total > 0
+              ? `Nella cartella dei minidump ci sono ${c!.total} file, ma la lettura non è finita in tempo durante l'analisi.`
+              : "La lettura dei file delle schermate blu non è finita in tempo durante l'analisi."}
+            {canRead ? ' Puoi leggerli ora.' : ''}
           </span>
         </div>
       )}
@@ -276,7 +281,7 @@ export function CrashesCard({ scan, live, source, addCrashes }: ViewProps) {
         </div>
       )}
 
-      {c && !unfinished && <Settings c={c} />}
+      {c && !(unfinished && !c.folder) && <Settings c={c} />}
 
       {c && !c.needsAdmin && !unfinished && !dumps.length && (
         <p className="crash-empty">

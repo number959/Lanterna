@@ -843,9 +843,10 @@ const list: Metric[] = [
       { range: 'nessuna', severity: 'ok', meaning: 'Sistema stabile.' },
       { range: 'una', severity: 'warn', meaning: 'Da tenere d\'occhio.' },
       { range: 'due o più', severity: 'crit', meaning: 'Instabilità ricorrente: c\'è una causa da trovare.' },
+      { range: 'non verificabile', severity: 'unknown', meaning: 'Windows è impostato per non annotare le schermate blu nel registro e i minidump non si sono potuti leggere (di solito servono i permessi di amministratore) o non vengono salvati.' },
     ],
     why: 'Una schermata blu isolata può capitare; se si ripetono c\'è quasi sempre un driver, un componente o un disco difettoso.',
-    limits: 'Il codice orienta la ricerca ma non sempre nomina il colpevole: per l\'analisi completa servono i file di dump in C:\\Windows\\Minidump.',
+    limits: 'Il codice orienta la ricerca ma non sempre nomina il colpevole: il dettaglio è nei file delle schermate blu, che Polaris legge da amministratore (Computer > File delle schermate blu). Se il registro eventi non è stato letto, si contano solo i minidump degli ultimi 30 giorni e il giudizio lo dice.',
   },
   {
     id: 'pc.crash.driver',

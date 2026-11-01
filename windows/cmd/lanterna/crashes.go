@@ -134,6 +134,8 @@ func printCrashes(d *scan.CrashData, loc *time.Location) {
 		fmt.Println("Cartella dei minidump non leggibile: errore di lettura.")
 	case d.Folder == "missing" || d.Total == 0:
 		fmt.Println("Nessun file di schermata blu nella cartella dei minidump.")
+	case len(d.Dumps) == 0:
+		fmt.Printf("Nella cartella dei minidump ci sono %d file, ma nessuno è stato letto.\n", d.Total)
 	default:
 		n := fmt.Sprintf("%d", d.Total)
 		if d.Total > len(d.Dumps) {

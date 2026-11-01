@@ -2,6 +2,8 @@ import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
   ACTIONS,
@@ -26,7 +28,8 @@ import type { CrashData, CrashDump, EventGroup, Finding, PcData, Scan } from '..
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { ACTION_TOOLS } from '../src/tools';
-import { crashBadge, sameCrashTarget } from '../src/ui/crashes';
+import { crashBadge, CrashesCard, sameCrashTarget } from '../src/ui/crashes';
+import type { ViewProps } from '../src/ui/views';
 import { GLOSSARY, guideById } from '../src/guides';
 
 // Schermate blu dai minidump: giudizi del motore senza doppioni rispetto a
@@ -215,6 +218,31 @@ describe('giudizi', () => {
     expect(byId(scanWith(data([])), 'pc.crash.settings')).toBeUndefined();
   });
 
+  it('senza evento nel registro e minidump non letti il numero non è verificabile', () => {
+    // Caso normale senza amministratore: niente "le conta dai minidump" né "nessuna".
+    const hidden = scanWith(data([], { settings: { dumpEnabled: 3, logEvent: false }, folder: 'denied', needsAdmin: true, total: 0 }));
+    const set = byId(hidden, 'pc.crash.settings')!;
+    expect(set.verdict).not.toContain('le conta dai minidump');
+    expect(set.verdict).toContain('si leggono solo avviando Polaris come amministratore');
+    expect(set.verdict).toContain('non si può verificare');
+    const b = byId(hidden, 'pc.events.bsod')!;
+    expect(b).toMatchObject({ severity: 'unknown', value: 'non verificabile', actions: ['read-crash-files'] });
+    expect(renderText(hidden, analyze(hidden), {})).not.toContain('Schermate blu: nessuna');
+    // Lettura interrotta: stesso giudizio, senza l'invito all'amministratore.
+    const cut = scanWith(data([], { settings: { dumpEnabled: 3, logEvent: false }, partial: true }));
+    expect(byId(cut, 'pc.events.bsod')).toMatchObject({ severity: 'unknown', actions: [] });
+    expect(byId(cut, 'pc.crash.settings')!.verdict).toContain('non si sono potuti leggere per intero');
+    // Né file né eventi: non resta traccia di nulla.
+    const none = byId(scanWith(data([], { settings: { dumpEnabled: 0, logEvent: false } })), 'pc.events.bsod')!;
+    expect(none).toMatchObject({ severity: 'unknown', actions: ['enable-minidump'] });
+    expect(none.verdict).toContain('per non salvare i file');
+    // Cartella letta per intero: lo zero è verificato.
+    expect(byId(scanWith(data([], { settings: { dumpEnabled: 3, logEvent: false } })), 'pc.events.bsod')).toMatchObject({ severity: 'ok', value: 'nessuna' });
+    // Con una schermata blu nel registro il numero c'è comunque.
+    expect(byId(scanWith(data([], { settings: { dumpEnabled: 3, logEvent: false }, folder: 'denied', needsAdmin: true }), [bsodEvent(1)]), 'pc.events.bsod')?.value).toBe('1 in 30 giorni');
+    expect(METRICS['pc.events.bsod'].scale!.some((x) => x.severity === 'unknown')).toBe(true);
+  });
+
   it('senza amministratore: il codice dall\'evento 1001 e l\'invito ad avviare Polaris come amministratore', () => {
     const denied = data([], { folder: 'denied', needsAdmin: true, total: 0 });
     const f = byId(scanWith(denied, [bsodEvent(2)]), 'pc.crash.access')!;
@@ -287,6 +315,21 @@ describe('conteggio delle schermate blu (pc.events.bsod) con i minidump', () => 
     // Senza l'ora scritta nel file vale la data del file.
     const byFile = scanWith(data([dump({ time: undefined, modified: '2026-10-11T08:00:00Z' })]), []);
     expect(bsodOf(byFile)[0].value).toBe('1 in 30 giorni');
+    // Registro eventi non letto: i minidump recenti contano lo stesso, e il giudizio lo dice.
+    const noLog = scanWith(data([dump({}), dump({ time: '2026-10-08T10:00:00Z', code: '0x0000003b' })]), []);
+    delete noLog.pc!.eventsDays;
+    const nl = bsodOf(noLog);
+    expect(nl).toHaveLength(1);
+    expect(nl[0]).toMatchObject({ value: '2 in 30 giorni', severity: 'crit' });
+    expect(nl[0].verdict).toContain('Il registro eventi non è stato letto: il numero viene solo dai file delle schermate blu (minidump).');
+    expect(nl[0].verdict).toContain('0x0000003b');
+    const partial = scanWith(data([dump({})], { partial: true }), []);
+    delete partial.pc!.eventsDays;
+    expect(bsodOf(partial)[0].verdict).toContain('può essere incompleto');
+    // Senza minidump recenti e senza registro non si dice nulla.
+    const quiet = scanWith(data([dump({ time: '2026-08-01T10:00:00Z' })]), []);
+    delete quiet.pc!.eventsDays;
+    expect(bsodOf(quiet)).toEqual([]);
     // La demo resta coerente: un evento e un minidump nella finestra.
     expect(bsodOf(demoScan)[0].value).toBe('1 in 30 giorni');
     expect(bsodOf(demoScan)[0].verdict).not.toContain('Il numero viene dai file');
@@ -331,6 +374,25 @@ describe('interfaccia', () => {
     expect(noCulpritText(dump({ code: '0x000000e2' }))).toContain('di proposito');
     expect(noCulpritText(dump({ code: undefined }))).toBe('non cercato: codice non scritto nel file');
     expect(noCulpritText(dump({ dumpType: 'kernel', limited: 'not-triage' }))).toContain('solo l\'intestazione');
+  });
+
+  it('lettura interrotta: la scheda non dice "nessun file" se la cartella ne ha', () => {
+    const text = (crashes: CrashData) => {
+      const props = { scan: scanWith(crashes), live: false, source: 'file', addCrashes: () => false } as unknown as ViewProps;
+      return renderToStaticMarkup(createElement(CrashesCard, props)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    };
+    // Cartella elencata (3 file), nessun file letto prima della scadenza.
+    const listed = text(data([], { total: 3, partial: true }));
+    expect(listed).toContain('Nella cartella dei minidump ci sono 3 file, ma la lettura non è finita in tempo');
+    expect(listed).not.toContain('Nessun file di schermata blu');
+    expect(listed).toContain('Salvataggio dopo una schermata blu');
+    // Lettura fermata prima della cartella: niente impostazioni, niente "nessun file".
+    const stopped = text({ readAt: '2026-10-15T09:00:00Z', total: 0, dumps: [], partial: true });
+    expect(stopped).toContain('La lettura dei file delle schermate blu non è finita in tempo');
+    expect(stopped).not.toContain('Nessun file di schermata blu');
+    expect(stopped).not.toContain('Salvataggio dopo una schermata blu');
+    // Cartella vuota letta per intero.
+    expect(text(data([]))).toContain('Nessun file di schermata blu nella cartella dei minidump.');
   });
 
   it('stato della cartella dei minidump', () => {

@@ -523,9 +523,68 @@ const bugcheckCode = (detail?: string) => {
   return '0x' + ('00000000' + hex).slice(-8);
 };
 
+/**
+ * I minidump danno un conteggio verificato solo se la cartella si è letta per
+ * intero (o non esiste: Windows non ne ha salvati): niente permessi negati,
+ * errori o letture interrotte.
+ */
+export function crashDumpsVerified(c?: PcData['crashes']): boolean {
+  return !!c && !c.needsAdmin && !c.partial && (c.folder === 'ok' || c.folder === 'missing');
+}
+
+/** Periodo, in giorni, dei minidump contati quando il registro eventi non è stato letto (scelta di Polaris). */
+const DUMPS_ONLY_DAYS = 30;
+
+/** Minidump letti del periodo, con un codice e una data. */
+function recentDumps(pc: PcData, now: number, days: number) {
+  return (pc.crashes?.dumps ?? []).filter((d) => {
+    const t = Date.parse(d.time || d.modified || '');
+    return !d.error && !!bugcheckCode(d.code) && !isNaN(t) && now - t <= days * DAY;
+  });
+}
+
+const namedCode = (c: string) => (BUGCHECKS[c] ? `${c} ${BUGCHECKS[c][0]} (${BUGCHECKS[c][1]})` : c);
+
+// Registro eventi non letto (PowerShell non ha risposto): le schermate blu
+// dei minidump si contano lo stesso, dicendo da dove viene il numero.
+function bsodFromDumpsOnly(pc: PcData, now: number, add: Add) {
+  const dumps = recentDumps(pc, now, DUMPS_ONLY_DAYS);
+  if (!dumps.length) return;
+  const n = dumps.length;
+  const lastBsod =
+    dumps
+      .map((d) => d.time || d.modified || '')
+      .sort((a, b) => Date.parse(a) - Date.parse(b))
+      .pop() ?? '';
+  const codes: string[] = [];
+  for (const d of dumps) {
+    const c = bugcheckCode(d.code);
+    if (c && codes.indexOf(c) < 0) codes.push(c);
+  }
+  const hw = codes.some((c) => c === '0x00000124' || c === '0x0000001a');
+  add({
+    id: 'pc.events.bsod',
+    metric: 'pc.events.bsod',
+    category: 'pc',
+    title: 'Schermate blu',
+    value: `${n} in ${DUMPS_ONLY_DAYS} giorni`,
+    numeric: n,
+    severity: n >= 2 ? 'crit' : 'warn',
+    verdict:
+      `Windows si è arrestato con un errore ${n === 1 ? 'una volta' : `${n} volte`} negli ultimi ${DUMPS_ONLY_DAYS} giorni, l'ultima ${on(lastBsod, 'il')}.` +
+      ` Codic${codes.length === 1 ? 'e' : 'i'}: ${codes.map(namedCode).join('; ')}.` +
+      ' Il registro eventi non è stato letto: il numero viene solo dai file delle schermate blu (minidump)' +
+      (crashDumpsVerified(pc.crashes) ? '.' : ' e può essere incompleto.'),
+    actions: hw ? ['diagnose-bsod', 'check-hardware'] : ['diagnose-bsod'],
+  });
+}
+
 function analyzeEvents(pc: PcData, now: number, add: Add) {
   const days = pc.eventsDays;
-  if (!days) return;
+  if (!days) {
+    bsodFromDumpsOnly(pc, now, add);
+    return;
+  }
   const ev = pc.events ?? [];
   const of = (...k: EventKind[]) => ev.filter((e) => k.indexOf(e.kind) >= 0);
   const total = (es: EventGroup[]) => es.reduce((a, e) => a + e.count, 0);
@@ -541,10 +600,7 @@ function analyzeEvents(pc: PcData, now: number, add: Add) {
   // riporta meno, per esempio perché è stato svuotato, vale il numero dei
   // file. Non si sommano: di solito la stessa schermata blu lascia sia
   // l'evento sia il file.
-  const dumps = (pc.crashes?.dumps ?? []).filter((d) => {
-    const t = Date.parse(d.time || d.modified || '');
-    return !d.error && !!bugcheckCode(d.code) && !isNaN(t) && now - t <= days * DAY;
-  });
+  const dumps = recentDumps(pc, now, days);
   const nBsod = Math.max(nEvents, dumps.length);
   const fromDumps = dumps.length > nEvents;
   const lastBsod =
@@ -571,9 +627,29 @@ function analyzeEvents(pc: PcData, now: number, add: Add) {
   for (const c of [...bsod.map((e) => bugcheckCode(e.detail)), ...dumps.map((d) => bugcheckCode(d.code))]) {
     if (c && codes.indexOf(c) < 0) codes.push(c);
   }
-  const named = codes.map((c) => (BUGCHECKS[c] ? `${c} ${BUGCHECKS[c][0]} (${BUGCHECKS[c][1]})` : c));
+  const named = codes.map(namedCode);
   const hw = codes.some((c) => c === '0x00000124' || c === '0x0000001a');
-  add({
+  // Windows non annota le schermate blu e i file non si sono potuti leggere
+  // (o non vengono salvati): "nessuna" non sarebbe verificato.
+  const set = pc.crashes?.settings;
+  if (!nBsod && set?.logEvent === false && (set.dumpEnabled === 0 || !crashDumpsVerified(pc.crashes))) {
+    add({
+      id: 'pc.events.bsod',
+      metric: 'pc.events.bsod',
+      category: 'pc',
+      title: 'Schermate blu',
+      value: 'non verificabile',
+      severity: 'unknown',
+      verdict:
+        `Nel registro eventi non risultano schermate blu ${period}, ma Windows è impostato per non annotarle` +
+        (set.dumpEnabled === 0
+          ? ' e per non salvare i file: il numero non si può verificare.'
+          : pc.crashes?.needsAdmin
+            ? ' e i file delle schermate blu (minidump) si leggono solo avviando Polaris come amministratore: il numero non si può verificare.'
+            : ' e i file delle schermate blu (minidump) non si sono potuti leggere per intero: il numero non si può verificare.'),
+      actions: set.dumpEnabled === 0 ? ['enable-minidump'] : pc.crashes?.needsAdmin ? ['read-crash-files'] : [],
+    });
+  } else add({
     id: 'pc.events.bsod',
     metric: 'pc.events.bsod',
     category: 'pc',
