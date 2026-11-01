@@ -10,7 +10,7 @@ import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smar
 import { pctText, sizeText, SPACE_CATEGORY_LABEL, SPACE_HINTS, SPACE_RISK_LABEL, unattributedBytes } from './space';
 import { dbmText, gatewayText, radioText, rssiWord, surveyAliases, surveyRooms } from './survey';
 import { SPEED_LEGAL_NOTE, speedDocRows } from './speedtest';
-import type { Analysis, EventKind, Finding, Scan, Severity } from './types';
+import type { Analysis, EventKind, Finding, Scan, Severity, SurveySample } from './types';
 
 // Documento stampabile ed esportabile sullo stato del PC (e della rete): HTML
 // autonomo in formato A4, con gli stessi giudizi del programma. Lo usano
@@ -408,21 +408,26 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
   const survey = scan.wifi?.survey;
   if (survey?.rooms?.length) {
     const al = surveyAliases(survey);
+    const rooms = surveyRooms(survey, al);
     out.push(
-      `<section><h2>Mappa del Wi-Fi per stanza</h2><table class="pd-table"><thead><tr><th>Stanza</th><th>Segnale</th><th>Radio</th><th>Router</th><th>Esito</th></tr></thead><tbody>${surveyRooms(survey, al)
+      `<section><h2>Mappa del Wi-Fi per stanza</h2><table class="pd-table"><thead><tr><th>Stanza</th><th>Segnale</th><th>Radio</th><th>Router</th><th>Esito</th></tr></thead><tbody>${rooms
         .map((r) => {
           const s = r.worst;
           const n = r.room.samples.length;
           const notes = r.issues.filter((i) => i.id !== 'signal').map((i) => i.short);
           return (
             `<tr><td><b>${t(r.room.name)}</b>${n > 1 ? `<br><span class="pd-small">il peggiore di ${n} punti</span>` : ''}</td>` +
-            `<td>${esc(dbmText(s.medianDbm))} dBm, ${esc(rssiWord(s.medianDbm))}<br><span class="pd-small">cali fino a ${s.p10Dbm} dBm</span></td>` +
+            `<td>${surveySignalCell(s)}</td>` +
             `<td>${esc(radioText(s) || '—')}${s.bssids.length ? `<br><span class="pd-small">${esc(s.bssids.map(al).join(' → '))}</span>` : ''}</td>` +
             `<td class="pd-small">${t(gatewayText(s, r.answering) || '—')}</td>` +
             `<td>${sev(r.severity)}${notes.length ? `<br><span class="pd-small">${esc(notes.join(', '))}</span>` : ''}</td></tr>`
           );
         })
-        .join('')}</tbody></table><p class="pd-muted pd-small">Misure fatte con questo PC, fermo nel punto in cui si lavora, circa 15 secondi per punto; con più punti in una stanza conta il peggiore. I valori valgono per questo dispositivo: un altro, con altre antenne, riceve in modo diverso. Gli access point sono indicati come AP A, AP B; delle reti vicine si riporta solo il numero.</p></section>`,
+        .join('')}</tbody></table><p class="pd-muted pd-small">Misure fatte con questo PC, fermo nel punto in cui si lavora, circa 15 secondi per punto; con più punti in una stanza conta il peggiore. I valori valgono per questo dispositivo: un altro, con altre antenne, riceve in modo diverso. Gli access point sono indicati come AP A, AP B; delle reti vicine si riporta solo il numero.${
+        rooms.some((r) => r.worst.estimated)
+          ? ` Dove la scheda non fornisce i dBm, i valori sono stimati dalla qualità del segnale di Windows (da 0 a 100, cioè da -100 a ${QUALITY_TOP_DBM} dBm); la stima non supera ${QUALITY_TOP_DBM} dBm, che quindi indica un segnale di almeno ${QUALITY_TOP_DBM} dBm.`
+          : ''
+      }</p></section>`,
     );
   }
 
@@ -449,6 +454,22 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
   );
 
   return { title, css: DOC_CSS, body: out.join('') };
+}
+
+/** Massimo dei dBm stimati dalla qualità del segnale di Windows (qualità 100, come nell'agente). */
+const QUALITY_TOP_DBM = -50;
+
+/**
+ * Cella "Segnale" della mappa del Wi-Fi. I dBm stimati dalla qualità del
+ * segnale di Windows lo dicono qui, perché il giudizio delle stanze a posto
+ * nel documento non compare; la stima si ferma a -50 dBm (qualità 100), quindi
+ * lì il valore è solo un minimo.
+ */
+function surveySignalCell(s: SurveySample): string {
+  const top = (v: number) => !!s.estimated && v >= QUALITY_TOP_DBM;
+  const med = `${top(s.medianDbm) ? `almeno ${QUALITY_TOP_DBM}` : dbmText(s.medianDbm)} dBm, ${rssiWord(s.medianDbm)}`;
+  const dips = top(s.p10Dbm) ? `cali non misurabili sopra ${QUALITY_TOP_DBM} dBm` : `cali fino a ${s.p10Dbm} dBm`;
+  return `${esc(med)}<br><span class="pd-small">${esc(dips)}${s.estimated ? '<br>stimati dalla qualità del segnale di Windows' : ''}</span>`;
 }
 
 /** Documento HTML autonomo, da aprire nel browser, stampare o salvare in PDF. */
