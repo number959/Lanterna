@@ -83,8 +83,12 @@ func describe(err error) string {
 		return "test interrotto"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "tempo scaduto"
-	case errors.As(err, &closeErr) && !normalEnd(err):
-		// Il motivo scritto dal server resta fuori: potrebbe contenere indirizzi.
+	case errors.As(err, &closeErr) && !normalEnd(err) && closeErr.Code != websocket.CloseAbnormalClosure:
+		// Solo un vero messaggio di chiusura del server: 1006 lo scrive
+		// gorilla/websocket quando la connessione cade senza alcun messaggio
+		// (nessun server lo invia, RFC 6455 7.4.1) e finisce sotto, tra le
+		// connessioni interrotte. Il motivo scritto dal server resta fuori:
+		// potrebbe contenere indirizzi.
 		return fmt.Sprintf("il server ha chiuso la connessione segnalando un errore, codice %d", closeErr.Code)
 	case errors.As(err, &dnsErr):
 		return "nome del server non risolto (DNS)"

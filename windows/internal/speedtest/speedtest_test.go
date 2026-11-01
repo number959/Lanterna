@@ -55,6 +55,10 @@ type fakeMLab struct {
 	closeAfter time.Duration
 	// closeCode: codice della chiusura in upload (0 = 1000, chiusura regolare).
 	closeCode int
+	// dropDownload, dropUpload: dopo questo tempo il server chiude la
+	// connessione TCP senza messaggio di chiusura, come una NAT, un Wi-Fi o
+	// un proxy che cadono (0 = mai).
+	dropDownload, dropUpload time.Duration
 
 	mu       sync.Mutex
 	queries  []url.Values
@@ -189,6 +193,10 @@ func (f *fakeMLab) download(w http.ResponseWriter, r *http.Request) {
 	var sent int64
 	last := start
 	for time.Since(start) < f.dur {
+		if f.dropDownload > 0 && time.Since(start) >= f.dropDownload {
+			dropTCP(conn)
+			return
+		}
 		if err := conn.WriteMessage(websocket.BinaryMessage, buf); err != nil {
 			return
 		}
@@ -237,6 +245,10 @@ func (f *fakeMLab) upload(w http.ResponseWriter, r *http.Request) {
 		}
 		n, _ := io.Copy(io.Discard, rd)
 		recv += n
+		if f.dropUpload > 0 && time.Since(start) >= f.dropUpload {
+			dropTCP(conn)
+			return
+		}
 		if closing {
 			continue
 		}
@@ -256,6 +268,16 @@ func (f *fakeMLab) upload(w http.ResponseWriter, r *http.Request) {
 			closing = true
 		}
 	}
+}
+
+// dropTCP chiude la connessione TCP sotto TLS e WebSocket: il client non
+// riceve né il messaggio di chiusura di WebSocket né l'avviso di TLS.
+func dropTCP(conn *websocket.Conn) {
+	if tc, ok := conn.UnderlyingConn().(*tls.Conn); ok {
+		_ = tc.NetConn().Close()
+		return
+	}
+	_ = conn.UnderlyingConn().Close()
 }
 
 func (f *fakeMLab) options() Options {
@@ -881,6 +903,51 @@ func TestServerClosesUploadWithError(t *testing.T) {
 	// Una chiusura regolare non è descritta come un errore del server.
 	if s := describe(&websocket.CloseError{Code: websocket.CloseNormalClosure, Text: "fine"}); strings.Contains(s, "errore") {
 		t.Errorf("chiusura 1000: %q", s)
+	}
+}
+
+// La connessione cade a metà, senza messaggio di chiusura: gorilla/websocket
+// lo riporta come chiusura 1006, un codice che nessun server invia (RFC 6455,
+// 7.4.1). Il risultato dice «connessione interrotta», non che il server ha
+// segnalato un errore.
+func TestConnectionDropped(t *testing.T) {
+	const want = "trasferimento interrotto prima della fine (connessione interrotta): il valore può essere più basso del reale"
+	for i := 0; i < 3; i++ {
+		f := newFakeMLab(t, "mlab1-mil05.mlab-oti.measurement-lab.org")
+		f.dropDownload = 150 * time.Millisecond
+		res, err := Run(context.Background(), f.options())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := res.Download; d.Error != want || d.Mbps <= 0 {
+			t.Fatalf("download, prova %d: %+v", i+1, d)
+		}
+		if u := res.Upload; u.Error != "" {
+			t.Fatalf("upload regolare, prova %d: %+v", i+1, u)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		f := newFakeMLab(t, "mlab1-mil05.mlab-oti.measurement-lab.org")
+		f.dropUpload = 150 * time.Millisecond
+		opt := f.options()
+		opt.UploadCap = 1 << 40
+		res, err := Run(context.Background(), opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := res.Download; d.Error != "" {
+			t.Fatalf("download regolare, prova %d: %+v", i+1, d)
+		}
+		if u := res.Upload; u.Error != want || u.Mbps <= 0 {
+			t.Fatalf("upload, prova %d: %+v", i+1, u)
+		}
+	}
+	abnormal := &websocket.CloseError{Code: websocket.CloseAbnormalClosure, Text: io.ErrUnexpectedEOF.Error()}
+	if got := describe(abnormal); got != "connessione interrotta" {
+		t.Errorf("1006: %q", got)
+	}
+	if got := noServer(abnormal).Error(); got != "nessun server di M-Lab ha accettato il test: connessione interrotta" {
+		t.Errorf("nessun server, 1006: %q", got)
 	}
 }
 
