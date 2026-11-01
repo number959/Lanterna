@@ -19,9 +19,10 @@ export const SPEED_RETRANS_INFO_PCT = 5;
 /** Oltre questa velocità una sola connessione può restare sotto la linea (2,5-10 Gbit/s). */
 export const SPEED_FAST_MBPS = 700;
 /**
- * Sonde senza risposta durante i trasferimenti, oltre la quota persa a
- * riposo, da cui il giudizio è almeno "da migliorare" (P): picchi di coda
- * oltre l'attesa delle sonde, anche se la mediana è bassa.
+ * Sonde senza risposta in un verso (download o upload), in percentuale di
+ * quelle inviate nel verso e oltre la quota persa a riposo, da cui il
+ * giudizio è almeno "da migliorare" (P): picchi di coda oltre l'attesa delle
+ * sonde, anche se la mediana è bassa. La riga di comando usa la stessa regola.
  */
 export const SPEED_LOST_NOTE_PCT = 10;
 /** Attesa delle sonde di latenza dell'agente, se il risultato non la dice. */
@@ -147,6 +148,15 @@ export function dirBloat(r: SpeedTest, d?: SpeedDir): DirBloat | undefined {
   return undefined;
 }
 
+/** Sonde senza risposta in un verso durante il trasferimento. */
+export interface DirLoss {
+  dir: 'download' | 'upload';
+  lost: number;
+  sent: number;
+  /** Sonde senza risposta oltre la quota persa anche a riposo, contate come fa l'agente. */
+  excess: number;
+}
+
 export interface SpeedBloat {
   /** Latenza aggiunta mediana nel verso peggiore. */
   worst?: number;
@@ -156,31 +166,43 @@ export interface SpeedBloat {
   p95AtLeast: boolean;
   dir?: 'download' | 'upload';
   severity: Severity;
-  /** Sonde senza risposta sotto carico, su quelle inviate. */
-  lost: number;
-  sent: number;
-  /** Sonde senza risposta oltre la quota persa anche a riposo. */
-  excess: number;
+  /** Sonde senza risposta, verso per verso. */
+  loss: DirLoss[];
+  /** I versi con oltre il 10 % di sonde senza risposta, al netto della quota persa a riposo (P). */
+  heavy: DirLoss[];
   /** Giudizio alzato a "da migliorare" per le sonde senza risposta (P), con la mediana sotto 30 ms. */
   raised: boolean;
 }
 
+/** Oltre il 10 % delle sonde del verso (P); n e sent sono interi, il confronto è esatto. */
+const overPct = (n: number, sent: number) => sent > 0 && 100 * n > SPEED_LOST_NOTE_PCT * sent;
+
 /**
  * Il bufferbloat del test: il verso con più latenza aggiunta decide la
- * gravità (P). Se oltre il 10 % delle sonde resta senza risposta durante i
- * trasferimenti, al netto della quota persa a riposo, il giudizio è almeno
- * "da migliorare": ci sono picchi di coda oltre l'attesa delle sonde.
+ * gravità (P). Se in un verso oltre il 10 % delle sonde resta senza
+ * risposta durante il trasferimento, al netto della quota persa a riposo
+ * (calcolata come l'agente: sonde del verso per la quota persa a riposo,
+ * arrotondate), il giudizio è almeno "da migliorare": ci sono picchi di coda
+ * oltre l'attesa delle sonde. I versi si contano separati: un download
+ * pulito non deve diluire le sonde perse in upload.
  */
 export function speedBloat(r: SpeedTest): SpeedBloat {
-  const out: SpeedBloat = { severity: 'unknown', atLeast: false, p95AtLeast: false, lost: 0, sent: 0, excess: 0, raised: false };
+  const out: SpeedBloat = { severity: 'unknown', atLeast: false, p95AtLeast: false, loss: [], heavy: [], raised: false };
   const dirs: ['download' | 'upload', SpeedDir | undefined][] = [
     ['download', r.download],
     ['upload', r.upload],
   ];
+  const idle = r.idle;
   for (const [name, d] of dirs) {
     if (!d || !d.latency) continue;
-    out.sent += d.latency.sent;
-    out.lost += d.latency.sent - d.latency.received;
+    const l = d.latency;
+    if (l.sent > 0) {
+      const lost = l.sent - l.received;
+      const random = idle && idle.sent > 0 ? Math.round((l.sent * (idle.sent - idle.received)) / idle.sent) : 0;
+      const loss: DirLoss = { dir: name, lost, sent: l.sent, excess: Math.max(0, lost - random) };
+      out.loss.push(loss);
+      if (overPct(loss.excess, loss.sent)) out.heavy.push(loss);
+    }
     const b = dirBloat(r, d);
     if (!b) continue;
     if (out.worst === undefined || b.ms > out.worst) {
@@ -191,17 +213,19 @@ export function speedBloat(r: SpeedTest): SpeedBloat {
       out.dir = name;
     }
   }
-  const idle = r.idle;
-  const idleLost = idle && idle.sent > 0 ? (idle.sent - idle.received) / idle.sent : 0;
-  out.excess = Math.max(0, out.lost - Math.round(out.sent * idleLost));
   if (out.worst !== undefined) {
     out.severity = bloatSeverity(out.worst);
-    if (out.severity === 'ok' && out.sent > 0 && (100 * out.excess) / out.sent > SPEED_LOST_NOTE_PCT) {
+    if (out.severity === 'ok' && out.heavy.length > 0) {
       out.severity = 'warn';
       out.raised = true;
     }
   }
   return out;
+}
+
+/** "7 sonde su 40 in upload", "5 sonde su 40 in download e 6 sonde su 40 in upload". */
+export function lossText(ls: DirLoss[], count: 'lost' | 'excess'): string {
+  return ls.map((x) => `${x[count]} sonde su ${x.sent} in ${x.dir}`).join(' e ');
 }
 
 const measured = (d?: SpeedDir) => !!d && d.bytes > 0 && d.mbps > 0;
@@ -341,7 +365,7 @@ export function analyzeSpeed(scan: Scan, add: (f: Omit<Finding, 'actions'> & { a
       // Coda oltre l'attesa delle sonde: la maggior parte non ha avuto risposta.
       verdict = `Con la linea satura la maggior parte delle sonde ${dirText} non ha avuto risposta entro ${wait}, mentre a riposo rispondevano in ${idle}: la latenza aggiunta è di almeno ${speedMs(b.worst)}. La coda supera probabilmente ${wait}, oppure il modem o il router scartano i pacchetti: chiamate e videochiamate si bloccano quando la linea è piena (backup, aggiornamenti, caricamenti).`;
     else if (b.raised)
-      verdict = `Con la linea satura la latenza mediana sale di ${speedMs(b.worst)} ${dirText} rispetto ai ${idle} a riposo, ma ${b.excess} sonde su ${b.sent} non hanno avuto risposta entro ${wait}${idleLost ? ' (oltre a quelle perse anche a riposo)' : ', mentre a riposo rispondevano'}: probabilmente ci sono picchi di coda oltre ${wait} (o pacchetti scartati), che disturbano chiamate e videochiamate.`;
+      verdict = `Con la linea satura la latenza mediana sale di ${speedMs(b.worst)} ${dirText} rispetto ai ${idle} a riposo, ma ${lossText(b.heavy, 'excess')} non hanno avuto risposta entro ${wait}${idleLost ? ' (oltre a quelle perse anche a riposo)' : ', mentre a riposo rispondevano'}: probabilmente ci sono picchi di coda oltre ${wait} (o pacchetti scartati), che disturbano chiamate e videochiamate.`;
     else
       verdict =
         b.severity === 'ok'
@@ -351,11 +375,14 @@ export function analyzeSpeed(scan: Scan, add: (f: Omit<Finding, 'actions'> & { a
             : `Con la linea satura la latenza sale di ${speedMs(b.worst)} ${dirText}${p95} rispetto ai ${idle} a riposo: chiamate e videochiamate si spezzano quando la linea è piena (backup, aggiornamenti, caricamenti).`;
     if (b.severity !== 'ok')
       verdict += b.dir === 'upload' ? ' La coda si forma di solito nel modem o nel router, nel verso dell\'upload.' : ' La coda si forma nel router, nel modem o presso l\'operatore.';
-    if (!b.atLeast && !b.raised && b.sent > 0) {
-      if ((100 * b.excess) / b.sent > SPEED_LOST_NOTE_PCT)
-        verdict += ` ${b.lost} sonde su ${b.sent} non hanno avuto risposta entro ${wait} durante i trasferimenti: nel calcolo contano come latenza di almeno ${wait}${idleLost ? ', tolta la quota persa anche a riposo' : ''}.`;
-      else if ((100 * b.lost) / b.sent > SPEED_LOST_NOTE_PCT)
-        verdict += ` ${b.lost} sonde su ${b.sent} sono rimaste senza risposta durante i trasferimenti, ma se ne perdevano anche a riposo: indicano perdite sulla linea più che una coda.`;
+    if (!b.atLeast && !b.raised) {
+      // Verso per verso: le sonde perse oltre la quota di riposo contano come
+      // coda; quelle perse in un verso con perdite anche a riposo, no.
+      const lossy = b.loss.filter((x) => b.heavy.indexOf(x) < 0 && overPct(x.lost, x.sent));
+      if (b.heavy.length)
+        verdict += ` ${lossText(b.heavy, 'lost')} non hanno avuto risposta entro ${wait} durante i trasferimenti: nel calcolo contano come latenza di almeno ${wait}${idleLost ? ', tolta la quota persa anche a riposo' : ''}.`;
+      if (lossy.length)
+        verdict += ` ${lossText(lossy, 'lost')} sono rimaste senza risposta durante i trasferimenti, ma se ne perdevano anche a riposo: indicano perdite sulla linea più che una coda.`;
     }
     if (wifi && b.severity !== 'ok') verdict += ' Parte della coda può essere nel Wi-Fi: confronta con un test via cavo.';
     if (r.simulated) verdict = `Simulazione. ${verdict}`;
@@ -413,7 +440,7 @@ export function speedTextLines(r: SpeedTest): string[] {
   const b = speedBloat(r);
   if (b.worst !== undefined)
     out.push(
-      `Latenza sotto carico: ${BLOAT_LABEL[b.severity]}, ${least(b.atLeast)}+${speedMs(b.worst)} ${b.dir === 'upload' ? 'in upload' : 'in download'}${b.raised ? `, ${b.excess} sonde su ${b.sent} senza risposta` : ''} (soglie di Polaris: sotto ${SPEED_BLOAT_WARN_MS} ms in più va bene, oltre ${SPEED_BLOAT_CRIT_MS} ms è alta)`,
+      `Latenza sotto carico: ${BLOAT_LABEL[b.severity]}, ${least(b.atLeast)}+${speedMs(b.worst)} ${b.dir === 'upload' ? 'in upload' : 'in download'}${b.raised ? `, ${lossText(b.heavy, 'excess')} senza risposta` : ''} (soglie di Polaris: sotto ${SPEED_BLOAT_WARN_MS} ms in più va bene, oltre ${SPEED_BLOAT_CRIT_MS} ms è alta)`,
     );
   const d = r.download;
   if (d && d.minRttMs !== undefined) out.push(`Andata e ritorno minimo verso il server: ${speedMs(d.minRttMs)}`);

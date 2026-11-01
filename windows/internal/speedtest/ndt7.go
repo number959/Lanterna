@@ -331,7 +331,10 @@ func (t *tester) sendUpload(ctx context.Context, conn *websocket.Conn, start tim
 	end := start.Add(t.opt.Duration)
 	var sendErr error
 	var readErr error
-	serverClosed := false
+	// serverClosed: il lettore ha finito (readErr); serverEnded: è stato il
+	// server a chiudere, prima della chiusura del PC, e il suo codice dice
+	// se il trasferimento è finito in modo regolare.
+	serverClosed, serverEnded := false, false
 loop:
 	for {
 		now := t.opt.Now()
@@ -348,7 +351,7 @@ loop:
 		}
 		select {
 		case readErr = <-readDone:
-			serverClosed = true
+			serverClosed, serverEnded = true, true
 			break loop
 		default:
 		}
@@ -379,8 +382,10 @@ loop:
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
-		if errors.Is(sendErr, websocket.ErrCloseSent) || (serverClosed && websocket.IsCloseError(readErr, websocket.CloseNormalClosure, websocket.CloseGoingAway)) {
-			sendErr = nil
+		// ErrCloseSent: il PC ha già risposto alla chiusura del server. In
+		// entrambi i casi decide il codice di chiusura del server, sotto.
+		if errors.Is(sendErr, websocket.ErrCloseSent) || serverClosed {
+			sendErr, serverEnded = nil, true
 		}
 	}
 	if !serverClosed {
@@ -404,6 +409,11 @@ loop:
 	}
 	if sendErr != nil && !normalEnd(sendErr) {
 		r.partial = describe(sendErr)
+	} else if serverEnded && !normalEnd(readErr) {
+		// Chiusura del server con un codice di errore (per esempio 1011 da
+		// un proxy) o connessione caduta: come nel download, il valore può
+		// essere più basso del reale.
+		r.partial = describe(readErr)
 	}
 	mu.Lock()
 	r.server = srv

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/signal"
 	"strconv"
@@ -33,6 +34,14 @@ func speedOptions(c *collect.Collector) speedtest.Options {
 	}
 }
 
+// speedLimitPath: il file dei limiti, lo stesso dell'agente; speedRun: il
+// test. I test li sostituiscono per non toccare la cartella dell'utente e
+// non collegarsi a M-Lab.
+var (
+	speedLimitPath = speedtest.DefaultLimitPath
+	speedRun       = speedtest.Run
+)
+
 // runSpeedTest esegue il test di velocità con M-Lab solo con --accetto:
 // senza, mostra il testo del consenso e non si collega a nulla.
 func runSpeedTest(args []string) error {
@@ -50,6 +59,13 @@ func runSpeedTest(args []string) error {
 		printConsent(os.Stdout)
 		return nil
 	}
+	// Gli stessi limiti dell'agente, con lo stato nello stesso file: un test
+	// ogni due minuti e dieci al giorno (scelta di Polaris).
+	lim := speedtest.NewLimiter()
+	lim.Path = speedLimitPath()
+	if err := lim.Take(); err != nil {
+		return err
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	opt := speedOptions(newCollector(false))
@@ -57,9 +73,13 @@ func runSpeedTest(args []string) error {
 		fmt.Fprintln(os.Stderr, "Test di velocità con M-Lab (circa 30 secondi, Ctrl+C per fermare)...")
 		opt.Progress = func(p speedtest.Progress) { fmt.Fprintf(os.Stderr, "\r  %-60s", progressText(p)) }
 	}
-	res, err := speedtest.Run(ctx, opt)
+	res, err := speedRun(ctx, opt)
 	if !*asJSON {
 		fmt.Fprintln(os.Stderr)
+	}
+	if err != nil && speedtest.NotReached(err) {
+		// M-Lab non è stato raggiunto: il tentativo non conta.
+		lim.Release()
 	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -147,6 +167,55 @@ func bloatGrade(ms float64) string {
 	return "alta"
 }
 
+// lostProbePct: in un verso, oltre questa quota di sonde senza risposta
+// (al netto di quella persa anche a riposo) il giudizio è almeno "da
+// migliorare". È una scelta di Polaris, la stessa del motore
+// (SPEED_LOST_NOTE_PCT): picchi di coda oltre l'attesa delle sonde.
+const lostProbePct = 10
+
+// probeLoss: sonde senza risposta in un verso durante il trasferimento e,
+// tra queste, quelle oltre la quota persa anche a riposo.
+type probeLoss struct {
+	dir                string
+	lost, sent, excess int
+}
+
+// heavyLoss restituisce i versi con oltre il 10 % di sonde senza risposta
+// oltre la quota persa a riposo, contate come l'agente (loadedLatencyOf) e
+// come il motore: verso per verso, perché un download pulito non diluisca
+// le sonde perse in upload.
+func heavyLoss(r *scan.SpeedTest) []probeLoss {
+	var out []probeLoss
+	for _, x := range []struct {
+		dir string
+		d   *scan.SpeedDir
+	}{{"download", r.Download}, {"upload", r.Upload}} {
+		if x.d == nil || x.d.Latency == nil || x.d.Latency.Sent == 0 {
+			continue
+		}
+		l := x.d.Latency
+		random := 0
+		if r.Idle != nil && r.Idle.Sent > 0 {
+			random = int(math.Round(float64(l.Sent) * float64(r.Idle.Sent-r.Idle.Received) / float64(r.Idle.Sent)))
+		}
+		p := probeLoss{dir: x.dir, lost: l.Sent - l.Received, sent: l.Sent}
+		p.excess = max(0, p.lost-random)
+		if 100*p.excess > lostProbePct*p.sent {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// lossText: "7 sonde su 40 in upload", come nel motore.
+func lossText(ls []probeLoss) string {
+	parts := make([]string, len(ls))
+	for i, p := range ls {
+		parts[i] = fmt.Sprintf("%d sonde su %d in %s", p.excess, p.sent, p.dir)
+	}
+	return strings.Join(parts, " e ")
+}
+
 func printSpeed(w io.Writer, r *scan.SpeedTest) {
 	fmt.Fprintln(w, "Test di velocità di Internet con M-Lab (ndt7, una connessione per verso)")
 	fmt.Fprintf(w, "Server: %s\n", serverText(r.Server))
@@ -217,9 +286,21 @@ func printSpeed(w io.Writer, r *scan.SpeedTest) {
 			}
 		}
 		if worst >= 0 {
-			fmt.Fprintf(w, "Latenza sotto carico (bufferbloat): %s, %s+%s nel caso peggiore (soglie di Polaris: sotto 30 ms va bene, oltre 100 ms è alta)\n", bloatGrade(worst), least(worstLeast), msText(worst))
+			grade := bloatGrade(worst)
+			heavy := heavyLoss(r)
+			raised := grade == "contenuta" && len(heavy) > 0
+			if raised {
+				grade = "da migliorare"
+			}
+			fmt.Fprintf(w, "Latenza sotto carico (bufferbloat): %s, %s+%s nel caso peggiore (soglie di Polaris: sotto 30 ms va bene, oltre 100 ms è alta)\n", grade, least(worstLeast), msText(worst))
 			if worstLeast {
 				fmt.Fprintln(w, wrapText("Con la linea piena la maggior parte delle sonde non ha avuto risposta entro "+wait+": la coda supera probabilmente questo tempo, oppure il modem scarta i pacchetti.", 78, ""))
+			} else if raised {
+				idle := ", mentre a riposo rispondevano"
+				if r.Idle.Received < r.Idle.Sent {
+					idle = " (oltre a quelle perse anche a riposo)"
+				}
+				fmt.Fprintln(w, wrapText(lossText(heavy)+" non hanno avuto risposta entro "+wait+idle+": probabilmente ci sono picchi di coda oltre "+wait+" (o pacchetti scartati). Con oltre il 10 % delle sonde di un verso senza risposta (soglia di Polaris) il giudizio è almeno «da migliorare».", 78, ""))
 			}
 		}
 	} else {

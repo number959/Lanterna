@@ -281,7 +281,11 @@ export function simulatedSpeed(scan: Scan, now = Date.now()): SpeedTest {
   const targets = scan.internet?.targets ?? [];
   const answered = targets.filter((t) => t.received > 0 && t.avgMs !== undefined);
   const tcp = answered.length > 0 && answered.every((t) => t.method === 'tcp');
-  const idle = Math.round(Math.min(...answered.map((t) => t.avgMs as number), clinic ? 13 : 24) * 10) / 10;
+  // Latenza a riposo: quella che la demo ha misurato verso 1.1.1.1, il server
+  // delle sonde, così il test e la vista Internet dicono lo stesso numero e
+  // la latenza sotto carico non scende mai sotto quella normale.
+  const probe = answered.find((t) => t.target === '1.1.1.1') ?? answered[0];
+  const idle = Math.round((probe ? (probe.avgMs as number) : clinic ? 13 : 24) * 10) / 10;
   const v = clinic
     ? { down: 138.6, up: 121.4, bd: 6.2, bdp: 11.8, bu: 41.5, bup: 63.0, retrans: 0.4, rtt: 7.8, site: 'mil05', machine: 'mlab1-mil05.mlab-oti.measurement-lab.org' }
     : { down: 61.8, up: 18.7, bd: 19.4, bdp: 31.2, bu: 142.6, bup: 188.4, retrans: 1.3, rtt: 21.6, site: 'mil07', machine: 'mlab3-mil07.mlab-oti.measurement-lab.org' };

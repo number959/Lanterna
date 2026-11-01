@@ -2,10 +2,18 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"lanterna/internal/scan"
+	"lanterna/internal/speedtest"
 )
 
 func TestPrintSpeed(t *testing.T) {
@@ -72,6 +80,66 @@ func TestPrintSpeed(t *testing.T) {
 	}
 }
 
+// bloatCase: un caso condiviso con il motore (core/test/speedtest.test.ts):
+// gli stessi dati devono dare lo stesso giudizio nella riga di comando, nel
+// rapporto, nel documento e nell'interfaccia.
+type bloatCase struct {
+	Nome    string         `json:"nome"`
+	Speed   scan.SpeedTest `json:"speed"`
+	Grade   string         `json:"grade"`
+	Worst   float64        `json:"worst"`
+	AtLeast bool           `json:"atLeast"`
+	Heavy   []struct {
+		Dir                string
+		Lost, Sent, Excess int
+	} `json:"heavy"`
+}
+
+func bloatCases(t *testing.T) []bloatCase {
+	t.Helper()
+	b, err := os.ReadFile("../../internal/speedtest/testdata/bufferbloat.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fx struct {
+		Casi []bloatCase `json:"casi"`
+	}
+	if err := json.Unmarshal(b, &fx); err != nil || len(fx.Casi) < 6 {
+		t.Fatalf("casi: %v (%d)", err, len(fx.Casi))
+	}
+	return fx.Casi
+}
+
+// Stesso giudizio del motore: soglie della mediana e, verso per verso, oltre
+// il 10 % di sonde senza risposta (al netto di quelle perse a riposo) almeno
+// "da migliorare", anche con la mediana sotto 30 ms.
+func TestBloatGradeMatchesEngine(t *testing.T) {
+	for _, c := range bloatCases(t) {
+		var b bytes.Buffer
+		printSpeed(&b, &c.Speed)
+		flat := strings.Join(strings.Fields(b.String()), " ")
+		least := ""
+		if c.AtLeast {
+			least = "almeno "
+		}
+		want := fmt.Sprintf("Latenza sotto carico (bufferbloat): %s, %s+%s nel caso peggiore", c.Grade, least, msText(c.Worst))
+		if !strings.Contains(flat, want) {
+			t.Errorf("%s: manca %q in:\n%s", c.Nome, want, b.String())
+		}
+		// Giudizio alzato dalle sonde senza risposta: il verso e i conteggi.
+		if c.Grade == "da migliorare" && c.Worst < 30 {
+			for _, h := range c.Heavy {
+				if w := fmt.Sprintf("%d sonde su %d in %s", h.Excess, h.Sent, h.Dir); !strings.Contains(flat, w) {
+					t.Errorf("%s: manca %q in:\n%s", c.Nome, w, b.String())
+				}
+			}
+			if !strings.Contains(flat, "soglia di Polaris") {
+				t.Errorf("%s: la regola del 10 %% non è detta scelta di Polaris:\n%s", c.Nome, b.String())
+			}
+		}
+	}
+}
+
 func TestSpeedTestNeedsConsent(t *testing.T) {
 	// Senza --accetto si stampa il consenso e non si avvia nulla.
 	out := capture(t, func() {
@@ -94,5 +162,82 @@ func TestSpeedTestNeedsConsent(t *testing.T) {
 	}
 	if err := runSpeedTest([]string{"altro"}); err == nil {
 		t.Error("argomento in più accettato")
+	}
+}
+
+// polaris-cli speedtest --accetto rispetta gli stessi limiti dell'agente,
+// con lo stato nello stesso file: entro due minuti rifiuta con un messaggio
+// in italiano ed esce con codice 1, senza collegarsi a M-Lab. Un test che
+// non ha raggiunto M-Lab non conta; un file rovinato non blocca il test.
+func TestSpeedTestCLILimit(t *testing.T) {
+	if path := os.Getenv("POLARIS_TEST_LIMITE"); path != "" {
+		// Processo figlio: il programma vero, con il file dei limiti di prova
+		// e senza rete (se il test partisse, esce con un codice diverso).
+		speedLimitPath = func() string { return path }
+		speedRun = func(context.Context, speedtest.Options) (*scan.SpeedTest, error) {
+			fmt.Fprintln(os.Stderr, "il test è partito")
+			os.Exit(3)
+			return nil, nil
+		}
+		os.Args = []string{"polaris-cli", "speedtest", "--accetto"}
+		main()
+		os.Exit(0)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, speedtest.LimitFile)
+	oldPath, oldRun := speedLimitPath, speedRun
+	t.Cleanup(func() { speedLimitPath, speedRun = oldPath, oldRun })
+	speedLimitPath = func() string { return path }
+	calls := 0
+	var fail error
+	speedRun = func(context.Context, speedtest.Options) (*scan.SpeedTest, error) {
+		calls++
+		if fail != nil {
+			return nil, fail
+		}
+		return &scan.SpeedTest{Provider: "mlab-ndt7", Download: &scan.SpeedDir{Mbps: 50, Bytes: 1, Ms: 1}}, nil
+	}
+	// Il proxy rifiuta: M-Lab non è stato raggiunto, il tentativo non conta.
+	fail = speedtest.ErrProxyAuth
+	if err := runSpeedTest([]string{"--accetto", "--json"}); !errors.Is(err, speedtest.ErrProxyAuth) {
+		t.Fatalf("proxy: %v", err)
+	}
+	fail = nil
+	if out := capture(t, func() {
+		if err := runSpeedTest([]string{"--accetto", "--json"}); err != nil {
+			t.Fatal(err)
+		}
+	}); calls != 2 || !strings.Contains(out, "mlab-ndt7") {
+		t.Fatalf("test dopo il rifiuto del proxy: %d chiamate, %s", calls, out)
+	}
+	// Subito dopo: rifiutato, senza collegarsi.
+	err := runSpeedTest([]string{"--accetto"})
+	var le *speedtest.LimitError
+	if !errors.As(err, &le) || !strings.Contains(err.Error(), "hai appena fatto un test di velocità: per non pesare sui server di M-Lab il prossimo si può avviare tra") || calls != 2 {
+		t.Fatalf("entro due minuti: %v (%d chiamate)", err, calls)
+	}
+	// Il programma vero: messaggio in italiano e codice di uscita 1.
+	cmd := exec.Command(os.Args[0], "-test.run=^TestSpeedTestCLILimit$")
+	cmd.Env = append(os.Environ(), "POLARIS_TEST_LIMITE="+path)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 1 || !strings.Contains(stderr.String(), "Errore: hai appena fatto un test di velocità") {
+		t.Fatalf("uscita %v, errore:\n%s", err, stderr.String())
+	}
+	// File rovinato: il test parte lo stesso e il file torna valido.
+	bad := filepath.Join(dir, "rovinato.json")
+	if err := os.WriteFile(bad, []byte("{non è JSON"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	speedLimitPath = func() string { return bad }
+	_ = capture(t, func() {
+		if err := runSpeedTest([]string{"--accetto", "--json"}); err != nil {
+			t.Fatalf("file rovinato: %v", err)
+		}
+	})
+	if b, _ := os.ReadFile(bad); calls != 3 || !strings.Contains(string(b), `"count":1`) {
+		t.Fatalf("file rovinato: %d chiamate, %s", calls, b)
 	}
 }
