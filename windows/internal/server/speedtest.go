@@ -35,11 +35,13 @@ type speedState struct {
 
 var errSpeedRunning = errors.New("test di velocità di Internet in corso: attendi che finisca o interrompilo")
 
+// speedLimiter: senza un limitatore indicato, quello con lo stato nel file
+// condiviso con la riga di comando, che sopravvive ai riavvii dell'agente.
 func (s *Server) speedLimiter() *speedtest.Limiter {
 	s.speedMu.Lock()
 	defer s.speedMu.Unlock()
 	if s.SpeedLimit == nil {
-		s.SpeedLimit = speedtest.NewLimiter()
+		s.SpeedLimit = speedtest.NewSharedLimiter()
 	}
 	return s.SpeedLimit
 }

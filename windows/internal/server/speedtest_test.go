@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -188,5 +189,45 @@ func TestSpeedTestExcludesBench(t *testing.T) {
 	s.WaitSpeed()
 	if st := speedGet(t, h); st.Result == nil || st.Error != "" {
 		t.Fatalf("esito: %+v", st)
+	}
+}
+
+// Senza un limitatore indicato l'agente usa il file condiviso con la riga di
+// comando, nella cartella dei dati di Polaris: un riavvio non azzera il
+// conteggio. Un test che non raggiunge M-Lab non conta neppure nel file.
+func TestSpeedLimitSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LocalAppData", dir)
+	t.Setenv("XDG_CACHE_HOME", dir)
+	t.Setenv("HOME", dir)
+	if p := speedtest.DefaultLimitPath(); p == "" || !strings.HasPrefix(p, dir) {
+		t.Skipf("cartella dei dati non ridirigibile: %q", p)
+	}
+	start := func(err error) *httptest.ResponseRecorder {
+		s := newServer()
+		s.SpeedTest = func(ctx context.Context, _ func(speedtest.Progress)) (*scan.SpeedTest, error) {
+			if err != nil {
+				return nil, err
+			}
+			return &scan.SpeedTest{Provider: "mlab-ndt7", Download: &scan.SpeedDir{Mbps: 50, Bytes: 1, Ms: 1}}, nil
+		}
+		r := doBody(t, s.Handler(), "POST", "/api/speedtest", "application/json", `{"consent":true}`)
+		s.WaitSpeed()
+		return r
+	}
+	if r := start(speedtest.ErrProxyAuth); r.Code != http.StatusAccepted {
+		t.Fatalf("primo avvio: %d %s", r.Code, r.Body)
+	}
+	if r := start(nil); r.Code != http.StatusAccepted {
+		t.Fatalf("dopo un test che non ha raggiunto M-Lab: %d %s", r.Code, r.Body)
+	}
+	// Agente riavviato: un server nuovo, stesso file.
+	r := start(nil)
+	if r.Code != http.StatusTooManyRequests || !strings.Contains(r.Body.String(), "hai appena fatto un test di velocità") {
+		t.Fatalf("dopo il riavvio: %d %s", r.Code, r.Body)
+	}
+	s := newServer()
+	if st := speedGet(t, s.Handler()); st.Left != speedtest.DefaultPerDay-1 || st.WaitSec == 0 {
+		t.Fatalf("stato dopo il riavvio: %+v", st)
 	}
 }

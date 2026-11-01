@@ -34,6 +34,14 @@ func speedOptions(c *collect.Collector) speedtest.Options {
 	}
 }
 
+// speedLimitPath: il file dei limiti, lo stesso dell'agente; speedRun: il
+// test. I test li sostituiscono per non toccare la cartella dell'utente e
+// non collegarsi a M-Lab.
+var (
+	speedLimitPath = speedtest.DefaultLimitPath
+	speedRun       = speedtest.Run
+)
+
 // runSpeedTest esegue il test di velocità con M-Lab solo con --accetto:
 // senza, mostra il testo del consenso e non si collega a nulla.
 func runSpeedTest(args []string) error {
@@ -51,6 +59,13 @@ func runSpeedTest(args []string) error {
 		printConsent(os.Stdout)
 		return nil
 	}
+	// Gli stessi limiti dell'agente, con lo stato nello stesso file: un test
+	// ogni due minuti e dieci al giorno (scelta di Polaris).
+	lim := speedtest.NewLimiter()
+	lim.Path = speedLimitPath()
+	if err := lim.Take(); err != nil {
+		return err
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	opt := speedOptions(newCollector(false))
@@ -58,9 +73,13 @@ func runSpeedTest(args []string) error {
 		fmt.Fprintln(os.Stderr, "Test di velocità con M-Lab (circa 30 secondi, Ctrl+C per fermare)...")
 		opt.Progress = func(p speedtest.Progress) { fmt.Fprintf(os.Stderr, "\r  %-60s", progressText(p)) }
 	}
-	res, err := speedtest.Run(ctx, opt)
+	res, err := speedRun(ctx, opt)
 	if !*asJSON {
 		fmt.Fprintln(os.Stderr)
+	}
+	if err != nil && speedtest.NotReached(err) {
+		// M-Lab non è stato raggiunto: il tentativo non conta.
+		lim.Release()
 	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
