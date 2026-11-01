@@ -2,7 +2,8 @@
 //
 //	GET  /api/info      informazioni sull'agente
 //	GET  /api/scan      ultima analisi (204 se non ancora eseguita)
-//	POST /api/scan      avvia una nuova analisi (409 se già in corso)
+//	POST /api/scan      avvia una nuova analisi (409 se già in corso, con
+//	                    "busy": "scan", o se un'altra attività lo impedisce)
 //	GET  /api/progress  avanzamento reale dell'analisi in corso
 //	GET  /api/ping      un singolo ping (target=gateway|internet) per il monitor
 //	POST /api/inventory avvia l'inventario della sottorete ({"authorized": true})
@@ -692,7 +693,13 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("POST /api/scan", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.startScan(); err != nil {
-			writeJSON(w, 409, map[string]string{"error": err.Error()})
+			// busy "scan" solo se l'analisi è già in corso: l'interfaccia ne segue
+			// l'avanzamento. Per le altre attività mostra il messaggio.
+			body := map[string]string{"error": err.Error()}
+			if errors.Is(err, errScanRunning) {
+				body["busy"] = "scan"
+			}
+			writeJSON(w, http.StatusConflict, body)
 			return
 		}
 		writeJSON(w, 202, map[string]bool{"started": true})
