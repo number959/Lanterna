@@ -53,6 +53,8 @@ type fakeMLab struct {
 	// closeAfter: in upload il server avvia la chiusura dopo questo tempo,
 	// come ndt-server allo scadere dei suoi 10 secondi.
 	closeAfter time.Duration
+	// closeCode: codice della chiusura in upload (0 = 1000, chiusura regolare).
+	closeCode int
 
 	mu       sync.Mutex
 	queries  []url.Values
@@ -246,7 +248,11 @@ func (f *fakeMLab) upload(w http.ResponseWriter, r *http.Request) {
 		// continua a leggere finché il client non risponde.
 		if f.closeAfter > 0 && time.Since(start) >= f.closeAfter {
 			_ = conn.WriteMessage(websocket.TextMessage, f.measurementJSON(true, time.Since(start), recv))
-			_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Done sending"), time.Now().Add(time.Second))
+			code := websocket.CloseNormalClosure
+			if f.closeCode != 0 {
+				code = f.closeCode
+			}
+			_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, "Done sending"), time.Now().Add(time.Second))
 			closing = true
 		}
 	}
@@ -840,6 +846,41 @@ func TestServerClosesDuringUpload(t *testing.T) {
 		if u := res.Upload; u.Error != "" || u.Mbps <= 0 || u.Ms >= 1500 || u.Source != "server" {
 			t.Fatalf("prova %d: %+v", i+1, u)
 		}
+	}
+}
+
+// Un proxy o il server chiudono l'upload con un codice di errore (1011,
+// errore interno): non è una fine regolare e il risultato lo dice, come per
+// il download. Solo 1000, 1001 e 1005 sono chiusure regolari.
+func TestServerClosesUploadWithError(t *testing.T) {
+	for i := 0; i < 3; i++ {
+		f := newFakeMLab(t, "mlab1-mil05.mlab-oti.measurement-lab.org")
+		f.dur = 200 * time.Millisecond
+		f.closeAfter = 250 * time.Millisecond
+		f.closeCode = websocket.CloseInternalServerErr
+		opt := f.options()
+		opt.Duration = 1500 * time.Millisecond
+		opt.UploadCap = 1 << 40
+		res, err := Run(context.Background(), opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		u := res.Upload
+		if u.Mbps <= 0 || !strings.HasPrefix(u.Error, "trasferimento interrotto prima della fine (il server ha chiuso la connessione segnalando un errore") {
+			t.Fatalf("prova %d: %+v", i+1, u)
+		}
+	}
+	for _, code := range []int{websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived} {
+		if !normalEnd(&websocket.CloseError{Code: code}) {
+			t.Errorf("chiusura %d non regolare", code)
+		}
+	}
+	if normalEnd(&websocket.CloseError{Code: websocket.CloseInternalServerErr}) {
+		t.Error("chiusura 1011 regolare")
+	}
+	// Una chiusura regolare non è descritta come un errore del server.
+	if s := describe(&websocket.CloseError{Code: websocket.CloseNormalClosure, Text: "fine"}); strings.Contains(s, "errore") {
+		t.Errorf("chiusura 1000: %q", s)
 	}
 }
 

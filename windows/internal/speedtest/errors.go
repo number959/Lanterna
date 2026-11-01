@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -69,6 +70,7 @@ func describe(err error) string {
 	if strings.Contains(err.Error(), "proxyconnect") && !isProxyAuth(err) {
 		return "il proxy configurato su questo PC non risponde"
 	}
+	var closeErr *websocket.CloseError
 	var dnsErr *net.DNSError
 	var certErr *tls.CertificateVerificationError
 	var unknownCA x509.UnknownAuthorityError
@@ -81,6 +83,9 @@ func describe(err error) string {
 		return "test interrotto"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "tempo scaduto"
+	case errors.As(err, &closeErr) && !normalEnd(err):
+		// Il motivo scritto dal server resta fuori: potrebbe contenere indirizzi.
+		return fmt.Sprintf("il server ha chiuso la connessione segnalando un errore, codice %d", closeErr.Code)
 	case errors.As(err, &dnsErr):
 		return "nome del server non risolto (DNS)"
 	case errors.As(err, &certErr), errors.As(err, &unknownCA), errors.As(err, &hostErr):
