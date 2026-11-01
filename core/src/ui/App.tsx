@@ -127,6 +127,44 @@ function gatewayMacMemory(scan: Scan): GatewayMacChange | undefined {
   }
 }
 
+const macKey = (s: Scan) => s.gateway?.mac?.toLowerCase().replace(/[^0-9a-f]/g, '') || undefined;
+
+/**
+ * Stessa rete: stesso PC, stesso gateway, stessa rete Wi-Fi e, se entrambi i
+ * rapporti lo conoscono, stesso MAC del gateway. Il solo indirizzo non basta:
+ * 192.168.1.1 è il gateway di moltissime reti diverse.
+ */
+function sameNetwork(a: Scan, b: Scan): boolean {
+  const ma = macKey(a);
+  const mb = macKey(b);
+  return a.agent.host === b.agent.host && a.gateway?.ip === b.gateway?.ip && a.wifi?.connected?.ssid === b.wifi?.connected?.ssid && (!ma || !mb || ma === mb);
+}
+
+/**
+ * Che cosa del rapporto mostrato (`prev`, arrivato da `from`) passa alla
+ * nuova analisi `s`. I dati della rete (inventario, certificati, mappa del
+ * Wi-Fi, test di Internet) passano solo da un rapporto dell'agente: mai da
+ * un rapporto importato, che è di un altro momento e spesso di un altro PC.
+ */
+export function carryOver(prev: Scan | null, from: Source, s: Scan): Scan {
+  if (!prev) return s;
+  let next = s;
+  const agent = from === 'agent';
+  const net = agent && sameNetwork(prev, s);
+  // Inventario e verifiche della stessa rete restano validi: si conservano (con la loro data).
+  if (net && !s.infra && prev.infra && prev.agent.platform === s.agent.platform) next = { ...next, infra: { ...prev.infra, assessment: undefined } };
+  // Anche i test di velocità dello stesso PC, finché non se ne esegue uno nuovo.
+  if (prev.pc?.bench && s.pc && !s.pc.bench && prev.agent.host === s.agent.host) next = { ...next, pc: { ...next.pc, bench: prev.pc.bench } };
+  // E le analisi dello spazio, che possono durare minuti.
+  if (prev.pc?.space?.length && next.pc && !next.pc.space && prev.agent.host === next.agent.host) next = { ...next, pc: { ...next.pc, space: prev.pc.space } };
+  // E la mappa del Wi-Fi per stanza, dello stesso PC e della stessa rete (come la mappa salvata sul PC).
+  if (agent && prev.wifi?.survey && next.wifi && !next.wifi.survey && prev.agent.host === next.agent.host && prev.gateway?.ip === next.gateway?.ip && prev.wifi.connected?.ssid === next.wifi.connected?.ssid)
+    next = { ...next, wifi: { ...next.wifi, survey: prev.wifi.survey } };
+  // E il test di velocità di Internet, se PC e rete sono gli stessi.
+  if (net && prev.internet?.speed && next.internet && !next.internet.speed) next = { ...next, internet: { ...next.internet, speed: prev.internet.speed } };
+  return next;
+}
+
 /** Avviso che si apre e si chiude in altezza invece di spostare il contenuto a scatti. */
 function Collapse({ children }: { children: ReactNode }) {
   return (
@@ -188,29 +226,25 @@ function Shell() {
   // I suoni partono solo dopo il primo gesto nella pagina (regola dei browser).
   useEffect(() => installAudioUnlock(), []);
 
+  // Un rapporto nuovo (analisi, file importato, demo) prende il posto di quello
+  // mostrato. L'origine si annota subito, non al rendering come `source`: la
+  // nuova analisi sa così da dove viene il rapporto che sostituisce, anche se
+  // è stato importato un istante prima e non è ancora sullo schermo.
+  const originRef = useRef<Source>('demo');
+  const show = useCallback((next: Scan | ((prev: Scan | null) => Scan), from: Source) => {
+    originRef.current = from;
+    setScan(next);
+    setSource(from);
+  }, []);
+
   const scanNow = useCallback(async () => {
     setBusy(true);
     setError(null);
     setProgress(null);
     try {
       const s = await runScan(setProgress);
-      setScan((prev) => {
-        let next = s;
-        // Inventario e verifiche della stessa rete restano validi: si conservano (con la loro data).
-        if (prev && !s.infra && prev.infra && prev.gateway?.ip === s.gateway?.ip && prev.agent.platform === s.agent.platform) next = { ...next, infra: { ...prev.infra, assessment: undefined } };
-        // Anche i test di velocità dello stesso PC, finché non se ne esegue uno nuovo.
-        if (prev?.pc?.bench && s.pc && !s.pc.bench && prev.agent.host === s.agent.host) next = { ...next, pc: { ...next.pc, bench: prev.pc.bench } };
-        // E le analisi dello spazio, che possono durare minuti.
-        if (prev?.pc?.space?.length && next.pc && !next.pc.space && prev.agent.host === next.agent.host) next = { ...next, pc: { ...next.pc, space: prev.pc.space } };
-        // E la mappa del Wi-Fi per stanza, dello stesso PC e della stessa rete.
-        if (prev?.wifi?.survey && next.wifi && !next.wifi.survey && prev.agent.host === next.agent.host && prev.gateway?.ip === next.gateway?.ip && prev.wifi.connected?.ssid === next.wifi.connected?.ssid)
-          next = { ...next, wifi: { ...next.wifi, survey: prev.wifi.survey } };
-        // E il test di velocità di Internet, se PC e rete sono gli stessi.
-        if (prev?.internet?.speed && next.internet && !next.internet.speed && prev.agent.host === next.agent.host && prev.gateway?.ip === next.gateway?.ip)
-          next = { ...next, internet: { ...next.internet, speed: prev.internet.speed } };
-        return next;
-      });
-      setSource('agent');
+      const from = originRef.current;
+      show((prev) => carryOver(prev, from, s), 'agent');
       viewRef.current = 'overview';
       focusRef.current = undefined;
       setView('overview');
@@ -223,23 +257,20 @@ function Shell() {
     } finally {
       setBusy(false);
     }
-  }, [toast]);
+  }, [toast, show]);
 
   useEffect(() => {
     (async () => {
       const info = await agentInfo();
       setAgent(info);
       if (!info) {
-        setScan(DEMOS[demoKind] ?? demoScan);
-        setSource('demo');
+        show(DEMOS[demoKind] ?? demoScan, 'demo');
         return;
       }
       try {
         const s = await lastScan();
-        if (s) {
-          setScan(s);
-          setSource('agent');
-        } else await scanNow();
+        if (s) show(s, 'agent');
+        else await scanNow();
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -430,8 +461,7 @@ function Shell() {
         throw new Error('il file non contiene JSON valido');
       }
       if (!isScan(data)) throw new Error('il file non è un rapporto di STARNET Polaris');
-      setScan(data);
-      setSource('file');
+      show(data, 'file');
       setError(null);
       go('overview');
       toast(`Rapporto importato${data.agent.host ? ` · ${data.agent.host}` : ''}`);
@@ -463,8 +493,7 @@ function Shell() {
       : null;
   const pickDemo = (k: DemoKind) => {
     setDemoKind(k);
-    setScan(DEMOS[k]);
-    setSource('demo');
+    show(DEMOS[k], 'demo');
     setError(null);
   };
   const ThemeIcon = THEME_ICON[theme];
