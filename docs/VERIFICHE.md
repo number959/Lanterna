@@ -1091,10 +1091,26 @@ punti, in ordine di importanza:
 La revisione non ha trovato modi per far aprire a Polaris un indirizzo arbitrario o per far finire testo estraneo in un
 comando da copiare, né problemi di compatibilità ES2015 del motore.
 
-**Windows reale (CI).** Un passo nuovo apre via API tre pagine (Certificati del computer e Impostazioni di sistema avanzate,
-usate dai passi, e Controllo dell'account utente, per la 0.12.0) e controlla che partano i programmi giusti, prova una pagina di Impostazioni (non bloccante) e
-verifica che il pannello del router sia rifiutato come programma (400) e senza un'analisi (422). Esito: da registrare dopo la
-run.
+**Windows reale (CI).** Windows Server 2025 su una macchina virtuale Azure, eseguito come amministratore. Un passo nuovo apre
+via API tre pagine (Certificati del computer e Impostazioni di sistema avanzate, usate dai passi, e Controllo dell'account
+utente, per la 0.12.0), prova una pagina di Impostazioni e verifica che il pannello del router sia rifiutato come programma
+(400) e senza un'analisi (422).
+- Run 61 (struttura dei passi) e 63 verdi; nella 63 `services`, `advanced-system` e `uac-settings` aperti con i programmi
+  giusti, la pagina di Impostazioni aperta (SystemSettings), il pannello del router rifiutato con 400 e 422.
+- Run 62 e 64 rosse sullo stesso punto: dopo l'apertura da Polaris, riuscita, SystemPropertiesAdvanced non risultava in
+  esecuzione entro 15 secondi (nella 64 neppure al secondo tentativo). La causa non è accertata: il controllo cercava il
+  processo una volta al secondo e non vede un programma che parte e si chiude subito nella sessione non interattiva del
+  runner. Dalla 65 la prova registra gli avvii dei processi con l'evento `Win32_ProcessStartTrace`: fallisce solo se Polaris
+  non avvia il programma e scrive nel log se il programma si chiude da solo.
+- Run 65 verde: Certificati del computer (mmc), Impostazioni di sistema avanzate (SystemPropertiesAdvanced) e Controllo
+  dell'account utente (UserAccountControlSettings) in esecuzione, pagina di Impostazioni aperta (SystemSettings), pannello del
+  router rifiutato con 400 e 422; verdi anche tutti gli altri passi (rapporto, sensori, spazio, certificati, schermate blu,
+  programmi inclusi e scaricati, kit, Defender, finestra con WebView2).
+- Nella run 60 la prova dei certificati era fallita perché il servizio TLS di prova in Python non era ancora in ascolto dopo
+  2 secondi: ora si aspetta che la porta risponda (commit bdb47ae).
+
+**Pacchetto**: `STARNET-Polaris-0.11.0-windows-amd64.zip` (28,6 MB), costruito dal commit fcc5864 (i commit successivi
+cambiano solo la CI e la documentazione), SHA-256 `11cfdedca2e8001227f7a932ce76d50dfa534f94cba6f3113feb9fcd5c78c30f`.
 
 **Avvertenze: cosa resta da provare.**
 - **Le etichette non sono state viste su un Windows italiano vero**: il runner della CI è un Windows Server 2025 in inglese.
