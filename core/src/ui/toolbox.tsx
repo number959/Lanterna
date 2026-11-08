@@ -2,7 +2,7 @@ import { AppWindow, Check, CircleCheck, CircleDashed, Download, ExternalLink, Oc
 import { AnimatePresence, m } from 'motion/react';
 import { useCallback, useEffect, useState } from 'react';
 import { CATEGORY_LABEL, TOOLS, WINDOWS_TOOLS } from '../tools';
-import type { Tool, ToolCategory } from '../tools';
+import type { Tool, ToolCategory, ToolView } from '../tools';
 import { Anim, HexLoader, Skeleton } from './anim';
 import { cancelFetch, fetchTool, openTool, prepareKit, removeTool, toolsStatus } from './api';
 import type { FetchState, PortableState, ToolsState } from './api';
@@ -164,7 +164,7 @@ export function Toolbox({ live, source }: Pick<ViewProps, 'live' | 'source'>) {
         </div>
         {!live && <p className="faint tool-hint">{readOnly ? 'Rapporto importato: gli strumenti si aprono dal PC dove gira l\'agente.' : 'Nella demo gli strumenti non si aprono: serve l\'agente su Windows.'}</p>}
         <m.ul className="wintools" variants={cascade(0.02)}>
-          {WINDOWS_TOOLS.map((w) => (
+          {WINDOWS_TOOLS.filter((w) => !w.stepOnly).map((w) => (
             <m.li key={w.id} variants={rise}>
               <button className="wintool" disabled={!live} onClick={() => open(w.id, 'app', w.name)}>
                 <b>{w.name}</b>
@@ -194,7 +194,27 @@ export function Toolbox({ live, source }: Pick<ViewProps, 'live' | 'source'>) {
   );
 }
 
-function ToolCard({ t, found, live, onOpen }: { t: Tool; found: Found; live: boolean; onOpen: (tool: string, target: 'app' | 'site', name: string) => Promise<void> }) {
+/**
+ * Scheda di un programma: stato (incluso, scaricato, installato), conferma
+ * prima di scaricare e apertura. Compatta dentro le azioni del piano, con il
+ * pulsante per andare alla sezione di Polaris che fa la stessa cosa.
+ */
+export function ToolCard({
+  t,
+  found,
+  live,
+  onOpen,
+  compact,
+  onGo,
+}: {
+  t: Tool;
+  found: Found;
+  live: boolean;
+  onOpen: (tool: string, target: 'app' | 'site', name: string) => Promise<void>;
+  compact?: boolean;
+  onGo?: (view: ToolView) => void;
+}) {
+  const Title = compact ? 'h3' : 'h2';
   const toast = useToast();
   const [confirm, setConfirm] = useState(false);
   const [opening, setOpening] = useState(false);
@@ -236,12 +256,12 @@ function ToolCard({ t, found, live, onOpen }: { t: Tool; found: Found; live: boo
       .catch((e) => toast(e instanceof Error ? e.message : String(e), 'error'));
 
   return (
-    <m.section variants={rise} className="card tool-card">
+    <m.section variants={rise} className={`card tool-card${compact ? ' compact' : ''}`}>
       <div className="card-head">
-        <h2 className="tool-title">
+        <Title className="tool-title">
           {t.name}
           <span className="faint">{t.vendor}</span>
-        </h2>
+        </Title>
         <span className="spacer" />
         <span className="tool-badges">
           {loading && (t.included || t.portable || t.installs) && <Skeleton w={118} h={22} r={11} />}
@@ -280,7 +300,7 @@ function ToolCard({ t, found, live, onOpen }: { t: Tool; found: Found; live: boo
         </span>
       </div>
       <div className="chips-row">
-        <span className="tag accent">{CATEGORY_LABEL[t.category]}</span>
+        {!compact && <span className="tag accent">{CATEGORY_LABEL[t.category]}</span>}
         {!live && t.included && <span className="tag">Incluso nel pacchetto di Polaris ({t.included})</span>}
         {!live && t.portable && <span className="tag">Versione portable dal sito ufficiale</span>}
       </div>
@@ -288,7 +308,19 @@ function ToolCard({ t, found, live, onOpen }: { t: Tool; found: Found; live: boo
       <p className="faint tool-license">Licenza: {t.license}</p>
       {t.polaris && (
         <p className="tool-polaris">
-          <Sparkles size={14} aria-hidden /> <span>{t.polaris}</span>
+          <Sparkles size={14} aria-hidden />{' '}
+          <span>
+            {compact ? 'Polaris lo fa già: ' : ''}
+            {t.polaris}
+            {onGo && t.polarisView && (
+              <>
+                {' '}
+                <button className="link-btn" onClick={() => onGo(t.polarisView!)}>
+                  Vai alla sezione
+                </button>
+              </>
+            )}
+          </span>
         </p>
       )}
       {t.note && <p className="faint tool-note">{t.note}</p>}

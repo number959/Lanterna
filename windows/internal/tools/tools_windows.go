@@ -117,6 +117,33 @@ func Open(id, target string, f *Fetcher) error {
 	return err
 }
 
+// OpenRouter apre nel browser predefinito il pannello del router: accetta solo
+// l'indirizzo calcolato da RouterURL (IPv4 privato, http o https).
+func OpenRouter(gateway string, https bool) error {
+	u, err := RouterURL(gateway, https)
+	if err != nil {
+		return err
+	}
+	file, args := u, ""
+	if windows.GetCurrentProcessToken().IsElevated() {
+		// Da amministratore il browser partirebbe con gli stessi permessi:
+		// Esplora file lo apre invece con quelli dell'utente.
+		file, args = "explorer.exe", `"`+u+`"`
+	}
+	verb, _ := windows.UTF16PtrFromString("open")
+	fp, err := windows.UTF16PtrFromString(file)
+	if err != nil {
+		return err
+	}
+	var a *uint16
+	if args != "" {
+		if a, err = windows.UTF16PtrFromString(args); err != nil {
+			return err
+		}
+	}
+	return windows.ShellExecute(0, verb, fp, a, nil, windows.SW_SHOWNORMAL)
+}
+
 // signatureScript chiede a Windows la verifica Authenticode del file indicato
 // in POLARIS_FILE: stato della firma, nome del firmatario e versione.
 const signatureScript = `$ErrorActionPreference = 'Stop'

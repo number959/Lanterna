@@ -96,3 +96,32 @@ func TestCatalogMatchesInterface(t *testing.T) {
 		}
 	}
 }
+
+// Il pannello del router si apre solo con l'indirizzo IPv4 privato (o
+// link-local) del gateway dell'analisi; nient'altro passa.
+func TestRouterURL(t *testing.T) {
+	for _, c := range []struct {
+		gw    string
+		https bool
+		want  string
+		err   error
+	}{
+		{"192.168.1.1", false, "http://192.168.1.1/", nil},
+		{"192.168.1.1", true, "https://192.168.1.1/", nil},
+		{"10.0.0.138", false, "http://10.0.0.138/", nil},
+		{"172.16.0.1", false, "http://172.16.0.1/", nil},
+		{"169.254.10.1", false, "http://169.254.10.1/", nil},
+		{"", false, "", ErrNoRouter},
+		{"8.8.8.8", false, "", ErrPublicRouter},
+		{"100.64.0.1", false, "", ErrPublicRouter}, // CGNAT dell'operatore: non è la rete locale
+		{"fe80::1", false, "", ErrPublicRouter},
+		{"192.168.1.1/24", false, "", ErrPublicRouter},
+		{"http://evil.example", false, "", ErrPublicRouter},
+		{"192.168.1.1:8080", false, "", ErrPublicRouter},
+	} {
+		got, err := RouterURL(c.gw, c.https)
+		if got != c.want || !errors.Is(err, c.err) {
+			t.Errorf("RouterURL(%q, %v) = %q, %v; atteso %q, %v", c.gw, c.https, got, err, c.want, c.err)
+		}
+	}
+}

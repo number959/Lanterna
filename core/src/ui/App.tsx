@@ -490,7 +490,7 @@ function Shell() {
   const scanning = busy || (agent === undefined && slow);
   const props: ViewProps | null =
     effective && analysis
-      ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, addCrashes, addSurvey, setSurvey, addSpeed, patchPc, assessment, monitor, gwMacChange }
+      ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, addCrashes, addSurvey, setSurvey, addSpeed, patchPc, assessment, monitor, gwMacChange, rescan: busy ? undefined : scanNow }
       : null;
   const pickDemo = (k: DemoKind) => {
     setDemoKind(k);

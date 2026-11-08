@@ -328,10 +328,11 @@ func startServer(port int) (*server.Server, string, error) {
 		Certs: func(ctx context.Context, t []scan.CertTarget) (*scan.CertData, error) {
 			return certs.Check(ctx, t, certs.Options{})
 		},
-		Crashes:   crash.Read,
-		SpaceOpen: space.Open,
-		OpenTool:  func(id, target string) error { return tools.Open(id, target, fetcher) },
-		Survey:    survey.Sample,
+		Crashes:    crash.Read,
+		SpaceOpen:  space.Open,
+		OpenTool:   func(id, target string) error { return tools.Open(id, target, fetcher) },
+		OpenRouter: tools.OpenRouter,
+		Survey:     survey.Sample,
 		SpeedTest: func(ctx context.Context, p func(speedtest.Progress)) (*scan.SpeedTest, error) {
 			opt := speedOptions(c)
 			opt.Progress = p

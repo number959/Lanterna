@@ -21,6 +21,7 @@ import {
   speedValue,
   speedWhere,
   waitLabel,
+  stepsText,
 } from '../src/engine';
 import type { Finding, Scan, SpeedTest } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
@@ -202,7 +203,7 @@ describe('giudizi del motore', () => {
   it('ogni azione e metrica usata esiste, ed è spiegata in una guida', () => {
     for (const id of ['speed-compare-contract', 'speed-test-cable', 'enable-sqm']) expect(ACTIONS[id], id).toBeDefined();
     for (const m of ['net.speed', 'net.bufferbloat', 'net.speed.retrans']) expect(guidesForMetric(m).map((g) => g.id)).toContain('velocita-internet');
-    expect(ACTIONS['speed-compare-contract'].steps.join(' ')).toContain('non è una consulenza legale');
+    expect(stepsText(ACTIONS['speed-compare-contract'])).toContain('non è una consulenza legale');
   });
 
   it('formati', () => {

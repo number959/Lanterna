@@ -9,6 +9,7 @@ import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } 
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import { dbmText, gatewayText, radioText, surveyAliases, surveyRooms } from './survey';
 import { speedTextLines } from './speedtest';
+import { stepLine, stepsFor, windowsMajor } from './steps';
 import type { Analysis, EventKind, Finding, ReachResult, Scan, Severity } from './types';
 
 // Rapporto testuale, usato dalla riga di comando e dall'esportazione .txt.
@@ -389,17 +390,20 @@ export function renderText(scan: Scan, a: Analysis, opts: { verbose?: boolean; w
   infraDetails(scan, out, W, !!opts.verbose);
   pcDetails(scan, out, W, !!opts.verbose);
   if (a.plan.length) {
+    const win = windowsMajor(scan);
     out.push('');
     out.push(hr);
     out.push(' PIANO D\'AZIONE (in ordine di priorità)');
     out.push(hr);
+    if (opts.verbose && win) out.push(wrap(`I passi seguono i menu di Windows ${win}, la versione di questo PC.`, W - 2, ' '));
     a.plan.forEach((p, i) => {
       const act = ACTIONS[p.action.id];
       out.push(` ${String(i + 1).padStart(2)}. ${TAG[p.severity]} ${act.title}`);
       out.push(wrap(`impatto ${act.impact}, difficoltà ${act.effort}; risolve: ${p.findings.join(', ')}`, W - 9, '        '));
       if (opts.verbose) {
         out.push(wrap(act.why, W - 9, '        '));
-        act.steps.forEach((s, j) => out.push(wrap(`${j + 1}) ${s}`, W - 11, '          ')));
+        stepsFor(act, win).forEach((s, j) => out.push(wrap(`${j + 1}) ${stepLine(s, win)}`, W - 11, '          ')));
+        if (act.check) out.push(wrap(`Come verificare: ${act.check}`, W - 9, '        '));
       }
     });
   }

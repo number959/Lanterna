@@ -16,6 +16,7 @@ import {
   documentParts,
   METRICS,
   renderText,
+  stepsText,
 } from '../src/engine';
 import type { CertResult, Scan } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
@@ -217,7 +218,7 @@ describe('giudizi nel motore', () => {
     expect(m.limits).toContain('3389');
     expect(guidesForMetric('infra.cert').map((g) => g.id)).toContain('certificati-servizi-interni');
     for (const id of ['renew-certificate', 'trust-internal-ca', 'disable-legacy-tls', 'reissue-certificate-san']) expect(ACTIONS[id], id).toBeDefined();
-    expect(ACTIONS['trust-internal-ca'].steps.join(' ')).toContain('Autorità di certificazione radice attendibili');
+    expect(stepsText(ACTIONS['trust-internal-ca'])).toContain('Autorità di certificazione radice attendibili');
   });
 });
 

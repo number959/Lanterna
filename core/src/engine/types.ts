@@ -1022,11 +1022,46 @@ export interface Finding {
   numeric?: number;
 }
 
+/**
+ * Un passo di un'azione, con la guida per farlo davvero sul PC. Una stringa è
+ * un passo semplice, uguale su ogni Windows e senza scorciatoie.
+ */
+export interface ActionStep {
+  /**
+   * Che cosa fare, con i nomi di menu e pulsanti come li mostra Windows 11 in
+   * italiano (tra virgolette), o il testo valido per entrambe le versioni.
+   */
+  text: string;
+  /** Lo stesso passo su Windows 10, quando percorso o nomi sono diversi. */
+  win10?: string;
+  /**
+   * Dove Polaris porta con un clic: l'identificativo di uno strumento o di una
+   * pagina delle Impostazioni di Windows (lista bianca dell'agente, vedi
+   * tools.ts) oppure "router-panel" per il pannello del router analizzato.
+   */
+  open?: string;
+  /**
+   * Comando da scrivere nel Terminale, che Polaris mostra con il pulsante per
+   * copiarlo: non lo esegue mai da solo.
+   */
+  cmd?: string;
+  /** Il passo chiede i permessi di amministratore. */
+  admin?: boolean;
+  /** Dove si fa il passo, se non su questo PC: sul router o su un altro dispositivo. */
+  where?: 'router' | 'device';
+  /** Il passo vale solo per una versione di Windows: sull'altra non si mostra. */
+  only?: 10 | 11;
+}
+
+export type Step = string | ActionStep;
+
 export interface Action {
   id: string;
   title: string;
   why: string;
-  steps: string[];
+  steps: Step[];
+  /** Come capire, alla fine, che ha funzionato (di solito con una nuova analisi). */
+  check?: string;
   effort: 'facile' | 'media' | 'avanzata';
   impact: 'alto' | 'medio' | 'basso';
 }

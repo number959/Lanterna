@@ -17,7 +17,7 @@ import {
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ACTIONS, CATEGORY_LABELS, METRIC_LIST } from '../engine';
+import { ACTIONS, CATEGORY_LABELS, METRIC_LIST, stepLine, stepsText } from '../engine';
 import type { Analysis, Category, Finding } from '../engine';
 import {
   CHAPTERS,
@@ -659,7 +659,8 @@ function Reference({ analysis: a, metric, action, onOpen }: { analysis: Analysis
               <ArrowRight size={16} className="c-ok" aria-hidden /> {x.title}
             </summary>
             <p className="muted">{x.why}</p>
-            <ol className="steps">{x.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
+            <ol className="steps">{x.steps.map((s, i) => <li key={i}>{stepLine(s)}</li>)}</ol>
+            {x.check && <p className="faint" style={{ fontSize: 13.5 }}><b>Come verificare:</b> {x.check}</p>}
             {guideLinks(guidesForAction(x.id))}
           </details>
         ))}
@@ -697,7 +698,7 @@ function searchAll(q: string): Hit[] {
     if (s) out.push({ kind: 'metric', id: mm.id, label: mm.label, text: mm.what, score: s });
   }
   for (const x of Object.values(ACTIONS)) {
-    const s = score(x.title, [x.why, ...x.steps].join(' '));
+    const s = score(x.title, `${x.why} ${stepsText(x)}`);
     if (s) out.push({ kind: 'action', id: x.id, label: x.title, text: x.why, score: s });
   }
   return out.sort((a, b) => b.score - a.score).slice(0, 40);

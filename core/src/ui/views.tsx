@@ -24,10 +24,10 @@ import {
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { apCount, ownRadios, phyLabel, primaryAdapter, secFamily } from '../engine';
+import { apCount, ownRadios, phyLabel, primaryAdapter, secFamily, stepOpens, windowsMajor } from '../engine';
 import type { Analysis, AnswerValue, Band, Bss, Category, CertData, CpuBench, DiskBench, InfraData, PcData, Scan, Severity, SpaceReport, SpeedTest, SurveySample, WifiSurvey } from '../engine';
 import { download, openTool } from './api';
-import { ACTION_TOOLS, WINDOWS_TOOLS } from '../tools';
+import { ACTION_TOOLS } from '../tools';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
 import { HexGauge } from './brand';
 import { guidesForAction } from '../guides';
@@ -46,6 +46,7 @@ import type { SurveyTargetRef } from './wifimap';
 import { SpeedCard } from './speedtest';
 import type { SpeedTargetRef } from './speedtest';
 import { cascade, ease, rise, spring, stagger } from './motion';
+import { PlanApps, PlanSteps, toolFor } from './plansteps';
 
 export type View = 'overview' | 'pc' | 'wifi' | 'lan' | 'internet' | 'router' | 'infra' | 'plan' | 'monitor' | 'guide';
 
@@ -114,6 +115,8 @@ export interface ViewProps {
   assessment: AssessmentState;
   monitor: MonitorSession;
   gwMacChange?: GatewayMacChange;
+  /** Avvia una nuova analisi con l'agente (dal piano, dopo le modifiche). */
+  rescan?: () => void;
 }
 
 const byCat = (a: Analysis, ...cats: Category[]) => a.findings.filter((f) => cats.includes(f.category));
@@ -916,7 +919,7 @@ function Check({ checked, onChange, label }: { checked: boolean; onChange: () =>
   );
 }
 
-export function PlanView({ analysis: a, focus, scan, live }: ViewProps) {
+export function PlanView({ analysis: a, focus, scan, live, go, rescan }: ViewProps) {
   const openGuide = useOpenGuide();
   const toast = useToast();
   const launch = (id: string, name: string) =>
@@ -947,8 +950,15 @@ export function PlanView({ analysis: a, focus, scan, live }: ViewProps) {
           <div style={{ fontWeight: 650 }}>
             <AnimatedNumber value={completed} /> di {a.plan.length} azioni completate
           </div>
-          <div className="faint" style={{ fontSize: 13 }}>Ordinate per gravità, impatto e facilità. Dopo le modifiche esegui una nuova analisi.</div>
+          <div className="faint" style={{ fontSize: 13 }}>
+            Ordinate per gravità, impatto e facilità. Ogni azione ha i passi da seguire su questo PC{windowsMajor(scan) ? ` (Windows ${windowsMajor(scan)})` : ''}; dopo le modifiche esegui una nuova analisi.
+          </div>
         </div>
+        {live && rescan && (
+          <button className="btn small" onClick={rescan}>
+            <RotateCcw size={14} aria-hidden /> Nuova analisi
+          </button>
+        )}
         <span className="meter" aria-hidden>
           <m.i initial={false} animate={{ scaleX: completed / a.plan.length }} transition={spring.gentle} />
         </span>
@@ -991,23 +1001,32 @@ export function PlanView({ analysis: a, focus, scan, live }: ViewProps) {
                       style={{ overflow: 'hidden' }}
                     >
                       <p className="muted" style={{ margin: '12px 0 0' }}>{p.action.why}</p>
-                      <ol className="steps">
-                        {p.action.steps.map((s, j) => <li key={j}>{s}</li>)}
-                      </ol>
-                      {live && (ACTION_TOOLS[p.action.id] ?? []).length > 0 && (
-                        <p className="plan-tools">
-                          <AppWindow size={14} aria-hidden />
-                          <span>Apri:</span>
-                          {ACTION_TOOLS[p.action.id].map((id) => {
-                            const w = WINDOWS_TOOLS.find((x) => x.id === id);
-                            return w ? (
-                              <button key={id} className="btn small" onClick={() => launch(id, w.name)}>
-                                {w.name}
-                              </button>
-                            ) : null;
-                          })}
+                      <PlanSteps action={p.action} scan={scan} live={live} />
+                      {p.action.check && (
+                        <p className="plan-check">
+                          <ListChecks size={14} aria-hidden />
+                          <span>
+                            <b>Come verificare.</b> {p.action.check}
+                          </span>
                         </p>
                       )}
+                      {(() => {
+                        // Strumenti dell'azione non già aperti da un passo.
+                        const inSteps = stepOpens(p.action);
+                        const extra = (ACTION_TOOLS[p.action.id] ?? []).filter((id) => !inSteps.includes(id)).map((id) => toolFor(id, windowsMajor(scan))).filter((w) => !!w);
+                        return live && extra.length > 0 ? (
+                          <p className="plan-tools">
+                            <AppWindow size={14} aria-hidden />
+                            <span>{inSteps.length ? 'Apri anche:' : 'Apri:'}</span>
+                            {extra.map((w) => (
+                              <button key={w!.id} className="btn small" onClick={() => launch(w!.id, w!.name)}>
+                                {w!.name}
+                              </button>
+                            ))}
+                          </p>
+                        ) : null;
+                      })()}
+                      <PlanApps action={p.action} live={live} go={go} />
                       {openGuide && guidesForAction(p.action.id).length > 0 && (
                         <p className="plan-guides">
                           <BookOpenText size={14} aria-hidden />

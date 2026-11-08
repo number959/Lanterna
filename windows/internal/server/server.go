@@ -190,6 +190,9 @@ type Server struct {
 	Tools    func() map[string]tools.Installed
 	Bundled  func() map[string]tools.Included
 	OpenTool func(id, target string) error
+	// OpenRouter apre nel browser il pannello del router (nil = non
+	// disponibile): riceve solo il gateway dell'ultima analisi.
+	OpenRouter func(gateway string, https bool) error
 
 	// Versioni portable (nil = non disponibili): copie scaricate, download dal
 	// sito ufficiale su richiesta, uno alla volta, ed eliminazione.
@@ -225,6 +228,7 @@ type Server struct {
 	mu       sync.Mutex
 	last     []byte
 	gateway  string
+	gwHTTPS  bool              // il pannello del router risponde in https
 	methods  map[string]string // ip -> "icmp" | "tcp" nell'ultima analisi
 	running  bool
 	steps    []collect.Step
@@ -303,8 +307,10 @@ func (s *Server) startScan() error {
 		if result != nil {
 			s.last, _ = json.Marshal(result)
 			s.methods = map[string]string{}
+			s.gateway, s.gwHTTPS = "", false
 			if result.Gateway != nil {
 				s.gateway = result.Gateway.IP
+				s.gwHTTPS = result.Gateway.Web != nil && result.Gateway.Web.HTTPS
 				if p := result.Gateway.Ping; p != nil && p.Received > 0 {
 					s.methods[p.Target] = p.Method
 				}
@@ -1178,6 +1184,31 @@ func (s *Server) Handler() http.Handler {
 		}
 		if code, err := readJSON(w, r, &body); err != nil {
 			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+		// Il pannello del router: solo l'indirizzo privato del gateway
+		// dell'ultima analisi, mai un indirizzo arrivato dall'interfaccia.
+		if body.Tool == tools.RouterPanel {
+			if body.Target != "site" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": tools.ErrTarget.Error()})
+				return
+			}
+			if s.OpenRouter == nil {
+				writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "apertura del pannello del router non disponibile"})
+				return
+			}
+			s.mu.Lock()
+			gw, https := s.gateway, s.gwHTTPS
+			s.mu.Unlock()
+			if _, err := tools.RouterURL(gw, https); err != nil {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+				return
+			}
+			if err := s.OpenRouter(gw, https); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, 200, map[string]bool{"opened": true})
 			return
 		}
 		if s.OpenTool == nil {

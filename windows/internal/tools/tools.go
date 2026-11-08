@@ -13,6 +13,7 @@ package tools
 
 import (
 	"errors"
+	"net"
 	"path/filepath"
 	"strings"
 )
@@ -41,6 +42,35 @@ var WindowsTools = map[string]Windows{
 	"defrag":            {File: "dfrgui.exe"},
 	"memory-diagnostic": {File: "mdsched.exe"},
 	"system-info":       {File: "msinfo32.exe"},
+	// Pagine aperte dai passi delle azioni del piano. Indirizzi ms-settings
+	// dalla tabella "Launch Windows Settings" di Microsoft Learn (versione del
+	// 2/11/2026); gli altri sono file di Windows senza argomenti.
+	"windows-update-optional": {File: "ms-settings:windowsupdate-optionalupdates"},
+	"windows-update-history":  {File: "ms-settings:windowsupdate-history"},
+	"windows-update-options":  {File: "ms-settings:windowsupdate-options"},
+	"storage-recommendations": {File: "ms-settings:storagerecommendations"},
+	"storage-sense":           {File: "ms-settings:storagepolicies"},
+	"installed-apps":          {File: "ms-settings:appsfeatures"},
+	"location-privacy":        {File: "ms-settings:privacy-location"},
+	"network-status":          {File: "ms-settings:network-status"},
+	"wifi-settings":           {File: "ms-settings:network-wifi"},
+	"known-networks":          {File: "ms-settings:network-wifisettings"},
+	"ethernet-settings":       {File: "ms-settings:network-ethernet"},
+	"network-advanced":        {File: "ms-settings:network-advancedsettings"},
+	"proxy-settings":          {File: "ms-settings:network-proxy"},
+	"network-connections":     {File: "ncpa.cpl"},
+	"printers":                {File: "ms-settings:printers"},
+	"display":                 {File: "ms-settings:display"},
+	"about":                   {File: "ms-settings:about"},
+	"device-encryption":       {File: "ms-settings:deviceencryption"},
+	"remote-desktop":          {File: "ms-settings:remotedesktop"},
+	"date-time":               {File: "ms-settings:dateandtime"},
+	"advanced-system":         {File: "SystemPropertiesAdvanced.exe"},
+	"firewall-panel":          {File: "firewall.cpl"},
+	"power-options":           {File: "powercfg.cpl"},
+	"services":                {File: "services.msc"},
+	"certificates-computer":   {File: "certlm.msc"},
+	"uac-settings":            {File: "UserAccountControlSettings.exe"},
 }
 
 // Program è un programma di terze parti: sito ufficiale e, se si installa,
@@ -197,6 +227,35 @@ func Resolve(id, target string, installed map[string]Installed) (Target, error) 
 		return Target{}, ErrNotInstalled
 	}
 	return Target{}, ErrTarget
+}
+
+// RouterPanel è l'identificativo che apre nel browser il pannello di gestione
+// del router dell'ultima analisi.
+const RouterPanel = "router-panel"
+
+var (
+	// ErrNoRouter: nessuna analisi, o un'analisi senza router.
+	ErrNoRouter = errors.New("nessun router nell'ultima analisi: esegui prima un'analisi")
+	// ErrPublicRouter: Polaris apre solo pannelli con un indirizzo IPv4 privato.
+	ErrPublicRouter = errors.New("il router non ha un indirizzo IPv4 privato: Polaris apre solo il pannello di un router della rete locale")
+)
+
+// RouterURL è l'indirizzo del pannello del router: solo un IPv4 privato o
+// link-local (quello del gateway dell'analisi), in https se il router lo
+// offre, altrimenti in http.
+func RouterURL(gateway string, https bool) (string, error) {
+	if gateway == "" {
+		return "", ErrNoRouter
+	}
+	ip := net.ParseIP(gateway).To4()
+	if ip == nil || !(ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
+		return "", ErrPublicRouter
+	}
+	scheme := "http"
+	if https {
+		scheme = "https"
+	}
+	return scheme + "://" + ip.String() + "/", nil
 }
 
 // dirOf è la cartella di un percorso Windows (anche nei test su altri sistemi).

@@ -1633,3 +1633,34 @@ a.btn { text-decoration: none; }
   .nav-short { display: none; }
   .nav-item { padding-block: 10px; }
 }
+
+/* Piano d'azione: passi guidati (spunta per passo, pagina da aprire, comando da copiare) e programmi utili. */
+.plan-win { margin: 12px 0 0; font-size: 13px; }
+.steps.guided { list-style: none; padding-left: 0; counter-reset: passo; }
+.steps.guided li { counter-increment: passo; display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 4px 10px; align-items: start; margin: 8px 0; padding: 0; }
+.steps.guided li::before { content: counter(passo) '.'; font-family: var(--mono); font-size: 13px; color: var(--accent-text); min-width: 1.6em; text-align: right; padding-top: 2px; }
+.steps.guided li.done .plan-step-text { text-decoration: line-through; text-decoration-color: var(--text-3); color: var(--text-3); }
+.check.small { padding: 0; min-height: 0; border: 0; background: none; }
+.check.small svg { width: 18px; height: 18px; margin-top: 2px; }
+.plan-step-body { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.plan-step-text { flex: 1 1 100%; color: var(--text-2); overflow-wrap: anywhere; }
+.plan-step-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag.warn-soft { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
+.plan-cmd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; max-width: 100%; }
+.plan-cmd code { font-family: var(--mono); font-size: 12.5px; padding: 4px 8px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); color: var(--text); overflow-wrap: anywhere; word-break: break-all; }
+.plan-step-note { font-size: 13px; }
+.plan-step-note code { font-family: var(--mono); font-size: 12.5px; }
+.plan-check { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0 0; font-size: 13.5px; color: var(--text-2); }
+.plan-check svg { flex: none; margin-top: 3px; color: var(--ok); }
+.plan-apps { margin-top: 14px; }
+.plan-apps-title { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 13.5px; font-weight: 600; color: var(--text-2); }
+.plan-apps-title svg { color: var(--accent-text); }
+.plan-apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 10px; }
+.tool-card.compact { padding: 12px 14px; box-shadow: none; background: var(--surface-2); }
+.tool-card.compact .tool-title { font-size: 15px; }
+.tool-card.compact .tool-what { font-size: 13.5px; margin: 0 0 6px; }
+.tool-card.compact .tool-license, .tool-card.compact .tool-note { font-size: 12.5px; }
+@media (max-width: 560px) {
+  .steps.guided li { grid-template-columns: auto minmax(0, 1fr); }
+  .steps.guided li::before { display: none; }
+}
