@@ -45,6 +45,14 @@ COSA FA
   secondi per stanza, fermi dove si lavora) e misura la velocita' di
   Internet con Measurement Lab (M-Lab), dopo il tuo consenso a ogni test.
   Per ogni valore spiega cosa significa, quanto e' grave e cosa fare.
+  Il piano d'azione guida passo passo: per ogni passo il percorso di Windows
+  con i nomi italiani di menu e pulsanti, nella versione del PC analizzato
+  (Windows 11 o Windows 10), il pulsante che apre la pagina giusta di Windows
+  o il pannello del router, i comandi da copiare nel Prompt dei comandi
+  (Polaris non li esegue mai), le avvertenze e come verificare il risultato;
+  dentro ogni azione compaiono i programmi utili, con il pulsante per aprirli
+  o scaricarli. I nomi sono quelli di Windows 11 24H2 e Windows 10 22H2: con
+  altri aggiornamenti possono cambiare leggermente.
   Nelle reti con piu' access point mostra gli AP della rete, il roaming
   (802.11k/v/r), gli AP sullo stesso canale e il PC agganciato a un AP lontano;
   riconosce le reti con dominio. La sezione Infrastruttura censisce la
@@ -57,8 +65,10 @@ REQUISITI
   - Microsoft Edge WebView2 Runtime (gia' presente su Windows 11 e sui Windows 10
     aggiornati). Se manca, STARNET Polaris si apre nel browser.
   - Windows 11 24H2 e successivi: per leggere le reti Wi-Fi serve il permesso di
-    posizione. Impostazioni > Privacy e sicurezza > Posizione: attiva "Servizi di
-    localizzazione" e "Consenti alle app desktop di accedere alla posizione".
+    posizione. In Impostazioni > "Privacy e sicurezza" apri le impostazioni della
+    posizione, attiva "Servizi di localizzazione" e consenti l'accesso alla
+    posizione anche alle app desktop. Con Polaris avviato, nella sezione Wi-Fi il
+    pulsante "Apri le impostazioni della posizione" porta direttamente li'.
   - Non servono privilegi di amministratore. Avviando Polaris come
     amministratore (clic destro > Esegui come amministratore) compaiono anche
     attributi SMART, registro NVMe, temperatura, usura ed errori dei dischi

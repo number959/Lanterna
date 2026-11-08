@@ -77,6 +77,14 @@ motore lo mostra come "non misurato" invece di inventare un giudizio.
   è un'anomalia.
 - Il piano d'azione unisce le azioni ripetute (es. *Avvicina il dispositivo al router* risolve segnale, perdite e jitter) e le
   ordina per gravità, impatto, numero di problemi risolti e facilità.
+- I passi delle azioni (`kb/actions.ts`, `steps.ts`) sono testo semplice oppure strutturati (`ActionStep`): testo per Windows 11,
+  variante `win10`, pagina da aprire (`open`, un identificativo della lista bianca o `router-panel`), comando da copiare (`cmd`),
+  `admin`, `where` (`router` o `device`) e `only` per i passi di una sola versione; ogni azione può avere `check` ("Come
+  verificare"). `windowsMajor` ricava la versione dalla build del rapporto (22000 e oltre: Windows 11), poi dal nome; senza
+  versione si mostrano entrambi i percorsi. Nei comandi `{driver}` diventa il driver ricorrente nelle schermate blu
+  (`stepVars`/`stepCmd`), solo se è un semplice nome di file `.sys`, altrimenti resta un segnaposto: il comando finisce nel
+  Prompt dei comandi di chi lo incolla. L'interfaccia (`ui/plansteps.tsx`) mostra per ogni passo la spunta, il pulsante che apre
+  la pagina, il comando con "Copia" e le avvertenze, e per ogni azione i programmi utili (`ACTION_APPS` in `tools.ts`).
 - Il consiglio sui canali stima l'interferenza dallo spettro occupato da ogni rete, pesato per potenza e per il carico dichiarato
   (BSS Load). A 2,4 GHz consiglia solo 1, 6 o 11; a 5 GHz preferisce 36-48, poi i blocchi DFS, per ultimo 149-161 (in Italia/UE
   ammesso solo a bassa potenza). Le altre reti trasmesse dalle stesse radio (ospiti, dispositivi: BSSID che differiscono solo
@@ -302,7 +310,7 @@ per la console, comoda negli script.
 | `POST /api/tools/kit` | corpo `{"tools": ["<id>", ...]}`: `202` avvia la preparazione del kit (duplicati ignorati); `404` e `400` come sopra, `400` con elenco vuoto, `422` se la cartella di Polaris non è scrivibile, `409` se c'è già un download |
 | `DELETE /api/tools/fetch` | interrompe il download o la preparazione del kit |
 | `POST /api/tools/remove` | corpo `{"tool": "<id>"}`: elimina la copia scaricata (prima quella del PC, poi quella del kit); `409` se è in download o in coda |
-| `POST /api/open` | corpo `{"tool": "<id>", "target": "app"\|"site"}`: apre uno strumento di Windows, un programma (la copia inclusa se integra, poi quella scaricata, con la firma verificata di nuovo, poi quella installata) o il sito ufficiale; `404` per un identificativo fuori dalla lista bianca, `400` per una destinazione non valida, `422` se il programma non c'è o la copia è alterata, `409` se la richiesta dei permessi di amministratore viene annullata |
+| `POST /api/open` | corpo `{"tool": "<id>", "target": "app"\|"site"}`: apre uno strumento o una pagina di Windows (le 42 voci di `WindowsTools`: indirizzi `ms-settings:` della tabella ufficiale di Microsoft Learn e programmi di Windows senza argomenti), un programma (la copia inclusa se integra, poi quella scaricata, con la firma verificata di nuovo, poi quella installata) o il sito ufficiale; `404` per un identificativo fuori dalla lista bianca, `400` per una destinazione non valida, `422` se il programma non c'è o la copia è alterata, `409` se la richiesta dei permessi di amministratore viene annullata. Con `"tool": "router-panel"` (solo `"target": "site"`, altrimenti `400`) apre nel browser il gateway dell'ultima analisi, in https se il router lo offre: `422` se non c'è un'analisi o se il gateway non è un IPv4 privato o link-local, `501` se l'agente non apre il browser; un indirizzo nel corpo della richiesta viene ignorato |
 
 Sicurezza: ascolto solo su `127.0.0.1`; richieste con `Host` diverso da localhost rifiutate (DNS rebinding); `POST` con `Origin`
 estranea o `Sec-Fetch-Site: cross-site` rifiutate (CSRF); i `POST` di inventario e verifiche accettano solo corpi

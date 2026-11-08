@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIONS, analyze, asStep, renderText, stepLine, stepOpens, stepsFor, stepsText, stepText, windowsMajor } from '../src/engine';
-import type { Action, Scan } from '../src/engine';
+import { ACTIONS, analyze, asStep, DRIVER_PLACEHOLDER, renderText, stepCmd, stepLine, stepOpens, stepsFor, stepsText, stepText, stepVars, windowsMajor } from '../src/engine';
+import type { Action, CrashDump, Scan } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { ACTION_APPS, ACTION_TOOLS, ROUTER_PANEL, TOOLS, WINDOWS_TOOLS } from '../src/tools';
-import { privateIPv4, toolFor } from '../src/ui/plansteps';
+import { CMD_HOW, CMD_HOW_ADMIN, planWinNote, privateIPv4, toolFor } from '../src/ui/plansteps';
 
 // Passi guidati del piano: testo per la versione di Windows del PC, pagine da
 // aprire solo dalla lista bianca, comandi da copiare, programmi utili per azione.
@@ -116,6 +116,68 @@ describe('catalogo delle azioni', () => {
   });
 });
 
+// Due minidump letti con lo stesso driver indicato: abbastanza per il driver ricorrente.
+function withDriver(driver: string): Scan {
+  const s = clone(demoScan) as Scan;
+  const dump = (i: number): CrashDump => ({
+    file: `110826-1234-0${i}.dmp`,
+    size: 1024,
+    time: `2026-11-0${i}T10:00:00Z`,
+    code: '0x000000d1',
+    probable: { driver, method: 'param', param: 4 },
+  });
+  s.pc!.crashes = { readAt: '2026-11-08T10:00:00Z', folder: 'ok', total: 2, dumps: [dump(5), dump(6)] };
+  return s;
+}
+
+describe('comandi da copiare', () => {
+  const step = { text: 'Cerca il driver.', cmd: 'driverquery /v | findstr /i {driver}' };
+
+  it('il driver ricorrente delle schermate blu entra nel comando', () => {
+    expect(stepVars(demoScan)).toEqual({ driver: 'acmewlan.sys' }); // la demo di casa ne ha uno
+    const vars = stepVars(withDriver('nvlddmkm.sys'));
+    expect(vars).toEqual({ driver: 'nvlddmkm.sys' });
+    expect(stepCmd(step, vars)).toBe('driverquery /v | findstr /i nvlddmkm.sys');
+    expect(stepLine(step, 11, vars)).toBe('Cerca il driver. Comando: driverquery /v | findstr /i nvlddmkm.sys');
+  });
+
+  it('senza driver, o con un nome che potrebbe aggiungere comandi, resta il segnaposto', () => {
+    const none = clone(demoScan) as Scan;
+    delete none.pc!.crashes;
+    expect(stepVars(none)).toEqual({});
+    expect(stepVars(null)).toEqual({});
+    expect(stepCmd(step)).toBe(`driverquery /v | findstr /i ${DRIVER_PLACEHOLDER}`);
+    for (const bad of ['x.sys & del /q *', 'a.sys|calc', 'a b.sys', '..\\evil.sys', 'nvlddmkm.exe', '"x.sys"', `${'a'.repeat(70)}.sys`]) {
+      expect(stepVars(withDriver(bad)), bad).toEqual({});
+    }
+    expect(stepCmd('Passo senza comando.')).toBeUndefined();
+  });
+
+  it('il catalogo usa il segnaposto solo nel comando del driver', () => {
+    for (const a of Object.values(ACTIONS))
+      for (const raw of a.steps) {
+        const s = asStep(raw);
+        if (s.cmd?.includes('{')) expect(`${a.id}: ${s.cmd}`).toBe('update-crash-driver: driverquery /v | findstr /i {driver}');
+        expect(s.text, a.id).not.toContain('{driver}');
+      }
+  });
+
+  it('come aprire il Prompt dei comandi, uguale su Windows 10 e 11', () => {
+    expect(CMD_HOW).toContain('"cmd"');
+    expect(CMD_HOW_ADMIN).toContain('"Esegui come amministratore"');
+    expect(CMD_HOW_ADMIN).toContain('"Sì"');
+  });
+});
+
+describe('nota sui nomi di Windows', () => {
+  it('dice la versione del PC e quella dei nomi', () => {
+    expect(planWinNote(11)).toContain('Windows 11 24H2');
+    expect(planWinNote(10)).toContain('Windows 10 22H2');
+    expect(planWinNote()).toContain('24H2 e 22H2');
+    for (const n of [planWinNote(10), planWinNote(11), planWinNote()]) expect(n).toContain('possono cambiare leggermente');
+  });
+});
+
 describe('pannello del router', () => {
   it('solo indirizzi IPv4 privati o link-local', () => {
     for (const ip of ['192.168.1.1', '10.0.0.138', '172.16.0.1', '172.31.255.254', '169.254.1.1']) expect(privateIPv4(ip), ip).toBe(true);
@@ -131,5 +193,15 @@ describe('rapporto di testo', () => {
     expect(clinic).toContain('I passi seguono i menu di Windows 10, la versione di questo PC.');
     expect(home).not.toContain('[object Object]');
     expect(clinic).not.toContain('[object Object]');
+    expect(home).toContain('Windows 11 24H2');
+    expect(clinic).toContain('Windows 10 22H2');
+  });
+
+  it('nel rapporto il comando del driver ha già il nome del file', () => {
+    const s = withDriver('nvlddmkm.sys');
+    const text = renderText(s, analyze(s), { verbose: true });
+    expect(text).toContain('Prompt dei comandi');
+    expect(text).toContain('findstr /i nvlddmkm.sys');
+    expect(text).not.toContain('{driver}');
   });
 });

@@ -1,8 +1,8 @@
 import { AppWindow, ClipboardCopy, Monitor, PackageSearch, Router, ShieldAlert, Smartphone } from 'lucide-react';
 import { m } from 'motion/react';
 import { useCallback, useMemo } from 'react';
-import { asStep, stepText, windowsMajor } from '../engine';
-import type { Action, ActionStep, Scan, WinMajor } from '../engine';
+import { asStep, stepCmd, stepText, stepVars, windowsMajor } from '../engine';
+import type { Action, ActionStep, Scan, StepVars, WinMajor } from '../engine';
 import { ACTION_APPS, ROUTER_PANEL, TOOLS, WINDOWS_TOOLS } from '../tools';
 import type { ToolView } from '../tools';
 import { openTool } from './api';
@@ -26,6 +26,14 @@ export function privateIPv4(ip?: string): boolean {
   const [a, b] = [Number(m4[1]), Number(m4[2])];
   if ([m4[1], m4[2], m4[3], m4[4]].some((x) => Number(x) > 255)) return false;
   return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+}
+
+/** Nota in cima al piano: quale Windows seguono i passi e con i nomi di quale versione. */
+export function planWinNote(win?: WinMajor): string {
+  const tail = 'con altri aggiornamenti possono cambiare leggermente.';
+  if (win === 10) return `I passi seguono Windows 10, la versione di questo PC, con i nomi di menu e pulsanti di Windows 10 22H2: ${tail}`;
+  if (win === 11) return `I passi seguono Windows 11, la versione di questo PC, con i nomi di menu e pulsanti di Windows 11 24H2: ${tail}`;
+  return `I passi seguono Windows 11 e, dove cambia, Windows 10, con i nomi di menu e pulsanti delle versioni 24H2 e 22H2: ${tail}`;
 }
 
 /** Una pagina di Windows si offre solo se esiste nella versione del PC (o se la versione non è nota). */
@@ -52,7 +60,7 @@ function useCopy() {
   const toast = useToast();
   return useCallback(
     (text: string) => {
-      const done = () => toast('Comando copiato: incollalo nel Terminale', 'ok', 'tap');
+      const done = () => toast('Comando copiato: incollalo nel Prompt dei comandi con Ctrl+V e premi Invio', 'ok', 'tap');
       const fail = () => toast('Copia non riuscita: seleziona il comando e copialo a mano', 'warn');
       try {
         if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, fail);
@@ -65,12 +73,19 @@ function useCopy() {
   );
 }
 
-function StepBody({ s, win, live, scan }: { s: ActionStep; win?: WinMajor; live: boolean; scan: Scan }) {
+// Come aprire il Prompt dei comandi: la stessa strada su Windows 10 e 11 (il nome
+// della voce del menu Start per il Terminale cambia tra le versioni).
+export const CMD_HOW = 'Nel Prompt dei comandi: cerca "cmd" nel menu Start e apri "Prompt dei comandi".';
+export const CMD_HOW_ADMIN =
+  'Nel Prompt dei comandi come amministratore: cerca "cmd" nel menu Start, fai clic con il tasto destro su "Prompt dei comandi" e scegli "Esegui come amministratore", poi "Sì".';
+
+function StepBody({ s, win, live, scan, vars }: { s: ActionStep; win?: WinMajor; live: boolean; scan: Scan; vars: StepVars }) {
   const toast = useToast();
   const copy = useCopy();
   const tool = toolFor(s.open, win);
   const gw = scan.gateway?.ip;
   const router = s.open === ROUTER_PANEL;
+  const cmd = stepCmd(s, vars);
   const openWin = (id: string, name: string) =>
     openTool(id, 'app')
       .then(() => toast(`${name} aperto`, 'ok', 'open'))
@@ -106,13 +121,16 @@ function StepBody({ s, win, live, scan }: { s: ActionStep; win?: WinMajor; live:
           )}
         </span>
       )}
-      {s.cmd && (
-        <span className="plan-cmd">
-          <code>{s.cmd}</code>
-          <button className="btn small" onClick={() => copy(s.cmd!)} aria-label={`Copia il comando ${s.cmd}`}>
-            <ClipboardCopy size={14} aria-hidden /> Copia
-          </button>
-        </span>
+      {cmd && (
+        <>
+          <span className="plan-cmd">
+            <code>{cmd}</code>
+            <button className="btn small" onClick={() => copy(cmd)} aria-label={`Copia il comando ${cmd}`}>
+              <ClipboardCopy size={14} aria-hidden /> Copia
+            </button>
+          </span>
+          <span className="faint plan-step-note">{s.admin ? CMD_HOW_ADMIN : CMD_HOW}</span>
+        </>
       )}
       {tool && live && (
         <span className="chip-actions plan-step-open">
@@ -141,6 +159,7 @@ function StepBody({ s, win, live, scan }: { s: ActionStep; win?: WinMajor; live:
 /** I passi di un'azione, guidati per la versione di Windows del PC analizzato. */
 export function PlanSteps({ action, scan, live }: { action: Action; scan: Scan; live: boolean }) {
   const win = windowsMajor(scan);
+  const vars = useMemo(() => stepVars(scan), [scan]);
   const key = `polaris.steps.${scan.agent.host ?? 'demo'}`;
   const [done, setDone] = useLocalState<Record<string, number[]>>(key, {});
   const mine = done[action.id] ?? [];
@@ -172,7 +191,7 @@ export function PlanSteps({ action, scan, live }: { action: Action; scan: Scan; 
           return (
             <li key={i} className={checked ? 'done' : undefined}>
               <StepCheck checked={checked} onChange={() => toggle(i)} label={`Passo ${n + 1} fatto`} />
-              <StepBody s={s} win={win} live={live} scan={scan} />
+              <StepBody s={s} win={win} live={live} scan={scan} vars={vars} />
             </li>
           );
         })}

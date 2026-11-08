@@ -363,6 +363,8 @@ kbd {
 .notice:has(.demo-pick) { flex-wrap: wrap; align-items: center; }
 .notice:has(.demo-pick) > span:not(.demo-pick) { flex: 1 1 320px; }
 .demo-pick { margin-left: auto; }
+.notice:has(> .btn) { flex-wrap: wrap; align-items: center; }
+.notice:has(> .btn) > span { flex: 1 1 320px; }
 
 /* Effetto "luce che segue il puntatore" (bordo e alone), solo CSS + due variabili. */
 .spot { position: relative; isolation: isolate; }

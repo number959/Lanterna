@@ -1,3 +1,4 @@
+import { crashDrivers } from './crash';
 import type { Action, ActionStep, Scan, Step } from './types';
 
 // Passi delle azioni adattati al PC analizzato: Windows 11 e Windows 10 hanno
@@ -43,11 +44,40 @@ export function stepText(s: Step, win?: WinMajor): string {
   return `${x.text} (Windows 10: ${x.win10})`;
 }
 
+/** Valori del rapporto che completano i comandi dei passi. */
+export interface StepVars {
+  /** Driver ricorrente nelle schermate blu, solo se è un semplice nome di file .sys. */
+  driver?: string;
+}
+
+/** Segnaposto mostrato quando il rapporto non indica un driver utilizzabile. */
+export const DRIVER_PLACEHOLDER = 'nome-del-file.sys';
+
+// Il nome finisce in un comando che l'utente incolla nel Prompt dei comandi: un
+// rapporto importato potrebbe contenere un nome costruito per aggiungere altri
+// comandi (& | > ...). Si accettano solo lettere, cifre, punto, trattino e
+// trattino basso, come nei nomi dei driver.
+const SAFE_DRIVER = /^[A-Za-z0-9_.-]{1,64}\.sys$/i;
+
+/** I valori del rapporto per i comandi dei passi. */
+export function stepVars(scan: Scan | null | undefined): StepVars {
+  const c = scan && scan.pc && scan.pc.crashes;
+  const top = crashDrivers(c || undefined)[0];
+  return top && SAFE_DRIVER.test(top.label) ? { driver: top.label } : {};
+}
+
+/** Il comando del passo con i valori del rapporto; senza un valore resta il segnaposto da sostituire. */
+export function stepCmd(s: Step, vars?: StepVars): string | undefined {
+  const x = asStep(s);
+  if (!x.cmd) return undefined;
+  return x.cmd.split('{driver}').join(vars && vars.driver ? vars.driver : DRIVER_PLACEHOLDER);
+}
+
 /** Riga di testo completa di un passo, per il rapporto e il documento: testo, comando e avvertenze. */
-export function stepLine(s: Step, win?: WinMajor): string {
+export function stepLine(s: Step, win?: WinMajor, vars?: StepVars): string {
   const x = asStep(s);
   let line = stepText(x, win);
-  if (x.cmd) line += ` Comando: ${x.cmd}`;
+  if (x.cmd) line += ` Comando: ${stepCmd(x, vars)}`;
   const notes: string[] = [];
   if (x.admin) notes.push('serve l\'amministratore');
   if (x.where === 'router') notes.push('sul router');

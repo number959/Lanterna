@@ -603,6 +603,39 @@ jobs:
               "Copia alterata rifiutata: $($t.bundled.crystaldiskmark.problem)"
             } finally { Move-Item -Force "$exe.orig" $exe }
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+      - name: Pagine dei passi del piano e pannello del router
+        run: |
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8739' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $api = 'http://127.0.0.1:8739/api'
+            # Pagine aperte dai passi (programmi di Windows della lista bianca): si aprono con un clic, poi si chiudono.
+            foreach ($c in @(@{ id = 'services'; proc = 'mmc' }, @{ id = 'advanced-system'; proc = 'SystemPropertiesAdvanced' }, @{ id = 'uac-settings'; proc = 'UserAccountControlSettings' })) {
+              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body "{`"tool`":`"$($c.id)`",`"target`":`"app`"}" -TimeoutSec 30 "$api/open" | Out-Null
+              $t0 = 0
+              do { Start-Sleep 1; $t0++; $run = Get-Process $c.proc -ErrorAction SilentlyContinue } while (-not $run -and $t0 -lt 15)
+              if (-not $run) { throw "$($c.id): $($c.proc) non avviato" }
+              "$($c.id) aperto da Polaris ($($c.proc), PID $($run[0].Id))"
+              Stop-Process -Name $c.proc -Force
+            }
+            # Una pagina di Impostazioni (prova non bloccante: sul runner l'app Impostazioni può non partire fuori da una sessione interattiva).
+            try {
+              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"tool":"about","target":"app"}' -TimeoutSec 30 "$api/open" | Out-Null
+              $t0 = 0
+              do { Start-Sleep 1; $t0++; $run = Get-Process SystemSettings -ErrorAction SilentlyContinue } while (-not $run -and $t0 -lt 15)
+              if ($run) { "about (ms-settings:about) aperto: SystemSettings, PID $($run[0].Id)"; Stop-Process -Name SystemSettings -Force -ErrorAction SilentlyContinue }
+              else { "about (ms-settings:about): richiesta accettata, SystemSettings non visto (prova non bloccante)" }
+            } catch { "about (ms-settings:about) non aperto: $($_.Exception.Message) (prova non bloccante)" }
+            # Il pannello del router si apre solo come sito e solo con il gateway di un'analisi: qui non ce n'è.
+            foreach ($b in @(@{ body = '{"tool":"router-panel","target":"app"}'; code = 400 }, @{ body = '{"tool":"router-panel","target":"site"}'; code = 422 })) {
+              $got = 0
+              try {
+                Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $b.body -TimeoutSec 30 "$api/open" | Out-Null
+              } catch { $got = $_.Exception.Response.StatusCode.value__ }
+              if ($got -ne $b.code) { throw "atteso $($b.code) per $($b.body), ricevuto $got" }
+              "Pannello del router rifiutato come previsto ($got): $($b.body)"
+            }
+          } finally { Stop-Process $p -ErrorAction SilentlyContinue }
       - name: Versioni portable dal sito ufficiale (Autoruns, CPU-Z)
         timeout-minutes: 8
         run: |

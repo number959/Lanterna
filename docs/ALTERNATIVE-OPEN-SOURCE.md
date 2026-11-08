@@ -22,6 +22,36 @@ Un limite vale per tutti: temperature e tensioni della scheda madre, timing dell
 del processore richiedono un **driver in kernel**. Polaris non ne usa per scelta (sicurezza, firma dei driver, segnalazioni
 degli antivirus), quindi quei dati restano ai programmi dedicati.
 
+## Ricreare i programmi dentro Polaris: dove si può e dove no
+
+Dalla 0.11.0 i programmi della cassetta degli attrezzi compaiono anche dentro le azioni del piano a cui servono, con lo stato
+(incluso, installato, scaricabile) e i pulsanti per aprirli o scaricarli; quando Polaris fa già la stessa cosa, la scheda lo
+dice e porta alla sezione. L'obiettivo resta averne bisogno il meno possibile, ricreando le funzioni dentro Polaris.
+
+Il confine è lo stesso per tutti:
+
+- si ricrea **la funzione**, partendo dalla documentazione pubblica di Windows, dalle specifiche (ATA, NVMe, SMBIOS, formati dei
+  dump) e dai fatti tecnici descritti in fonti aperte; **mai** copiando, decompilando o analizzando il codice dei programmi
+  proprietari (CPU-Z, HWiNFO, WizTree, BlueScreenView e Sysinternals lo sono);
+- il codice open source si riusa solo dove la licenza lo consente: MIT, BSD e Apache con l'avviso di copyright nel pacchetto,
+  come per le librerie già usate; il codice GPL non si copia, perché obbligherebbe a distribuire Polaris con la stessa licenza:
+  lo si legge solo per i fatti (quali tabelle o registri esistono) e si scrive codice proprio;
+- niente driver in kernel: quello che Windows non espone senza un driver resta ai programmi dedicati.
+
+| Programma | Già dentro Polaris | Prossimo passo | Che cosa resta al programma, e perché |
+| --- | --- | --- | --- |
+| CrystalDiskInfo | salute dei dischi: SMART ATA e NVMe, stato, temperatura, ore di accensione, registro NVMe (0.6.0) | — | dischi dietro alcuni controller RAID e adattatori USB, cronologia continua dei valori; resta incluso come seconda opinione |
+| CrystalDiskMark | test di velocità con lo stesso profilo, in versione breve (0.6.0) | — | il test completo con passate e dimensione del file a scelta; resta incluso |
+| CPU-Z | scheda tecnica (0.6.0) e velocità dei core in tempo reale (0.7.0) | 0.13.0: nome in codice del processore e del chipset | profili XMP/EXPO e timing dei moduli di memoria, tensioni: richiedono letture con un driver |
+| HWiNFO | sensori: utilizzo, frequenze, consumi esposti da Windows, zone termiche, scheda video, dischi, rete, batteria (0.8.0) | — | temperature, tensioni e ventole di processore e scheda madre: richiedono un driver |
+| WizTree, WinDirStat | cosa occupa spazio (0.9.0) | 0.16.0: WinDirStat nella cartella `strumenti`, nel rispetto della GPL-3 | la velocità di WizTree sui dischi con milioni di file, che legge direttamente la tabella dei file di NTFS |
+| BlueScreenView | file delle schermate blu (0.10.0) | — | il driver indicato è un indizio, e BlueScreenView può indicarne un altro; resta incluso |
+| Process Explorer | i processi che pesano di più durante l'analisi | 0.13.0: processi con firma digitale verificata e connessioni di rete | file aperti e librerie di ogni processo: restano a Process Explorer o a System Informer (0.16.0) |
+| Autoruns | chiavi Run e cartelle di esecuzione automatica | 0.13.0: attività pianificate, servizi, driver, sottoscrizioni WMI, estensioni dei browser | disattivare le voci: Polaris resta in sola lettura |
+| Controllo integrità PC | requisiti di Windows 11 verificabili da Windows | 0.13.0: requisiti completi, con l'elenco dei processori supportati pubblicato da Microsoft | — |
+| Malwarebytes, AdwCleaner, Microsoft Safety Scanner, ESET Online Scanner | stato, minacce e scansioni di Microsoft Defender (0.6.0) | — | un motore antivirus non si ricrea: firme e analisi aggiornate di continuo sono il prodotto stesso. Polaris usa Defender, già in Windows; per un secondo parere servono questi |
+| MemTest86 | nessun test della RAM: il piano guida alla Diagnostica memoria Windows | 0.12.0: esito della Diagnostica memoria Windows nel rapporto | il test parte da una chiavetta, fuori da Windows: un programma che gira dentro Windows non può provare la memoria che Windows stesso occupa |
+
 ## Programma per programma
 
 | Oggi si scarica | Alternativa | Licenza | Proposta | Limiti |

@@ -9,7 +9,7 @@ import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } 
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import { dbmText, gatewayText, radioText, surveyAliases, surveyRooms } from './survey';
 import { speedTextLines } from './speedtest';
-import { stepLine, stepsFor, windowsMajor } from './steps';
+import { stepLine, stepsFor, stepVars, windowsMajor } from './steps';
 import type { Analysis, EventKind, Finding, ReachResult, Scan, Severity } from './types';
 
 // Rapporto testuale, usato dalla riga di comando e dall'esportazione .txt.
@@ -395,14 +395,28 @@ export function renderText(scan: Scan, a: Analysis, opts: { verbose?: boolean; w
     out.push(hr);
     out.push(' PIANO D\'AZIONE (in ordine di priorità)');
     out.push(hr);
-    if (opts.verbose && win) out.push(wrap(`I passi seguono i menu di Windows ${win}, la versione di questo PC.`, W - 2, ' '));
+    if (opts.verbose) {
+      const names = win === 10 ? 'Windows 10 22H2' : win === 11 ? 'Windows 11 24H2' : 'Windows 11 24H2 e Windows 10 22H2';
+      const lead = win ? `I passi seguono i menu di Windows ${win}, la versione di questo PC.` : 'I passi seguono i menu di Windows 11; dove Windows 10 è diverso, il suo percorso è tra parentesi.';
+      out.push(wrap(`${lead} I nomi di menu e pulsanti sono quelli di ${names}: con altri aggiornamenti possono cambiare leggermente.`, W - 2, ' '));
+      const cmds = a.plan.some((p) => ACTIONS[p.action.id].steps.some((s) => typeof s !== 'string' && !!s.cmd));
+      if (cmds)
+        out.push(
+          wrap(
+            'I comandi si incollano nel Prompt dei comandi (cerca "cmd" nel menu Start); quelli segnati [serve l\'amministratore] nel Prompt aperto con il tasto destro > "Esegui come amministratore". Polaris non li esegue mai.',
+            W - 2,
+            ' ',
+          ),
+        );
+    }
+    const vars = stepVars(scan);
     a.plan.forEach((p, i) => {
       const act = ACTIONS[p.action.id];
       out.push(` ${String(i + 1).padStart(2)}. ${TAG[p.severity]} ${act.title}`);
       out.push(wrap(`impatto ${act.impact}, difficoltà ${act.effort}; risolve: ${p.findings.join(', ')}`, W - 9, '        '));
       if (opts.verbose) {
         out.push(wrap(act.why, W - 9, '        '));
-        stepsFor(act, win).forEach((s, j) => out.push(wrap(`${j + 1}) ${stepLine(s, win)}`, W - 11, '          ')));
+        stepsFor(act, win).forEach((s, j) => out.push(wrap(`${j + 1}) ${stepLine(s, win, vars)}`, W - 11, '          ')));
         if (act.check) out.push(wrap(`Come verificare: ${act.check}`, W - 9, '        '));
       }
     });

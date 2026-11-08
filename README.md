@@ -9,7 +9,9 @@
 
 **La stella polare del tuo PC e della tua rete.** Diagnostica di computer e rete, in un unico programma, che **spiega ogni
 valore**: per ciascuna misura dice cos'è, come si legge, quanto è grave e cosa fare per migliorarla. Le azioni correttive
-confluiscono in un piano unico, ordinato per gravità, impatto e facilità.
+confluiscono in un piano unico, ordinato per gravità, impatto e facilità, che **guida passo passo sul PC**: per ogni passo il
+percorso di Windows con i nomi italiani di menu e pulsanti, nella versione del PC analizzato, il pulsante che apre la pagina
+giusta e i comandi da copiare; dentro ogni azione compaiono i programmi utili, con il pulsante per aprirli.
 
 Del **computer** controlla versione e supporto di Windows, memoria, **salute dei dischi HDD e SSD** (attributi SMART e registro
 NVMe come in CrystalDiskInfo, usura, temperatura, errori), **cosa occupa spazio** come WizTree, programmi all'avvio, processi, spegnimenti imprevisti,
@@ -64,9 +66,33 @@ connessione. Si spengono con l'altoparlante nella barra in alto e la scelta rest
   toglie sfocature e trasparenze; si può anche attivare a mano in fondo alla barra laterale.
 - Contrasto conforme a WCAG 2.1 AA in entrambi i temi; la gravità è sempre indicata da icona e testo, non solo dal colore.
 
-| Wi-Fi e spettro radio | Piano d'azione (tema chiaro) | Mobile |
+| Wi-Fi e spettro radio | Piano d'azione con i passi guidati (tema chiaro) | Mobile |
 | --- | --- | --- |
 | ![Wi-Fi](docs/img/wifi.webp) | ![Piano d'azione](docs/img/piano.webp) | ![Mobile](docs/img/mobile.webp) |
+
+## Il piano d'azione, passo passo
+
+Ogni azione del piano dice perché farla e come, un passo alla volta:
+
+- **la versione giusta di Windows**: i passi seguono Windows 11 o Windows 10, secondo il PC analizzato, con i nomi italiani di
+  menu e pulsanti tra virgolette. Sono stati verificati l'8 novembre 2026 su almeno due fonti indipendenti (guide italiane e
+  pagine dei produttori di PC), perché le pagine italiane di Microsoft sono in parte tradotte automaticamente; le voci che non
+  avevano due conferme sono descritte senza virgolette. Valgono per Windows 11 24H2 e Windows 10 22H2: con altri aggiornamenti
+  possono cambiare leggermente, e il programma lo dice;
+- **Apri…**: il pulsante del passo apre la pagina di Impostazioni, del Pannello di controllo o lo strumento di Windows indicato
+  (42 pagine e strumenti, da una lista bianca: dall'interfaccia arriva solo un identificativo). Apre e basta: le modifiche le fa chi usa il
+  PC;
+- **Apri il pannello del router**: apre nel browser l'indirizzo del router trovato dall'ultima analisi, solo se è un indirizzo
+  IPv4 privato, in HTTPS quando il router lo offre; mai un indirizzo arrivato dall'interfaccia;
+- **Copia**: i comandi (per esempio `chkdsk C: /scan`) si copiano e si incollano nel Prompt dei comandi; Polaris non li esegue
+  mai. Quando il rapporto indica un driver ricorrente nelle schermate blu, il comando per cercarlo contiene già il suo nome,
+  solo se è un semplice nome di file `.sys`;
+- avvertenze per i passi che richiedono l'amministratore, che si fanno sul router o su un altro dispositivo; spunta per ogni
+  passo, "Come verificare" e "Nuova analisi";
+- **Programmi utili per questa azione**: i programmi della cassetta degli attrezzi che servono all'azione, con lo stato e i
+  pulsanti per aprirli o scaricarli; se Polaris fa già la stessa cosa, la scheda lo dice e porta alla sezione.
+
+Il rapporto di testo (`polaris-cli report --verbose`) contiene gli stessi passi, per la versione di Windows del PC.
 
 ## Il computer
 
@@ -277,7 +303,7 @@ Nella cartella `strumenti` ci sono CrystalDiskInfo, CrystalDiskMark e BlueScreen
 
 ```text
 polaris-cli report                  rapporto a schermo
-polaris-cli report --verbose        con spiegazioni e passi da seguire
+polaris-cli report --verbose        con spiegazioni e passi per la versione di Windows del PC
 polaris-cli report --out r.txt      salva il rapporto (UTF-8, si apre col Blocco note)
 polaris-cli report --json           dati grezzi, riapribili nell'interfaccia con "Importa"
 polaris-cli serve --open            interfaccia nel browser su http://127.0.0.1:8737
@@ -327,7 +353,9 @@ I master del marchio sono in `brand/`; `node scripts/brand.mjs` rigenera i tracc
 ## Alternative open source
 
 Quali programmi open source o quali funzioni native possono sostituire i download (CPU-Z, HWiNFO, Process Explorer, Autoruns,
-WizTree, scanner antivirus), con licenze verificate, limiti e priorità: [docs/ALTERNATIVE-OPEN-SOURCE.md](docs/ALTERNATIVE-OPEN-SOURCE.md).
+WizTree, scanner antivirus), con licenze verificate, limiti e priorità, e lo stato di ciascun programma: che cosa Polaris fa già
+da sé, che cosa arriva e in quale versione, che cosa resta impossibile senza un driver o un motore antivirus:
+[docs/ALTERNATIVE-OPEN-SOURCE.md](docs/ALTERNATIVE-OPEN-SOURCE.md). Il piano dei rilasci è in [docs/PIANO.md](docs/PIANO.md).
 
 ## Verifiche
 

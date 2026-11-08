@@ -46,7 +46,7 @@ import type { SurveyTargetRef } from './wifimap';
 import { SpeedCard } from './speedtest';
 import type { SpeedTargetRef } from './speedtest';
 import { cascade, ease, rise, spring, stagger } from './motion';
-import { PlanApps, PlanSteps, toolFor } from './plansteps';
+import { PlanApps, PlanSteps, planWinNote, toolFor } from './plansteps';
 
 export type View = 'overview' | 'pc' | 'wifi' | 'lan' | 'internet' | 'router' | 'infra' | 'plan' | 'monitor' | 'guide';
 
@@ -497,6 +497,23 @@ function SignalMeter({ rssi }: { rssi: number }) {
   );
 }
 
+/** Parole del messaggio dell'agente sul permesso di posizione (LocationHint in windows/internal/winapi/wlan_windows.go). */
+export const LOCATION_MARK = 'permesso di posizione';
+
+/** Apre le impostazioni della posizione, quando Windows 11 24H2 blocca la lettura del Wi-Fi. */
+function OpenLocation() {
+  const toast = useToast();
+  const open = () =>
+    openTool('location-privacy', 'app')
+      .then(() => toast('Impostazioni della posizione aperte', 'ok', 'open'))
+      .catch((e) => toast(e instanceof Error ? e.message : String(e), 'error'));
+  return (
+    <button className="btn small primary-soft" onClick={open}>
+      <AppWindow size={14} aria-hidden /> Apri le impostazioni della posizione
+    </button>
+  );
+}
+
 export function WifiView({ scan, analysis: a, go, ...rest }: ViewProps) {
   const wifi = scan.wifi;
   const conn = wifi?.connected;
@@ -528,7 +545,8 @@ export function WifiView({ scan, analysis: a, go, ...rest }: ViewProps) {
       ) : (
         <m.div variants={rise} className="notice">
           <Wifi size={18} aria-hidden />
-          {wifi.error ? `Wi-Fi non disponibile: ${wifi.error}` : 'Il dispositivo non è collegato a una rete Wi-Fi.'}
+          <span>{wifi.error ? `Wi-Fi non disponibile: ${wifi.error}` : 'Il dispositivo non è collegato a una rete Wi-Fi.'}</span>
+          {rest.live && wifi.error && wifi.error.includes(LOCATION_MARK) && <OpenLocation />}
         </m.div>
       )}
 
@@ -951,7 +969,7 @@ export function PlanView({ analysis: a, focus, scan, live, go, rescan }: ViewPro
             <AnimatedNumber value={completed} /> di {a.plan.length} azioni completate
           </div>
           <div className="faint" style={{ fontSize: 13 }}>
-            Ordinate per gravità, impatto e facilità. Ogni azione ha i passi da seguire su questo PC{windowsMajor(scan) ? ` (Windows ${windowsMajor(scan)})` : ''}; dopo le modifiche esegui una nuova analisi.
+            Ordinate per gravità, impatto e facilità. {planWinNote(windowsMajor(scan))} Dopo le modifiche esegui una nuova analisi.
           </div>
         </div>
         {live && rescan && (

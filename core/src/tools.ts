@@ -55,7 +55,7 @@ export const WINDOWS_TOOLS: WinTool[] = [
   { id: 'storage-recommendations', name: 'Consigli per la pulizia', what: 'file grandi, inutilizzati e da liberare proposti da Windows', win: 11, stepOnly: true },
   { id: 'storage-sense', name: 'Sensore memoria', what: 'pulizia automatica di file temporanei e Cestino', stepOnly: true },
   { id: 'installed-apps', name: 'App installate', what: 'programmi installati, da modificare o disinstallare', stepOnly: true },
-  { id: 'location-privacy', name: 'Posizione', what: 'permesso di posizione, che Windows 11 24H2 chiede per leggere le reti Wi-Fi', stepOnly: true },
+  { id: 'location-privacy', name: 'Impostazioni della posizione', what: 'permesso di posizione, che Windows 11 24H2 chiede per leggere le reti Wi-Fi', stepOnly: true },
   { id: 'network-status', name: 'Rete e Internet', what: 'stato della connessione e impostazioni di rete', stepOnly: true },
   { id: 'wifi-settings', name: 'Wi-Fi', what: 'reti Wi-Fi, proprietà della connessione e DNS', stepOnly: true },
   { id: 'known-networks', name: 'Gestisci reti note', what: 'reti Wi-Fi salvate, da dimenticare e ricollegare', stepOnly: true },
