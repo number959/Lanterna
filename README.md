@@ -76,8 +76,8 @@ Ogni azione del piano dice perché farla e come, un passo alla volta:
 
 - **la versione giusta di Windows**: i passi seguono Windows 11 o Windows 10, secondo il PC analizzato, con i nomi italiani di
   menu e pulsanti tra virgolette. Sono stati verificati l'8 novembre 2026 su almeno due fonti indipendenti (guide italiane e
-  pagine dei produttori di PC), perché le pagine italiane di Microsoft sono in parte tradotte automaticamente; le voci che non
-  avevano due conferme sono descritte senza virgolette. Valgono per Windows 11 24H2 e Windows 10 22H2: con altri aggiornamenti
+  pagine dei produttori di PC), perché le pagine italiane di Microsoft sono in parte tradotte automaticamente, e riletti da una
+  revisione indipendente: le voci con una sola fonte o con fonti in disaccordo sono descritte senza virgolette. Valgono per Windows 11 24H2 e Windows 10 22H2: con altri aggiornamenti
   possono cambiare leggermente, e il programma lo dice;
 - **Apri…**: il pulsante del passo apre la pagina di Impostazioni, del Pannello di controllo o lo strumento di Windows indicato
   (42 pagine e strumenti, da una lista bianca: dall'interfaccia arriva solo un identificativo). Apre e basta: le modifiche le fa chi usa il

@@ -1007,9 +1007,10 @@ Wi-Fi presente", rifiuta una stanza vuota e 30 secondi; `speedtest` senza `--acc
   del router", comando con "Copia" e accanto come aprire il Prompt dei comandi (normale o come amministratore, la stessa strada
   su Windows 10 e 11), avvertenze, "Come verificare", "Nuova analisi" e "Programmi utili per questa azione" (22 azioni), con lo
   stato e i pulsanti della cassetta e "Vai alla sezione" quando Polaris fa già la stessa cosa.
-- **Comando con il driver giusto**: nel passo che cerca il driver ricorrente delle schermate blu il comando contiene già il nome
-  del file, solo se è un semplice nome `.sys` (lettere, cifre, punto, trattino); un rapporto importato con un nome costruito
-  per aggiungere altri comandi lascia il segnaposto.
+- **Comando con il driver giusto**: nel passo che cerca il driver ricorrente delle schermate blu il comando
+  (`driverquery /v /fo csv | findstr /i <file>`, in CSV perché la tabella taglia le colonne lunghe come il percorso) contiene
+  già il nome del file, solo se è un semplice nome `.sys` (lettere, cifre, punto, trattino); un rapporto importato con un nome
+  costruito per aggiungere altri comandi lascia il segnaposto, che il passo dice di sostituire.
 - **Agente**: 26 pagine in più nella lista bianca (42 in tutto): indirizzi `ms-settings:` dalla tabella "Launch Windows
   Settings" di Microsoft Learn (versione del 2/11/2026) e programmi di Windows senza argomenti. 13 non sono ancora usate dai
   passi e servono alla 0.12.0 (dispositivi, stampanti, BitLocker, account, Desktop remoto, UAC, servizi). `router-panel` apre
@@ -1028,6 +1029,15 @@ automaticamente ("Firewall & protezione di rete", "Scarica & installa", "Rete & 
   utente", "Pulizia file di sistema" (non "Pulisci"), "Installazioni di Windows precedenti", "Riavvia ora e individua
   eventuali problemi", "Migliore efficienza energetica", "Ripristino della rete" (non "Reimpostazione rete"), "Annulla
   memorizzazione" (non "Rimuovi"), "Cronologia applicazioni" in Gestione attività.
+- Descritte senza virgolette dopo la revisione indipendente (una sola fonte, due articoli dello stesso sito o fonti in
+  disaccordo): "Rimuovi file" e la voce delle installazioni precedenti in Impostazioni, il pulsante "Disinstalla" e la pagina
+  dei programmi all'avvio di Windows 10, "Ripristina driver", la sottocartella dei certificati, il nome e il valore nelle
+  Informazioni di sistema, il risultato della ricerca e il pulsante "Impostazioni..." per i file di dump, la protezione in
+  tempo reale e gli aggiornamenti della protezione di Defender, i servizi di localizzazione (anche "di posizione"), il
+  Prompt dei comandi come voce del menu Start, gli esempi inglesi delle proprietà delle schede di rete e del rapporto sulla
+  batteria. Restano tra virgolette alcune etichette che le ricerche danno per confermate con conferme sottili (per esempio una
+  guida più una pagina di Microsoft coerente con essa): le schede "Avanzate" e "Risparmio energia" di Gestione dispositivi,
+  "Schede di rete", "DNS preferito" e "DNS alternativo", i nomi dei profili del firewall.
 - Descritte senza virgolette perché non confermate o contese: l'opzione dell'analisi offline di Defender, il nome della
   cronologia della protezione, la sezione del firewall nell'app Sicurezza di Windows, le voci dell'elenco dei file di dump,
   il gruppo dei driver negli aggiornamenti facoltativi, il collegamento di Windows 10 agli aggiornamenti facoltativi, l'albero
@@ -1041,14 +1051,16 @@ automaticamente ("Firewall & protezione di rete", "Scarica & installa", "Rete & 
   community.acer.com, windowsreport.com, epicgames.com, corsair.com, avg.com, support.hp.com e altri; il limite di ricerche per
   turno è finito prima della fine di ogni gruppo, e alcune voci sono rimaste da confermare.
 
-**Test automatici.** vitest: 371 (17 in più della 0.10.0), tra cui 17 sui passi: versione dalla build e dal nome, testo per
+**Test automatici.** vitest: 373 (19 in più della 0.10.0), tra cui 19 sui passi e sulle spunte: versione dalla build e dal nome, testo per
 versione, passi di una sola versione, riga del rapporto con comando e avvertenze, ogni pagina nella lista bianca, comandi su
 una riga, programmi utili esistenti, pagine di una sola versione non offerte sull'altra, 16 strumenti nella cassetta,
 indirizzi del router (accettati e rifiutati), driver nel comando con nomi pericolosi respinti, istruzioni per il Prompt dei
-comandi, nota sui nomi, rapporto di casa (Windows 11) e della clinica (Windows 10) senza `[object Object]` né segnaposto. Go:
-tutti i pacchetti, con `TestRouterURL`, `TestRouterPanel` (501, 400 per "app", 422 senza analisi o con un gateway pubblico,
-200 con il gateway dell'analisi, indirizzo nel corpo ignorato), `TestRouterPanelForgetsOldGateway` e, su Windows,
-`TestLocationHint`.
+comandi, nota sui nomi (questo PC o PC analizzato), chiave e firma delle spunte, indirizzi con zeri iniziali rifiutati, messaggio
+dell'agente sul permesso di posizione letto dal sorgente Go, rapporto di casa (Windows 11) e della clinica (Windows 10) senza
+`[object Object]` né segnaposto, con il comando su una riga sua. Go: tutti i pacchetti, con `TestRouterURL`,
+`TestRouterPanel` (501, 400 per "app", 422 senza analisi o con un gateway pubblico, 200 con il gateway dell'analisi,
+indirizzo nel corpo ignorato), `TestRouterPanelForgetsOldGateway` e `TestLocationHint`, che ora gira anche nella CI su
+Linux.
 
 **Interfaccia**, Chromium 141 sulla build di produzione, axe-core (WCAG 2.1 A/AA e buone pratiche): pagina intera del piano
 nella demo di casa (Windows 11, 35 azioni, 139 passi) e della clinica (Windows 10, 22 azioni, 97 passi), tema scuro e chiaro,
@@ -1062,8 +1074,25 @@ voluti dell'agente assente.
 versione che Wine dichiara): DNS dal pannello classico, ripristino della rete da "Stato", passi solo per Windows 11 nascosti,
 la riga sui comandi e la nota sui nomi di Windows 10 22H2.
 
-**Windows reale (CI).** Un passo nuovo apre via API tre pagine dei passi (Servizi, Impostazioni di sistema avanzate,
-Controllo dell'account utente) e controlla che partano i programmi giusti, prova una pagina di Impostazioni (non bloccante) e
+**Revisione indipendente** (un agente separato, sui due commit della versione): nessun problema bloccante; corretti tutti i
+punti, in ordine di importanza:
+- le spunte dei passi di un'azione cancellavano quelle delle altre (ogni azione riscriveva l'elenco comune con la sua copia):
+  ora una chiave per azione, con la firma dei passi; provato in Chromium, le spunte di due azioni restano dopo il cambio di
+  sezione e dopo il ricaricamento;
+- `driverquery` in formato tabella taglia il percorso, quindi il nome del driver poteva non comparire: ora in CSV;
+- il percorso del DNS per chi usa il cavo indicava una voce che c'è solo per il Wi-Fi; le minacce consentite per errore si
+  tolgono dal loro elenco, non dalle esclusioni;
+- il test del messaggio sul permesso di posizione non girava mai (solo Windows, e la CI fa i test Go su Linux);
+- comando spezzato su due righe nel rapporto di testo, indirizzi con zeri iniziali accettati per la nota del router,
+  intestazione "Passi per Windows" sulle azioni tutte sul router, "la versione di questo PC" anche per la demo e i rapporti
+  importati, caselle dei passi senza collegamento al testo per i lettori di schermo, avviso del browser per il certificato
+  dei router in https non spiegato, attesa fissa di 2 secondi nella prova della CI;
+- 13 etichette con una sola fonte o contese (elenco sopra).
+La revisione non ha trovato modi per far aprire a Polaris un indirizzo arbitrario o per far finire testo estraneo in un
+comando da copiare, né problemi di compatibilità ES2015 del motore.
+
+**Windows reale (CI).** Un passo nuovo apre via API tre pagine (Certificati del computer e Impostazioni di sistema avanzate,
+usate dai passi, e Controllo dell'account utente, per la 0.12.0) e controlla che partano i programmi giusti, prova una pagina di Impostazioni (non bloccante) e
 verifica che il pannello del router sia rifiutato come programma (400) e senza un'analisi (422). Esito: da registrare dopo la
 run.
 

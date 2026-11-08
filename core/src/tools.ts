@@ -77,6 +77,15 @@ export const WINDOWS_TOOLS: WinTool[] = [
   { id: 'uac-settings', name: 'Controllo dell\'account utente', what: 'livello degli avvisi prima delle modifiche al PC', admin: true, stepOnly: true },
 ];
 
+/**
+ * Parole con cui comincia il messaggio dell'agente quando Windows 11 24H2 blocca
+ * la lettura del Wi-Fi per il permesso di posizione (LocationHint in
+ * windows/internal/winapi/hints.go): la sezione Wi-Fi offre allora il pulsante
+ * che apre le impostazioni della posizione. Un test controlla che il messaggio
+ * dell'agente le contenga ancora.
+ */
+export const LOCATION_MARK = 'permesso di posizione';
+
 /** Identificativo che apre il pannello di gestione del router dell'analisi (solo indirizzi privati). */
 export const ROUTER_PANEL = 'router-panel';
 

@@ -612,13 +612,26 @@ jobs:
         run: |
           $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8739' -PassThru -NoNewWindow
           try {
-            Start-Sleep 2
             $api = 'http://127.0.0.1:8739/api'
+            # Si aspetta che il server risponda invece di un ritardo fisso.
+            $up = $false
+            for ($i = 0; $i -lt 40 -and -not $up; $i++) {
+              try { Invoke-RestMethod "$api/tools" -TimeoutSec 5 | Out-Null; $up = $true } catch { Start-Sleep -Milliseconds 500 }
+            }
+            if (-not $up) { throw "il server locale non risponde dopo 20 secondi" }
             # Pagine aperte dai passi (programmi di Windows della lista bianca): si aprono con un clic, poi si chiudono.
-            foreach ($c in @(@{ id = 'services'; proc = 'mmc' }, @{ id = 'advanced-system'; proc = 'SystemPropertiesAdvanced' }, @{ id = 'uac-settings'; proc = 'UserAccountControlSettings' })) {
-              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body "{`"tool`":`"$($c.id)`",`"target`":`"app`"}" -TimeoutSec 30 "$api/open" | Out-Null
-              $t0 = 0
-              do { Start-Sleep 1; $t0++; $run = Get-Process $c.proc -ErrorAction SilentlyContinue } while (-not $run -and $t0 -lt 15)
+            # Certificati del computer e Impostazioni di sistema avanzate sono usati dai passi; il Controllo
+            # dell'account utente servirà alla 0.12.0.
+            # Nella run 62 SystemPropertiesAdvanced non è comparso entro 15 secondi pur con l'apertura riuscita (nella 63 sì):
+            # se il programma non si vede, si riapre una seconda volta e lo si scrive; due mancate aperture fanno fallire la prova.
+            foreach ($c in @(@{ id = 'certificates-computer'; proc = 'mmc' }, @{ id = 'advanced-system'; proc = 'SystemPropertiesAdvanced' }, @{ id = 'uac-settings'; proc = 'UserAccountControlSettings' })) {
+              $run = $null
+              for ($try = 1; $try -le 2 -and -not $run; $try++) {
+                Invoke-RestMethod -Method Post -ContentType 'application/json' -Body "{`"tool`":`"$($c.id)`",`"target`":`"app`"}" -TimeoutSec 30 "$api/open" | Out-Null
+                $t0 = 0
+                do { Start-Sleep 1; $t0++; $run = Get-Process $c.proc -ErrorAction SilentlyContinue } while (-not $run -and $t0 -lt 15)
+                if (-not $run -and $try -eq 1) { "$($c.id): $($c.proc) non visto dopo la prima apertura, secondo tentativo" }
+              }
               if (-not $run) { throw "$($c.id): $($c.proc) non avviato" }
               "$($c.id) aperto da Polaris ($($c.proc), PID $($run[0].Id))"
               Stop-Process -Name $c.proc -Force

@@ -84,7 +84,10 @@ motore lo mostra come "non misurato" invece di inventare un giudizio.
   versione si mostrano entrambi i percorsi. Nei comandi `{driver}` diventa il driver ricorrente nelle schermate blu
   (`stepVars`/`stepCmd`), solo se è un semplice nome di file `.sys`, altrimenti resta un segnaposto: il comando finisce nel
   Prompt dei comandi di chi lo incolla. L'interfaccia (`ui/plansteps.tsx`) mostra per ogni passo la spunta, il pulsante che apre
-  la pagina, il comando con "Copia" e le avvertenze, e per ogni azione i programmi utili (`ACTION_APPS` in `tools.ts`).
+  la pagina, il comando con "Copia" e le avvertenze, e per ogni azione i programmi utili (`ACTION_APPS` in `tools.ts`). Le
+  spunte restano in `localStorage`, una chiave per PC e per azione, con la firma dei passi (`stepsSig`): se una versione
+  successiva cambia i passi di un'azione, le spunte vecchie si azzerano invece di finire sul passo sbagliato. Nel rapporto di
+  testo il comando sta su una riga sua, intero.
 - Il consiglio sui canali stima l'interferenza dallo spettro occupato da ogni rete, pesato per potenza e per il carico dichiarato
   (BSS Load). A 2,4 GHz consiglia solo 1, 6 o 11; a 5 GHz preferisce 36-48, poi i blocchi DFS, per ultimo 149-161 (in Italia/UE
   ammesso solo a bassa potenza). Le altre reti trasmesse dalle stesse radio (ospiti, dispositivi: BSSID che differiscono solo

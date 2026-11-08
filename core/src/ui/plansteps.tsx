@@ -1,6 +1,6 @@
 import { AppWindow, ClipboardCopy, Monitor, PackageSearch, Router, ShieldAlert, Smartphone } from 'lucide-react';
 import { m } from 'motion/react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useId, useMemo } from 'react';
 import { asStep, stepCmd, stepText, stepVars, windowsMajor } from '../engine';
 import type { Action, ActionStep, Scan, StepVars, WinMajor } from '../engine';
 import { ACTION_APPS, ROUTER_PANEL, TOOLS, WINDOWS_TOOLS } from '../tools';
@@ -18,21 +18,28 @@ import type { View } from './views';
 // spunta per passo, che resta sul PC. Polaris non esegue nulla da solo: apre
 // le pagine e copia i comandi, le modifiche le fa chi usa il PC.
 
+// Un ottetto senza zeri iniziali: "010" per i browser è ottale (8), quindi un
+// indirizzo diverso da quello mostrato.
+const OCTET = '(0|[1-9]\\d{0,2})';
+const IPV4 = new RegExp(`^${OCTET}\\.${OCTET}\\.${OCTET}\\.${OCTET}$`);
+
 /** Indirizzo IPv4 privato o link-local: solo per questi si offre il pannello del router. */
 export function privateIPv4(ip?: string): boolean {
   if (!ip) return false;
-  const m4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
+  const m4 = IPV4.exec(ip);
   if (!m4) return false;
-  const [a, b] = [Number(m4[1]), Number(m4[2])];
-  if ([m4[1], m4[2], m4[3], m4[4]].some((x) => Number(x) > 255)) return false;
+  const o = [m4[1], m4[2], m4[3], m4[4]].map(Number);
+  if (o.some((x) => x > 255)) return false;
+  const [a, b] = o;
   return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
 }
 
 /** Nota in cima al piano: quale Windows seguono i passi e con i nomi di quale versione. */
-export function planWinNote(win?: WinMajor): string {
+export function planWinNote(win?: WinMajor, live = true): string {
   const tail = 'con altri aggiornamenti possono cambiare leggermente.';
-  if (win === 10) return `I passi seguono Windows 10, la versione di questo PC, con i nomi di menu e pulsanti di Windows 10 22H2: ${tail}`;
-  if (win === 11) return `I passi seguono Windows 11, la versione di questo PC, con i nomi di menu e pulsanti di Windows 11 24H2: ${tail}`;
+  const whose = live ? 'la versione di questo PC' : 'la versione del PC analizzato';
+  if (win === 10) return `I passi seguono Windows 10, ${whose}, con i nomi di menu e pulsanti di Windows 10 22H2: ${tail}`;
+  if (win === 11) return `I passi seguono Windows 11, ${whose}, con i nomi di menu e pulsanti di Windows 11 24H2: ${tail}`;
   return `I passi seguono Windows 11 e, dove cambia, Windows 10, con i nomi di menu e pulsanti delle versioni 24H2 e 22H2: ${tail}`;
 }
 
@@ -45,9 +52,24 @@ export function toolFor(id: string | undefined, win?: WinMajor) {
   return w;
 }
 
-function StepCheck({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
+/**
+ * Firma dei passi di un'azione: le spunte si salvano per posizione del passo,
+ * quindi valgono solo per gli stessi passi. Se una versione successiva cambia
+ * i passi dell'azione, le spunte vecchie non finiscono sul passo sbagliato.
+ */
+export function stepsSig(a: Action): string {
+  const s = JSON.stringify(a.steps);
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/** Dove restano le spunte dei passi di un'azione: una chiave per PC e per azione. */
+export const stepsKey = (host: string | undefined, actionId: string) => `polaris.steps.${host ?? 'demo'}.${actionId}`;
+
+function StepCheck({ checked, onChange, label, describedBy }: { checked: boolean; onChange: () => void; label: string; describedBy: string }) {
   return (
-    <button className="check small" role="checkbox" aria-checked={checked} aria-label={label} onClick={onChange}>
+    <button className="check small" role="checkbox" aria-checked={checked} aria-label={label} aria-describedby={describedBy} onClick={onChange}>
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
         <rect className="box" x="1.5" y="1.5" width="21" height="21" rx="7" />
         <m.path className="tick" d="M7 12.5l3.4 3.4L17.5 8.6" initial={false} animate={{ pathLength: checked ? 1 : 0, opacity: checked ? 1 : 0 }} transition={spring.snappy} />
@@ -74,29 +96,43 @@ function useCopy() {
 }
 
 // Come aprire il Prompt dei comandi: la stessa strada su Windows 10 e 11 (il nome
-// della voce del menu Start per il Terminale cambia tra le versioni).
-export const CMD_HOW = 'Nel Prompt dei comandi: cerca "cmd" nel menu Start e apri "Prompt dei comandi".';
+// della voce del menu Start per il Terminale cambia tra le versioni). Tra
+// virgolette solo ciò che si scrive e le etichette confermate.
+export const CMD_HOW = 'Nel Prompt dei comandi: cerca "cmd" nel menu Start e apri il Prompt dei comandi.';
 export const CMD_HOW_ADMIN =
-  'Nel Prompt dei comandi come amministratore: cerca "cmd" nel menu Start, fai clic con il tasto destro su "Prompt dei comandi" e scegli "Esegui come amministratore", poi "Sì".';
+  'Nel Prompt dei comandi come amministratore: cerca "cmd" nel menu Start, fai clic con il tasto destro sul Prompt dei comandi e scegli "Esegui come amministratore", poi "Sì".';
 
-function StepBody({ s, win, live, scan, vars }: { s: ActionStep; win?: WinMajor; live: boolean; scan: Scan; vars: StepVars }) {
+function StepBody({ s, win, live, scan, vars, textId }: { s: ActionStep; win?: WinMajor; live: boolean; scan: Scan; vars: StepVars; textId: string }) {
   const toast = useToast();
   const copy = useCopy();
   const tool = toolFor(s.open, win);
   const gw = scan.gateway?.ip;
+  const https = !!scan.gateway?.web?.https;
   const router = s.open === ROUTER_PANEL;
   const cmd = stepCmd(s, vars);
   const openWin = (id: string, name: string) =>
     openTool(id, 'app')
       .then(() => toast(`${name} aperto`, 'ok', 'open'))
       .catch((e) => toast(e instanceof Error ? e.message : String(e), 'error'));
+  // Quasi tutti i router usano in https un certificato autofirmato: il browser
+  // avvisa. Si dice che cosa controllare, senza insegnare a ignorare gli avvisi.
   const openRouter = () =>
     openTool(ROUTER_PANEL, 'site')
-      .then(() => toast('Pannello del router aperto nel browser', 'ok', 'open'))
+      .then(() =>
+        toast(
+          https
+            ? `Pannello del router aperto nel browser. Se il browser avvisa per il certificato, prosegui solo se l'indirizzo è https://${gw}: molti router usano un certificato proprio.`
+            : 'Pannello del router aperto nel browser',
+          'ok',
+          'open',
+        ),
+      )
       .catch((e) => toast(e instanceof Error ? e.message : String(e), 'error'));
   return (
     <div className="plan-step-body">
-      <span className="plan-step-text">{stepText(s, win)}</span>
+      <span className="plan-step-text" id={textId}>
+        {stepText(s, win)}
+      </span>
       {(s.admin || s.where || (s.only && !win)) && (
         <span className="plan-step-tags">
           {s.admin && (
@@ -148,7 +184,7 @@ function StepBody({ s, win, live, scan, vars }: { s: ActionStep; win?: WinMajor;
           </span>
         ) : gw && privateIPv4(gw) ? (
           <span className="faint plan-step-note">
-            Pannello del router: <code>{scan.gateway?.web?.https ? 'https' : 'http'}://{gw}</code> nel browser
+            Pannello del router: <code>{https ? 'https' : 'http'}://{gw}</code> nel browser
             {scan.agent.platform === 'demo' ? ' (nella demo il router è immaginario)' : ''}.
           </span>
         ) : null)}
@@ -156,16 +192,26 @@ function StepBody({ s, win, live, scan, vars }: { s: ActionStep; win?: WinMajor;
   );
 }
 
+interface SavedSteps {
+  /** Firma dei passi a cui si riferiscono le spunte (stepsSig). */
+  v: string;
+  /** Posizioni dei passi fatti, nell'elenco completo dell'azione. */
+  done: number[];
+}
+
 /** I passi di un'azione, guidati per la versione di Windows del PC analizzato. */
 export function PlanSteps({ action, scan, live }: { action: Action; scan: Scan; live: boolean }) {
   const win = windowsMajor(scan);
   const vars = useMemo(() => stepVars(scan), [scan]);
-  const key = `polaris.steps.${scan.agent.host ?? 'demo'}`;
-  const [done, setDone] = useLocalState<Record<string, number[]>>(key, {});
-  const mine = done[action.id] ?? [];
+  const sig = useMemo(() => stepsSig(action), [action]);
+  const uid = useId();
+  // Una chiave per azione: ogni azione del piano ha il suo elenco, e scrivendo
+  // non si toccano le spunte delle altre.
+  const [saved, setSaved] = useLocalState<SavedSteps | null>(stepsKey(scan.agent.host, action.id), null);
+  const mine = saved && saved.v === sig && Array.isArray(saved.done) ? saved.done : [];
   const toggle = (i: number) => {
     const next = mine.includes(i) ? mine.filter((x) => x !== i) : [...mine, i];
-    setDone({ ...done, [action.id]: next });
+    setSaved({ v: sig, done: next });
   };
   const steps = useMemo(
     () =>
@@ -174,24 +220,24 @@ export function PlanSteps({ action, scan, live }: { action: Action; scan: Scan; 
         .filter(({ s }) => !(s.only && win && s.only !== win)),
     [action, win],
   );
-  const anyWin = steps.some(({ s }) => !!s.win10 || !!s.open || !!s.only);
+  // L'intestazione serve solo se c'è qualcosa da fare in Windows (non per le azioni tutte sul router).
+  const anyWin = steps.some(({ s }) => !!s.win10 || (!!s.open && s.open !== ROUTER_PANEL) || !!s.only);
   return (
     <>
       {anyWin && (
         <p className="faint plan-win">
-          {win
-            ? `Passi per Windows ${win}, la versione di questo PC${live ? '' : ' secondo il rapporto'}.`
-            : 'Dove Windows 10 è diverso, il percorso è tra parentesi.'}
+          {win ? `Passi per Windows ${win}, ${live ? 'la versione di questo PC' : 'la versione del PC analizzato'}.` : 'Dove Windows 10 è diverso, il percorso è tra parentesi.'}
           {!live && steps.some(({ s }) => !!s.open) ? ' Con Polaris avviato su Windows i pulsanti aprono direttamente le pagine indicate.' : ''}
         </p>
       )}
       <ol className="steps guided">
         {steps.map(({ s, i }, n) => {
           const checked = mine.includes(i);
+          const textId = `${uid}-s${i}`;
           return (
             <li key={i} className={checked ? 'done' : undefined}>
-              <StepCheck checked={checked} onChange={() => toggle(i)} label={`Passo ${n + 1} fatto`} />
-              <StepBody s={s} win={win} live={live} scan={scan} vars={vars} />
+              <StepCheck checked={checked} onChange={() => toggle(i)} label={`Passo ${n + 1} fatto`} describedBy={textId} />
+              <StepBody s={s} win={win} live={live} scan={scan} vars={vars} textId={textId} />
             </li>
           );
         })}

@@ -76,7 +76,7 @@ const list: Action[] = [
       router('Apri il pannello del router e verifica che la rete a 5 GHz sia attiva.'),
       onRouter('Se il router usa un solo nome per le due bande (band steering) e il dispositivo resta sul 2,4 GHz, crea per prova un nome distinto per il 5 GHz (per esempio "Casa-5G") e collegati a quello.'),
       {
-        text: `Sul PC, se la voce esiste: ${DEVMGR_WIFI} > scheda "Avanzate" > la proprietà della banda preferita impostata sui 5 GHz. Il nome lo decide il driver, a volte in inglese ("Preferred Band").`,
+        text: `Sul PC, se la voce esiste: ${DEVMGR_WIFI} > scheda "Avanzate" > la proprietà della banda preferita impostata sui 5 GHz. Il nome lo decide il driver e può essere in inglese, con la parola Band.`,
         open: 'device-manager',
         admin: true,
       },
@@ -260,7 +260,7 @@ const list: Action[] = [
       'Sostituisci il cavo con uno Cat 5e o Cat 6 integro e prova un\'altra porta del router o dello switch.',
       'Controlla che i connettori RJ45 siano inseriti fino allo scatto.',
       {
-        text: 'Sul PC: Gestione dispositivi > "Schede di rete" > doppio clic sulla scheda di rete via cavo > scheda "Avanzate": la proprietà della velocità e del duplex deve essere sulla negoziazione automatica. Il nome lo decide il driver, a volte in inglese ("Speed & Duplex").',
+        text: 'Sul PC: Gestione dispositivi > "Schede di rete" > doppio clic sulla scheda di rete via cavo > scheda "Avanzate": la proprietà della velocità e del duplex deve essere sulla negoziazione automatica. Il nome lo decide il driver e può essere in inglese, con la parola Duplex.',
         open: 'device-manager',
         admin: true,
       },
@@ -321,7 +321,7 @@ const list: Action[] = [
       'Esempi pubblici: 1.1.1.1 / 1.0.0.1 (Cloudflare), 9.9.9.9 / 149.112.112.112 (Quad9, con filtro malware), 8.8.8.8 / 8.8.4.4 (Google).',
       router('Per tutta la casa: nel pannello del router, nella pagina DHCP o LAN, scrivi il server DNS primario e quello secondario e salva.'),
       {
-        text: 'Solo per questo PC: Impostazioni > "Rete e Internet" > "Wi-Fi" (o "Ethernet" se usi il cavo) > "Proprietà hardware" > accanto ad "Assegnazione server DNS" premi "Modifica" > "Manuale", attiva "IPv4", scrivi i due indirizzi in "DNS preferito" e "DNS alternativo" e premi "Salva".',
+        text: 'Solo per questo PC: Impostazioni > "Rete e Internet" > "Wi-Fi" > "Proprietà hardware" (con il cavo, la pagina della connessione via cavo) > accanto ad "Assegnazione server DNS" premi "Modifica" > "Manuale", attiva "IPv4", scrivi i due indirizzi in "DNS preferito" e "DNS alternativo" e premi "Salva".',
         only: 11,
         open: 'network-status',
         admin: true,
@@ -499,7 +499,7 @@ const list: Action[] = [
       'Verifica che tutti gli AP della stessa rete abbiano la stessa configurazione e lo stesso Mobility Domain.',
       'Valuta una soglia minima di segnale (minimum RSSI) intorno a -75/-80 dBm per staccare i client agganciati troppo lontano, senza esagerare: soglie alte provocano disconnessioni.',
       {
-        text: `Sul PC: driver Wi-Fi aggiornato e, se la voce esiste, ${DEVMGR_WIFI} > scheda "Avanzate" > l'aggressività del roaming su un livello medio-alto. Il nome lo decide il driver, a volte in inglese ("Roaming Aggressiveness").`,
+        text: `Sul PC: driver Wi-Fi aggiornato e, se la voce esiste, ${DEVMGR_WIFI} > scheda "Avanzate" > l'aggressività del roaming su un livello medio-alto. Il nome lo decide il driver e può essere in inglese, con la parola Roaming.`,
         open: 'device-manager',
         admin: true,
       },
@@ -547,7 +547,7 @@ const list: Action[] = [
       router('Nel pannello del router o del sistema mesh cerca "Band steering", "Smart Connect" o la selezione automatica della banda e attivala, con lo stesso nome e la stessa password sulle due bande.'),
       onRouter('Se la funzione non c\'è, crea un nome distinto per i 5 GHz (per esempio "Casa-5G") e collega lì i dispositivi che restano nelle stanze coperte bene.'),
       {
-        text: `Sul PC, se la voce esiste: ${DEVMGR_WIFI} > scheda "Avanzate" > la proprietà della banda preferita impostata sui 5 GHz. Il nome lo decide il driver, a volte in inglese ("Preferred Band").`,
+        text: `Sul PC, se la voce esiste: ${DEVMGR_WIFI} > scheda "Avanzate" > la proprietà della banda preferita impostata sui 5 GHz. Il nome lo decide il driver e può essere in inglese, con la parola Band.`,
         open: 'device-manager',
         admin: true,
       },
@@ -710,7 +710,7 @@ const list: Action[] = [
       'Con l\'amministratore del dispositivo o del servizio verifica che l\'impronta SHA-256 mostrata da Polaris sia quella del certificato installato (dal pannello del dispositivo o dalla documentazione del fornitore). Se non coincide, fermati e indaga.',
       'Con un dominio Active Directory: distribuisci il certificato della CA interna (o quello autofirmato del dispositivo) con i Criteri di gruppo, in Configurazione computer > Criteri > Impostazioni di Windows > Impostazioni di sicurezza > Criteri chiave pubblica > Autorità di certificazione radice attendibili (in inglese Computer Configuration > Policies > Windows Settings > Security Settings > Public Key Policies > Trusted Root Certification Authorities; i nomi italiani possono variare leggermente con la versione di Windows).',
       {
-        text: 'Senza dominio, su ogni PC e solo dopo aver verificato l\'impronta: nella console dei certificati del computer apri "Autorità di certificazione radice attendibili" > "Certificati", fai clic con il tasto destro > "Tutte le attività" > "Importa" e segui "Importazione guidata certificati": scegli il file e lascia l\'archivio "Autorità di certificazione radice attendibili".',
+        text: 'Senza dominio, su ogni PC e solo dopo aver verificato l\'impronta: nella console dei certificati del computer apri "Autorità di certificazione radice attendibili" e la cartella dei certificati, fai clic con il tasto destro > "Tutte le attività" > "Importa" e segui "Importazione guidata certificati": scegli il file e lascia l\'archivio "Autorità di certificazione radice attendibili".',
         open: 'certificates-computer',
         admin: true,
       },
@@ -918,7 +918,7 @@ const list: Action[] = [
     why: 'Con l\'unità di Windows quasi piena gli aggiornamenti falliscono e il sistema rallenta; anche gli SSD perdono velocità in scrittura.',
     steps: [
       {
-        text: 'Impostazioni > "Sistema" > "Archiviazione" > "File temporanei": seleziona le voci da eliminare, compresi i residui degli aggiornamenti di Windows, e premi "Rimuovi file".',
+        text: 'Impostazioni > "Sistema" > "Archiviazione" > "File temporanei": seleziona le voci da eliminare, compresi i residui degli aggiornamenti di Windows, e premi il pulsante per rimuovere i file.',
         open: 'storage',
       },
       { text: 'Sempre in "Archiviazione", apri "Consigli per la pulizia": Windows propone file grandi o inutilizzati e app che non usi.', only: 11, open: 'storage-recommendations' },
@@ -930,7 +930,7 @@ const list: Action[] = [
       'Svuota il Cestino e controlla la cartella Download.',
       {
         text: 'Disinstalla i programmi che non usi: Impostazioni > "App" > "App installate", ordina per dimensione e scegli "Disinstalla" dal menu "…" accanto al programma.',
-        win10: 'Disinstalla i programmi che non usi: Impostazioni > "App" > "App e funzionalità", ordina per dimensione, fai clic sul programma e scegli "Disinstalla".',
+        win10: 'Disinstalla i programmi che non usi: Impostazioni > "App" > "App e funzionalità", ordina per dimensione, fai clic sul programma e scegli Disinstalla.',
         open: 'installed-apps',
       },
       'Sposta foto, video e archivi su un disco esterno o nel cloud.',
@@ -961,7 +961,7 @@ const list: Action[] = [
     steps: [
       'Controlla che il PC funzioni bene e che non ti serva tornare alla versione precedente: dopo la rimozione non si può più.',
       'Controlla che in Windows.old\\Users non ci siano documenti tuoi da recuperare: se ci sono, copiali nelle tue cartelle.',
-      { text: 'Impostazioni > "Sistema" > "Archiviazione" > "File temporanei": seleziona "Installazioni di Windows precedenti" e premi "Rimuovi file".', open: 'storage' },
+      { text: 'Impostazioni > "Sistema" > "Archiviazione" > "File temporanei": seleziona la voce delle installazioni precedenti di Windows e premi il pulsante per rimuovere i file.', open: 'storage' },
       { text: 'In alternativa: "Pulizia disco" > "Pulizia file di sistema" > seleziona "Installazioni di Windows precedenti" e conferma con "OK".', open: 'disk-cleanup' },
       'Non cancellare la cartella da Esplora file: contiene file protetti e rischi di lasciarla a metà.',
     ],
@@ -1107,7 +1107,7 @@ const list: Action[] = [
       'Nel firmware attiva il TPM: si chiama Intel PTT o Platform Trust Technology sui processori Intel, AMD fTPM su quelli AMD, oppure TPM Device.',
       'Attiva Secure Boot (di solito nella sezione Boot o Security). Se Windows si avvia in modalità BIOS legacy, serve prima convertire il disco con MBR2GPT: fallo con un backup completo o affidalo a un tecnico.',
       'Salva e riavvia. Sui PC aziendali chiedi all\'amministratore.',
-      { text: 'Per un controllo da Windows: in "Informazioni di sistema", nella pagina iniziale, la riga "Stato avvio protetto" deve dire "Attivato".', open: 'system-info' },
+      { text: 'Per un controllo da Windows: nelle Informazioni di sistema (msinfo32), nella pagina iniziale, la riga "Stato avvio protetto" deve risultare attivata.', open: 'system-info' },
     ],
     check: 'Ripeti l\'analisi di Polaris: TPM e Secure Boot devono risultare attivi.',
     effort: 'avanzata',
@@ -1134,7 +1134,7 @@ const list: Action[] = [
     steps: [
       {
         text: 'Impostazioni > "App" > "Avvio": spegni l\'interruttore dei programmi che non servono subito. In alternativa: Gestione attività > "App di avvio", seleziona il programma e premi "Disabilita".',
-        win10: 'Impostazioni > "App" > "Avvio": spegni l\'interruttore dei programmi che non servono subito. In alternativa: Gestione attività (con "Più dettagli", se si apre ridotta) > scheda "Avvio", seleziona il programma e premi "Disabilita".',
+        win10: 'Impostazioni > "App" > la pagina dei programmi all\'avvio: spegni l\'interruttore dei programmi che non servono subito. In alternativa: Gestione attività (con "Più dettagli", se si apre ridotta) > scheda "Avvio", seleziona il programma e premi "Disabilita".',
         open: 'startup-apps',
       },
       'Disattiva lettori musicali, launcher di giochi, strumenti di aggiornamento e chat usate di rado.',
@@ -1188,11 +1188,11 @@ const list: Action[] = [
     why: 'Quando lo stesso driver compare in più schermate blu è il primo sospettato: la versione più recente, o quella precedente se il problema è cominciato dopo un aggiornamento, risolve spesso il problema. Polaris lo indica come indizio, non come certezza.',
     steps: [
       {
-        text: 'Scopri a che cosa appartiene il file indicato da Polaris (finisce di solito in .sys): il comando cerca il file tra i driver e la riga trovata riporta il nome del driver e il percorso. Se non compare nulla, il driver non è più installato o caricato: cerca il nome del file sul sito del produttore.',
-        cmd: 'driverquery /v | findstr /i {driver}',
+        text: 'Scopri a che cosa appartiene il file indicato da Polaris (finisce di solito in .sys): il comando cerca il file tra i driver installati e la riga trovata riporta nome, descrizione e percorso del driver. Se il comando contiene nome-del-file.sys, sostituiscilo con il nome indicato. Se non compare nulla, il file non è un driver installato come servizio (per esempio una libreria del sistema) o non è più installato: cerca il suo nome sul sito del produttore o nella documentazione Microsoft.',
+        cmd: 'driverquery /v /fo csv | findstr /i {driver}',
       },
       {
-        text: 'Se le schermate blu sono cominciate dopo un aggiornamento del driver: Gestione dispositivi > doppio clic sul dispositivo > scheda "Driver" > "Ripristina driver" (se il pulsante è grigio, non c\'è una versione precedente).',
+        text: 'Se le schermate blu sono cominciate dopo un aggiornamento del driver: Gestione dispositivi > doppio clic sul dispositivo > scheda "Driver" > il pulsante per ripristinare il driver precedente, Ripristina driver (se è grigio, non c\'è una versione precedente).',
         open: 'device-manager',
         admin: true,
       },
@@ -1247,11 +1247,11 @@ const list: Action[] = [
     why: 'Senza un file di dump una schermata blu lascia solo il codice nel registro eventi: per capire quale driver la causa servono i minidump. Polaris non cambia questa impostazione: è un passo da fare a mano.',
     steps: [
       {
-        text: 'Apri "Impostazioni di sistema avanzate": cerca "impostazioni di sistema avanzate" nel menu Start e scegli "Visualizza impostazioni di sistema avanzate" (oppure Windows+R, sysdm.cpl). Serve un account amministratore.',
+        text: 'Apri "Impostazioni di sistema avanzate": cerca "impostazioni di sistema avanzate" nel menu Start e apri il risultato (oppure Windows+R, sysdm.cpl). Serve un account amministratore.',
         open: 'advanced-system',
         admin: true,
       },
-      'Nella scheda "Avanzate", in "Avvio e ripristino", premi "Impostazioni...".',
+      'Nella scheda "Avanzate", in "Avvio e ripristino", premi il pulsante Impostazioni.',
       'In "Errore di sistema", nell\'elenco "Scrivi informazioni di debug", scegli il dump piccolo, l\'opzione da 256 KB, oppure il dump automatico; lascia la cartella proposta, %SystemRoot%\\Minidump.',
       'Lascia attiva la scrittura dell\'evento nel registro di sistema e conferma con "OK"; Windows può chiedere un riavvio perché la modifica abbia effetto.',
       'Tieni attivo il file di paging e un po\' di spazio libero sull\'unità di Windows: servono per scrivere il dump al momento dell\'arresto.',
@@ -1295,7 +1295,7 @@ const list: Action[] = [
     title: 'Attiva la protezione antivirus',
     why: 'Senza protezione in tempo reale file, allegati e chiavette non vengono controllati.',
     steps: [
-      openSecurity('vai su "Protezione da virus e minacce" > "Gestisci impostazioni" (sotto "Impostazioni di Protezione da virus e minacce"): attiva "Protezione in tempo reale".', true),
+      openSecurity('vai su "Protezione da virus e minacce" > "Gestisci impostazioni" (sotto "Impostazioni di Protezione da virus e minacce"): attiva la protezione in tempo reale.', true),
       'Se usi un antivirus di terze parti scaduto, rinnovalo o disinstallalo: Microsoft Defender si riattiva da solo.',
       'Dopo la riattivazione esegui un\'analisi completa: in "Protezione da virus e minacce" > "Opzioni di analisi" scegli "Analisi completa" e premi "Avvia analisi", oppure avviala da Computer > Antivirus di Polaris.',
       'Nei PC aziendali la protezione può essere gestita centralmente: segnala il problema all\'amministratore.',
@@ -1310,7 +1310,7 @@ const list: Action[] = [
     why: 'Una minaccia attiva o consentita per errore può rubare credenziali, dati dei pazienti o cifrare i file: va rimossa e va capito da dove è arrivata.',
     steps: [
       openSecurity('vai su "Protezione da virus e minacce", poi nella cronologia della protezione: per ogni voce scegli l\'azione consigliata (rimozione o quarantena).', true),
-      'Se una minaccia era stata consentita per errore, in "Protezione da virus e minacce" > "Gestisci impostazioni" controlla le esclusioni e togli quelle che non conosci.',
+      'Se una minaccia era stata consentita per errore, in "Protezione da virus e minacce" apri l\'elenco delle minacce consentite e toglila; poi, in "Gestisci impostazioni", controlla anche le esclusioni e togli quelle che non conosci.',
       'Avvia una scansione completa da Computer > Antivirus di Polaris. Se la minaccia ritorna o Defender non riesce a rimuoverla, usa l\'analisi offline: in "Opzioni di analisi" scegli l\'analisi offline di Microsoft Defender, l\'ultima dell\'elenco, e premi "Avvia analisi". Il PC si riavvia ed esamina il disco prima che Windows parta: salva prima il lavoro.',
       'Per una seconda opinione usa uno scanner indipendente tra i programmi utili dell\'azione (Microsoft Safety Scanner, ESET Online Scanner, AdwCleaner).',
       'Se la minaccia ruba password (nomi come PasswordStealer, Spy, Agent Tesla) cambia le password da un altro dispositivo pulito, a partire da posta e banca, e attiva la verifica in due passaggi.',
@@ -1326,7 +1326,7 @@ const list: Action[] = [
     why: 'La protezione da manomissioni impedisce ai malware di spegnere Defender e le scansioni periodiche trovano ciò che è sfuggito al controllo in tempo reale.',
     steps: [
       openSecurity('vai su "Protezione da virus e minacce" > "Gestisci impostazioni": attiva "Protezione antimanomissione" (sui PC aziendali la gestisce l\'amministratore).', true),
-      'Nella stessa pagina verifica che siano attive "Protezione in tempo reale" e "Protezione fornita dal cloud".',
+      'Nella stessa pagina verifica che siano attive la protezione in tempo reale e "Protezione fornita dal cloud".',
       'Avvia una scansione rapida da Computer > Antivirus di Polaris; una volta al mese, o dopo un\'infezione, una scansione completa.',
       'Lascia il PC acceso e collegato alla corrente qualche volta durante la pausa pranzo o la sera: Windows esegue la manutenzione automatica, comprese le scansioni, quando è inattivo.',
     ],
@@ -1339,7 +1339,7 @@ const list: Action[] = [
     title: 'Aggiorna le definizioni dell\'antivirus',
     why: 'Con definizioni vecchie l\'antivirus non riconosce le minacce recenti.',
     steps: [
-      openSecurity('vai su "Protezione da virus e minacce" > "Aggiornamenti della protezione" > "Verifica disponibilità aggiornamenti". In alternativa avvia l\'aggiornamento da Computer > Antivirus di Polaris.'),
+      openSecurity('vai su "Protezione da virus e minacce", apri gli aggiornamenti della protezione e verifica la disponibilità di aggiornamenti. In alternativa avvia l\'aggiornamento da Computer > Antivirus di Polaris.'),
       'Per gli antivirus di terze parti usa la funzione di aggiornamento del prodotto e verifica che la licenza sia attiva.',
       'Se l\'aggiornamento non riesce, controlla la connessione e Windows Update.',
     ],
@@ -1353,7 +1353,7 @@ const list: Action[] = [
     why: 'Una batteria consumata riduce l\'autonomia e sotto carico può causare spegnimenti improvvisi.',
     steps: [
       { text: 'Genera il rapporto sulla batteria: il comando indica dove ha salvato il file battery-report.html, da aprire con il browser.', cmd: 'powercfg /batteryreport' },
-      'Nel rapporto confronta la capacità di progetto con quella a piena carica ("Design capacity" e "Full charge capacity" se il rapporto è in inglese) e osserva l\'andamento nel tempo.',
+      'Nel rapporto confronta la capacità di progetto con quella a piena carica (in inglese design capacity e full charge capacity) e osserva l\'andamento nel tempo.',
       'Se il produttore lo prevede, attiva il limite di carica (per esempio all\'80 %) per rallentare l\'usura.',
       'Per la sostituzione rivolgiti all\'assistenza o usa ricambi originali: le batterie non originali possono essere pericolose.',
     ],

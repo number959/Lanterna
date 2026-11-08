@@ -27,7 +27,7 @@ import type { ReactNode } from 'react';
 import { apCount, ownRadios, phyLabel, primaryAdapter, secFamily, stepOpens, windowsMajor } from '../engine';
 import type { Analysis, AnswerValue, Band, Bss, Category, CertData, CpuBench, DiskBench, InfraData, PcData, Scan, Severity, SpaceReport, SpeedTest, SurveySample, WifiSurvey } from '../engine';
 import { download, openTool } from './api';
-import { ACTION_TOOLS } from '../tools';
+import { ACTION_TOOLS, LOCATION_MARK } from '../tools';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
 import { HexGauge } from './brand';
 import { guidesForAction } from '../guides';
@@ -496,9 +496,6 @@ function SignalMeter({ rssi }: { rssi: number }) {
     </div>
   );
 }
-
-/** Parole del messaggio dell'agente sul permesso di posizione (LocationHint in windows/internal/winapi/wlan_windows.go). */
-export const LOCATION_MARK = 'permesso di posizione';
 
 /** Apre le impostazioni della posizione, quando Windows 11 24H2 blocca la lettura del Wi-Fi. */
 function OpenLocation() {
@@ -969,7 +966,7 @@ export function PlanView({ analysis: a, focus, scan, live, go, rescan }: ViewPro
             <AnimatedNumber value={completed} /> di {a.plan.length} azioni completate
           </div>
           <div className="faint" style={{ fontSize: 13 }}>
-            Ordinate per gravità, impatto e facilità. {planWinNote(windowsMajor(scan))} Dopo le modifiche esegui una nuova analisi.
+            Ordinate per gravità, impatto e facilità. {planWinNote(windowsMajor(scan), live)} Dopo le modifiche esegui una nuova analisi.
           </div>
         </div>
         {live && rescan && (

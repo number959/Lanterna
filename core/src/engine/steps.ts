@@ -73,11 +73,15 @@ export function stepCmd(s: Step, vars?: StepVars): string | undefined {
   return x.cmd.split('{driver}').join(vars && vars.driver ? vars.driver : DRIVER_PLACEHOLDER);
 }
 
-/** Riga di testo completa di un passo, per il rapporto e il documento: testo, comando e avvertenze. */
-export function stepLine(s: Step, win?: WinMajor, vars?: StepVars): string {
+/**
+ * Riga di testo completa di un passo, per il rapporto e il catalogo: testo,
+ * comando e avvertenze. Con cmd: false il comando resta fuori, per scriverlo su
+ * una riga sua (andando a capo non si potrebbe più copiare).
+ */
+export function stepLine(s: Step, win?: WinMajor, vars?: StepVars, opts?: { cmd?: boolean }): string {
   const x = asStep(s);
   let line = stepText(x, win);
-  if (x.cmd) line += ` Comando: ${stepCmd(x, vars)}`;
+  if (x.cmd && !(opts && opts.cmd === false)) line += ` Comando: ${stepCmd(x, vars)}`;
   const notes: string[] = [];
   if (x.admin) notes.push('serve l\'amministratore');
   if (x.where === 'router') notes.push('sul router');

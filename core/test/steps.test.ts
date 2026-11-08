@@ -3,8 +3,9 @@ import { ACTIONS, analyze, asStep, DRIVER_PLACEHOLDER, renderText, stepCmd, step
 import type { Action, CrashDump, Scan } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
-import { ACTION_APPS, ACTION_TOOLS, ROUTER_PANEL, TOOLS, WINDOWS_TOOLS } from '../src/tools';
-import { CMD_HOW, CMD_HOW_ADMIN, planWinNote, privateIPv4, toolFor } from '../src/ui/plansteps';
+import { readFileSync } from 'node:fs';
+import { ACTION_APPS, ACTION_TOOLS, LOCATION_MARK, ROUTER_PANEL, TOOLS, WINDOWS_TOOLS } from '../src/tools';
+import { CMD_HOW, CMD_HOW_ADMIN, planWinNote, privateIPv4, stepsKey, stepsSig, toolFor } from '../src/ui/plansteps';
 
 // Passi guidati del piano: testo per la versione di Windows del PC, pagine da
 // aprire solo dalla lista bianca, comandi da copiare, programmi utili per azione.
@@ -131,14 +132,15 @@ function withDriver(driver: string): Scan {
 }
 
 describe('comandi da copiare', () => {
-  const step = { text: 'Cerca il driver.', cmd: 'driverquery /v | findstr /i {driver}' };
+  const step = { text: 'Cerca il driver.', cmd: 'driverquery /v /fo csv | findstr /i {driver}' };
 
   it('il driver ricorrente delle schermate blu entra nel comando', () => {
     expect(stepVars(demoScan)).toEqual({ driver: 'acmewlan.sys' }); // la demo di casa ne ha uno
     const vars = stepVars(withDriver('nvlddmkm.sys'));
     expect(vars).toEqual({ driver: 'nvlddmkm.sys' });
-    expect(stepCmd(step, vars)).toBe('driverquery /v | findstr /i nvlddmkm.sys');
-    expect(stepLine(step, 11, vars)).toBe('Cerca il driver. Comando: driverquery /v | findstr /i nvlddmkm.sys');
+    expect(stepCmd(step, vars)).toBe('driverquery /v /fo csv | findstr /i nvlddmkm.sys');
+    expect(stepLine(step, 11, vars)).toBe('Cerca il driver. Comando: driverquery /v /fo csv | findstr /i nvlddmkm.sys');
+    expect(stepLine(step, 11, vars, { cmd: false })).toBe('Cerca il driver.');
   });
 
   it('senza driver, o con un nome che potrebbe aggiungere comandi, resta il segnaposto', () => {
@@ -146,7 +148,7 @@ describe('comandi da copiare', () => {
     delete none.pc!.crashes;
     expect(stepVars(none)).toEqual({});
     expect(stepVars(null)).toEqual({});
-    expect(stepCmd(step)).toBe(`driverquery /v | findstr /i ${DRIVER_PLACEHOLDER}`);
+    expect(stepCmd(step)).toBe(`driverquery /v /fo csv | findstr /i ${DRIVER_PLACEHOLDER}`);
     for (const bad of ['x.sys & del /q *', 'a.sys|calc', 'a b.sys', '..\\evil.sys', 'nvlddmkm.exe', '"x.sys"', `${'a'.repeat(70)}.sys`]) {
       expect(stepVars(withDriver(bad)), bad).toEqual({});
     }
@@ -157,7 +159,7 @@ describe('comandi da copiare', () => {
     for (const a of Object.values(ACTIONS))
       for (const raw of a.steps) {
         const s = asStep(raw);
-        if (s.cmd?.includes('{')) expect(`${a.id}: ${s.cmd}`).toBe('update-crash-driver: driverquery /v | findstr /i {driver}');
+        if (s.cmd?.includes('{')) expect(`${a.id}: ${s.cmd}`).toBe('update-crash-driver: driverquery /v /fo csv | findstr /i {driver}');
         expect(s.text, a.id).not.toContain('{driver}');
       }
   });
@@ -171,6 +173,8 @@ describe('comandi da copiare', () => {
 
 describe('nota sui nomi di Windows', () => {
   it('dice la versione del PC e quella dei nomi', () => {
+    expect(planWinNote(11)).toContain('la versione di questo PC');
+    expect(planWinNote(11, false)).toContain('la versione del PC analizzato'); // demo o rapporto importato
     expect(planWinNote(11)).toContain('Windows 11 24H2');
     expect(planWinNote(10)).toContain('Windows 10 22H2');
     expect(planWinNote()).toContain('24H2 e 22H2');
@@ -178,19 +182,43 @@ describe('nota sui nomi di Windows', () => {
   });
 });
 
+describe('spunte dei passi', () => {
+  it('una chiave per PC e per azione, e una firma che cambia con i passi', () => {
+    expect(stepsKey('PC-1', 'update-windows')).toBe('polaris.steps.PC-1.update-windows');
+    expect(stepsKey(undefined, 'update-windows')).toBe('polaris.steps.demo.update-windows');
+    const a = ACTIONS['update-windows'];
+    expect(stepsSig(a)).toBe(stepsSig(clone(a)));
+    const b = clone(a);
+    b.steps.splice(1, 0, 'Un passo nuovo.');
+    expect(stepsSig(b)).not.toBe(stepsSig(a));
+    // Azioni diverse, firme diverse.
+    expect(new Set(Object.values(ACTIONS).map(stepsSig)).size).toBe(Object.keys(ACTIONS).length);
+  });
+});
+
+describe('messaggio del permesso di posizione', () => {
+  it('l\'agente usa ancora le parole che l\'interfaccia riconosce', () => {
+    const go = readFileSync(new URL('../../windows/internal/winapi/hints.go', import.meta.url), 'utf8');
+    const hint = /const LocationHint = "(.*)"\n/.exec(go)?.[1] ?? '';
+    expect(hint).toContain(LOCATION_MARK);
+  });
+});
+
 describe('pannello del router', () => {
   it('solo indirizzi IPv4 privati o link-local', () => {
     for (const ip of ['192.168.1.1', '10.0.0.138', '172.16.0.1', '172.31.255.254', '169.254.1.1']) expect(privateIPv4(ip), ip).toBe(true);
-    for (const ip of [undefined, '', '8.8.8.8', '172.32.0.1', '100.64.0.1', 'fe80::1', '192.168.1.256', '192.168.1.1/24', 'http://192.168.1.1', ' 192.168.1.1']) expect(privateIPv4(ip), String(ip)).toBe(false);
+    for (const ip of [undefined, '', '8.8.8.8', '172.32.0.1', '100.64.0.1', 'fe80::1', '192.168.1.256', '192.168.1.1/24', 'http://192.168.1.1', ' 192.168.1.1', '010.0.0.1', '192.168.01.1', '0.0.0.0'])
+      expect(privateIPv4(ip), String(ip)).toBe(false);
+    expect(privateIPv4('10.0.0.0')).toBe(true);
   });
 });
 
 describe('rapporto di testo', () => {
   it('i passi seguono la versione di Windows del PC', () => {
     const home = renderText(demoScan, analyze(demoScan), { verbose: true });
-    expect(home).toContain('I passi seguono i menu di Windows 11, la versione di questo PC.');
+    expect(home).toContain('I passi seguono i menu di Windows 11, la versione del PC analizzato.');
     const clinic = renderText(clinicScan, analyze(clinicScan), { verbose: true });
-    expect(clinic).toContain('I passi seguono i menu di Windows 10, la versione di questo PC.');
+    expect(clinic).toContain('I passi seguono i menu di Windows 10, la versione del PC analizzato.');
     expect(home).not.toContain('[object Object]');
     expect(clinic).not.toContain('[object Object]');
     expect(home).toContain('Windows 11 24H2');
@@ -201,7 +229,9 @@ describe('rapporto di testo', () => {
     const s = withDriver('nvlddmkm.sys');
     const text = renderText(s, analyze(s), { verbose: true });
     expect(text).toContain('Prompt dei comandi');
-    expect(text).toContain('findstr /i nvlddmkm.sys');
+    // Il comando su una riga sua, intero: si copia dal file così com'è.
+    expect(text.split('\n')).toContain('             driverquery /v /fo csv | findstr /i nvlddmkm.sys');
+    expect(text).not.toContain('Comando:');
     expect(text).not.toContain('{driver}');
   });
 });
