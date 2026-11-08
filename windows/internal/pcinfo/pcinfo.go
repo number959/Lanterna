@@ -192,7 +192,7 @@ func MediaOf(media string, rpm int) string {
 		return "scm"
 	}
 	// Alcuni controller non dichiarano il tipo ma la velocità di rotazione sì.
-	if rpm > 0 && rpm != 0xFFFFFFFF {
+	if rpm > 0 && uint64(rpm) != 0xFFFFFFFF {
 		return "hdd"
 	}
 	return "unknown"
@@ -457,7 +457,7 @@ func merge(pc *scan.PcData, ps *psOut, systemDrive string) {
 			Firmware:    d.Firmware,
 			System:      sysDisk != "" && d.ID == sysDisk,
 		}
-		if d.RPM > 0 && d.RPM != 0xFFFFFFFF {
+		if d.RPM > 0 && uint64(d.RPM) != 0xFFFFFFFF {
 			pd.SpindleRPM = d.RPM
 		}
 		if r := d.Rel; r != nil {

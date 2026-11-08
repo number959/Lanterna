@@ -125,11 +125,14 @@ func TestParsePSErrors(t *testing.T) {
 }
 
 func TestNormalizers(t *testing.T) {
+	// 0xFFFFFFFF ("velocità sconosciuta" per alcuni controller) non sta in un
+	// int a 32 bit: si costruisce a run-time, come arriverebbe dal JSON.
+	noRPM := ^uint32(0)
 	for _, c := range []struct {
 		media string
 		rpm   int
 		want  string
-	}{{"SSD", 0, "ssd"}, {"4", 0, "ssd"}, {"HDD", 5400, "hdd"}, {"Unspecified", 5400, "hdd"}, {"Unspecified", 0, "unknown"}, {"Unspecified", 0xFFFFFFFF, "unknown"}, {"SCM", 0, "scm"}} {
+	}{{"SSD", 0, "ssd"}, {"4", 0, "ssd"}, {"HDD", 5400, "hdd"}, {"Unspecified", 5400, "hdd"}, {"Unspecified", 0, "unknown"}, {"Unspecified", int(noRPM), "unknown"}, {"SCM", 0, "scm"}} {
 		if got := MediaOf(c.media, c.rpm); got != c.want {
 			t.Errorf("MediaOf(%q,%d)=%q, atteso %q", c.media, c.rpm, got, c.want)
 		}

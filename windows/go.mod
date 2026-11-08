@@ -1,6 +1,6 @@
 module lanterna
 
-go 1.24
+go 1.27.2
 
 require (
 	github.com/dop251/goja v0.0.0-20250630131328-58d95d85e994

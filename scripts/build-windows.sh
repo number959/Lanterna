@@ -3,7 +3,7 @@
 #   scripts/build-windows.sh            -> build/STARNET-Polaris/ e build/STARNET-Polaris-windows-<arch>.zip
 #   ARCH=arm64 scripts/build-windows.sh -> versione per Windows su ARM
 #   STRUMENTI=no scripts/build-windows.sh -> senza CrystalDiskInfo e CrystalDiskMark
-# Requisiti: Node.js 20+, Go 1.24+, curl e unzip (o Python 3) per i programmi inclusi.
+# Requisiti: Node.js 20+, Go 1.27+ (go.mod indica la versione, Go la scarica da solo), curl e unzip (o Python 3) per i programmi inclusi.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD

@@ -304,7 +304,7 @@ sensori).
 
 ## Sviluppo
 
-Requisiti: Node.js 20+, Go 1.24+; per i programmi inclusi curl e unzip (o Python 3). Si compila da Linux, macOS o Windows.
+Requisiti: Node.js 20+, Go 1.27+ (il file go.mod indica la versione esatta e Go la scarica da solo); per i programmi inclusi curl e unzip (o Python 3). Si compila da Linux, macOS o Windows.
 
 ```bash
 cd core && npm ci && npm test        # motore di analisi (vitest)
