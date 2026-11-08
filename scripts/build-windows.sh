@@ -9,7 +9,8 @@ cd "$(dirname "$0")/.."
 ROOT=$PWD
 ARCH=${ARCH:-amd64}
 VERSION=${VERSION:-0.10.0+$(git rev-parse --short HEAD 2>/dev/null || echo dev)}
-export GOTOOLCHAIN=${GOTOOLCHAIN:-local}
+# Go scarica da solo la versione indicata in go.mod se quella installata è più vecchia.
+export GOTOOLCHAIN=${GOTOOLCHAIN:-auto}
 
 echo "==> Nucleo web (interfaccia + motore di analisi)"
 cd "$ROOT/core"

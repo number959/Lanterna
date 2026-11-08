@@ -4,7 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
-export GOTOOLCHAIN=${GOTOOLCHAIN:-local}
+# Go scarica da solo la versione indicata in go.mod se quella installata è più vecchia.
+export GOTOOLCHAIN=${GOTOOLCHAIN:-auto}
 OUT="$ROOT/THIRD_PARTY_NOTICES.md"
 {
   echo "# Componenti di terze parti"
