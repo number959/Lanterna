@@ -321,7 +321,12 @@ jobs:
           ) | Set-Content -Encoding ascii "$d\srv.py"
           $srv = Start-Process -FilePath python -ArgumentList "$d\srv.py", "$d\c.pem", "$d\k.pem" -PassThru -NoNewWindow
           try {
-            Start-Sleep 2
+            # Il servizio di prova in Python può metterci più di 2 secondi a partire (run 60): si aspetta che la porta risponda.
+            $up = $false
+            for ($i = 0; $i -lt 40 -and -not $up; $i++) {
+              try { $c = [System.Net.Sockets.TcpClient]::new('127.0.0.1', 8445); $c.Close(); $up = $true } catch { Start-Sleep -Milliseconds 500 }
+            }
+            if (-not $up) { throw "il servizio TLS di prova non è partito in 20 secondi" }
             $a = (./polaris-cli.exe certs 127.0.0.1:8445 localhost:8445 --json | ConvertFrom-Json).results
             if ($LASTEXITCODE -ne 0) { throw "certs fallito" }
             foreach ($r in $a) { "$($r.host):$($r.port) ok=$($r.ok) $($r.tlsVersion) giorni=$($r.daysLeft) autofirmato=$($r.selfSigned) nome=$($r.nameMatch) fiducia=$($r.trust) $($r.error)" }
