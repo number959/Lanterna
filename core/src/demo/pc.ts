@@ -1,6 +1,7 @@
 import type { PcData, SmartAttr, StartupItem } from '../engine/types';
 import { clinicCrashes, homeCrashes } from './crashes';
 import { clinicDevices, homeDevices } from './devices';
+import { clinicUsb, homeUsb } from './usb';
 import { clinicApps, clinicBoot, clinicReliability, homeApps, homeBoot, homeReliability } from './stability';
 import { clinicAccess, clinicAccounts, clinicBackup, clinicEncryption, clinicPrinting, homeAccess, homeAccounts, homeBackup, homeEncryption, homePrinting } from './protect';
 
@@ -185,6 +186,7 @@ export const homePc: PcData = {
   accounts: homeAccounts,
   access: homeAccess,
   printing: homePrinting,
+  usb: homeUsb,
 };
 
 export const clinicPc: PcData = {
@@ -376,4 +378,5 @@ export const clinicPc: PcData = {
   accounts: clinicAccounts,
   access: clinicAccess,
   printing: clinicPrinting,
+  usb: clinicUsb,
 };

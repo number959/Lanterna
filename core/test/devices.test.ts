@@ -142,7 +142,7 @@ describe('catalogo, guida, documento e interfaccia', () => {
     for (const id of ['pc.devices', 'pc.drivers.signing', 'pc.drivers.old']) expect(METRICS[id], id).toBeTruthy();
     for (const id of ['fix-device', 'enable-device', 'disable-test-signing', 'update-drivers']) expect(ACTIONS[id], id).toBeTruthy();
     const g = guideById('dispositivi-driver')!;
-    expect(g.metrics).toEqual(['pc.devices', 'pc.drivers.signing', 'pc.drivers.old']);
+    expect(g.metrics).toEqual(['pc.devices', 'pc.drivers.signing', 'pc.drivers.old', 'pc.usb.ports', 'pc.usb.speed']);
     const table = g.blocks.find((b) => b.t === 'table' && b.caption === 'Codici di Gestione dispositivi');
     expect(table && table.t === 'table' ? table.rows.length : 0).toBe(Object.keys(DEVICE_PROBLEMS).length);
   });

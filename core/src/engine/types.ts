@@ -662,6 +662,8 @@ export interface PcData {
   access?: AccessInfo;
   /** Stampanti e servizio di stampa. */
   printing?: PrintingInfo;
+  /** Albero dei dispositivi USB (controller, hub, porte); assente se non letto. */
+  usb?: UsbInfo;
   /** Limiti della raccolta (dati SMART solo da amministratore, PowerShell assente...). */
   notes?: string[];
 }
@@ -1677,3 +1679,70 @@ export interface RamTest {
   note?: string;
 }
 
+/** Albero dei dispositivi USB, come UsbTreeView. Mai numeri di serie né identificativi di istanza. */
+export interface UsbInfo {
+  /** ok | none (nessun controller USB, per esempio in una macchina virtuale) | error */
+  read: 'ok' | 'none' | 'error';
+  controllers: UsbController[];
+  partial?: boolean;
+}
+
+export interface UsbController {
+  name: string;
+  /** xhci (USB 3 e successivi) | ehci (USB 2) | ohci | uhci (USB 1) | other */
+  kind: string;
+  problem?: number;
+  hub?: UsbHub;
+}
+
+/** Un hub: in ports solo le porte con un dispositivo o con un errore. */
+export interface UsbHub {
+  /** root | usb2 | usb3; assente se Windows non lo dice */
+  kind?: string;
+  portCount: number;
+  busPowered?: boolean;
+  ports: UsbPort[];
+}
+
+export type UsbPortStatus =
+  | 'ok'
+  | 'failed-enumeration'
+  | 'general-failure'
+  | 'overcurrent'
+  | 'not-enough-power'
+  | 'not-enough-bandwidth'
+  | 'nested-too-deeply'
+  | 'legacy-hub'
+  | 'enumerating'
+  | 'reset'
+  | 'unknown';
+
+export interface UsbPort {
+  index: number;
+  status: UsbPortStatus;
+  /** la porta supporta USB 3; assente se non noto */
+  usb3?: boolean;
+  /** la porta è accessibile dall'esterno; assente se non noto */
+  visible?: boolean;
+  typeC?: boolean;
+  /** condivide il connettore con una porta dell'altro protocollo (USB 2 e USB 3) */
+  companion?: boolean;
+  device?: UsbDevice;
+}
+
+export type UsbSpeed = 'low' | 'full' | 'high' | 'super' | 'super-plus' | '';
+
+export interface UsbDevice {
+  name: string;
+  vid: string;
+  pid: string;
+  /** storage | phone | printer | network | camera | audio | bluetooth | smartcard | input | serial | hub | other */
+  kind: string;
+  /** versione dichiarata dal dispositivo (bcdUSB) */
+  usb?: string;
+  speed: UsbSpeed;
+  canSuper?: boolean;
+  canSuperPlus?: boolean;
+  problem?: number;
+  hub?: UsbHub;
+}

@@ -95,6 +95,23 @@ export type { WuErrorGroup } from './maint';
 export { analyzeProtection, ENC_METHOD, ENC_PROTECTOR, encText, isPortable } from './protect';
 export { analyzePrinting, isRealPrinter, PRINTER_FLAG, printerProblems, printerText } from './printing';
 export {
+  analyzeUsb,
+  USB_CONTROLLER,
+  USB_KIND,
+  USB_SPEED,
+  USB_STATUS,
+  USB_VENDORS,
+  usbDeviceLabel,
+  usbDevices,
+  usbNodes,
+  usbPortProblems,
+  usbSlow,
+  usbSlowReason,
+  usbSpeedText,
+  usbWhere,
+} from './usb';
+export type { UsbNode } from './usb';
+export {
   analyzeSurvey,
   bandText,
   dbmText,

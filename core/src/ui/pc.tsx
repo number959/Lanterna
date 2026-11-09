@@ -57,6 +57,7 @@ import { SensorsCard } from './sensors';
 import { SpaceCard, useSpaceRun } from './space';
 import { CrashesCard } from './crashes';
 import { DevicesCard } from './devices';
+import { UsbCard } from './usb';
 import { StabilityCard } from './stability';
 import { RamTestCard } from './ramtest';
 import { MaintCard } from './maint';
@@ -195,6 +196,13 @@ export function PcView(props: ViewProps) {
       {pc?.devices && (
         <Section title="Dispositivi e driver">
           <DevicesCard pc={pc} live={props.live} now={Date.parse(scan.agent.startedAt) || Date.now()} />
+        </Section>
+      )}
+
+      {pc?.usb && (
+        <Section title="Dispositivi USB">
+          <UsbCard pc={pc} live={props.live} />
+          <ToolShortcut id="usbtreeview" live={props.live} text="per vedere anche le porte vuote, i descrittori completi e la corrente dichiarata" />
         </Section>
       )}
 

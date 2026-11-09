@@ -7,6 +7,7 @@ import { appHint, bootSample, bootTypical, failText, msText, SLOW_KIND } from '.
 import { deviceClassText, deviceProblemDetail, deviceProblemText, driverText, oldDrivers } from './devices';
 import { failedUpdates, wuErrorText } from './maint';
 import { isRealPrinter, printerText } from './printing';
+import { USB_KIND, USB_STATUS, usbDeviceLabel, usbNodes, usbSlow, usbSpeedText, usbWhere } from './usb';
 import { fmt, thousands } from './fmt';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 import { dateIt } from './pc';
@@ -378,6 +379,27 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
         .map((p) => `<tr><td>${t(p.name)}${p.default ? ' <span class="pd-small">(predefinita)</span>' : ''}</td><td>${t(printerText(p))}</td><td>${p.jobs}</td></tr>`)
         .join('')}</tbody></table></section>`,
     );
+  }
+
+  // Albero USB: i dispositivi collegati con la velocità e gli errori delle porte.
+  const usb = pc?.usb;
+  if (usb && usb.read === 'ok') {
+    const rows = usbNodes(usb)
+      .filter((n) => n.port.device || n.port.status !== 'ok')
+      .map((n) => {
+        const d = n.port.device;
+        const st = n.port.status !== 'ok' ? (USB_STATUS[n.port.status] ?? USB_STATUS.unknown)[0] : '';
+        const slow = usbSlow(n);
+        const notes = [st, d?.problem ? deviceProblemText(d.problem).toLowerCase() : '', slow === 'usb2' || slow === 'gen1' ? `saprebbe andare a ${d?.canSuperPlus ? '10' : '5'} Gbit/s` : '']
+          .filter(Boolean)
+          .join('; ');
+        return `<tr><td>${t(d ? usbDeviceLabel(d) : 'nessun dispositivo riconosciuto')}${d ? `<br><span class="pd-small">${t(USB_KIND[d.kind] ?? USB_KIND.other)}, ${t(d.vid)}:${t(d.pid)}</span>` : ''}</td><td>${t(usbWhere(n))}</td><td>${d ? t(usbSpeedText(d)) : ''}</td><td>${t(notes || 'funziona')}</td></tr>`;
+      });
+    if (rows.length) {
+      out.push(
+        `<section><h2>Dispositivi USB</h2><table class="pd-table"><thead><tr><th>Dispositivo</th><th>Dove</th><th>Velocità</th><th>Stato</th></tr></thead><tbody>${rows.join('')}</tbody></table><p class="pd-muted pd-small">Velocità a cui il dispositivo sta funzionando, come la registrano gli hub di Windows; nessun numero di serie.</p></section>`,
+      );
+    }
   }
 
   if (pc && (pc.boot || pc.apps || pc.reliability)) {

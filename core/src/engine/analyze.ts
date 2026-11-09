@@ -3,6 +3,7 @@ import { analyzeCerts } from './certs';
 import { analyzeStability } from './boot';
 import { analyzeMaint } from './maint';
 import { analyzePrinting } from './printing';
+import { analyzeUsb } from './usb';
 import { analyzeProtection } from './protect';
 import { analyzeCrashes } from './crash';
 import { analyzeDevices } from './devices';
@@ -1567,6 +1568,8 @@ export function analyze(scan: Scan): Analysis {
   // Cifratura, ripristino, backup, account e accessi; stampanti.
   analyzeProtection(scan, (f) => c.add(f));
   analyzePrinting(scan, (f) => c.add(f));
+  // Albero USB: porte in errore, dispositivi più lenti del possibile.
+  analyzeUsb(scan, (f) => c.add(f));
   // Schermate blu dai minidump: cause ricorrenti e impostazioni, senza
   // ripetere il conteggio di pc.events.bsod.
   analyzeCrashes(scan, (f) => c.add(f));

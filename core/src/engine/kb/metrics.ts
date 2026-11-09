@@ -1306,6 +1306,32 @@ const list: Metric[] = [
     limits: 'Lo stato è quello che conosce il servizio di stampa: una stampante di rete spenta può risultare pronta finché non le si manda un lavoro. Delle stampanti condivise da altri computer Polaris conta solo il numero. Non legge mai titoli dei documenti né nomi di chi stampa.',
   },
   {
+    id: 'pc.usb.ports',
+    label: 'Porte USB',
+    category: 'pc',
+    what: 'Lo stato delle porte USB con un dispositivo collegato, come lo conoscono gli hub di Windows: collegamento riuscito, dispositivo non riconosciuto, sovraccarico elettrico, corrente o banda insufficiente, troppi hub in cascata. L\'albero completo (controller, hub, porte e dispositivi, come UsbTreeView) è nella sezione del computer.',
+    scale: [
+      { range: 'nessuna porta in errore', severity: 'ok', meaning: 'I dispositivi collegati sono stati riconosciuti.' },
+      { range: 'riconoscimento o reimpostazione in corso, hub non supportato', severity: 'info', meaning: 'Di solito passeggero: ripeti l\'analisi.' },
+      { range: 'dispositivo non riconosciuto, sovraccarico, corrente o banda insufficiente, troppi hub', severity: 'warn', meaning: 'Il dispositivo su quella porta non funziona.' },
+    ],
+    why: 'Una porta in sovraccarico si spegne per proteggere il PC; un dispositivo non riconosciuto o senza abbastanza corrente sparisce e ricompare, e i dischi esterni possono perdere dati se si scollegano durante una copia.',
+    limits: 'Polaris legge ciò che gli hub hanno registrato quando il dispositivo è stato collegato, senza interrogare i dispositivi: un problema intermittente può non comparire. Nelle macchine virtuali di solito non ci sono controller USB. Mai numeri di serie né identificativi di istanza.',
+  },
+  {
+    id: 'pc.usb.speed',
+    label: 'Velocità dei dispositivi USB',
+    category: 'pc',
+    what: 'I dispositivi che saprebbero andare a velocità USB 3 (5 o 10 Gbit/s) ma sono collegati a una velocità inferiore, di solito USB 2 (480 Mbit/s), con la causa più probabile: porta USB 2, cavo o prolunga USB 2, hub USB 2.',
+    scale: [
+      { range: 'tutti alla velocità possibile', severity: 'ok', meaning: 'Nessun avviso.' },
+      { range: 'un dispositivo diverso da un disco più lento del possibile, o un disco a 5 invece di 10 Gbit/s', severity: 'info', meaning: 'Funziona, ma più piano.' },
+      { range: 'un disco o una chiavetta USB 3 a velocità USB 2', severity: 'warn', meaning: 'Copie e backup fino a dieci volte più lenti.' },
+    ],
+    why: 'Un disco esterno USB 3 collegato in USB 2 scende a circa 40 MB/s, contro i 100-200 di un disco meccanico e gli oltre 400 di un SSD in USB 3: un backup che durerebbe un\'ora ne richiede da tre a dieci, e spesso nessuno se ne accorge.',
+    limits: 'La capacità del dispositivo è quella che dichiara a Windows (descrittore BOS) e si legge dai controller USB 3 da Windows 8 in poi. Se la porta sia davvero USB 3 lo dice il firmware del PC (porte compagne), che non sempre lo descrive bene: per questo la causa è indicata come la più probabile.',
+  },
+  {
     id: 'pc.ramtest',
     label: 'Test della RAM con Windows acceso',
     category: 'pc',
