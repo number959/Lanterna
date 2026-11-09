@@ -1,0 +1,100 @@
+name: Release
+
+# Pubblica una versione di STARNET Polaris su GitHub: crea il tag v<versione>
+# sul commit da cui parte, costruisce il pacchetto per Windows in un ambiente
+# pulito (con i test del motore, dell'interfaccia e dell'agente), calcola
+# l'impronta SHA-256 e crea la release con le note di docs/release/<versione>.md.
+# Si avvia a mano (Actions > Release > Run workflow), da un commit con la CI
+# verde: il collaudo su Windows reale resta nella CI.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Versione da pubblicare, per esempio 0.11.0 (servono core/package.json alla stessa versione e docs/release/<versione>.md)
+        required: true
+        type: string
+      draft:
+        description: Crea la release come bozza, visibile solo a chi gestisce il repository
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release ${{ inputs.version }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      # Gli input arrivano ai comandi solo come variabili d'ambiente, mai dentro lo script.
+      VERSION: ${{ inputs.version }}
+      DRAFT: ${{ inputs.draft }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Controlli prima di pubblicare
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Versione non valida: $VERSION"; exit 1; }
+          grep -q "\"version\": \"$VERSION\"" core/package.json || { echo "core/package.json non è alla versione $VERSION"; exit 1; }
+          grep -q "\"ProductVersion\": \"$VERSION\"" windows/winres/winres.json || { echo "winres.json non è alla versione $VERSION"; exit 1; }
+          test -s "docs/release/$VERSION.md" || { echo "Mancano le note docs/release/$VERSION.md"; exit 1; }
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then echo "Il tag v$VERSION esiste già"; exit 1; fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: core/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: windows/go.mod
+          cache-dependency-path: windows/go.sum
+      - name: Test del motore e dell'interfaccia
+        working-directory: core
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc --noEmit
+          npm test
+      - uses: actions/cache@v4
+        with:
+          path: build/cache-strumenti
+          key: strumenti-${{ hashFiles('scripts/strumenti.sh') }}
+      - name: Build per Windows
+        run: scripts/build-windows.sh
+      - name: Test dell'agente
+        working-directory: windows
+        run: |
+          go vet ./...
+          GOOS=windows go vet ./...
+          go test ./...
+      - name: Pacchetto e impronta
+        working-directory: build
+        run: |
+          name="STARNET-Polaris-$VERSION-windows-amd64.zip"
+          mv STARNET-Polaris-windows-amd64.zip "$name"
+          sha256sum "$name" > "$name.sha256"
+          cat "$name.sha256"
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          zip="build/STARNET-Polaris-$VERSION-windows-amd64.zip"
+          sum=$(cut -d' ' -f1 "$zip.sha256")
+          {
+            cat "docs/release/$VERSION.md"
+            printf '\n## Impronta del pacchetto\n\nSHA-256 di `%s`, costruito da questo workflow sul commit %s:\n\n```\n%s\n```\n' "$(basename "$zip")" "$GITHUB_SHA" "$sum"
+          } > note.md
+          flags=()
+          if [ "$DRAFT" = "true" ]; then flags+=(--draft); fi
+          gh release create "v$VERSION" "$zip" "$zip.sha256" \
+            --target "$GITHUB_SHA" \
+            --title "STARNET Polaris $VERSION" \
+            --notes-file note.md \
+            "${flags[@]}"
+          gh release view "v$VERSION" --json url,isDraft,tagName --jq '"Release \(.tagName): \(.url) (bozza: \(.isDraft))"'

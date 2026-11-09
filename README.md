@@ -298,7 +298,7 @@ piattaforma producono solo dati grezzi in un formato comune; l'interpretazione √
 
 ## Uso su Windows
 
-Scarica `STARNET-Polaris-windows-amd64.zip`, estrai la cartella e fai doppio clic su `Polaris.exe`. L'analisi parte da sola e dura circa 25 secondi.
+Scarica `STARNET-Polaris-<versione>-windows-amd64.zip` dalla pagina [Releases](https://github.com/number959/Lanterna/releases) (con il file `.sha256` per controllare l'impronta), estrai la cartella e fai doppio clic su `Polaris.exe`. L'analisi parte da sola e dura circa 25 secondi.
 Nella cartella `strumenti` ci sono CrystalDiskInfo, CrystalDiskMark e BlueScreenView: si aprono dalla cassetta degli attrezzi.
 
 ```text
@@ -338,6 +338,11 @@ npm run dev                          # interfaccia con i dati dimostrativi su ht
 cd ../windows && go test ./...       # agente Windows (gira anche su Linux)
 cd .. && scripts/build-windows.sh    # build/STARNET-Polaris/ e build/STARNET-Polaris-windows-amd64.zip
 ```
+
+**Pubblicare una versione**: con la CI verde sul commit, Actions > Release > Run workflow con il numero di versione. Il
+workflow controlla che `core/package.json` e `windows/winres/winres.json` siano alla stessa versione e che esistano le note
+`docs/release/<versione>.md`, rif√† test e build in un ambiente pulito, crea il tag `v<versione>` e la release con il
+pacchetto e la sua impronta SHA-256 (anche come bozza, se scelto).
 
 La build scarica gli archivi originali di CrystalDiskInfo e CrystalDiskMark dalla pagina SourceForge del produttore e di
 BlueScreenView da nirsoft.net, li verifica con l'impronta SHA-256 fissata in `scripts/strumenti.sh` e li estrae senza modifiche in
