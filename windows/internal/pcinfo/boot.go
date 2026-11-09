@@ -129,15 +129,34 @@ func BootFrom(events []winevt.Event, days int) *scan.BootPerf {
 			if !ok {
 				continue
 			}
-			name := baseName(e.Get("Name", -1))
+			raw := e.Get("Name", -1)
+			name, friendly := baseName(raw), trimDetail(e.Get("FriendlyName", -1))
+			if k[1] == "device" {
+				// Per i dispositivi Name è l'identificativo d'istanza, con il
+				// numero di serie o l'indirizzo Bluetooth: resta l'enumeratore
+				// del bus, e il nome passa dalle regole di Gestione dispositivi
+				// (i nomi scelti dall'utente diventano il tipo).
+				name = strings.ToUpper(strings.TrimSpace(strings.SplitN(raw, `\`, 2)[0]))
+				if !hwEnumerator.MatchString(name) {
+					name = "dispositivo"
+				}
+				if friendly != "" {
+					friendly = DeviceName(friendly, "", name)
+				}
+			}
 			if name == "" {
 				continue
 			}
+			// Programmi e servizi si raggruppano per nome del file; i
+			// dispositivi per identificativo (solo qui, non esce dall'agente).
 			key := fmt.Sprint(e.ID, "|", strings.ToLower(name))
+			if k[1] == "device" {
+				key = fmt.Sprint(e.ID, "|", strings.ToLower(raw))
+			}
 			s := slow[key]
 			if s == nil {
 				// Il primo evento è il più recente: i suoi tempi sono quelli mostrati.
-				s = &scan.BootSlow{Phase: k[0], Kind: k[1], Name: name, Friendly: trimDetail(e.Get("FriendlyName", -1)), Version: trimDetail(e.Get("Version", -1)),
+				s = &scan.BootSlow{Phase: k[0], Kind: k[1], Name: name, Friendly: friendly, Version: trimDetail(e.Get("Version", -1)),
 					TotalMs: msOf(e.Get("TotalTime", -1)), DegradationMs: msOf(e.Get("DegradationTime", -1)), Last: isoOf(e.Time)}
 				slow[key] = s
 				order = append(order, key)
@@ -303,43 +322,51 @@ func AppsFrom(events []winevt.Event, days int, usersRoot, winDir string) *scan.A
 	return d
 }
 
-// HealthScript legge con WMI e COM ciò che non ha un'API nativa semplice:
-// l'indice di stabilità degli ultimi 30 giorni e i record di affidabilità
-// raggruppati (senza utente, messaggi e nome del computer), la cronologia di
-// Windows Update (API di Windows Update Agent, accessibile agli utenti
-// standard; date in UTC, come le date di IAutomaticUpdatesResults: da
+// HealthScript legge con WMI e COM ciò che non ha un'API nativa semplice: la
+// cronologia di Windows Update (API di Windows Update Agent, accessibile agli
+// utenti standard; date in UTC, come le date di IAutomaticUpdatesResults: da
 // verificare per la cronologia), lo stato del file system dei volumi
-// (MSFT_Volume.HealthStatus). Gira in parallelo con PSScript, così l'analisi
-// non si allunga.
+// (MSFT_Volume.HealthStatus), BitLocker, punti di ripristino e backup. Ogni
+// interrogazione CIM ha un tempo massimo di 10 secondi. Gira in parallelo con
+// PSScript e con ReliabilityScript, così l'analisi non si allunga. L'oggetto
+// COM di Windows Update e la classe SystemRestore possono avviare i loro
+// servizi (wuauserv, VSS), che partono su richiesta: nessuna impostazione
+// cambia.
 const HealthScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncoding=[Text.Encoding]::UTF8}catch{};$r=[ordered]@{};$e=[ordered]@{};` +
-	`$fu={param($d) if($d -and $d.Year -gt 2000){$d.ToString('yyyy-MM-ddTHH:mm:ss')+'Z'}else{''}};` +
+	`$fu={param($d) if($d -and $d.Year -gt 2000){$d.ToString('yyyy-MM-ddTHH:mm:ss',[Globalization.CultureInfo]::InvariantCulture)+'Z'}else{''}};` +
 	`try{$q=(New-Object -ComObject Microsoft.Update.Session).CreateUpdateSearcher();$n=$q.GetTotalHistoryCount();$h=@();if($n -gt 0){$h=@($q.QueryHistory(0,[Math]::Min($n,100))|ForEach-Object{@{title="$($_.Title)";date=(&$fu $_.Date);op=[int]$_.Operation;rc=[int]$_.ResultCode;hr=('0x{0:X8}' -f $_.HResult);id="$($_.UpdateIdentity.UpdateID)"}})};$r.wu=$h}catch{$e.wu=('0x{0:X8}' -f $_.Exception.HResult)};` +
 	`try{$a=(New-Object -ComObject Microsoft.Update.AutoUpdate).Results;$r.wures=@{install=(&$fu $a.LastInstallationSuccessDate);search=(&$fu $a.LastSearchSuccessDate)}}catch{$e.wures="$_"};` +
 	`try{$r.wureboot=[bool](New-Object -ComObject Microsoft.Update.SystemInfo).RebootRequired}catch{$e.wureboot="$_"};` +
-	`try{$r.vols=@(Get-CimInstance -Namespace root/Microsoft/Windows/Storage -ClassName MSFT_Volume|Where-Object{$_.DriveLetter}|ForEach-Object{@{letter="$($_.DriveLetter)";health=[int]$_.HealthStatus}})}catch{$e.vols="$_"};` +
+	`try{$r.vols=@(Get-CimInstance -Namespace root/Microsoft/Windows/Storage -ClassName MSFT_Volume -OperationTimeoutSec 10|Where-Object{$_.DriveLetter}|ForEach-Object{@{letter="$($_.DriveLetter)";health=[int]$_.HealthStatus}})}catch{$e.vols="$_"};` +
 	// Errori CIM come codice non tradotto (AccessDenied, InvalidNamespace) o
 	// come HRESULT: il messaggio è nella lingua di Windows.
 	`$ce={param($x) if($x.Exception.NativeErrorCode){"$($x.Exception.NativeErrorCode)"}else{'0x{0:X8}' -f $x.Exception.HResult}};` +
 	// BitLocker (solo da amministratore): stato, metodo e tipi di protezione;
 	// della chiave di ripristino solo i primi 8 caratteri dell'identificativo,
 	// mai la password di ripristino.
-	`try{$r.bl=@(Get-CimInstance -Namespace root/CIMV2/Security/MicrosoftVolumeEncryption -ClassName Win32_EncryptableVolume|Where-Object{$_.DriveLetter}|ForEach-Object{$v=$_;` +
+	`try{$r.bl=@(Get-CimInstance -Namespace root/CIMV2/Security/MicrosoftVolumeEncryption -ClassName Win32_EncryptableVolume -OperationTimeoutSec 10|Where-Object{$_.DriveLetter}|ForEach-Object{$v=$_;` +
 	`$c=Invoke-CimMethod -InputObject $v -MethodName GetConversionStatus;$p=Invoke-CimMethod -InputObject $v -MethodName GetProtectionStatus;$m=Invoke-CimMethod -InputObject $v -MethodName GetEncryptionMethod;$l=Invoke-CimMethod -InputObject $v -MethodName GetLockStatus;` +
 	`$k=Invoke-CimMethod -InputObject $v -MethodName GetKeyProtectors -Arguments @{KeyProtectorType=[uint32]0};$kok=($k.ReturnValue -eq 0 -or $k.ReturnValue -eq 2150694920);$t=@();if($k.ReturnValue -eq 0){$t=@($k.VolumeKeyProtectorID|Where-Object{$_}|ForEach-Object{[int](Invoke-CimMethod -InputObject $v -MethodName GetKeyProtectorType -Arguments @{VolumeKeyProtectorID=$_}).KeyProtectorType})};` +
 	`$rk=Invoke-CimMethod -InputObject $v -MethodName GetKeyProtectors -Arguments @{KeyProtectorType=[uint32]3};$rid='';if($rk.ReturnValue -eq 0 -and @($rk.VolumeKeyProtectorID|Where-Object{$_}).Count){$h=("$(@($rk.VolumeKeyProtectorID)[0])" -replace '[^0-9A-Fa-f]','');if($h.Length -ge 8){$rid=$h.Substring(0,8)}};` +
 	`$sc=$null;if([int]$v.VolumeType -eq 0){try{$s=Invoke-CimMethod -InputObject $v -MethodName GetSuspendCount;if($s.ReturnValue -eq 0){$sc=[int]$s.SuspendCount}}catch{}};` +
 	`@{letter="$($v.DriveLetter)";type=[int]$v.VolumeType;conv=[int]$c.ConversionStatus;pct=[int]$c.EncryptionPercentage;flags=[int]$c.EncryptionFlags;prot=[int]$p.ProtectionStatus;method=[long]$m.EncryptionMethod;lock=[int]$l.LockStatus;kp=$t;kpOk=$kok;rid=$rid;suspend=$sc}})}catch{$e.bl=(&$ce $_)};` +
 	// Punti di ripristino (solo da amministratore): data e tipo, mai la descrizione.
-	`try{$r.rp=@(Get-CimInstance -Namespace root/default -ClassName SystemRestore|ForEach-Object{@{t=[Management.ManagementDateTimeConverter]::ToDateTime($_.CreationTime).ToUniversalTime().ToString('o');type=[int]$_.RestorePointType}})}catch{$e.rp=(&$ce $_)};` +
+	`try{$r.rp=@(Get-CimInstance -Namespace root/default -ClassName SystemRestore -OperationTimeoutSec 10|ForEach-Object{@{t=[Management.ManagementDateTimeConverter]::ToDateTime($_.CreationTime).ToUniversalTime().ToString('o');type=[int]$_.RestorePointType}})}catch{$e.rp=(&$ce $_)};` +
 	// Backup e ripristino di Windows 7: solo codice e ora degli eventi.
 	`try{$r.wb=@(Get-WinEvent -FilterHashtable @{ProviderName='Microsoft-Windows-Backup';StartTime=(Get-Date).AddDays(-90)} -MaxEvents 300|ForEach-Object{@{id=[int]$_.Id;t=$_.TimeCreated.ToUniversalTime().ToString('o')}})}catch{if($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*' -or $_.FullyQualifiedErrorId -like 'NoMatchingLogsFound*'){$r.wb=@()}else{$e.wb=(&$ce $_)}};` +
+	`$r.errors=$e;ConvertTo-Json -Compress -Depth 5 -InputObject $r`
+
+// ReliabilityScript legge Monitoraggio affidabilità (indice e record degli ultimi
+// 30 giorni) in un processo a parte: è la lettura più lenta e, se non risponde
+// in tempo, non porta con sé aggiornamenti, cifratura e punti di ripristino.
+const ReliabilityScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncoding=[Text.Encoding]::UTF8}catch{};$r=[ordered]@{};$e=[ordered]@{};` +
 	`$since=[Management.ManagementDateTimeConverter]::ToDmtfDateTime((Get-Date).AddDays(-30));` +
-	`try{$r.rel=@(Get-CimInstance -Query "SELECT SystemStabilityIndex,TimeGenerated FROM Win32_ReliabilityStabilityMetrics WHERE TimeGenerated >= '$since'" -OperationTimeoutSec 25|ForEach-Object{@{t=$_.TimeGenerated.ToUniversalTime().ToString('o');i=[double]$_.SystemStabilityIndex}})}catch{$e.rel="$_"};` +
-	`try{$r.relrec=@(Get-CimInstance -Query "SELECT SourceName,EventIdentifier,ProductName,TimeGenerated FROM Win32_ReliabilityRecords WHERE TimeGenerated >= '$since'" -OperationTimeoutSec 25|Group-Object SourceName,EventIdentifier|` +
+	`try{$r.rel=@(Get-CimInstance -Query "SELECT SystemStabilityIndex,TimeGenerated FROM Win32_ReliabilityStabilityMetrics WHERE TimeGenerated >= '$since'" -OperationTimeoutSec 15|ForEach-Object{@{t=$_.TimeGenerated.ToUniversalTime().ToString('o');i=[double]$_.SystemStabilityIndex}})}catch{$e.rel="$_"};` +
+	`try{$r.relrec=@(Get-CimInstance -Query "SELECT SourceName,EventIdentifier,ProductName,TimeGenerated FROM Win32_ReliabilityRecords WHERE TimeGenerated >= '$since'" -OperationTimeoutSec 15|Group-Object SourceName,EventIdentifier|` +
 	`ForEach-Object{$l=$_.Group|Sort-Object TimeGenerated -Descending|Select-Object -First 1;@{source="$($l.SourceName)";id=[int]$l.EventIdentifier;product="$($l.ProductName)";count=[int]$_.Count;last=$l.TimeGenerated.ToUniversalTime().ToString('o')}})}catch{$e.relrec="$_"};` +
 	`$r.errors=$e;ConvertTo-Json -Compress -Depth 5 -InputObject $r`
 
-// healthOut rispecchia l'uscita di HealthScript.
+// healthOut rispecchia l'uscita di HealthScript e di ReliabilityScript.
 type healthOut struct {
 	Rel []struct {
 		T string  `json:"t"`

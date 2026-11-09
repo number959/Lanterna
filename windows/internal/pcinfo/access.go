@@ -1,6 +1,8 @@
 package pcinfo
 
 import (
+	"net"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -119,9 +121,16 @@ func PrinterKind(port, driver string) string {
 	return "other"
 }
 
-// PrinterPort toglie dal nome della porta i percorsi: una porta locale può
-// scrivere su un file (anche nella cartella dell'utente) o puntare a una
-// condivisione; resta solo il tipo.
+// RedirectedPrinter è il nome esportato per le stampanti reindirizzate da
+// Desktop remoto, il cui nome vero contiene il nome del computer remoto.
+const RedirectedPrinter = "Stampante reindirizzata (Desktop remoto)"
+
+// PrinterPort lascia nel rapporto solo le forme di porta che non dicono nulla
+// di chi usa il PC (USB001, LPT1:, WSD-..., FILE:, un indirizzo privato...):
+// una porta locale può scrivere su un file nella cartella dell'utente, e i
+// nomi di rete delle stampanti contengono spesso il loro indirizzo MAC (per
+// esempio BRN o NPI seguiti da cifre esadecimali). Il tipo di porta si
+// calcola prima, dal nome vero (PrinterKind).
 func PrinterPort(port string) string {
 	p := strings.TrimSpace(port)
 	switch {
@@ -129,9 +138,21 @@ func PrinterPort(port string) string {
 		return "condivisione di rete"
 	case strings.ContainsAny(p, `\/`):
 		return "file"
+	case safePort.MatchString(p):
+		return p
 	}
-	return p
+	if m := ipPort.FindStringSubmatch(p); m != nil {
+		if ip := net.ParseIP(m[1]); ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()) {
+			return p
+		}
+	}
+	return "nome di rete"
 }
+
+var (
+	safePort = regexp.MustCompile(`(?i)^(usb\d{3}|dot4_\d{3}|lpt\d:|com\d{1,3}:|file:|portprompt:|nul:|xpsport:?|ts\d{3}|wsd-[0-9a-f-]{8,}(\.\d+)?|shrfax:)$`)
+	ipPort   = regexp.MustCompile(`(?i)^(?:ip_)?((?:\d{1,3}\.){3}\d{1,3})(?:_\d+)?(?::\d+)?$`)
+)
 
 // Stati di un lavoro di stampa (JOB_STATUS_*, winspool.h).
 const (

@@ -94,12 +94,22 @@ var driverTitle = regexp.MustCompile(`^[^-]+ - [^-]+ - `)
 // piattaforma): arrivano più volte al giorno e hanno una voce a parte.
 var definitionKBs = map[string]bool{"KB2267602": true, "KB4052623": true, "KB915597": true, "KB2461484": true}
 
+// otherKBs e otherTitle: lo Strumento di rimozione malware (KB890830), che
+// si installa ogni mese anche quando gli aggiornamenti cumulativi di Windows
+// falliscono, e gli aggiornamenti di altri prodotti (.NET, Office...). Non
+// sono aggiornamenti di qualità di Windows: altrimenti "ultimo aggiornamento
+// installato" risulterebbe recente anche con Windows Update guasto.
+var otherKBs = map[string]bool{"KB890830": true}
+var otherTitle = regexp.MustCompile(`(?i)\.net|\boffice\b|microsoft 365|visual c\+\+|silverlight|sql server|malicious software removal|rimozione (di )?(malware|software dannoso)`)
+
 // UpdateKind classifica una voce della cronologia (euristica di Polaris sui
 // titoli di Windows Update e sul codice di errore).
 func UpdateKind(title, kb, hresult string) string {
 	switch {
 	case definitionKBs[strings.ToUpper(kb)]:
 		return "definition"
+	case otherKBs[strings.ToUpper(kb)], otherTitle.MatchString(title):
+		return "other"
 	case strings.HasPrefix(strings.ToUpper(hresult), "0XC19"), featureTitle.MatchString(title):
 		return "feature"
 	case driverTitle.MatchString(title):

@@ -141,8 +141,14 @@ func TestPrinterPort(t *testing.T) {
 		`C:\Users\Mario\Desktop\stampa.prn`: "file",
 		`\\server\HP-Ufficio`:               "condivisione di rete",
 		"IP_192.168.1.50":                   "IP_192.168.1.50",
+		"192.168.1.60_1":                    "192.168.1.60_1",
+		"IP_203.0.113.7":                    "nome di rete",
 		"USB001":                            "USB001",
-		" WSD-1234 ":                        "WSD-1234",
+		" WSD-1a2b3c4d-0000-1111-2222-333344445555.0032 ": "WSD-1a2b3c4d-0000-1111-2222-333344445555.0032",
+		"BRN3C2AF4A1B2C3": "nome di rete",
+		"NPI5A6B7C":       "nome di rete",
+		"TS001":           "TS001",
+		"PORTPROMPT:":     "PORTPROMPT:",
 	} {
 		if got := PrinterPort(in); got != want {
 			t.Errorf("%q: %q", in, got)

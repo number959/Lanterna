@@ -51,7 +51,13 @@ func allocRAM(maxMB int) (*ramBlock, error) {
 	if !ok {
 		return nil, ErrRAMLow
 	}
+	is32 := unsafe.Sizeof(uintptr(0)) == 4
 	reserve := max(uint64(1)<<30, m.TotalPhys/8)
+	if is32 {
+		// Un processo a 32 bit prova al massimo 1 GB: basta lasciare 1 GB a
+		// Windows anche su un PC con molta RAM.
+		reserve = 1 << 30
+	}
 	if m.AvailPhys <= reserve+256<<20 {
 		return nil, ErrRAMLow
 	}
@@ -59,16 +65,26 @@ func allocRAM(maxMB int) (*ramBlock, error) {
 	if maxMB > 0 && size > uint64(maxMB)<<20 {
 		size = uint64(maxMB) << 20
 	}
-	if unsafe.Sizeof(uintptr(0)) == 4 && size > 1<<30 {
+	if is32 && size > 1<<30 {
 		size = 1 << 30 // spazio degli indirizzi limitato dei processi a 32 bit
 	}
 	size &^= 1<<16 - 1 // multiplo di 64 KB
 	if size < 64<<20 {
 		return nil, ErrRAMLow
 	}
-	addr, err := windows.VirtualAlloc(0, uintptr(size), windows.MEM_COMMIT|windows.MEM_RESERVE, windows.PAGE_READWRITE)
-	if err != nil {
-		return nil, ErrRAMLow
+	// Se Windows non concede un blocco unico così grande (spazio degli
+	// indirizzi frammentato, soprattutto a 32 bit) si riprova con la metà.
+	var addr uintptr
+	var err error
+	for {
+		addr, err = windows.VirtualAlloc(0, uintptr(size), windows.MEM_COMMIT|windows.MEM_RESERVE, windows.PAGE_READWRITE)
+		if err == nil {
+			break
+		}
+		size = (size / 2) &^ (1<<16 - 1)
+		if size < 256<<20 {
+			return nil, ErrRAMLow
+		}
 	}
 	proc := windows.CurrentProcess()
 	var oldMin, oldMax uintptr

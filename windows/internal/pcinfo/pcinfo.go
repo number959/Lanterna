@@ -258,26 +258,59 @@ func StartupEnabled(b []byte) bool {
 	return len(b) == 0 || b[0]&1 == 0
 }
 
-// SanitizeCommand sostituisce la cartella dell'utente con %USERPROFILE%: i
-// rapporti esportati non devono rivelare il nome dell'account.
+// publicProfiles sono le cartelle di C:\Users che non appartengono a una
+// persona e restano nel testo.
+var publicProfiles = map[string]bool{"public": true, "default": true, "default user": true, "all users": true}
+
+// SanitizeCommand toglie dai comandi e dai percorsi le cartelle degli
+// utenti: quella di chi usa Polaris diventa %USERPROFILE%, quelle degli altri
+// utenti nella stessa cartella radice (di solito C:\Users) ‹utente›. Il nome
+// si confronta per intero ("anna" non è "annabella") e finisce a una barra,
+// a una virgoletta o alla fine del testo.
 func SanitizeCommand(cmd, profile string) string {
 	cmd = strings.TrimSpace(cmd)
-	if profile == "" || len(cmd) < len(profile) {
+	profile = strings.TrimRight(strings.TrimSpace(profile), `\/`)
+	sep := strings.LastIndexAny(profile, `\/`)
+	if profile == "" || sep <= 0 {
 		return cmd
 	}
-	low := strings.ToLower(cmd)
-	p := strings.ToLower(strings.TrimRight(profile, `\`))
+	root, own := profile[:sep], strings.ToLower(profile[sep+1:])
+	// Gli altri utenti solo con una radice vera (C:\Users), mai con "C:".
+	others := strings.ContainsAny(root, `\/`)
+	low, lowRoot := strings.ToLower(cmd), strings.ToLower(root)
 	var b strings.Builder
+	i := 0
 	for {
-		i := strings.Index(low, p)
-		if i < 0 {
-			b.WriteString(cmd)
-			return b.String()
+		j := strings.Index(low[i:], lowRoot)
+		if j < 0 {
+			break
 		}
-		b.WriteString(cmd[:i])
-		b.WriteString("%USERPROFILE%")
-		cmd, low = cmd[i+len(p):], low[i+len(p):]
+		j += i
+		k := j + len(root)
+		if k >= len(cmd) || (cmd[k] != '\\' && cmd[k] != '/') {
+			b.WriteString(cmd[i:k])
+			i = k
+			continue
+		}
+		e := k + 1
+		for e < len(cmd) && !strings.ContainsRune(`\/"'`, rune(cmd[e])) {
+			e++
+		}
+		name := strings.ToLower(strings.TrimSpace(cmd[k+1 : e]))
+		switch {
+		case name == own:
+			b.WriteString(cmd[i:j])
+			b.WriteString("%USERPROFILE%")
+		case others && name != "" && !publicProfiles[name]:
+			b.WriteString(cmd[i : k+1])
+			b.WriteString("‹utente›")
+		default:
+			b.WriteString(cmd[i:e])
+		}
+		i = e
 	}
+	b.WriteString(cmd[i:])
+	return b.String()
 }
 
 // OSName corregge il nome commerciale: il registro di Windows 11 riporta

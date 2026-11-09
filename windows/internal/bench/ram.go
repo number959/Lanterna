@@ -268,10 +268,16 @@ func (r *ramRun) runTest(name string, pass int, seed uint64, inject func([]uint6
 			})
 		}
 	case "block-move":
+		// La seconda metà parte dal complemento: la copia della prima metà
+		// deve cambiare ogni bit, non riscrivere valori già uguali.
 		half := len(r.w) / 2
 		r.parallel(func(base int, seg []uint64) {
 			for i := range seg {
-				seg[i] = mix(uint64((base+i)%max(half, 1)) ^ seed)
+				v := mix(uint64((base+i)%max(half, 1)) ^ seed)
+				if j := base + i; j >= half && j < 2*half {
+					v = ^v
+				}
+				seg[i] = v
 			}
 		})
 		if r.stopped.Load() || half == 0 {

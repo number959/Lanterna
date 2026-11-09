@@ -48,23 +48,47 @@ const (
 	printerEnumConnections = 0x4
 	printerAttrShared      = 0x8
 	printerAttrWorkOffline = 0x400
+	// printerAttrTS è PRINTER_ATTRIBUTE_TS (winspool.h): stampante del PC
+	// collegato in Desktop remoto, reindirizzata in questa sessione.
+	printerAttrTS = 0x8000
 )
 
-// enumPrinters chiama EnumPrintersW con il protocollo a due chiamate.
+// enumPrinters chiama EnumPrintersW con il protocollo a due chiamate,
+// ripetendo se nel frattempo è comparsa una stampante. Il buffer è di parole
+// da 8 byte: contiene strutture con puntatori, da tenere allineate.
 func enumPrinters(flags, level uint32) ([]byte, uint32, bool) {
 	var need, n uint32
-	procEnumPrintersW.Call(uintptr(flags), 0, uintptr(level), 0, 0, uintptr(unsafe.Pointer(&need)), uintptr(unsafe.Pointer(&n)))
-	if need == 0 {
+	for try := 0; try < 3; try++ {
+		buf := alignedBuf(need)
+		r, _, err := procEnumPrintersW.Call(uintptr(flags), 0, uintptr(level), bufPtr(buf), uintptr(len(buf)), uintptr(unsafe.Pointer(&need)), uintptr(unsafe.Pointer(&n)))
+		if r != 0 {
+			if n == 0 || len(buf) == 0 {
+				return nil, 0, true
+			}
+			return buf, n, true
+		}
 		// Nessuna stampante, oppure il servizio di stampa non risponde.
-		r, _, _ := procEnumPrintersW.Call(uintptr(flags), 0, uintptr(level), 0, 0, uintptr(unsafe.Pointer(&need)), uintptr(unsafe.Pointer(&n)))
-		return nil, 0, r != 0
+		if err != windows.ERROR_INSUFFICIENT_BUFFER || need == 0 {
+			return nil, 0, false
+		}
 	}
-	buf := make([]byte, need)
-	r, _, _ := procEnumPrintersW.Call(uintptr(flags), 0, uintptr(level), uintptr(unsafe.Pointer(&buf[0])), uintptr(need), uintptr(unsafe.Pointer(&need)), uintptr(unsafe.Pointer(&n)))
-	if r == 0 {
-		return nil, 0, false
+	return nil, 0, false
+}
+
+// alignedBuf restituisce n byte allineati a 8 (nil se n è 0).
+func alignedBuf(n uint32) []byte {
+	if n == 0 {
+		return nil
 	}
-	return buf, n, true
+	w := make([]uint64, (n+7)/8)
+	return unsafe.Slice((*byte)(unsafe.Pointer(&w[0])), len(w)*8)
+}
+
+func bufPtr(b []byte) uintptr {
+	if len(b) == 0 {
+		return 0
+	}
+	return uintptr(unsafe.Pointer(&b[0]))
 }
 
 // printerJobs conta i lavori in coda di una stampante.
@@ -79,12 +103,19 @@ func printerJobs(name string, now time.Time) (stuck, failed, oldest int) {
 	}
 	defer procClosePrinter.Call(h)
 	var need, n uint32
-	procEnumJobsW.Call(h, 0, 100, 1, 0, 0, uintptr(unsafe.Pointer(&need)), uintptr(unsafe.Pointer(&n)))
-	if need == 0 {
-		return
+	var buf []byte
+	for try := 0; ; try++ {
+		buf = alignedBuf(need)
+		r, _, err := procEnumJobsW.Call(h, 0, 100, 1, bufPtr(buf), uintptr(len(buf)), uintptr(unsafe.Pointer(&need)), uintptr(unsafe.Pointer(&n)))
+		if r != 0 {
+			break
+		}
+		// Ripete se nel frattempo è arrivato un lavoro (buffer insufficiente).
+		if err != windows.ERROR_INSUFFICIENT_BUFFER || need == 0 || try >= 2 {
+			return
+		}
 	}
-	buf := make([]byte, need)
-	if r, _, _ := procEnumJobsW.Call(h, 0, 100, 1, uintptr(unsafe.Pointer(&buf[0])), uintptr(need), uintptr(unsafe.Pointer(&need)), uintptr(unsafe.Pointer(&n))); r == 0 || n == 0 {
+	if n == 0 || len(buf) == 0 {
 		return
 	}
 	for _, j := range unsafe.Slice((*jobInfo1)(unsafe.Pointer(&buf[0])), n) {
@@ -146,6 +177,11 @@ func readPrinting(ctx context.Context) *scan.PrintingInfo {
 			}
 			if pi.Jobs > 0 {
 				pr.Stuck, pr.JobErrors, pr.OldestMin = printerJobs(name, now)
+			}
+			if pi.Attributes&printerAttrTS != 0 {
+				// Il nome di una stampante reindirizzata contiene il nome del
+				// computer da cui ci si collega: resta fuori dal rapporto.
+				pr.Name, pr.Kind = RedirectedPrinter, "virtual"
 			}
 			p.Printers = append(p.Printers, pr)
 		}

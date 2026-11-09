@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -93,11 +94,11 @@ func Open(id, target string, f *Fetcher) error {
 		// Un'immagine da scrivere su una chiavetta (Memtest86+) non si apre:
 		// Esplora file mostra la cartella con il file selezionato.
 		if Portables[id].Reveal {
-			file, args = "explorer.exe", `/select,"`+d.Path+`"`
+			file, args = explorerPath(), `/select,"`+d.Path+`"`
 		}
 	}
 	if t.URL && windows.GetCurrentProcessToken().IsElevated() {
-		file, args = "explorer.exe", `"`+t.File+`"`
+		file, args = explorerPath(), `"`+t.File+`"`
 	}
 	verb, _ := windows.UTF16PtrFromString("open")
 	fp, err := windows.UTF16PtrFromString(file)
@@ -133,7 +134,7 @@ func OpenRouter(gateway string, https bool) error {
 	if windows.GetCurrentProcessToken().IsElevated() {
 		// Da amministratore il browser partirebbe con gli stessi permessi:
 		// Esplora file lo apre invece con quelli dell'utente.
-		file, args = "explorer.exe", `"`+u+`"`
+		file, args = explorerPath(), `"`+u+`"`
 	}
 	verb, _ := windows.UTF16PtrFromString("open")
 	fp, err := windows.UTF16PtrFromString(file)
@@ -167,4 +168,14 @@ var defaultVerify = func(path string) (Signature, error) {
 		return Signature{}, winps.Explain(err)
 	}
 	return ParseSignature(out)
+}
+
+// explorerPath è Esplora file di Windows con il percorso completo, così non
+// si avvia un explorer.exe trovato altrove (per esempio nella cartella di
+// lavoro).
+func explorerPath() string {
+	if root := os.Getenv("SystemRoot"); root != "" {
+		return filepath.Join(root, "explorer.exe")
+	}
+	return `C:\Windows\explorer.exe`
 }

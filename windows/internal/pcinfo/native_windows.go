@@ -44,29 +44,53 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	var devRaw []rawDevice
 	var devPartial bool
 	var devErr error
-	var health *healthOut
-	var healthErr error
+	var health, rel *healthOut
+	var healthErr, relErr error
 	var wg sync.WaitGroup
-	wg.Add(12)
+	wg.Add(13)
+	// Letture che passano da servizi di Windows (spooler, LSA, hub USB): una
+	// chiamata bloccata non si interrompe, quindi oltre il tempo massimo il
+	// risultato si abbandona e l'analisi va avanti (within).
+	var lateMu sync.Mutex
+	var late []string
+	tooLate := func(note string) {
+		lateMu.Lock()
+		late = append(late, note)
+		lateMu.Unlock()
+	}
 	go func() {
 		defer wg.Done()
-		uctx, cancel := context.WithTimeout(ctx, usbTimeout)
-		defer cancel()
-		pc.Usb = readUsb(uctx)
+		u, ok := within(ctx, usbTimeout, readUsb)
+		if !ok {
+			u = &scan.UsbInfo{Read: "error", Controllers: []scan.UsbController{}, Partial: true}
+			tooLate("L'albero dei dispositivi USB non è stato letto: gli hub non hanno risposto in tempo.")
+		}
+		pc.Usb = u
 	}()
 	go func() {
 		defer wg.Done()
-		pc.Accounts = readAccounts()
+		a, ok := within(ctx, 15*time.Second, func(context.Context) *scan.AccountsInfo { return readAccounts() })
+		if !ok {
+			tooLate("Gli account locali non sono stati letti: Windows non ha risposto in tempo (su un PC in dominio succede se il server del dominio non è raggiungibile).")
+		}
+		pc.Accounts = a
 	}()
 	go func() {
 		defer wg.Done()
-		pc.Access = readAccess()
+		a, ok := within(ctx, 10*time.Second, func(context.Context) *scan.AccessInfo { return readAccess() })
+		if !ok {
+			tooLate("Accesso automatico, Desktop remoto e Controllo dell'account utente non sono stati letti: Windows non ha risposto in tempo.")
+		}
+		pc.Access = a
 	}()
 	go func() {
 		defer wg.Done()
-		pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		pc.Printing = readPrinting(pctx)
+		p, ok := within(ctx, 10*time.Second, readPrinting)
+		if !ok {
+			p = &scan.PrintingInfo{}
+			tooLate("Le stampanti non sono state lette: il servizio di stampa non ha risposto in tempo.")
+		}
+		pc.Printing = p
 	}()
 	go func() {
 		defer wg.Done()
@@ -90,6 +114,10 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	}()
 	go func() {
 		defer wg.Done()
+		rel, relErr = runReliability(ctx)
+	}()
+	go func() {
+		defer wg.Done()
 		ps, psErr = runPS(ctx)
 	}()
 	go func() {
@@ -98,9 +126,19 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	}()
 	go func() {
 		defer wg.Done()
-		dctx, cancel := context.WithTimeout(ctx, devicesTimeout)
-		defer cancel()
-		devRaw, devPartial, devErr = readDevices(dctx)
+		type devRead struct {
+			raw     []rawDevice
+			partial bool
+			err     error
+		}
+		d, ok := within(ctx, devicesTimeout, func(c context.Context) devRead {
+			raw, partial, err := readDevices(c)
+			return devRead{raw, partial, err}
+		})
+		if !ok {
+			d.err = errors.New("tempo scaduto")
+		}
+		devRaw, devPartial, devErr = d.raw, d.partial, d.err
 	}()
 	// Schermate blu (minidump e impostazioni), in parallelo e con un tempo
 	// massimo: di solito sono pochi file piccoli.
@@ -152,10 +190,14 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	if pc.Crashes != nil && pc.Crashes.Partial {
 		pc.Notes = append(pc.Notes, "La lettura dei file delle schermate blu non è finita in tempo: l'elenco può essere incompleto.")
 	}
-	if healthErr != nil {
-		pc.Notes = append(pc.Notes, "L'indice di stabilità di Monitoraggio affidabilità non è stato letto: PowerShell non ha risposto ("+healthErr.Error()+").")
+	if relErr != nil {
+		pc.Notes = append(pc.Notes, "L'indice di stabilità di Monitoraggio affidabilità non è stato letto: PowerShell non ha risposto ("+relErr.Error()+").")
 	} else {
-		pc.Reliability = ReliabilityFrom(health, reliabilityWMI(), os.Getenv("USERPROFILE"))
+		pc.Reliability = ReliabilityFrom(rel, reliabilityWMI(), os.Getenv("USERPROFILE"))
+	}
+	if healthErr != nil {
+		pc.Notes = append(pc.Notes, "Cronologia di Windows Update, cifratura, punti di ripristino e backup non sono stati letti: PowerShell non ha risposto ("+healthErr.Error()+").")
+	} else {
 		mergeMaint(pc, health)
 		mergeProtection(pc, health)
 		if pc.Encryption != nil && pc.Encryption.Read == "denied" {
@@ -179,6 +221,7 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	for i := range pc.Volumes {
 		pc.Volumes[i].Dirty = volumeDirty(pc.Volumes[i].Letter)
 	}
+	pc.Notes = append(pc.Notes, late...)
 	if devErr != nil {
 		pc.Notes = append(pc.Notes, "I dispositivi e i loro driver non sono stati letti: Windows non ha risposto.")
 	} else {

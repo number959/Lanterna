@@ -158,8 +158,12 @@ func readUsb(ctx context.Context) *scan.UsbInfo {
 		if !strings.EqualFold(d.Class, "USB") || strings.EqualFold(d.Enumerator, "USB") {
 			continue
 		}
+		// Un controller guasto (codice 10, 43...) non ha l'interfaccia attiva:
+		// si riconosce dal driver e si mostra con il suo problema, senza hub.
 		if paths, err := windows.CM_Get_Device_Interface_List(d.Instance, &guidUsbHostController, windows.CM_GET_DEVICE_INTERFACE_LIST_PRESENT); err != nil || len(paths) == 0 {
-			continue
+			if d.Problem == 0 || UsbControllerKind(d.Service) == "other" {
+				continue
+			}
 		}
 		c := scan.UsbController{Name: DeviceName(d.Name, d.Class, d.Enumerator), Kind: UsbControllerKind(d.Service), Problem: d.Problem}
 		for _, ch := range w.ix.children[strings.ToUpper(d.Instance)] {
@@ -171,10 +175,15 @@ func readUsb(ctx context.Context) *scan.UsbInfo {
 		}
 		out.Controllers = append(out.Controllers, c)
 	}
+	out.Partial = w.partial
+	// "none" (nessun controller, come in una macchina virtuale) solo se la
+	// lettura è finita: altrimenti non si può dire.
 	if len(out.Controllers) == 0 && out.Read == "ok" {
 		out.Read = "none"
+		if out.Partial {
+			out.Read = "error"
+		}
 	}
-	out.Partial = w.partial
 	return out
 }
 

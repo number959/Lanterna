@@ -1028,7 +1028,7 @@ const list: Metric[] = [
       { range: 'un problema su video, rete, dischi e controller, tastiera, mouse, audio, controller USB o chipset; driver bloccato (48) o senza firma valida (52)', severity: 'crit', meaning: 'Una parte essenziale del PC non funziona.' },
     ],
     why: 'Un dispositivo con un problema non funziona o funziona a metà: una scheda di rete con il codice 10 lascia senza rete, un controller dei dischi con il codice 39 può impedire l\'avvio. Il codice dice dove intervenire: driver mancante (28), driver che non si avvia (10), danneggiato (39), fermato dopo errori (43).',
-    limits: 'Polaris vede i dispositivi presenti, come Gestione dispositivi senza Mostra dispositivi nascosti: un dispositivo scollegato non compare. Alcuni driver mostrano in Gestione dispositivi un messaggio proprio al posto di quello standard. I nomi dei dispositivi Bluetooth abbinati, dei telefoni, delle stampanti e dei dispositivi di rete sono sostituiti da nomi generici perché possono contenere nomi di persone o di altri computer.',
+    limits: 'Polaris vede i dispositivi presenti, come Gestione dispositivi senza Mostra dispositivi nascosti: un dispositivo scollegato non compare. Alcuni driver mostrano in Gestione dispositivi un messaggio proprio al posto di quello standard. In questo elenco i nomi dei dispositivi Bluetooth abbinati, dei telefoni, delle code di stampa e dei dispositivi di rete sono sostituiti da nomi generici perché possono contenere nomi di persone o di altri computer; la sezione Stampanti mostra invece il nome che Windows dà a ogni stampante installata.',
   },
   {
     id: 'pc.drivers.signing',
@@ -1240,7 +1240,7 @@ const list: Metric[] = [
       { range: 'Guest o Administrator integrato attivi, account senza password richiesta, 4 o più amministratori', severity: 'warn', meaning: 'Accessi più facili per chi non dovrebbe.' },
     ],
     why: 'Ogni account attivo è una porta: l\'account ospite non ha password, l\'Administrator integrato è il primo che si prova ad attaccare, e un programma malevolo aperto da un amministratore ottiene subito il controllo del PC.',
-    limits: 'Polaris non prova password e non tenta accessi: non può dire se una password è debole o vuota. Su un PC in dominio molte regole arrivano dal server dell\'organizzazione, e i giudizi sono più prudenti. I nomi degli account non finiscono mai nei rapporti.',
+    limits: 'Polaris non prova password e non tenta accessi: non può dire se una password è debole o vuota. Su un PC in dominio molte regole arrivano dal server dell\'organizzazione, e i giudizi sono più prudenti; lontano dalla rete dell\'organizzazione Windows può impiegare molto a riconoscere i membri di dominio del gruppo Administrators, e dopo 15 secondi Polaris rinuncia e lo dice tra le note. I nomi degli account non finiscono mai nei rapporti.',
   },
   {
     id: 'pc.autologon',
@@ -1303,7 +1303,7 @@ const list: Metric[] = [
       { range: 'non in linea, in errore, lavori fermi da più di 15 minuti, servizio di stampa fermo', severity: 'warn', meaning: 'Non si stampa.' },
     ],
     why: 'Una coda bloccata o una stampante impostata per lavorare non in linea fermano tutti i lavori successivi, anche se la stampante è accesa.',
-    limits: 'Lo stato è quello che conosce il servizio di stampa: una stampante di rete spenta può risultare pronta finché non le si manda un lavoro. Delle stampanti condivise da altri computer Polaris conta solo il numero. Non legge mai titoli dei documenti né nomi di chi stampa.',
+    limits: 'Lo stato è quello che conosce il servizio di stampa: una stampante di rete spenta può risultare pronta finché non le si manda un lavoro. Delle stampanti condivise da altri computer Polaris conta solo il numero; quelle reindirizzate da Desktop remoto compaiono con un nome generico, perché il loro nome contiene quello del computer remoto. Non legge mai titoli dei documenti né nomi di chi stampa.',
   },
   {
     id: 'pc.usb.ports',

@@ -122,9 +122,18 @@ func reliabilityWMI() *bool {
 
 // runHealth esegue HealthScript con un tempo massimo.
 func runHealth(ctx context.Context) (*healthOut, error) {
+	return runHealthScript(ctx, HealthScript)
+}
+
+// runReliability esegue ReliabilityScript con un tempo massimo.
+func runReliability(ctx context.Context) (*healthOut, error) {
+	return runHealthScript(ctx, ReliabilityScript)
+}
+
+func runHealthScript(ctx context.Context, script string) (*healthOut, error) {
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
-	out, err := winps.Command(ctx, HealthScript).Output()
+	out, err := winps.Command(ctx, script).Output()
 	if err != nil && len(out) == 0 {
 		var ee *exec.Error
 		if errors.As(err, &ee) {

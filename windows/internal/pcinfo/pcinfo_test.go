@@ -198,6 +198,24 @@ func TestSanitizeCommand(t *testing.T) {
 	if got := SanitizeCommand(`C:\x.exe`, ""); got != `C:\x.exe` {
 		t.Errorf("profilo vuoto: %q", got)
 	}
+	// Altri utenti, nomi che iniziano allo stesso modo, cartelle comuni.
+	a := `C:\Users\anna`
+	for in, want := range map[string]string{
+		`C:\Users\luigi\Downloads\setup.msi`:       `C:\Users\‹utente›\Downloads\setup.msi`,
+		`C:\Users\annabella\Desktop\x.exe`:         `C:\Users\‹utente›\Desktop\x.exe`,
+		`"C:\Users\Anna\app.exe" "C:\Users\Luigi"`: `"%USERPROFILE%\app.exe" "C:\Users\‹utente›"`,
+		`C:\Users\Public\Documents\x.txt`:          `C:\Users\Public\Documents\x.txt`,
+		`D:\Users\luigi\x.exe`:                     `D:\Users\luigi\x.exe`,
+	} {
+		if got := SanitizeCommand(in, a); got != want {
+			t.Errorf("SanitizeCommand(%q)=%q, atteso %q", in, got, want)
+		}
+	}
+	// Con un profilo in una cartella che non è una radice di utenti non si
+	// maschera nient'altro.
+	if got := SanitizeCommand(`C:\Program Files\x.exe C:\anna\y`, `C:\anna`); got != `C:\Program Files\x.exe %USERPROFILE%\y` {
+		t.Errorf("radice C: %q", got)
+	}
 }
 
 func TestOSNameAndPlan(t *testing.T) {

@@ -1400,7 +1400,9 @@ type BootSlow struct {
 	// prefetch | policy | device | session.
 	Phase string `json:"phase"`
 	Kind  string `json:"kind"`
-	// Name è solo il nome del file o del servizio, mai il percorso.
+	// Name è solo il nome del file o del servizio, mai il percorso; per i
+	// dispositivi solo l'enumeratore del bus (USB, PCI, BTHENUM...), mai
+	// l'identificativo d'istanza.
 	Name          string `json:"name"`
 	Friendly      string `json:"friendly,omitempty"`
 	Version       string `json:"version,omitempty"`

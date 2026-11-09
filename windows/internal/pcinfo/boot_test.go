@@ -173,3 +173,34 @@ func TestReliability(t *testing.T) {
 		}
 	}
 }
+
+// Eventi 109 e 202: per i dispositivi Name è l'identificativo d'istanza, con
+// il numero di serie o l'indirizzo Bluetooth. Nel rapporto restano solo
+// l'enumeratore del bus e il nome con le regole di Gestione dispositivi.
+func TestBootSlowDevicesWithoutInstanceIDs(t *testing.T) {
+	at := "2026-11-01T08:00:00Z"
+	events := []winevt.Event{
+		ev(perf, 202, at, map[string]string{"Name": `USB\VID_0BDA&PID_0129\20100201396000000`, "FriendlyName": "Realtek USB 2.0 Card Reader", "TotalTime": "900", "DegradationTime": "600"}),
+		ev(perf, 109, at, map[string]string{"Name": `BTHENUM\{0000110B-0000-1000-8000-00805F9B34FB}_LOCALMFG&0002\7&1B2C3D4E&0&001A7DDA7113_C00000000`, "FriendlyName": "AirPods di Anna", "TotalTime": "1200", "DegradationTime": "800"}),
+		ev(perf, 109, at, map[string]string{"Name": `\\?\strano`, "TotalTime": "500", "DegradationTime": "300"}),
+	}
+	b := BootFrom(events, 90)
+	if len(b.Slow) != 3 {
+		t.Fatalf("lenti: %+v", b.Slow)
+	}
+	for _, s := range b.Slow {
+		j := s.Name + "|" + s.Friendly
+		for _, bad := range []string{"2010020139", "001A7DDA7113", "Anna", `\`, "VID_"} {
+			if strings.Contains(j, bad) {
+				t.Errorf("%q contiene %q", j, bad)
+			}
+		}
+	}
+	got := map[string]string{}
+	for _, s := range b.Slow {
+		got[s.Name] = s.Friendly
+	}
+	if got["USB"] != "Realtek USB 2.0 Card Reader" || got["BTHENUM"] != "Dispositivo Bluetooth" || got["dispositivo"] != "" {
+		t.Errorf("nomi: %v", got)
+	}
+}

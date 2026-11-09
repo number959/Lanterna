@@ -72,6 +72,22 @@ func TestUpdateHistory(t *testing.T) {
 	if UpdateKind("Aggiornamento delle funzionalità a Windows 10, versione 22H2", "", "") != "feature" {
 		t.Error("aggiornamento delle funzionalità")
 	}
+	// Lo Strumento di rimozione malware e gli aggiornamenti di altri prodotti
+	// non sono aggiornamenti di qualità di Windows (né di funzionalità: un
+	// titolo .NET contiene "Windows 11, version 23H2").
+	for title, want := range map[string]string{
+		"Windows Malicious Software Removal Tool x64 - v5.131 (KB890830)":                                                  "other",
+		"Strumento di rimozione malware di Windows x64 - v5.131 (KB890830)":                                                "other",
+		"2024-01 Cumulative Update for .NET Framework 3.5 and 4.8.1 for Windows 11, version 23H2 for x64 (KB5034467)":      "other",
+		"Aggiornamento cumulativo 2024-01 per .NET Framework 3.5 e 4.8.1 per Windows 11, version 23H2 per x64 (KB5034467)": "other",
+		"Microsoft Office: aggiornamento della sicurezza (KB5002700)":                                                      "other",
+		"2026-10 Cumulative Update for Windows 11 Version 24H2 for x64-based Systems (KB5066835)":                          "quality",
+		"Aggiornamento cumulativo 2026-10 per Windows 11 Version 24H2 per sistemi basati su x64 (KB5066835)":               "quality",
+	} {
+		if got := UpdateKind(title, kbRe.FindString(title), ""); got != want {
+			t.Errorf("UpdateKind(%q) = %q, atteso %q", title, got, want)
+		}
+	}
 }
 
 func TestMergeMaintAndDetails(t *testing.T) {

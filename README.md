@@ -155,8 +155,9 @@ script PowerShell nascosto: nessuna impostazione viene modificata.
 - **Dispositivi e driver**, come Gestione dispositivi (dalla 0.12.0): i dispositivi con un problema e il suo codice spiegato
   (Codice 10, 28, 43...), i driver di terze parti per rete, dischi, Bluetooth, audio e chipset dal più vecchio, la verifica delle
   firme dei driver (modalità test, debug del kernel, integrità della memoria) e il collegamento con il driver indicato dalle
-  schermate blu. Solo codici del produttore (VEN/DEV, VID/PID), mai identificativi con numeri di serie; i nomi scelti
-  dall'utente (telefoni, dispositivi Bluetooth, stampanti) sono sostituiti dal tipo.
+  schermate blu. Solo codici del produttore (VEN/DEV, VID/PID), mai identificativi con numeri di serie; nell'elenco dei
+  dispositivi i nomi che possono essere scelti dall'utente (telefoni, dispositivi Bluetooth, code di stampa) sono sostituiti dal
+  tipo.
 - **Avvio e affidabilità**: durata dell'avvio misurata da Windows (mediana degli ultimi avvii, fino al desktop e dopo
   l'accesso) e componenti segnalati come lenti, programmi che si chiudono da soli o si bloccano con il modulo in errore, indice
   di stabilità di Monitoraggio affidabilità.
@@ -167,7 +168,11 @@ script PowerShell nascosto: nessuna impostazione viene modificata.
   senza nomi (amministratori, Administrator e Guest, password non richiesta), accesso automatico (della password solo se è
   presente), Desktop remoto con NLA, Controllo dell'account utente e blocco automatico dello schermo.
 - **Stampanti**: stato di ogni stampante (non in linea, carta o toner esauriti, inceppamenti), lavori fermi in coda e servizio
-  di stampa, mai titoli dei documenti né nomi di chi stampa.
+  di stampa, mai titoli dei documenti né nomi di chi stampa. La stampante ha il nome che le dà Windows, per riconoscerla;
+  quelle reindirizzate da Desktop remoto, il cui nome contiene quello del computer remoto, compaiono come «Stampante
+  reindirizzata (Desktop remoto)». Della porta resta il nome solo se non dice nulla di chi usa il PC (USB001, WSD, un
+  indirizzo privato...): gli altri nomi di rete, che spesso contengono l'indirizzo MAC della stampante, diventano «nome di
+  rete», i file «file».
 - **Dispositivi USB**, come UsbTreeView: controller, hub e porte occupate con produttore e modello, versione USB e
   **velocità a cui ogni dispositivo sta funzionando davvero**; porte in errore (sovraccarico, corrente o banda insufficiente,
   dispositivo non riconosciuto) e dispositivi USB 3 che vanno a velocità USB 2, con la causa più probabile (porta, cavo o hub
@@ -427,9 +432,11 @@ PC con scheda Wi-Fi: [docs/VERIFICHE.md](docs/VERIFICHE.md).
   quello originale: una copia modificata o sostituita viene segnalata e non parte.
 - I programmi scaricati arrivano solo quando li chiedi e solo dai siti del produttore (`download.cpuid.com`,
   `downloads.sourceforge.net`, `download.sysinternals.com`, `downloads.malwarebytes.com`, `go.microsoft.com`,
-  `download.eset.com`, `diskanalyzer.com` e i loro server di distribuzione), passando dal proxy di sistema come il browser; la
+  `download.eset.com`, `diskanalyzer.com`, `www.memtest.org`, `github.com` per Rufus e i loro server di distribuzione, come
+  `objects.githubusercontent.com` e `release-assets.githubusercontent.com`), passando dal proxy di sistema come il browser; la
   richiesta non porta dati del PC. Partono solo con la firma digitale valida dell'editore atteso, verificata da Windows a ogni
-  avvio. La cartella del kit è affidabile quanto il supporto su cui sta: chi può scriverci può sostituire anche Polaris.exe.
+  avvio; l'immagine di Memtest86+, che non ha firma e non viene mai aperta da Polaris, si accetta solo se l'impronta SHA-256
+  coincide con quella pubblicata dal progetto. La cartella del kit è affidabile quanto il supporto su cui sta: chi può scriverci può sostituire anche Polaris.exe.
 - Il documento stampabile toglie indirizzi MAC e IP pubblici anche dai testi dei giudizi.
 
 ## Licenze

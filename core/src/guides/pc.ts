@@ -759,7 +759,7 @@ export const pc: Guide[] = [
       { t: 'list', items: [
         'i dispositivi scollegati, come Gestione dispositivi senza "Mostra dispositivi nascosti";',
         'i messaggi personalizzati che alcuni driver mostrano al posto del testo standard del codice;',
-        'i nomi dei dispositivi Bluetooth abbinati, dei telefoni, delle stampanti e dei dispositivi di rete, sostituiti da nomi generici perché possono contenere nomi di persone o di altri computer;',
+        'i nomi dei dispositivi Bluetooth abbinati, dei telefoni, delle code di stampa e dei dispositivi di rete, sostituiti da nomi generici perché possono contenere nomi di persone o di altri computer (la sezione Stampanti mostra invece il nome che Windows dà a ogni stampante installata);',
         'la firma file per file: con la verifica attiva i driver avviati sono firmati per forza, quelli rifiutati hanno il codice 52.',
       ] },
       { t: 'note', kind: 'tip', title: 'Controllo a mano', text: 'Da un Prompt dei comandi, `pnputil /enum-devices /problem` (da Windows 10 versione 1903) elenca i dispositivi con un problema e il loro codice. Microsoft consiglia di aprire il prompt come amministratore per la maggior parte dei comandi di PnPUtil.' },
@@ -887,7 +887,7 @@ export const pc: Guide[] = [
     actions: ['restart-spooler', 'clear-print-queue', 'printer-online'],
     tags: ['stampante', 'non stampa', 'coda di stampa', 'spooler', 'non in linea', 'offline', 'carta esaurita', 'toner', 'wsd', 'tcp/ip', 'usb', 'stampanti e scanner', 'print to pdf'],
     blocks: [
-      { t: 'p', text: 'Ogni stampa passa dal **servizio di stampa** di Windows (spooler), che mette i lavori in coda e li manda alla stampante. Polaris legge l\'elenco delle stampanti installate, il loro stato e le code, senza mai leggere i titoli dei documenti o i nomi di chi stampa. Le stampanti virtuali (Microsoft Print to PDF, XPS, OneNote, fax) non vengono giudicate.' },
+      { t: 'p', text: 'Ogni stampa passa dal **servizio di stampa** di Windows (spooler), che mette i lavori in coda e li manda alla stampante. Polaris legge l\'elenco delle stampanti installate, il loro stato e le code, senza mai leggere i titoli dei documenti o i nomi di chi stampa. Le stampanti virtuali (Microsoft Print to PDF, XPS, OneNote, fax) e quelle reindirizzate da Desktop remoto, che compaiono con un nome generico perché il loro nome contiene quello del computer remoto, non vengono giudicate.' },
       { t: 'list', items: [
         '**non in linea** o **in pausa**: Windows tiene i lavori in coda e non li manda; a volte è rimasta spuntata l\'opzione per usare la stampante non in linea;',
         '**carta esaurita, inceppata, sportello aperto, toner esaurito**: lo comunica la stampante stessa, se il driver lo supporta;',
