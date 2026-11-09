@@ -1277,6 +1277,14 @@ misurato #627792 invece di #526886, che dà 5,4:1); ripetuto ad animazioni finit
 correzioni dell'agente) verde su Windows reale: affidabilità letta dallo script separato (indice 10), account, accessi,
 stampa e albero USB letti entro i tempi massimi, nessuna nota di lettura abbandonata.
 
+**CI e pacchetto della release.** Run 83 e 84 della CI (i commit 16caf8e e 9abefed, con le correzioni del motore e
+dell'interfaccia e le note di rilascio) verdi su Linux e su Windows reale, compreso il test della RAM breve e le prove native.
+Release v0.12.0 creata come bozza il 9/11/2026 dal workflow Release (run 2, che rifà test e build in un ambiente pulito):
+`STARNET-Polaris-0.12.0-windows-amd64.zip`, costruito dal commit 9abefed con la versione `0.12.0`, SHA-256
+`3f05d41a95d96d6322e65e7aeb25e69266202ffab94651340fb13c49ac2488e8` (anche nel file `.sha256` allegato). Resta una bozza,
+visibile solo a chi gestisce il repository: la pubblicazione spetta a STARNET, come per la 0.11.0, dopo la decisione
+sull'informativa per il test di velocità con Measurement Lab.
+
 **Avvertenze: cosa resta da provare.**
 - **Albero USB con dispositivi veri**: le macchine della CI sono virtuali e senza USB. Codici, offset e stati sono quelli
   delle intestazioni e di Microsoft Learn e il parsing è provato con buffer costruiti a mano, ma il comportamento degli hub
