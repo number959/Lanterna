@@ -83,7 +83,7 @@ EOF
   cat <<'EOF'
 # Programmi inclusi nella cartella strumenti
 
-Il pacchetto contiene le copie originali e non modificate di quattro programmi di terze parti, verificate con l'impronta SHA-256 dell'archivio: CrystalDiskInfo e CrystalDiskMark, scaricati dalla pagina SourceForge del produttore (a cui rimanda il sito ufficiale https://crystalmark.info/), con gli eseguibili firmati digitalmente da CrystalMark Inc. e i testi completi delle licenze nella sottocartella License; BlueScreenView, scaricato dal sito https://www.nirsoft.net/, con l'eseguibile firmato da Nir Sofer e la licenza nel suo readme.txt; UsbTreeView, scaricato dal sito https://www.uwe-sieber.de/, con l'eseguibile firmato da Uwe Sieber (nel pacchetto solo la versione per l'architettura del pacchetto).
+Il pacchetto contiene le copie originali e non modificate di quattro programmi di terze parti, verificate con l'impronta SHA-256 dell'archivio: CrystalDiskInfo e CrystalDiskMark, scaricati dalla pagina SourceForge del produttore (a cui rimanda il sito ufficiale https://crystalmark.info/), con gli eseguibili firmati digitalmente da CrystalMark Inc. e i testi completi delle licenze nella sottocartella License; BlueScreenView, scaricato dal sito https://www.nirsoft.net/, con l'eseguibile firmato da Nir Sofer e la licenza nel suo readme.txt; UsbTreeView, scaricato dal sito https://www.uwe-sieber.de/, con l'eseguibile verificato dall'impronta SHA-256 (porta una firma digitale a nome di Uwe Sieber che Windows, sulla macchina di collaudo, non ha confermato; nel pacchetto solo la versione per l'architettura del pacchetto).
 
 ## CrystalDiskInfo 9.9.2 (hiyohiyo, MIT)
 

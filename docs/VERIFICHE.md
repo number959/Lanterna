@@ -1167,8 +1167,9 @@ codice, perché i commit successivi cambiano solo la CI e la documentazione, ma 
   (9/11/2026): le strutture sono impacchettate a 1 byte e si leggono campo per campo; la velocità SuperSpeed si ricava dai bit
   della V2, come indica Microsoft (il campo Speed arriva a High Speed). Nessuna richiesta ai dispositivi (niente
   `GET_DESCRIPTOR`), nessun numero di serie.
-- **Cassetta**: UsbTreeView 4.8.0 incluso (archivi e eseguibili di x64, Win32 e ARM64 verificati con l'impronta, firmati da
-  Uwe Sieber; ogni pacchetto contiene solo quello della sua architettura); Memtest86+ 9.00 scaricabile (impronte degli archivi
+- **Cassetta**: UsbTreeView 4.8.0 incluso (archivi e eseguibili di x64, Win32 e ARM64 verificati con l'impronta; portano
+  una firma a nome di Uwe Sieber che Windows, nella CI, non conferma: stato UnknownError, per questo conta l'impronta; ogni
+  pacchetto contiene solo quello della sua architettura); Memtest86+ 9.00 scaricabile (impronte degli archivi
   x86_64, i586 e arm64 confrontate con `sha256sum.txt` del sito: coincidono), mostrato in Esplora file invece di essere
   aperto; Rufus 4.15 scaricabile con la firma di Akeo Consulting; HCI MemTest come collegamento. Le versioni sono uscite da
   almeno 14 giorni (Memtest86+ il 15/10/2026, UsbTreeView il 18/10/2026, Rufus il 30/06/2026).
@@ -1193,6 +1194,14 @@ nella demo di casa e della clinica, con tutte le schede nuove (dispositivi, avvi
 della RAM, dispositivi USB), tema scuro e chiaro, 1366 e 390 px: **0 violazioni**, nessuno scorrimento orizzontale, nessun
 errore della pagina. Dalle schermate della scheda USB è emerso un "codice 43: codice 43" ripetuto, corretto.
 
+**Exe sotto Wine 9.0** (pacchetto costruito con `scripts/build-windows.sh`, senza i programmi inclusi). `polaris-cli version`
+dice 0.12.0 con il motore 1.6.0; `report --quick --json` finisce senza errori e ogni lettura nuova dà un dato o uno stato
+dichiarato: 8 dispositivi e l'integrità del codice, albero USB "none", servizio di stampa manuale senza stampanti, un account
+locale (quello in uso), accesso automatico spento, screen saver dopo 300 secondi, registro eventi "error" (Wine non
+implementa `wevtapi`), cifratura e affidabilità non lette perché PowerShell non c'è (le note lo dicono). `bench ram --quick
+--json`: 256 MB provati e tutti bloccati in RAM, 4 thread, 22 passaggi, 0 errori; con `--preset sbagliato` il messaggio
+elenca i valori accettati.
+
 **Windows reale (CI)**, Windows Server 2025 Datacenter 24H2 (build 26100.33674) su una macchina virtuale Azure, come
 amministratore. Prove nuove nel passo del rapporto (dispositivi, integrità del codice, avvio, programmi, affidabilità,
 aggiornamenti, diagnostica memoria, volumi, cifratura, account senza nomi, accessi, servizio di stampa, albero USB senza
@@ -1212,6 +1221,10 @@ modalità test con `bcdedit`.
   dopo il ritorno del client. Corretta (si aspetta la fine del gestore), e corretta anche una seconda prova fragile trovata in
   locale (un sì/no condiviso tra download e upload, ora un contatore); provate 15 volte, con `-race` e su un solo processore
   sotto carico.
+- Run 79: cassetta nuova. UsbTreeView 4.8.0 riconosciuto come copia integra e avviato da Polaris dalla sottocartella x64
+  (nessuna versione di altre architetture nel pacchetto; firma a nome di Uwe Sieber, stato UnknownError, solo informativo);
+  Rufus 4.15 scaricato dalle release su GitHub (1,9 MB) con la firma di Akeo Consulting verificata; Memtest86+ 9.00 scaricato
+  (0,3 MB) con l'impronta del progetto, senza firmatario, e la cartella con `memtest.iso` (6 MB) mostrata in Esplora file.
 - Run 77: rapporto completo e prove native verdi. Dati veri: volumi C: e D: non da controllare e sani; cifratura letta (dischi
   non cifrati); punti di ripristino non supportati (Windows Server), nessun backup di Windows; 4 account locali, uno
   amministratore attivo; accesso automatico attivo con la password nel registro, Desktop remoto attivo con NLA sulla porta

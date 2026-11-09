@@ -29,8 +29,8 @@ CACHE="$ROOT/build/cache-strumenti"
 #   CrystalDiskMark9_0_3.zip  3725706 byte, MD5 b93d7c56381d0d765a3fc8238da611f0 (23/05/2026)
 # BlueScreenView 1.55 per Windows a 64 bit: 85380 byte, invariato dal 29/01/2015
 # (data del server); l'eseguibile è firmato da Nir Sofer.
-# UsbTreeView 4.8.0 (18/10/2026; eseguibili del 22/10/2026, firmati da Uwe
-# Sieber): gli indirizzi danno sempre l'ultima versione, quindi a ogni
+# UsbTreeView 4.8.0 (18/10/2026; eseguibili del 22/10/2026, con una firma a nome
+# di Uwe Sieber che Windows non conferma: conta l'impronta): gli indirizzi danno sempre l'ultima versione, quindi a ogni
 # aggiornamento del produttore la build si ferma finché le nuove impronte non
 # sono verificate e fissate qui e in bundled.go.
 TOOLS=(

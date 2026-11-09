@@ -28,8 +28,9 @@ type Binary struct {
 
 // Bundled sono i programmi inclusi. Gli archivi originali e le loro impronte
 // sono in scripts/strumenti.sh; qui ci sono le impronte degli eseguibili che
-// contengono, firmati dal produttore (CrystalMark Inc., Nir Sofer, Uwe
-// Sieber).
+// contengono, firmati dal produttore (CrystalMark Inc., Nir Sofer); UsbTreeView
+// porta una firma a nome di Uwe Sieber che Windows non conferma (stato
+// UnknownError nella CI): per tutti conta l'impronta.
 // BlueScreenView esiste solo a 32 e 64 bit: su Windows per ARM gira emulato.
 var Bundled = map[string]Bundle{
 	"crystaldiskinfo": {Dir: "CrystalDiskInfo", Version: "9.9.2", Exe: map[string]Binary{
