@@ -1328,7 +1328,7 @@ const list: Metric[] = [
       { range: 'un dispositivo diverso da un disco più lento del possibile, o un disco a 5 invece di 10 Gbit/s', severity: 'info', meaning: 'Funziona, ma più piano.' },
       { range: 'un disco o una chiavetta USB 3 a velocità USB 2', severity: 'warn', meaning: 'Copie e backup fino a dieci volte più lenti.' },
     ],
-    why: 'Un disco esterno USB 3 collegato in USB 2 scende a circa 40 MB/s, contro i 100-200 di un disco meccanico e gli oltre 400 di un SSD in USB 3: un backup che durerebbe un\'ora ne richiede da tre a dieci, e spesso nessuno se ne accorge.',
+    why: 'Un disco esterno USB 3 collegato in USB 2 scende a circa 40 MB/s, contro i 100-200 di un disco meccanico e gli oltre 400 di un SSD in USB 3: un backup che durerebbe un\'ora ne richiede da tre a dieci (anche di più con un SSD da 10 Gbit/s), e spesso nessuno se ne accorge.',
     limits: 'La capacità del dispositivo è quella che dichiara a Windows (descrittore BOS) e si legge dai controller USB 3 da Windows 8 in poi. Se la porta sia davvero USB 3 lo dice il firmware del PC (porte compagne), che non sempre lo descrive bene: per questo la causa è indicata come la più probabile.',
   },
   {
