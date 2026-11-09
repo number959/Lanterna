@@ -2,6 +2,8 @@ import { fmt, more, num, thousands } from './fmt';
 import { analyzeCerts } from './certs';
 import { analyzeStability } from './boot';
 import { analyzeMaint } from './maint';
+import { analyzePrinting } from './printing';
+import { analyzeProtection } from './protect';
 import { analyzeCrashes } from './crash';
 import { analyzeDevices } from './devices';
 import { analyzeSurvey } from './survey';
@@ -1562,6 +1564,9 @@ export function analyze(scan: Scan): Analysis {
   analyzeStability(scan, (f) => c.add(f));
   // Diagnostica memoria, aggiornamenti non riusciti, file system.
   analyzeMaint(scan, (f) => c.add(f));
+  // Cifratura, ripristino, backup, account e accessi; stampanti.
+  analyzeProtection(scan, (f) => c.add(f));
+  analyzePrinting(scan, (f) => c.add(f));
   // Schermate blu dai minidump: cause ricorrenti e impostazioni, senza
   // ripetere il conteggio di pc.events.bsod.
   analyzeCrashes(scan, (f) => c.add(f));

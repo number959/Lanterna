@@ -317,6 +317,22 @@ const HealthScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncodin
 	`try{$a=(New-Object -ComObject Microsoft.Update.AutoUpdate).Results;$r.wures=@{install=(&$fu $a.LastInstallationSuccessDate);search=(&$fu $a.LastSearchSuccessDate)}}catch{$e.wures="$_"};` +
 	`try{$r.wureboot=[bool](New-Object -ComObject Microsoft.Update.SystemInfo).RebootRequired}catch{$e.wureboot="$_"};` +
 	`try{$r.vols=@(Get-CimInstance -Namespace root/Microsoft/Windows/Storage -ClassName MSFT_Volume|Where-Object{$_.DriveLetter}|ForEach-Object{@{letter="$($_.DriveLetter)";health=[int]$_.HealthStatus}})}catch{$e.vols="$_"};` +
+	// Errori CIM come codice non tradotto (AccessDenied, InvalidNamespace) o
+	// come HRESULT: il messaggio è nella lingua di Windows.
+	`$ce={param($x) if($x.Exception.NativeErrorCode){"$($x.Exception.NativeErrorCode)"}else{'0x{0:X8}' -f $x.Exception.HResult}};` +
+	// BitLocker (solo da amministratore): stato, metodo e tipi di protezione;
+	// della chiave di ripristino solo i primi 8 caratteri dell'identificativo,
+	// mai la password di ripristino.
+	`try{$r.bl=@(Get-CimInstance -Namespace root/CIMV2/Security/MicrosoftVolumeEncryption -ClassName Win32_EncryptableVolume|Where-Object{$_.DriveLetter}|ForEach-Object{$v=$_;` +
+	`$c=Invoke-CimMethod -InputObject $v -MethodName GetConversionStatus;$p=Invoke-CimMethod -InputObject $v -MethodName GetProtectionStatus;$m=Invoke-CimMethod -InputObject $v -MethodName GetEncryptionMethod;$l=Invoke-CimMethod -InputObject $v -MethodName GetLockStatus;` +
+	`$k=Invoke-CimMethod -InputObject $v -MethodName GetKeyProtectors -Arguments @{KeyProtectorType=[uint32]0};$kok=($k.ReturnValue -eq 0 -or $k.ReturnValue -eq 2150694920);$t=@();if($k.ReturnValue -eq 0){$t=@($k.VolumeKeyProtectorID|Where-Object{$_}|ForEach-Object{[int](Invoke-CimMethod -InputObject $v -MethodName GetKeyProtectorType -Arguments @{VolumeKeyProtectorID=$_}).KeyProtectorType})};` +
+	`$rk=Invoke-CimMethod -InputObject $v -MethodName GetKeyProtectors -Arguments @{KeyProtectorType=[uint32]3};$rid='';if($rk.ReturnValue -eq 0 -and @($rk.VolumeKeyProtectorID|Where-Object{$_}).Count){$h=("$(@($rk.VolumeKeyProtectorID)[0])" -replace '[^0-9A-Fa-f]','');if($h.Length -ge 8){$rid=$h.Substring(0,8)}};` +
+	`$sc=$null;if([int]$v.VolumeType -eq 0){try{$s=Invoke-CimMethod -InputObject $v -MethodName GetSuspendCount;if($s.ReturnValue -eq 0){$sc=[int]$s.SuspendCount}}catch{}};` +
+	`@{letter="$($v.DriveLetter)";type=[int]$v.VolumeType;conv=[int]$c.ConversionStatus;pct=[int]$c.EncryptionPercentage;flags=[int]$c.EncryptionFlags;prot=[int]$p.ProtectionStatus;method=[long]$m.EncryptionMethod;lock=[int]$l.LockStatus;kp=$t;kpOk=$kok;rid=$rid;suspend=$sc}})}catch{$e.bl=(&$ce $_)};` +
+	// Punti di ripristino (solo da amministratore): data e tipo, mai la descrizione.
+	`try{$r.rp=@(Get-CimInstance -Namespace root/default -ClassName SystemRestore|ForEach-Object{@{t=[Management.ManagementDateTimeConverter]::ToDateTime($_.CreationTime).ToUniversalTime().ToString('o');type=[int]$_.RestorePointType}})}catch{$e.rp=(&$ce $_)};` +
+	// Backup e ripristino di Windows 7: solo codice e ora degli eventi.
+	`try{$r.wb=@(Get-WinEvent -FilterHashtable @{ProviderName='Microsoft-Windows-Backup';StartTime=(Get-Date).AddDays(-90)} -MaxEvents 300|ForEach-Object{@{id=[int]$_.Id;t=$_.TimeCreated.ToUniversalTime().ToString('o')}})}catch{if($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*' -or $_.FullyQualifiedErrorId -like 'NoMatchingLogsFound*'){$r.wb=@()}else{$e.wb=(&$ce $_)}};` +
 	`$since=[Management.ManagementDateTimeConverter]::ToDmtfDateTime((Get-Date).AddDays(-30));` +
 	`try{$r.rel=@(Get-CimInstance -Query "SELECT SystemStabilityIndex,TimeGenerated FROM Win32_ReliabilityStabilityMetrics WHERE TimeGenerated >= '$since'" -OperationTimeoutSec 25|ForEach-Object{@{t=$_.TimeGenerated.ToUniversalTime().ToString('o');i=[double]$_.SystemStabilityIndex}})}catch{$e.rel="$_"};` +
 	`try{$r.relrec=@(Get-CimInstance -Query "SELECT SourceName,EventIdentifier,ProductName,TimeGenerated FROM Win32_ReliabilityRecords WHERE TimeGenerated >= '$since'" -OperationTimeoutSec 25|Group-Object SourceName,EventIdentifier|` +
@@ -346,6 +362,9 @@ type healthOut struct {
 		Letter string `json:"letter"`
 		Health int    `json:"health"`
 	} `json:"vols"`
+	BL     *[]psEncVolume    `json:"bl"`
+	RP     *[]psRestore      `json:"rp"`
+	WB     *[]psBackupEvent  `json:"wb"`
 	Errors map[string]string `json:"errors"`
 }
 

@@ -51,6 +51,7 @@ func TestDeviceName(t *testing.T) {
 		{`Stampante \\server\ufficio`, "", "ROOT", "Dispositivo"},
 		{"TV del salotto", "", "SWD", "Dispositivo"},
 		{"", "Net", "PCI", "Scheda di rete"},
+		{"", "", "VMBUS", "Dispositivo sconosciuto"},
 		{"  Scheda   di rete  Intel ", "Net", "PCI", "Scheda di rete Intel"},
 	}
 	for _, c := range cases {

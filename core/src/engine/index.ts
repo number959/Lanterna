@@ -92,6 +92,8 @@ export {
 } from './boot';
 export { analyzeMaint, failedUpdates, WU_ERRORS, wuErrorText, wuGroup } from './maint';
 export type { WuErrorGroup } from './maint';
+export { analyzeProtection, ENC_METHOD, ENC_PROTECTOR, encText, isPortable } from './protect';
+export { analyzePrinting, isRealPrinter, PRINTER_FLAG, printerProblems, printerText } from './printing';
 export {
   analyzeSurvey,
   bandText,

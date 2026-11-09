@@ -136,7 +136,7 @@ jobs:
           # Avvio, programmi che si chiudono da soli e indice di stabilità (registri eventi nativi e WMI).
           $bt = $pc.boot
           "Avvio: registro $($bt.channel), $(@($bt.boots).Count) avvii misurati, firmware $($bt.firmwareMs) ms; ultimi: " + ((@($bt.boots) | Select-Object -First 3 | ForEach-Object { "$($_.time) $($_.totalMs) ms (desktop $($_.mainPathMs), dopo $($_.postBootMs))" }) -join ' | ')
-          "Componenti lenti: " + ((@($bt.slow) | Select-Object -First 5 | ForEach-Object { "$($_.phase)/$($_.kind) $($_.name) x$($_.count) +$($_.degradationMs) ms" }) -join ' | ') + "; spegnimenti: $(@($bt.shutdowns).Count)"
+          "Componenti lenti: " + ((@($bt.slow) | Select-Object -First 5 | ForEach-Object { "$($_.phase)/$($_.kind) $($_.name) x$($_.count) +$($_.degradationMs) ms" }) -join ' | ') + "; spegnimenti: $(if ($bt.shutdowns) { @($bt.shutdowns).Count } else { 0 })"
           $ap = $pc.apps
           "Programmi: registro $($ap.channel), $($ap.crashes) arresti, $($ap.hangs) blocchi; " + ((@($ap.apps) | Select-Object -First 5 | ForEach-Object { "$($_.app) $($_.crashes)/$($_.hangs)" }) -join ' | ') + "; rapporti: " + ((@($ap.reports) | ForEach-Object { "$($_.event) x$($_.count)" }) -join ' ') + "; WER $($ap.wer | ConvertTo-Json -Compress)"
           $rl = $pc.reliability
@@ -155,6 +155,18 @@ jobs:
           if (-not (@($pc.volumes) | Where-Object { $null -ne $_.dirty })) { throw "stato da controllare dei volumi non letto (FSCTL_IS_VOLUME_DIRTY)" }
           if (-not (@($pc.volumes) | Where-Object { $_.health })) { throw "stato del file system dei volumi non letto (MSFT_Volume)" }
           if ($null -eq $pc.memDiag) { throw "registro di sistema per Diagnostica memoria non letto" }
+          # Cifratura, punti di ripristino, backup, account (senza nomi), accessi, stampanti.
+          $raw = Get-Content scan.json -Raw
+          "Cifratura: $($pc.encryption | ConvertTo-Json -Compress -Depth 4)"
+          "Backup: $($pc.backup | ConvertTo-Json -Compress -Depth 4)"
+          "Account: $(@($pc.accounts.local).Count) locali; amministratori $($pc.accounts.admins | ConvertTo-Json -Compress); in uso amministratore: $($pc.accounts.currentIsAdmin)"
+          "Accessi: $($pc.access | ConvertTo-Json -Compress -Depth 4)"
+          "Stampa: spooler $($pc.printing.spooler | ConvertTo-Json -Compress); " + ((@($pc.printing.printers) | ForEach-Object { "$($_.name) [$($_.kind)] $($_.flags -join ',') lavori $($_.jobs)" }) -join ' | ')
+          if (-not $pc.encryption) { throw "stato della cifratura non letto" }
+          if (-not $pc.accounts -or -not @($pc.accounts.local).Count) { throw "account locali non letti" }
+          if (-not $pc.access.uac) { throw "Controllo dell'account utente non letto" }
+          if (-not $pc.printing.spooler) { throw "servizio di stampa non letto" }
+          if ($raw -match '"(name|userName|fullName)"\s*:\s*"[^"]*(runneradmin|Administrator)[^"]*"') { throw "nome di account nel rapporto" }
           # Nessun percorso della cartella dell'utente nel rapporto (solo %USERPROFILE%).
           $raw = Get-Content scan.json -Raw
           $leak = [regex]::Match($raw, '.{0,60}' + [regex]::Escape($env:USERPROFILE.Replace('\', '\\')) + '.{0,40}', 'IgnoreCase')
@@ -807,6 +819,26 @@ jobs:
             $env:LOCALAPPDATA = $saved
             Remove-Item -Recurse -Force $kit -ErrorAction SilentlyContinue
           }
+      - name: Sorgenti per le prove native
+        uses: actions/checkout@v4
+        with:
+          path: sorgenti
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sorgenti/windows/go.mod
+          cache-dependency-path: sorgenti/windows/go.sum
+      - name: Prove native dell'agente su Windows reale
+        working-directory: sorgenti/windows
+        run: |
+          # Letture native (registro eventi, dispositivi, servizi, volumi) con dati veri.
+          go test ./internal/winevt/ ./internal/pcinfo/ -run 'Windows$' -count=1 -v
+          if ($LASTEXITCODE -ne 0) { throw "prove native non riuscite" }
+          # La modalità test letta da Polaris deve coincidere con quella di bcdedit (qui siamo amministratori).
+          $bcd = (bcdedit /enum '{current}' | Select-String -Pattern '^testsigning\s+(\w+)').Matches.Groups[1].Value
+          $s = Get-Content ../../STARNET-Polaris/scan.json -Raw | ConvertFrom-Json
+          $ts = [bool]$s.pc.devices.codeIntegrity.testSigning
+          "bcdedit testsigning: '$bcd'; Polaris: $ts (opzioni $($s.pc.devices.codeIntegrity.options))"
+          if (($bcd -eq 'Yes') -ne $ts) { throw "modalità test diversa da bcdedit" }
       - name: Microsoft Defender da riga di comando (prova non bloccante)
         continue-on-error: true
         timeout-minutes: 12

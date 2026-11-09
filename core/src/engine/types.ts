@@ -652,6 +652,16 @@ export interface PcData {
   memDiag?: MemDiagInfo;
   /** Controlli del file system degli ultimi 30 giorni: null o assente = non letti. */
   fsChecks?: FsCheck[] | null;
+  /** BitLocker e crittografia del dispositivo (solo da amministratore). */
+  encryption?: EncryptionInfo;
+  /** Punti di ripristino, Backup e ripristino di Windows, cartelle in OneDrive. */
+  backup?: BackupInfo;
+  /** Account locali, senza nomi. */
+  accounts?: AccountsInfo;
+  /** Accesso automatico, Desktop remoto, Controllo dell'account utente, blocco dello schermo. */
+  access?: AccessInfo;
+  /** Stampanti e servizio di stampa. */
+  printing?: PrintingInfo;
   /** Limiti della raccolta (dati SMART solo da amministratore, PowerShell assente...). */
   notes?: string[];
 }
@@ -1537,5 +1547,106 @@ export interface ReliabilityGroup {
   product?: string;
   count: number;
   last: string;
+}
+
+/** Cifratura dei volumi (Win32_EncryptableVolume). Mai la chiave di ripristino. */
+export interface EncryptionInfo {
+  /** ok | denied (serve l'amministratore) | absent (BitLocker non presente) | error. */
+  read: 'ok' | 'denied' | 'absent' | 'error';
+  /** La crittografia automatica del dispositivo è impedita (PreventDeviceEncryption). */
+  preventAuto?: boolean;
+  volumes?: EncVolume[];
+}
+
+export interface EncVolume {
+  letter: string;
+  kind: 'os' | 'fixed' | 'removable' | 'unknown';
+  conversion: 'decrypted' | 'encrypted' | 'encrypting' | 'decrypting' | 'encrypt-paused' | 'decrypt-paused' | 'unknown';
+  percent?: number;
+  usedSpaceOnly?: boolean;
+  protection: 'on' | 'off' | 'unknown';
+  locked?: boolean;
+  method?: string;
+  /** Tipi di protezione della chiave; null = non letti, [] = nessuno (chiave in chiaro). */
+  protectors: string[] | null;
+  suspendCount?: number;
+  /** Primi 8 caratteri dell'identificativo della chiave di ripristino. */
+  recoveryKeyId?: string;
+}
+
+export interface BackupInfo {
+  restorePoints?: RestorePoints;
+  imageBackup?: ImageBackupInfo;
+  /** Cartelle Desktop, Documenti e Immagini dentro la cartella di OneDrive. */
+  oneDrive?: ('desktop' | 'documents' | 'pictures')[];
+}
+
+export interface RestorePoints {
+  read: 'ok' | 'denied' | 'unsupported' | 'error';
+  disabledByPolicy?: boolean;
+  count: number;
+  newest?: string;
+  newestType?: 'app-install' | 'app-uninstall' | 'driver-install' | 'settings' | 'cancelled' | 'windows-update' | 'other';
+  oldest?: string;
+}
+
+/** Backup e ripristino di Windows (Windows 7), dagli eventi degli ultimi `days` giorni. */
+export interface ImageBackupInfo {
+  read: 'ok' | 'denied' | 'error';
+  days: number;
+  lastSuccess?: string;
+  lastFailure?: string;
+  failureId?: number;
+  failures?: number;
+}
+
+export interface AccountsInfo {
+  /** null = non letti. */
+  local: LocalAccount[] | null;
+  admins?: { members: number; localEnabled: number; other?: number };
+  currentIsAdmin?: boolean;
+}
+
+export interface LocalAccount {
+  rid: number;
+  kind: 'builtin-admin' | 'guest' | 'default' | 'wdag' | 'user';
+  enabled: boolean;
+  admin?: boolean;
+  current?: boolean;
+  /** Windows non richiede una password: non vuol dire che sia vuota. */
+  passwordNotRequired?: boolean;
+  passwordNeverExpires?: boolean;
+  lockedOut?: boolean;
+}
+
+export interface AccessInfo {
+  autologon?: { enabled: boolean; passwordInRegistry?: boolean };
+  rdp?: { enabled: boolean; byPolicy?: boolean; nla: boolean; port?: number };
+  uac?: { enabled: boolean; consentAdmin: number; secureDesktop: boolean };
+  lock?: { inactivitySec?: number; saverActive?: boolean; saverSecure?: boolean; saverSec?: number };
+}
+
+export interface PrintingInfo {
+  spooler?: ServiceState;
+  /** null = non lette (servizio di stampa fermo). */
+  printers: Printer[] | null;
+  /** Stampanti condivise da altri computer. */
+  connections?: number;
+}
+
+export interface Printer {
+  name: string;
+  kind: 'tcp' | 'wsd' | 'usb' | 'virtual' | 'other';
+  default?: boolean;
+  shared?: boolean;
+  port?: string;
+  driver?: string;
+  status?: number;
+  flags?: string[];
+  workOffline?: boolean;
+  jobs: number;
+  stuck?: number;
+  jobErrors?: number;
+  oldestMin?: number;
 }
 

@@ -6,6 +6,7 @@ import { THREAT_SEVERITY, THREAT_STATUS } from './defender';
 import { appHint, bootSample, bootTypical, failText, msText, SLOW_KIND } from './boot';
 import { deviceClassText, deviceProblemDetail, deviceProblemText, driverText, oldDrivers } from './devices';
 import { failedUpdates, wuErrorText } from './maint';
+import { isRealPrinter, printerText } from './printing';
 import { fmt, thousands } from './fmt';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 import { dateIt } from './pc';
@@ -359,6 +360,24 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
           .join('; ')}.</p>`,
       );
     out.push(`<section><h2>Aggiornamenti e controlli di Windows</h2>${parts.join('')}</section>`);
+  }
+
+  const protIds = ['pc.encryption', 'pc.restore', 'pc.backup', 'pc.accounts', 'pc.autologon', 'pc.rdp', 'pc.uac', 'pc.lock'];
+  const prot = protIds.map((id) => f(id)).filter((x): x is Finding => !!x);
+  if (prot.length) {
+    out.push(
+      `<section><h2>Protezione dei dati e degli accessi</h2><table class="pd-kv"><tbody>${prot
+        .map((x) => `<tr><th scope="row">${esc(x.title)}</th><td>${t(x.value)}</td><td class="pd-c">${sev(x.severity)}</td></tr>`)
+        .join('')}</tbody></table><p class="pd-muted pd-small">Polaris non prova password e non legge mai la chiave di ripristino; i nomi degli account non sono riportati.</p></section>`,
+    );
+  }
+  const printers = (pc?.printing?.printers ?? []).filter(isRealPrinter);
+  if (printers.length) {
+    out.push(
+      `<section><h2>Stampanti</h2><table class="pd-table"><thead><tr><th>Stampante</th><th>Stato</th><th>Lavori in coda</th></tr></thead><tbody>${printers
+        .map((p) => `<tr><td>${t(p.name)}${p.default ? ' <span class="pd-small">(predefinita)</span>' : ''}</td><td>${t(printerText(p))}</td><td>${p.jobs}</td></tr>`)
+        .join('')}</tbody></table></section>`,
+    );
   }
 
   if (pc && (pc.boot || pc.apps || pc.reliability)) {

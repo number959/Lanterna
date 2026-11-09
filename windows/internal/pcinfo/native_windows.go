@@ -47,7 +47,21 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	var health *healthOut
 	var healthErr error
 	var wg sync.WaitGroup
-	wg.Add(8)
+	wg.Add(11)
+	go func() {
+		defer wg.Done()
+		pc.Accounts = readAccounts()
+	}()
+	go func() {
+		defer wg.Done()
+		pc.Access = readAccess()
+	}()
+	go func() {
+		defer wg.Done()
+		pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		pc.Printing = readPrinting(pctx)
+	}()
 	go func() {
 		defer wg.Done()
 		pc.MemDiag = readMemDiag(ctx)
@@ -137,7 +151,21 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	} else {
 		pc.Reliability = ReliabilityFrom(health, reliabilityWMI(), os.Getenv("USERPROFILE"))
 		mergeMaint(pc, health)
+		mergeProtection(pc, health)
+		if pc.Encryption != nil && pc.Encryption.Read == "denied" {
+			pc.Notes = append(pc.Notes, "Lo stato di BitLocker e i punti di ripristino si leggono solo avviando Polaris come amministratore.")
+		}
 	}
+	if pc.Encryption != nil {
+		pc.Encryption.PreventAuto = preventDeviceEncryption()
+	}
+	if pc.Backup == nil {
+		pc.Backup = &scan.BackupInfo{}
+	}
+	if pc.Backup.RestorePoints != nil {
+		pc.Backup.RestorePoints.DisabledByPolicy = restoreDisabledByPolicy()
+	}
+	pc.Backup.OneDrive = oneDriveFolders()
 	if pc.Updates != nil {
 		pc.Updates.Service = updateServices()
 		pc.Updates.Policy = updatePolicy()

@@ -149,6 +149,11 @@ func DeviceName(name, class, enumerator string) string {
 	if ue == "BTHENUM" || ue == "BTHLE" || ue == "BTHLEDEVICE" || ue == "BTHHFENUM" {
 		return "Dispositivo Bluetooth"
 	}
+	if name == "" && uc == "" {
+		// Senza driver Windows non conosce né il nome né la classe: Gestione
+		// dispositivi lo mostra così, tra gli altri dispositivi.
+		return "Dispositivo sconosciuto"
+	}
 	return "Dispositivo"
 }
 

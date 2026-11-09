@@ -66,7 +66,7 @@ export const WIN10_EOS = '2025-10-14';
 export const WIN10_ESU_CONSUMER = '2026-10-13';
 
 const isLtsc = (edition = '') => /^(Enterprise|IoTEnterprise)SN?$/i.test(edition);
-const isHome = (edition = '') => /^Core/i.test(edition);
+export const isHome = (edition = '') => /^Core/i.test(edition);
 const isEntEdu = (edition = '') => /^(Enterprise|Education|IoTEnterprise)/i.test(edition) && !isLtsc(edition);
 
 function analyzeOs(pc: PcData, now: number, add: Add) {

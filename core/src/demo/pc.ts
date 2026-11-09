@@ -2,6 +2,7 @@ import type { PcData, SmartAttr, StartupItem } from '../engine/types';
 import { clinicCrashes, homeCrashes } from './crashes';
 import { clinicDevices, homeDevices } from './devices';
 import { clinicApps, clinicBoot, clinicReliability, homeApps, homeBoot, homeReliability } from './stability';
+import { clinicAccess, clinicAccounts, clinicBackup, clinicEncryption, clinicPrinting, homeAccess, homeAccounts, homeBackup, homeEncryption, homePrinting } from './protect';
 
 // Dati dimostrativi del computer, plausibili ma inventati. Il portatile di
 // casa ha i problemi tipici di un PC trascurato (versione di Windows scaduta,
@@ -179,6 +180,11 @@ export const homePc: PcData = {
   boot: homeBoot,
   apps: homeApps,
   reliability: homeReliability,
+  encryption: homeEncryption,
+  backup: homeBackup,
+  accounts: homeAccounts,
+  access: homeAccess,
+  printing: homePrinting,
 };
 
 export const clinicPc: PcData = {
@@ -365,4 +371,9 @@ export const clinicPc: PcData = {
   boot: clinicBoot,
   apps: clinicApps,
   reliability: clinicReliability,
+  encryption: clinicEncryption,
+  backup: clinicBackup,
+  accounts: clinicAccounts,
+  access: clinicAccess,
+  printing: clinicPrinting,
 };

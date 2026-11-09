@@ -627,6 +627,16 @@ type PcData struct {
 	// del file system degli ultimi EventsDays giorni (nil se non letti).
 	MemDiag  *MemDiagInfo `json:"memDiag,omitempty"`
 	FsChecks []FsCheck    `json:"fsChecks"`
+	// Encryption è lo stato di BitLocker e della crittografia del
+	// dispositivo; Backup punti di ripristino e backup di Windows;
+	// Accounts gli account locali (senza nomi); Access accesso automatico,
+	// Desktop remoto, Controllo account utente e blocco dello schermo;
+	// Printing stampanti e servizio di stampa. nil se non letti.
+	Encryption *EncryptionInfo `json:"encryption,omitempty"`
+	Backup     *BackupInfo     `json:"backup,omitempty"`
+	Accounts   *AccountsInfo   `json:"accounts,omitempty"`
+	Access     *AccessInfo     `json:"access,omitempty"`
+	Printing   *PrintingInfo   `json:"printing,omitempty"`
 	// Notes spiega i limiti della raccolta (dati SMART solo da amministratore...).
 	Notes []string `json:"notes,omitempty"`
 }
@@ -1450,4 +1460,180 @@ type ReliabilityGroup struct {
 	Product  string `json:"product,omitempty"`
 	Count    int    `json:"count"`
 	Last     string `json:"last"`
+}
+
+// EncryptionInfo è lo stato della cifratura dei volumi
+// (Win32_EncryptableVolume, solo da amministratore). Mai la chiave di
+// ripristino: dell'identificativo della chiave restano i primi 8 caratteri,
+// quelli che Windows mostra per riconoscerla.
+type EncryptionInfo struct {
+	// Read: ok | denied (serve l'amministratore) | absent (BitLocker non
+	// presente) | error.
+	Read string `json:"read"`
+	// PreventAuto: la crittografia automatica del dispositivo è impedita
+	// (PreventDeviceEncryption).
+	PreventAuto *bool       `json:"preventAuto,omitempty"`
+	Volumes     []EncVolume `json:"volumes,omitempty"`
+}
+
+// EncVolume è lo stato di cifratura di un volume con lettera.
+type EncVolume struct {
+	Letter string `json:"letter"`
+	Kind   string `json:"kind"` // os | fixed | removable | unknown
+	// Conversion: decrypted | encrypted | encrypting | decrypting |
+	// encrypt-paused | decrypt-paused | unknown.
+	Conversion    string `json:"conversion"`
+	Percent       *int   `json:"percent,omitempty"`
+	UsedSpaceOnly bool   `json:"usedSpaceOnly,omitempty"`
+	// Protection: on | off | unknown.
+	Protection string `json:"protection"`
+	Locked     bool   `json:"locked,omitempty"`
+	Method     string `json:"method,omitempty"`
+	// Protectors: i tipi di protezione della chiave (tpm, recovery-password...);
+	// nil se non letti, [] se nessuno (chiave in chiaro).
+	Protectors    []string `json:"protectors"`
+	SuspendCount  *int     `json:"suspendCount,omitempty"`
+	RecoveryKeyID string   `json:"recoveryKeyId,omitempty"`
+}
+
+// BackupInfo raccoglie punti di ripristino, Backup e ripristino di Windows e
+// le cartelle sincronizzate con OneDrive.
+type BackupInfo struct {
+	RestorePoints *RestorePoints   `json:"restorePoints,omitempty"`
+	ImageBackup   *ImageBackupInfo `json:"imageBackup,omitempty"`
+	// OneDrive: le cartelle Desktop, Documenti e Immagini stanno nella
+	// cartella di OneDrive (solo i nomi delle cartelle, mai i percorsi).
+	OneDrive []string `json:"oneDrive,omitempty"`
+}
+
+// RestorePoints sono i punti di ripristino del sistema (SystemRestore, solo
+// da amministratore), senza le descrizioni.
+type RestorePoints struct {
+	// Read: ok | denied | unsupported (Windows Server) | error.
+	Read             string `json:"read"`
+	DisabledByPolicy bool   `json:"disabledByPolicy,omitempty"`
+	Count            int    `json:"count"`
+	Newest           string `json:"newest,omitempty"`
+	// NewestType: app-install | app-uninstall | driver-install | settings |
+	// cancelled | windows-update | other.
+	NewestType string `json:"newestType,omitempty"`
+	Oldest     string `json:"oldest,omitempty"`
+}
+
+// ImageBackupInfo è l'esito di Backup e ripristino di Windows (Windows 7)
+// dagli eventi di Microsoft-Windows-Backup degli ultimi Days giorni.
+type ImageBackupInfo struct {
+	Read        string `json:"read"` // ok | denied | error
+	Days        int    `json:"days"`
+	LastSuccess string `json:"lastSuccess,omitempty"`
+	LastFailure string `json:"lastFailure,omitempty"`
+	FailureID   int    `json:"failureId,omitempty"`
+	Failures    int    `json:"failures,omitempty"`
+}
+
+// AccountsInfo sono gli account locali, identificati dal RID e mai dal nome.
+type AccountsInfo struct {
+	// Local: nil se non letti.
+	Local  []LocalAccount `json:"local"`
+	Admins *AdminGroup    `json:"admins,omitempty"`
+	// CurrentIsAdmin: chi usa Polaris è nel gruppo Administrators.
+	CurrentIsAdmin *bool `json:"currentIsAdmin,omitempty"`
+}
+
+// LocalAccount è un account locale.
+type LocalAccount struct {
+	RID int `json:"rid"`
+	// Kind: builtin-admin | guest | default | wdag | user.
+	Kind    string `json:"kind"`
+	Enabled bool   `json:"enabled"`
+	Admin   bool   `json:"admin,omitempty"`
+	Current bool   `json:"current,omitempty"`
+	// PasswordNotRequired: Windows non richiede una password (non vuol dire
+	// che sia vuota). PasswordNeverExpires: la password non scade.
+	PasswordNotRequired  bool `json:"passwordNotRequired,omitempty"`
+	PasswordNeverExpires bool `json:"passwordNeverExpires,omitempty"`
+	LockedOut            bool `json:"lockedOut,omitempty"`
+}
+
+// AdminGroup conta i membri del gruppo Administrators.
+type AdminGroup struct {
+	Members      int `json:"members"`
+	LocalEnabled int `json:"localEnabled"`
+	// Other: account e gruppi di dominio o di Microsoft Entra.
+	Other int `json:"other,omitempty"`
+}
+
+// AccessInfo sono le impostazioni di accesso al PC, lette dal registro.
+type AccessInfo struct {
+	Autologon *AutologonInfo `json:"autologon,omitempty"`
+	RDP       *RdpInfo       `json:"rdp,omitempty"`
+	UAC       *UacInfo       `json:"uac,omitempty"`
+	Lock      *LockInfo      `json:"lock,omitempty"`
+}
+
+// AutologonInfo: accesso automatico all'avvio, senza chiedere la password.
+type AutologonInfo struct {
+	Enabled bool `json:"enabled"`
+	// PasswordInRegistry: la password è scritta in chiaro nel registro
+	// (DefaultPassword); Polaris ne controlla solo l'esistenza.
+	PasswordInRegistry bool `json:"passwordInRegistry,omitempty"`
+}
+
+// RdpInfo è lo stato di Desktop remoto.
+type RdpInfo struct {
+	Enabled  bool `json:"enabled"`
+	ByPolicy bool `json:"byPolicy,omitempty"`
+	// NLA: autenticazione a livello di rete richiesta prima della sessione.
+	NLA  bool `json:"nla"`
+	Port int  `json:"port,omitempty"`
+}
+
+// UacInfo è il Controllo dell'account utente.
+type UacInfo struct {
+	Enabled bool `json:"enabled"`
+	// ConsentAdmin è ConsentPromptBehaviorAdmin: 0 eleva senza chiedere,
+	// 5 (predefinito) chiede conferma per i programmi non di Windows.
+	ConsentAdmin  int  `json:"consentAdmin"`
+	SecureDesktop bool `json:"secureDesktop"`
+}
+
+// LockInfo è il blocco automatico dello schermo.
+type LockInfo struct {
+	// InactivitySec è il limite di inattività dei criteri (0 = nessuno).
+	InactivitySec int `json:"inactivitySec,omitempty"`
+	// Screen saver attivo, con richiesta della password, dopo SaverSec secondi.
+	SaverActive bool `json:"saverActive,omitempty"`
+	SaverSecure bool `json:"saverSecure,omitempty"`
+	SaverSec    int  `json:"saverSec,omitempty"`
+}
+
+// PrintingInfo sono le stampanti e il servizio di stampa (spooler). Mai i
+// titoli dei documenti né i nomi di chi stampa.
+type PrintingInfo struct {
+	Spooler *ServiceState `json:"spooler,omitempty"`
+	// Printers: nil se non lette (servizio di stampa fermo).
+	Printers []Printer `json:"printers"`
+	// Connections conta le stampanti condivise da altri computer.
+	Connections int `json:"connections,omitempty"`
+}
+
+// Printer è una stampante installata su questo PC.
+type Printer struct {
+	Name string `json:"name"`
+	// Kind: tcp | wsd | usb | virtual | other.
+	Kind    string `json:"kind"`
+	Default bool   `json:"default,omitempty"`
+	Shared  bool   `json:"shared,omitempty"`
+	Port    string `json:"port,omitempty"`
+	Driver  string `json:"driver,omitempty"`
+	// Status sono i bit di PRINTER_STATUS; Flags gli stati decodificati.
+	Status      uint32   `json:"status,omitempty"`
+	Flags       []string `json:"flags,omitempty"`
+	WorkOffline bool     `json:"workOffline,omitempty"`
+	Jobs        int      `json:"jobs"`
+	// Stuck: lavori fermi da più di 15 minuti; JobErrors lavori in errore.
+	Stuck     int `json:"stuck,omitempty"`
+	JobErrors int `json:"jobErrors,omitempty"`
+	// OldestMin è l'età in minuti del lavoro più vecchio in coda.
+	OldestMin int `json:"oldestMin,omitempty"`
 }

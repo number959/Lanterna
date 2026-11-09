@@ -59,6 +59,7 @@ import { CrashesCard } from './crashes';
 import { DevicesCard } from './devices';
 import { StabilityCard } from './stability';
 import { MaintCard } from './maint';
+import { PrintersCard, ProtectionCard } from './protect';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -161,6 +162,12 @@ export function PcView(props: ViewProps) {
         </Section>
       ) : null}
 
+      {pc && (pc.encryption || pc.backup || pc.accounts || pc.access) && (
+        <Section title="Protezione dei dati e degli accessi">
+          <ProtectionCard pc={pc} findings={a.findings} live={props.live} />
+        </Section>
+      )}
+
       {pc && (pc.updates || pc.memDiag || (pc.volumes?.length ?? 0) > 0) && (
         <Section title="Aggiornamenti e controlli di Windows">
           <MaintCard pc={pc} live={props.live} now={Date.parse(scan.agent.startedAt) || Date.now()} />
@@ -170,6 +177,12 @@ export function PcView(props: ViewProps) {
       {pc && (pc.boot || pc.apps || pc.reliability) && (
         <Section title="Avvio e affidabilità">
           <StabilityCard pc={pc} live={props.live} />
+        </Section>
+      )}
+
+      {pc?.printing && (
+        <Section title="Stampanti">
+          <PrintersCard pc={pc} live={props.live} />
         </Section>
       )}
 
