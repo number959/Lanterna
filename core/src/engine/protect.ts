@@ -167,20 +167,22 @@ function analyzeRestore(pc: PcData, now: number, add: Add) {
     });
     return;
   }
-  const age = r.newest ? (now - Date.parse(r.newest)) / DAY : 0;
+  // Senza la data dell'ultimo punto (campo facoltativo) si dice solo quanti sono.
+  const newest = r.newest && !isNaN(Date.parse(r.newest)) ? r.newest : undefined;
+  const age = newest ? (now - Date.parse(newest)) / DAY : 0;
   const sev: Severity = age > 30 ? 'info' : 'ok';
   add({
     id: 'pc.restore',
     metric: 'pc.restore',
     category: 'pc',
     title: 'Punti di ripristino',
-    value: `${r.count}, l'ultimo il ${dateIt(r.newest!)}`,
+    value: newest ? `${r.count}, l'ultimo il ${dateIt(newest)}` : String(r.count),
     numeric: r.count,
     severity: sev,
     verdict:
       sev === 'ok'
-        ? `${num(r.count, 'punto di ripristino', 'punti di ripristino')}, l'ultimo ${on(r.newest!, 'il')}: se Windows si rovina dopo un aggiornamento o un driver, si può tornare indietro.`
-        : `L'ultimo punto di ripristino risale ${on(r.newest!, 'al')}: Windows ne crea di solito prima degli aggiornamenti, quindi la protezione potrebbe essere stata spenta o lo spazio riservato essere troppo poco.`,
+        ? `${num(r.count, 'punto di ripristino', 'punti di ripristino')}${newest ? `, l'ultimo ${on(newest, 'il')}` : ''}: se Windows si rovina dopo un aggiornamento o un driver, si può tornare indietro.`
+        : `L'ultimo punto di ripristino risale ${on(newest!, 'al')}: Windows ne crea di solito prima degli aggiornamenti, quindi la protezione potrebbe essere stata spenta o lo spazio riservato essere troppo poco.`,
     actions: sev === 'ok' ? [] : ['enable-system-protection'],
   });
 }
@@ -213,11 +215,16 @@ function analyzeBackup(pc: PcData, now: number, add: Add) {
     value = 'cartelle in OneDrive';
     verdict = `${odText.trim()} La sincronizzazione protegge dalla perdita del PC, ma non è un backup completo: un file cancellato o cifrato da un ransomware cambia anche nel cloud (si recupera dal Cestino o dalla cronologia delle versioni di OneDrive, entro i limiti del servizio).`;
     actions = ['backup-files'];
+  } else if (ib && ib.read !== 'ok') {
+    // Senza il registro di Backup e ripristino non si può dire che manchi un backup.
+    sev = 'unknown';
+    value = 'non letto';
+    verdict = `Lo storico di Backup e ripristino di Windows non è stato letto${ib.read === 'denied' ? ' (servono i privilegi di amministratore)' : ''}, e nessuna cartella risulta sincronizzata con OneDrive: Polaris non può dire se esiste un backup.`;
   } else {
     sev = 'info';
     value = 'nessun backup trovato';
     verdict =
-      'Polaris non ha trovato backup fatti con gli strumenti di Windows né cartelle sincronizzate con OneDrive. Se usi un altro programma, un NAS o un servizio cloud va bene così; altrimenti i documenti esistono solo su questo disco.';
+      'Polaris non ha trovato backup fatti con Backup e ripristino di Windows né cartelle sincronizzate con OneDrive. Cronologia file e i programmi di altri produttori non vengono controllati: se usi uno di questi, un NAS o un servizio cloud va bene così; altrimenti i documenti esistono solo su questo disco.';
     actions = ['backup-files'];
   }
   add({ id: 'pc.backup', metric: 'pc.backup', category: 'security', title: 'Backup dei dati', value, severity: sev, verdict, actions });
@@ -276,7 +283,7 @@ function analyzeAccounts(scan: Scan, pc: PcData, add: Add) {
     numeric: enabled.length,
     severity: sev,
     verdict: issues.length
-      ? `${issues.join('; ')}.` + (corp ? ' Il PC è in un dominio: le regole sugli account possono arrivare dal server dell\'organizzazione.' : '') + ' Polaris legge le impostazioni degli account e non prova password: non può dire se una password è debole.'
+      ? `${issues.join('; ').charAt(0).toUpperCase()}${issues.join('; ').slice(1)}.` + (corp ? ' Il PC è in un dominio: le regole sugli account possono arrivare dal server dell\'organizzazione.' : '') + ' Polaris legge le impostazioni degli account e non prova password: non può dire se una password è debole.'
       : `Nessun account ospite o predefinito attivo e ${admins <= 1 ? 'un solo amministratore locale' : `${admins} amministratori locali`}. Polaris non prova password: non può dire se una password è debole.`,
     actions,
   });
@@ -297,7 +304,9 @@ function analyzeAccess(pc: PcData, add: Add) {
       severity: pw ? 'crit' : 'warn',
       verdict:
         'All\'avvio Windows entra da solo nell\'account, senza chiedere la password: chiunque accenda il PC ne usa i dati e i programmi.' +
-        (pw ? ' La password è scritta in chiaro nel registro di Windows (Polaris ne controlla solo la presenza, non la legge): chi ha accesso da amministratore la può leggere.' : '') +
+        (pw
+          ? ' La password è scritta in chiaro nel registro di Windows (Polaris ne controlla solo la presenza, non la legge): la può leggere qualunque utente del PC, e anche da un altro computer della rete se il servizio Registro remoto è raggiungibile.'
+          : '') +
         (portable ? ' Su un portatile il rischio è maggiore.' : ''),
       actions: ['disable-autologon'],
     });
@@ -340,9 +349,13 @@ function analyzeAccess(pc: PcData, add: Add) {
   }
   const l = ac.lock;
   if (l) {
-    const policy = !!l.inactivitySec && l.inactivitySec <= 900;
-    const saver = !!l.saverActive && !!l.saverSecure && !!l.saverSec && l.saverSec <= 900;
-    if (!policy && !saver) {
+    // Il blocco più breve tra quello dei criteri e lo screen saver con password.
+    const policySec = l.inactivitySec || 0;
+    const saverSec = l.saverActive && l.saverSecure && l.saverSec ? l.saverSec : 0;
+    const sec = policySec && saverSec ? Math.min(policySec, saverSec) : policySec || saverSec;
+    const how = sec === policySec ? ' (criteri di sicurezza)' : ' (screen saver con richiesta della password)';
+    const after = sec < 60 ? num(sec, 'secondo', 'secondi') : num(Math.round(sec / 60), 'minuto', 'minuti');
+    if (!sec) {
       add({
         id: 'pc.lock',
         metric: 'pc.lock',
@@ -354,16 +367,26 @@ function analyzeAccess(pc: PcData, add: Add) {
           'Né i criteri né lo screen saver bloccano lo schermo dopo qualche minuto di inattività: se ti allontani senza bloccarlo (Windows+L), chi passa usa il PC con il tuo account. Polaris non vede il blocco al risveglio dalla sospensione: se il PC va in sospensione e chiede la password, lo schermo è comunque protetto dopo quel tempo.',
         actions: ['set-screen-lock'],
       });
-    } else {
-      const sec = policy ? l.inactivitySec! : l.saverSec!;
+    } else if (sec > 900) {
       add({
         id: 'pc.lock',
         metric: 'pc.lock',
         category: 'security',
         title: 'Blocco automatico dello schermo',
-        value: `dopo ${Math.round(sec / 60)} minuti`,
+        value: `dopo ${after} (oltre i 15 consigliati)`,
+        severity: 'info',
+        verdict: `Lo schermo si blocca da solo dopo ${after} di inattività${how}: è un tempo lungo, in cui chi passa può usare il PC con il tuo account. Conviene non superare i 15 minuti.`,
+        actions: ['set-screen-lock'],
+      });
+    } else {
+      add({
+        id: 'pc.lock',
+        metric: 'pc.lock',
+        category: 'security',
+        title: 'Blocco automatico dello schermo',
+        value: `dopo ${after}`,
         severity: 'ok',
-        verdict: `Lo schermo si blocca da solo dopo ${Math.round(sec / 60)} minuti di inattività${policy ? ' (criteri di sicurezza)' : ' (screen saver con richiesta della password)'}.`,
+        verdict: `Lo schermo si blocca da solo dopo ${after} di inattività${how}.`,
       });
     }
   }

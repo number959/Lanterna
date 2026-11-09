@@ -258,7 +258,8 @@ export async function runRamTest(req: RamRequest, onProgress: (st: BenchState) =
     const st = await benchStatus();
     onProgress(st);
     if (!st.running) {
-      if (st.ram && Date.parse(st.ram.startedAt) >= startedAt - 60000) return st.ram;
+      // Ripreso un test già in corso, il risultato è il suo anche se è partito prima.
+      if (st.ram && (opts.resume || Date.parse(st.ram.startedAt) >= startedAt - 60000)) return st.ram;
       throw new Error(st.error || 'Test terminato senza risultato');
     }
   }

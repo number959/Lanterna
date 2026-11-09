@@ -1008,9 +1008,10 @@ const list: Action[] = [
       { text: 'Disattiva l\'Administrator integrato, se è attivo e non serve (prima assicurati di avere un altro account amministratore che funziona).', cmd: 'net user Administrator /active:no', admin: true },
       'Su Windows in italiano i due account possono chiamarsi diversamente: l\'elenco esatto lo dà il comando net user. Polaris non mostra i nomi degli account per riservatezza.',
       'Per gli account per cui Windows non richiede la password, imposta una password (dalle impostazioni degli account, o con il comando net user seguito dal nome dell\'account e da un asterisco).',
+      'Impostare la password non basta: l\'account resta segnato come "password non richiesta", e la password si potrebbe di nuovo lasciare vuota anche contro i criteri di sicurezza. Da amministratore, togli il segno con il comando net user seguito dal nome dell\'account e da /passwordreq:yes (per esempio net user Mario /passwordreq:yes).',
       'Togli i privilegi di amministratore agli account che non ne hanno bisogno: nelle impostazioni degli account, sull\'account, cambia il tipo in utente standard.',
     ],
-    check: 'Ripeti l\'analisi: non devono risultare attivi l\'account ospite né l\'Administrator integrato, e gli amministratori devono essere pochi.',
+    check: 'Ripeti l\'analisi: non devono risultare attivi l\'account ospite né l\'Administrator integrato, nessun account deve risultare senza password richiesta, e gli amministratori devono essere pochi.',
     effort: 'media',
     impact: 'alto',
   },
@@ -1140,7 +1141,7 @@ const list: Action[] = [
     why: 'Una porta in sovraccarico si spegne per protezione; un dispositivo non riconosciuto o senza abbastanza corrente non funziona o si scollega da solo.',
     steps: [
       'Scollega il dispositivo dalla porta indicata. Se la porta era in sovraccarico, non ricollegarlo finché non hai controllato cavo e dispositivo: un cavo schiacciato o un connettore piegato possono essere in corto.',
-      'Spegni completamente il PC (non riavviarlo) e riaccendilo: lo spegnimento riarma la protezione della porta. Su un portatile stacca anche l\'alimentatore per qualche secondo.',
+      'Spegni completamente il PC (non riavviarlo) e riaccendilo dopo qualche secondo: spesso la porta torna a funzionare. Su un portatile stacca anche l\'alimentatore.',
       'Ricollega il dispositivo direttamente al PC, su un\'altra porta e con un altro cavo. Dischi esterni senza alimentatore, lettori ottici e alcune stampanti chiedono più corrente: collegali a una porta sul retro o a un hub con alimentatore.',
       'Evita più hub in cascata e le prolunghe lunghe; se il problema resta con ogni porta e ogni cavo, il dispositivo è probabilmente guasto.',
       { text: 'Se il dispositivo compare in Gestione dispositivi con un punto esclamativo, apri la sua scheda e leggi lo stato: in Controller USB (Universal Serial Bus) puoi anche disinstallarlo e ricollegarlo per farlo riconoscere di nuovo.', open: 'device-manager' },
@@ -1152,9 +1153,9 @@ const list: Action[] = [
   {
     id: 'usb-faster-port',
     title: 'Collega il dispositivo alla porta USB più veloce',
-    why: 'Un dispositivo USB 3 collegato in USB 2 funziona, ma molto più piano: per un disco esterno vuol dire copie e backup fino a dieci volte più lenti.',
+    why: 'Un dispositivo USB 3 collegato in USB 2 funziona, ma molto più piano: in USB 2 un disco esterno arriva a circa 40 MB/s, mentre in USB 3 un disco meccanico supera di solito i 100 MB/s e un SSD i 400 MB/s.',
     steps: [
-      'Collega il dispositivo a una porta USB 3 del PC: di solito è blu (o rossa, verde, gialla) oppure ha accanto il simbolo SS; anche le porte USB-C dei PC recenti sono USB 3. Le porte frontali dei PC fissi a volte sono solo USB 2: prova quelle sul retro.',
+      'Collega il dispositivo a una porta USB 3 del PC: di solito è blu oppure ha accanto il simbolo SS; anche le porte USB-C dei PC recenti sono USB 3. Il colore da solo non basta: le porte rosse, gialle o arancioni sono spesso porte di ricarica, che possono essere anche USB 2 (lo dice il manuale del PC). Le porte frontali dei PC fissi a volte sono solo USB 2: prova quelle sul retro.',
       'Usa il cavo originale o un cavo USB 3: i connettori USB 3 hanno contatti in più (quelli USB-A sono spesso blu all\'interno). Molti cavi USB-C venduti per la ricarica sono solo USB 2.',
       'Togli prolunghe e hub USB 2 tra il dispositivo e il PC, oppure usa un hub USB 3 con alimentatore.',
       'Per i 10 Gbit/s servono una porta USB 3.2 Gen 2 (spesso USB-C, indicata nel manuale del PC) e un cavo che li supporti.',

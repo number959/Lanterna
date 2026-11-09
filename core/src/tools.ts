@@ -1,14 +1,16 @@
 // Cassetta degli attrezzi: gli strumenti di Windows che Polaris può aprire e
 // i programmi gratuiti di diagnostica più noti, con il loro sito ufficiale.
-// CrystalDiskInfo, CrystalDiskMark e BlueScreenView, che si possono
-// ridistribuire, sono inclusi nel pacchetto come copie originali del
+// CrystalDiskInfo, CrystalDiskMark, BlueScreenView e UsbTreeView, che si
+// possono ridistribuire, sono inclusi nel pacchetto come copie originali del
 // produttore. Gli altri no: su richiesta Polaris ne scarica la versione
-// portable dal sito ufficiale e la avvia solo con la firma del produttore,
-// oppure apre quella già installata.
+// portable dal sito ufficiale e la avvia solo con la firma del produttore
+// (Memtest86+, un'immagine da non avviare, si verifica con l'impronta e se ne
+// mostra la cartella), oppure apre quella già installata.
 // Identificativi, siti, versioni incluse e download devono coincidere con
 // l'agente (windows/internal/tools) e con scripts/strumenti.sh: lo verificano
 // i test dell'agente. Siti, licenze, indirizzi e firme verificati sui siti dei
-// produttori il 18 e il 19 ottobre 2026.
+// produttori il 18 e il 19 ottobre 2026; per i programmi aggiunti nella 0.12.0
+// a novembre 2026 (docs/VERIFICHE.md, sezione 16).
 
 export type ToolCategory = 'disco' | 'hardware' | 'sicurezza' | 'avvio' | 'spazio' | 'errori' | 'windows';
 

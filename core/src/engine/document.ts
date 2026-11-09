@@ -8,7 +8,7 @@ import { deviceClassText, deviceProblemDetail, deviceProblemText, driverText, ol
 import { failedUpdates, wuErrorText } from './maint';
 import { isRealPrinter, printerText } from './printing';
 import { USB_KIND, USB_STATUS, usbDeviceLabel, usbNodes, usbSlow, usbSpeedText, usbWhere } from './usb';
-import { fmt, thousands } from './fmt';
+import { fmt, num, thousands } from './fmt';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 import { dateIt } from './pc';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
@@ -66,10 +66,15 @@ const esc = (s: unknown) =>
 const MAC = /\b[0-9a-f]{2}(?:[:-][0-9a-f]{2}){5}\b/gi;
 const IPV4 = /\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b/g;
 const RESOLVERS = ['1.1.1.1', '1.0.0.1', '8.8.8.8', '8.8.4.4', '9.9.9.9', '149.112.112.112'];
+// Le versioni dei driver ("Acme 22.40.0.7 del 05/11/2020") hanno la forma di un
+// indirizzo: le riconosce il testo intorno (goja non ha il lookbehind).
+const VERSION_BEFORE = /(?:\bv|\bversione |\bversion |\bdriver )$/i;
+const VERSION_AFTER = /^,? del \d/;
 function scrub(s: string): string {
-  return s.replace(MAC, '[MAC]').replace(IPV4, (m: string, a: string, b: string, c: string, d: string) => {
+  return s.replace(MAC, '[MAC]').replace(IPV4, (m: string, a: string, b: string, c: string, d: string, at: number, all: string) => {
     const o = [a, b, c, d].map(Number);
     if (o.some((x) => x > 255)) return m; // un numero di versione, non un indirizzo
+    if (VERSION_BEFORE.test(all.slice(Math.max(0, at - 10), at)) || VERSION_AFTER.test(all.slice(at + m.length, at + m.length + 8))) return m;
     const priv = o[0] === 10 || o[0] === 127 || (o[0] === 172 && o[1] >= 16 && o[1] <= 31) || (o[0] === 192 && o[1] === 168) || (o[0] === 169 && o[1] === 254) || (o[0] === 100 && o[1] >= 64 && o[1] <= 127);
     return priv || RESOLVERS.indexOf(m) >= 0 ? m : '[IP pubblico]';
   });
@@ -420,7 +425,7 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
         parts.push(
           `<p class="pd-small">Segnalati da Windows come lenti: ${slow
             .slice(0, 5)
-            .map((x) => t(`${x.friendly || x.name} (${SLOW_KIND[x.kind] ?? x.kind}${x.phase === 'shutdown' ? ' allo spegnimento' : ''}, ${x.count} volte)`))
+            .map((x) => t(`${x.friendly || x.name} (${SLOW_KIND[x.kind] ?? x.kind}${x.phase === 'shutdown' ? ' allo spegnimento' : ''}, ${x.count === 1 ? 'una volta' : `${x.count} volte`})`))
             .join('; ')}.</p>`,
         );
     }
@@ -455,14 +460,14 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
           ? `<table class="pd-table"><thead><tr><th>Dispositivo</th><th>Problema</th><th>Driver</th></tr></thead><tbody>${probs
               .map(
                 (d) =>
-                  `<tr><td>${t(d.name)}<br><span class="pd-small">${t(deviceClassText(d.class))}${d.hardwareId ? ` · ${t(d.hardwareId)}` : ''}</span></td><td>${t(deviceProblemText(d.problem ?? 0))}<br><span class="pd-small">${t(deviceProblemDetail(d))}</span></td><td class="pd-small">${t(d.driver ? driverText(d.driver) : 'nessun driver')}</td></tr>`,
+                  `<tr><td>${t(d.name)}<br><span class="pd-small">${t(deviceClassText(d.class))}${d.hardwareId ? ` · ${t(d.hardwareId)}` : ''}</span></td><td>${t(deviceProblemText(d.problem ?? 0))}<br><span class="pd-small">${t(deviceProblemDetail(d))}</span></td><td class="pd-small">${esc(d.driver ? driverText(d.driver) : 'nessun driver')}</td></tr>`,
               )
               .join('')}</tbody></table>`
           : ''
       }${
         old.length
           ? `<p class="pd-small">Driver di terze parti con più di 5 anni: ${old
-              .map((o) => t(`${o.pkg.devices[0].name} (${[o.pkg.provider, o.pkg.version].filter(Boolean).join(' ')}, del ${dateIt(o.pkg.date!)})`))
+              .map((o) => `${t(o.pkg.devices[0].name)} (${esc([o.pkg.provider, o.pkg.version].filter(Boolean).join(' '))}, del ${esc(dateIt(o.pkg.date!))})`)
               .join('; ')}.</p>`
           : ''
       }${
@@ -480,8 +485,8 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
       const r = bench.ram;
       parts.push(
         `<p>RAM con Windows acceso, ${dateIt(r.startedAt)}: ${
-          r.errors ? `<b>${r.errors} errori</b>` : 'nessun errore'
-        } su ${Math.round(r.testedMB / 1024 * 10) / 10} GB provati di ${Math.round(r.totalMB / 1024 * 10) / 10} GB, ${r.passes} passaggi completi. <span class="pd-small">Vale solo per la memoria libera provata.</span></p>`.replace(/(\d)\.(\d)/g, '$1,$2'),
+          r.errors ? `<b>${num(r.errors, 'errore', 'errori')}</b>` : 'nessun errore'
+        } su ${Math.round(r.testedMB / 1024 * 10) / 10} GB provati di ${Math.round(r.totalMB / 1024 * 10) / 10} GB, ${num(r.passes, 'passaggio completo', 'passaggi completi')}. <span class="pd-small">Vale solo per la memoria libera provata.</span></p>`.replace(/(\d)\.(\d)/g, '$1,$2'),
       );
     }
     if (bench.cpu)

@@ -309,26 +309,35 @@ function Shell() {
     return { ...scan, infra };
   }, [scan, answers, fileAssessment]);
   const setInfra = useCallback((patch: Partial<InfraData>) => setScan((s) => (s ? { ...s, infra: { ...s.infra, ...patch } } : s)), []);
-  // Il risultato più recente per il processore e per ogni unità.
-  const addBench = useCallback(
-    (r: { cpu?: CpuBench; disk?: DiskBench; ram?: RamTest }) =>
-      setScan((s) => {
-        if (!s) return s;
-        const b = s.pc?.bench ?? {};
-        const disk = r.disk ? [r.disk, ...(b.disk ?? []).filter((x) => x.drive.toUpperCase() !== r.disk!.drive.toUpperCase())] : b.disk;
-        return { ...s, pc: { ...s.pc, bench: { ...b, ...(r.cpu ? { cpu: r.cpu } : {}), ...(disk ? { disk } : {}), ...(r.ram ? { ram: r.ram } : {}) } } };
-      }),
-    [],
-  );
-
-  // L'analisi dello spazio più recente per ogni unità, prima quella appena fatta.
-  // Può durare minuti: se intanto si guarda un altro rapporto (importato, altra
-  // demo) non vi si unisce. Rapporto e origine si leggono da riferimenti
-  // perché chi chiama può essere rimasto da una scheda già smontata.
+  // Rapporto e origine mostrati, letti da riferimenti perché chi aggiunge un
+  // risultato può essere rimasto da una scheda già smontata.
   const scanRef = useRef(scan);
   scanRef.current = scan;
   const sourceRef = useRef(source);
   sourceRef.current = source;
+
+  // Il risultato più recente per il processore, per ogni unità e per la RAM.
+  // Un test può durare minuti (la RAM fino a mezz'ora): se intanto si guarda
+  // un altro rapporto (importato, altra demo) il risultato non vi si unisce.
+  const addBench = useCallback(
+    (r: { cpu?: CpuBench; disk?: DiskBench; ram?: RamTest }, target: SpaceTarget) => {
+      if (!sameSpaceTarget(target, scanRef.current, sourceRef.current)) {
+        toast('Test finito, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto', 'warn');
+        return false;
+      }
+      setScan((s) => {
+        if (!s || s.agent.host !== target.host) return s;
+        const b = s.pc?.bench ?? {};
+        const disk = r.disk ? [r.disk, ...(b.disk ?? []).filter((x) => x.drive.toUpperCase() !== r.disk!.drive.toUpperCase())] : b.disk;
+        return { ...s, pc: { ...s.pc, bench: { ...b, ...(r.cpu ? { cpu: r.cpu } : {}), ...(disk ? { disk } : {}), ...(r.ram ? { ram: r.ram } : {}) } } };
+      });
+      return true;
+    },
+    [toast],
+  );
+
+  // L'analisi dello spazio più recente per ogni unità, prima quella appena fatta.
+  // Come per i test, si unisce solo al rapporto su cui è partita.
   const addSpace = useCallback(
     (r: SpaceReport, target: SpaceTarget) => {
       if (!sameSpaceTarget(target, scanRef.current, sourceRef.current)) {

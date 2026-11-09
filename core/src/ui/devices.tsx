@@ -1,7 +1,7 @@
 import { AppWindow, MonitorCog, ShieldCheck } from 'lucide-react';
 import { m } from 'motion/react';
 import { Fragment, useState } from 'react';
-import { dateIt, deviceClassText, deviceProblemDetail, deviceProblemText, deviceSeverity, driverText, thirdPartyDrivers } from '../engine';
+import { dateIt, deviceClassText, deviceProblemDetail, deviceProblemText, deviceSeverity, driverText, symbolicDate, thirdPartyDrivers } from '../engine';
 import type { DeviceInfo, DevicesData, PcData, Severity } from '../engine';
 import { SevIcon, TableWrap, useToast } from './components';
 import { openTool } from './api';
@@ -19,6 +19,7 @@ const SEV_WORD: Record<Severity, string> = { crit: 'grave', warn: 'da risolvere'
 
 function ageText(date?: string, now = Date.now()): { text: string; old: boolean } | null {
   if (!date) return null;
+  if (symbolicDate(date)) return { text: 'data simbolica', old: false };
   const t = Date.parse(date + 'T00:00:00Z');
   if (isNaN(t)) return null;
   const years = Math.floor((now - t) / (365.25 * 86400000));

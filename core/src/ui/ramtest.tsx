@@ -3,7 +3,7 @@ import { m } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { ramTestSeverity } from '../engine';
 import type { RamTest, Scan, Severity } from '../engine';
-import { runRamTest, stopBench } from './api';
+import { benchStatus, runRamTest, stopBench } from './api';
 import type { RamRequest } from './api';
 import { Segmented, SevIcon, TableWrap, useToast } from './components';
 import { rise, spring } from './motion';
@@ -101,11 +101,22 @@ function useRamRun(): RamRun | null {
   const [run, setRun] = useState<RamRun | null>(ramLast);
   useEffect(() => {
     listeners.add(setRun);
+    // Un avanzamento pubblicato tra il primo disegno e l'iscrizione non va perso.
+    setRun(ramLast);
     return () => {
       listeners.delete(setRun);
     };
   }, []);
   return run;
+}
+
+const errorsText = (n: number) => `${n} ${n === 1 ? 'errore' : 'errori'}`;
+
+/** Messaggio di fine test: un test interrotto o fermato non è "finito". */
+function endMessage(r: RamTest): string {
+  const how = r.stop === 'cancelled' ? 'interrotto' : r.stop === 'low-memory' ? 'fermato per poca memoria libera' : 'finito';
+  if (r.errors) return `Test della RAM ${how}: ${errorsText(r.errors)} ${r.errors === 1 ? 'trovato' : 'trovati'}`;
+  return how === 'finito' ? 'Test della RAM finito: nessun errore' : `Test della RAM ${how}: nessun errore nella parte provata`;
 }
 
 const gb = (mb: number) => `${(mb / 1024).toFixed(mb < 10240 ? 1 : 0).replace('.', ',')} GB`;
@@ -173,27 +184,52 @@ export function RamTestCard({ scan, live, source, addBench }: ViewProps) {
   const lowMem = testMB !== undefined && testMB < 256;
   const min = PRESET.find((p) => p.id === preset)!.min;
 
-  const start = () => {
+  // Il risultato va al rapporto mostrato quando il test è partito.
+  const start = (resume = false) => {
     if (ramPromise) return;
+    const target = { host: scan.agent.host, live };
     publish({ preset, done: 0, phase: 'start' });
     ramPromise = live
-      ? runRamTest({ kind: 'ram', preset, confirm: true }, (st) => {
-          const p = st.progress;
-          if (p && st.kind === 'ram') publish({ preset, done: p.done, phase: p.phase, pass: p.pass, errors: p.errors, value: p.value });
-        })
+      ? runRamTest(
+          { kind: 'ram', preset, confirm: true },
+          (st) => {
+            const p = st.progress;
+            if (p && st.kind === 'ram') publish({ preset, done: p.done, phase: p.phase, pass: p.pass, errors: p.errors, value: p.value });
+          },
+          { resume },
+        )
       : simulate(scan, preset);
     ramPromise
       .then((r) => {
-        addBench({ ram: r });
-        toast(r.errors ? `Test della RAM: ${r.errors} errori trovati` : 'Test della RAM finito: nessun errore', r.errors ? 'warn' : 'ok', 'complete');
+        if (addBench({ ram: r }, target)) toast(endMessage(r), r.errors ? 'warn' : 'ok', 'complete');
       })
-      .catch((e) => toast(e instanceof Error ? e.message : String(e), 'error'))
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/interrott/i.test(msg)) toast('Test della RAM interrotto', 'ok', 'tap');
+        else toast(`Test della RAM non riuscito: ${msg}`, 'error');
+      })
       .finally(() => {
         ramPromise = null;
         ramCancel = null;
         publish(null);
       });
   };
+
+  // Un test della RAM avviato prima (anche da un'altra finestra, o prima di
+  // ricaricare la pagina) si riprende invece di andare perso.
+  useEffect(() => {
+    if (!live || ramPromise) return;
+    let alive = true;
+    benchStatus()
+      .then((st) => {
+        if (alive && st.running && st.kind === 'ram') start(true);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live]);
   const stop = () => {
     if (ramCancel) ramCancel();
     else stopBench().catch(() => undefined);
@@ -221,7 +257,7 @@ export function RamTestCard({ scan, live, source, addBench }: ViewProps) {
           <div className="bench-live-row">
             <span className="faint" aria-live="polite">
               {run.phase === 'start' ? 'Riservo la memoria…' : `Passaggio ${run.pass ?? 1} · ${RAM_TEST_NAME[run.phase] ?? run.phase}`}
-              {run.errors ? ` · ${run.errors} errori` : run.phase !== 'start' ? ' · nessun errore finora' : ''}
+              {run.errors ? ` · ${errorsText(run.errors)}` : run.phase !== 'start' ? ' · nessun errore finora' : ''}
             </span>
             <button className="btn small" onClick={stop}>
               <CircleStop size={15} aria-hidden /> Interrompi
@@ -238,7 +274,7 @@ export function RamTestCard({ scan, live, source, addBench }: ViewProps) {
               : `Il test occupa la memoria libera e tutti i processori per ${min} minuti: il computer sarà lento. Ho chiuso i programmi che non servono e collegato l'alimentatore.`}
           </label>
           {lowMem && <p className="c-warn">Memoria libera insufficiente per un test utile: chiudi qualche programma e ripeti l'analisi.</p>}
-          <button className="btn primary" disabled={!consent || lowMem} onClick={start}>
+          <button className="btn primary" disabled={!consent || lowMem} onClick={() => start()}>
             <Play size={15} aria-hidden /> Avvia il test della RAM
           </button>
           <p className="faint card-foot">Puoi interromperlo quando vuoi; se un altro programma ha bisogno di memoria il test si ferma da solo.</p>

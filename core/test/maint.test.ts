@@ -111,11 +111,13 @@ describe('file system', () => {
   it('casa: chiavetta da controllare e un controllo all\'avvio; clinica: disco dell\'archivio da correggere', () => {
     const h = find(clone(demoScan), 'pc.fs')!;
     expect(h.severity).toBe('info');
-    expect(h.verdict).toContain('E:: Windows lo controllerà al prossimo avvio');
+    expect(h.verdict).toContain('Windows controllerà l\'unità E: al prossimo avvio');
+    expect(h.verdict).not.toContain('::');
     expect(h.verdict).toContain('scollegata senza la rimozione sicura');
     const c = find(clone(clinicScan), 'pc.fs')!;
     expect(c.severity).toBe('warn');
-    expect(c.verdict).toContain('D:: secondo Windows serve una correzione rapida');
+    expect(c.verdict).toContain('secondo Windows il file system di D: ha bisogno di una correzione rapida');
+    expect(c.verdict).not.toContain('::');
     expect(c.actions).toEqual(['check-disk-errors', 'backup-replace-disk']);
   });
 

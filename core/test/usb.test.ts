@@ -48,7 +48,7 @@ describe('velocità dei dispositivi USB', () => {
     expect(f.severity).toBe('warn');
     expect(f.verdict).toContain('Acme Portable SSD va a USB 2 (480 Mbit/s) ma saprebbe andare a 10 Gbit/s');
     expect(f.verdict).toContain('la porta è USB 3 ma il collegamento è avvenuto in USB 2');
-    expect(f.verdict).toContain('da tre a dieci volte più lenti');
+    expect(f.verdict).toContain('in USB 2 si arriva a circa 40 MB/s');
     expect(f.actions).toEqual(['usb-faster-port']);
   });
 
@@ -92,6 +92,15 @@ describe('velocità dei dispositivi USB', () => {
     const f = find(s, 'pc.usb.speed')!;
     expect(f.value).toBe('3 dispositivi più lenti del possibile');
     expect(f.severity).toBe('warn');
+    // Si mostrano i due collegati in USB 2: il terzo, a 5 invece di 10 Gbit/s, è tra gli "altri".
+    expect(f.verdict).toContain('(e altri 1)');
+    // Senza il tipo dell'hub non si dà la colpa a un hub USB 2; la metà USB 2 di un hub USB 3 (porta con compagna) indica il cavo.
+    const hubPorts = (info.controllers[0].hub!.ports[1].device!.hub!);
+    hubPorts.kind = undefined;
+    expect(usbSlowReason(usbNodes(info)[2])).not.toContain('dietro un hub USB 2');
+    hubPorts.kind = 'usb2';
+    hubPorts.ports[0].companion = true;
+    expect(usbSlowReason(usbNodes(info)[2])).toContain('la porta dell\'hub è USB 3');
     // Un solo dispositivo non di archiviazione più lento del possibile: solo informazione.
     info.controllers[0].hub!.ports = [{ index: 1, status: 'ok', usb3: false, device: ssd({ name: 'Acme Cam', kind: 'camera' }) }];
     expect(find(s, 'pc.usb.speed')!.severity).toBe('info');

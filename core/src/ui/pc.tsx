@@ -913,16 +913,20 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
 
   useEffect(() => {
     benchListeners.add(setRun);
+    // Un avanzamento pubblicato tra il primo disegno e l'iscrizione non va perso.
+    setRun(benchLast);
     return () => {
       benchListeners.delete(setRun);
     };
   }, []);
 
+  // `done` resta legato al rapporto mostrato quando il test è partito.
   const done = (r: CpuBench | DiskBench, kind: BenchKind) => {
     const patch = kind === 'cpu' ? { cpu: r as CpuBench } : { disk: r as DiskBench };
-    addBench(patch);
     pushHistory(histKey, patch);
-    toast(kind === 'cpu' ? 'Test del processore completato' : `Test dell'unità ${(r as DiskBench).drive} completato`, 'ok', 'complete');
+    if (addBench(patch, { host: scan.agent.host, live })) {
+      toast(kind === 'cpu' ? 'Test del processore completato' : `Test dell'unità ${(r as DiskBench).drive} completato`, 'ok', 'complete');
+    }
   };
   const fail = (e: Error) => {
     setError(e.message);
@@ -936,7 +940,8 @@ function BenchCard({ scan, live, source, analysis, addBench }: ViewProps) {
     let alive = true;
     benchStatus()
       .then((st) => {
-        if (!alive || !st.running || !st.kind) return;
+        // Il test della RAM si riprende nella sua scheda (RamTestCard).
+        if (!alive || !st.running || (st.kind !== 'cpu' && st.kind !== 'disk')) return;
         const req: BenchRequest = st.kind === 'cpu' ? { kind: 'cpu' } : { kind: 'disk', drive: st.drive ?? 'C:', confirm: true };
         startBench(true, scan, req, done, fail, true);
       })

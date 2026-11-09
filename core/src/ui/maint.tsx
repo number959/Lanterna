@@ -1,6 +1,6 @@
 import { AppWindow, HardDrive, MemoryStick, RefreshCw } from 'lucide-react';
 import { m } from 'motion/react';
-import { dateIt, failedUpdates, lastQualityUpdate, wuErrorText } from '../engine';
+import { dateIt, failedUpdates, lastQualityUpdate, memDiagPending, wuErrorText } from '../engine';
 import type { PcData, ServiceState, Severity, UpdateEntry, Volume } from '../engine';
 import { openTool } from './api';
 import { SevIcon, TableWrap, useToast } from './components';
@@ -44,7 +44,7 @@ function OpenButton({ tool, label, done, live }: { tool: string; label: string; 
 function UpdatesPart({ pc, now, live }: { pc: PcData; now: number; live: boolean }) {
   const u = pc.updates;
   if (!u) return <p className="muted">Lo stato degli aggiornamenti non è stato letto.</p>;
-  const last = lastQualityUpdate(u);
+  const last = lastQualityUpdate(u, now);
   const failed = failedUpdates(u.history, now);
   const open = failed.filter((f) => !f.resolved);
   const wu = u.service?.wu;
@@ -56,7 +56,7 @@ function UpdatesPart({ pc, now, live }: { pc: PcData; now: number; live: boolean
         <dd>{last ? `${dateIt(last.date)}${last.kb ? `, ${last.kb}` : ''}` : 'non letto'}</dd>
         <dt>Non riusciti negli ultimi 30 giorni</dt>
         <dd className={open.length ? 'c-warn' : 'c-ok'}>
-          <SevIcon sev={open.length ? 'warn' : 'ok'} size={14} /> {open.length ? `${open.length} ancora da installare` : failed.length ? `nessuno (${failed.length} riusciti al secondo tentativo)` : 'nessuno'}
+          <SevIcon sev={open.length ? 'warn' : 'ok'} size={14} /> {open.length ? `${open.length} ancora da installare` : failed.length ? `nessuno (${failed.length} ${failed.length === 1 ? 'risolto' : 'risolti'} in seguito)` : 'nessuno'}
         </dd>
         <dt>Servizio Windows Update</dt>
         <dd className={wu?.start === 'disabled' ? 'c-crit' : undefined}>
@@ -122,18 +122,24 @@ function UpdatesPart({ pc, now, live }: { pc: PcData; now: number; live: boolean
   );
 }
 
-function MemDiagPart({ pc, live }: { pc: PcData; live: boolean }) {
+// Stessa logica del motore (memDiagPending): un giorno di margine prima di dire
+// che il test pianificato non è partito.
+function MemDiagPart({ pc, live, now }: { pc: PcData; live: boolean; now: number }) {
   const md = pc.memDiag;
   const last = md?.results[0];
   let sev: Severity = 'unknown';
   let text = 'Il registro di sistema non è stato letto.';
   if (md) {
+    const sched = md.lastScheduled ? Date.parse(md.lastScheduled) : NaN;
+    const newer = !isNaN(sched) && (!last || sched > Date.parse(last.time));
     if (last?.errors) {
       sev = 'crit';
       text = `Errori hardware trovati il ${dateIt(last.time)}: un modulo di RAM è guasto.`;
-    } else if (md.lastScheduled && (!last || md.lastScheduled > last.time)) {
+    } else if (memDiagPending(md, now)) {
       sev = 'info';
-      text = `Test pianificato il ${dateIt(md.lastScheduled)}, ma l'esito non è registrato: non è partito o è stato interrotto.`;
+      text = `Test pianificato il ${dateIt(md.lastScheduled!)}, ma l'esito non è registrato: non è partito o è stato interrotto.`;
+    } else if (newer) {
+      text = `Test pianificato il ${dateIt(md.lastScheduled!)}: parte al prossimo riavvio.${last ? ` Ultimo esito, il ${dateIt(last.time)}: nessun errore.` : ''}`;
     } else if (last) {
       sev = 'ok';
       text = `Ultimo test il ${dateIt(last.time)}: nessun errore.`;
@@ -207,7 +213,7 @@ export function MaintCard({ pc, live, now }: { pc: PcData; live: boolean; now: n
       <h3 className="dev-h">
         <MemoryStick size={16} aria-hidden /> Test della memoria (Diagnostica memoria Windows)
       </h3>
-      <MemDiagPart pc={pc} live={live} />
+      <MemDiagPart pc={pc} live={live} now={now} />
       <h3 className="dev-h">
         <HardDrive size={16} aria-hidden /> File system
       </h3>

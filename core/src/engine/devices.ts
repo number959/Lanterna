@@ -156,7 +156,10 @@ export function deviceSeverity(d: DeviceInfo): Severity {
   if (code === 48 || code === 52) return 'crit';
   if (isDisabled(d) || isTransient(d)) return 'info';
   const cls = (d.class ?? '').toLowerCase();
-  if (CORE_CLASSES.indexOf(cls) >= 0) return 'crit';
+  // Schede e uscite audio virtuali (WAN Miniport, Wi-Fi Direct, altoparlanti
+  // dei programmi di streaming) sono software: un loro problema non ferma il PC.
+  const virtual = /^(ROOT|SWD|\{)/i.test(d.enumerator ?? '');
+  if (CORE_CLASSES.indexOf(cls) >= 0) return virtual ? 'warn' : 'crit';
   // I controller USB e i dispositivi del chipset (sul bus PCI) servono a tutto il resto.
   if ((cls === 'usb' || cls === 'system') && d.enumerator === 'PCI') return 'crit';
   return 'warn';
@@ -174,6 +177,13 @@ export function deviceOfDriver(pc: PcData | undefined, file: string): DeviceInfo
   const all = items.filter((d) => d.driver?.file === f);
   return all.filter((d) => d.problem || (d.driver && !d.driver.inbox))[0] ?? all[0];
 }
+
+/**
+ * Data del driver che non ne dice l'età: Intel usa il 18/07/1968, l'anno della
+ * sua fondazione, per i file INF del chipset, perché Windows preferisca i
+ * driver con una data vera.
+ */
+export const symbolicDate = (date?: string) => !!date && date < '1990';
 
 /** Driver di terze parti, uno per file INF, con i dispositivi che lo usano. */
 export interface DriverPackage {
@@ -202,7 +212,8 @@ export function thirdPartyDrivers(dev?: DevicesData): DriverPackage[] {
     const c = deviceClassText(d.class);
     if (p.classes.indexOf(c) < 0) p.classes.push(c);
   }
-  return order.map((k) => by[k]).sort((a, b) => (a.date ?? '9999') < (b.date ?? '9999') ? -1 : (a.date ?? '9999') > (b.date ?? '9999') ? 1 : a.inf < b.inf ? -1 : 1);
+  const key = (p: DriverPackage) => (p.date && !symbolicDate(p.date) ? p.date : '9999');
+  return order.map((k) => by[k]).sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : a.inf < b.inf ? -1 : 1));
 }
 
 /** Classi i cui driver contano per la stabilità, con l'età oltre la quale Polaris li segnala. */
@@ -219,7 +230,7 @@ const AGE_CLASSES: Record<string, { info: number; warn?: number }> = {
 export function oldDrivers(dev: DevicesData | undefined, now: number): { pkg: DriverPackage; years: number; sev: Severity }[] {
   const out: { pkg: DriverPackage; years: number; sev: Severity }[] = [];
   for (const p of thirdPartyDrivers(dev)) {
-    if (!p.date) continue;
+    if (!p.date || symbolicDate(p.date)) continue;
     const t = Date.parse(p.date + 'T00:00:00Z');
     if (isNaN(t)) continue;
     const years = (now - t) / YEAR;
@@ -251,7 +262,8 @@ export function analyzeDevices(scan: Scan, add: Add) {
   if (!pc || !dev) return;
   const now = Date.parse(scan.agent.startedAt) || Date.now();
   const problems = dev.items.filter((d) => d.problem);
-  const hard = problems.filter((d) => !isDisabled(d) && !isTransient(d));
+  // Dal più grave: il giudizio spiega il primo, come l'elenco dell'interfaccia.
+  const hard = problems.filter((d) => !isDisabled(d) && !isTransient(d)).sort((a, b) => RANK[deviceSeverity(b)] - RANK[deviceSeverity(a)]);
   const transient = problems.filter(isTransient);
   const disabled = problems.filter(isDisabled);
   let sev: Severity = 'ok';
@@ -269,7 +281,7 @@ export function analyzeDevices(scan: Scan, add: Add) {
         ? ' Un driver senza firma valida viene rifiutato da Windows: serve la versione firmata del produttore.'
         : '') +
       (hard.some((d) => d.problem === 28) ? ' Per un driver non installato cerca prima negli aggiornamenti facoltativi di Windows, poi sul sito del produttore.' : '') +
-      (transient.length ? ` Altri ${transient.length} si sistemano con un riavvio.` : '') +
+      (transient.length ? (transient.length === 1 ? ' Un altro si sistema con un riavvio.' : ` Altri ${transient.length} si sistemano con un riavvio.`) : '') +
       (disabled.length ? ` ${num(disabled.length, 'dispositivo è disattivato', 'dispositivi sono disattivati')} di proposito.` : '');
   } else if (transient.length) {
     verdict = `${nameList(transient, 4)}: Windows sta finendo di configurar${transient.length === 1 ? 'lo' : 'li'} o aspetta un riavvio. Riavvia il PC e ripeti l'analisi.`;

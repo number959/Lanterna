@@ -107,7 +107,7 @@ describe('account e accessi', () => {
     acc.admins = { members: 5, localEnabled: 4 };
     let f = find(s, 'pc.accounts')!;
     expect(f.severity).toBe('warn');
-    expect(f.verdict).toContain('l\'account Guest (ospite) è attivo');
+    expect(f.verdict).toContain('L\'account Guest (ospite) è attivo');
     expect(f.verdict).toContain('4 account locali sono amministratori');
     expect(f.actions).toContain('secure-local-accounts');
     s.agent.domain = 'studio.local';
@@ -175,7 +175,7 @@ describe('catalogo, guide, documento e schede', () => {
     expect(card).toContain('Administrator integrato disattivato');
     const pcard = renderToStaticMarkup(createElement(PrintersCard, { pc: s.pc!, live: false }));
     expect(pcard).toContain('Kyocera ECOSYS M2540dn (accettazione)');
-    expect(pcard).toContain('1 condivise da altri computer');
+    expect(pcard).toContain('una condivisa da altri computer');
     expect(pcard.indexOf('Microsoft Print to PDF')).toBeGreaterThan(pcard.indexOf('Zebra'));
     const none = clone(s.pc!);
     delete none.encryption;

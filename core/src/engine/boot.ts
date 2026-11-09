@@ -27,9 +27,11 @@ export const APP_CRIT = 10;
 export function msText(ms: number): string {
   const s = ms / 1000;
   if (s < 10) return `${fmt(s, 1)} s`;
-  if (s < 60) return `${Math.round(s)} s`;
-  const m = Math.floor(s / 60);
-  const r = Math.round(s - m * 60);
+  // Si arrotondano prima i secondi totali: 119,6 s sono "2 min", non "1 min 60 s".
+  const t = Math.round(s);
+  if (t < 60) return `${t} s`;
+  const m = Math.floor(t / 60);
+  const r = t - m * 60;
   return r ? `${m} min ${r} s` : `${m} min`;
 }
 
@@ -149,7 +151,7 @@ function analyzeBoot(pc: PcData, add: Add) {
       `Mediana degli ultimi ${num(sample.length, 'avvio misurato', 'avvii misurati')}: ${msText(typical)}` +
       (last.mainPathMs ? `; l'ultimo, ${on(last.time, 'il')}, ${msText(last.mainPathMs)} fino al desktop e ${msText(last.postBootMs ?? 0)} per i programmi all'avvio` : '') +
       '.';
-    if (sev === 'ok') verdict += ' Un tempo normale per un PC con disco SSD.';
+    if (sev === 'ok') verdict += hdd ? ' Un buon tempo, anche per un disco di sistema meccanico.' : ' Un tempo normale per un PC moderno.';
     else {
       if (heavyPost) verdict += ` La parte più lunga viene dopo l'accesso: i programmi all'avvio${last.startupApps ? ` (Windows ne ha contati ${last.startupApps})` : ''}.`;
       if (heavyMain) verdict += hdd ? ' Anche il caricamento di Windows è lento: il disco di sistema è meccanico.' : ' Anche il caricamento di Windows è lento: driver, servizi o il disco.';

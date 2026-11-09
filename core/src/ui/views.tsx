@@ -77,7 +77,8 @@ export interface ViewProps {
   /** Unisce al rapporto i risultati di inventario e verifiche. */
   setInfra: (patch: Partial<InfraData>) => void;
   /** Unisce al rapporto il risultato di un test di velocità. */
-  addBench: (r: { cpu?: CpuBench; disk?: DiskBench; ram?: RamTest }) => void;
+  /** Aggiunge un test al rapporto mostrato, se è ancora quello del PC su cui è partito (false altrimenti). */
+  addBench: (r: { cpu?: CpuBench; disk?: DiskBench; ram?: RamTest }, target: SpaceTarget) => boolean;
   /**
    * Unisce al rapporto un'analisi dello spazio (una per unità, la più recente),
    * solo se il rapporto mostrato è ancora del PC su cui è partita; restituisce

@@ -121,12 +121,16 @@ export function useTools(live: boolean): Found {
   return live ? found : EMPTY;
 }
 
+/**
+ * Apre un programma o il suo sito. `reveal`: il programma è un file da non
+ * aprire (l'immagine di Memtest86+) e l'agente ne mostra la cartella.
+ */
 export function useOpenTool() {
   const toast = useToast();
   return useCallback(
-    (tool: string, target: 'app' | 'site', name: string) =>
+    (tool: string, target: 'app' | 'site', name: string, reveal = false) =>
       openTool(tool, target)
-        .then(() => toast(target === 'site' ? `Sito di ${name} aperto nel browser` : `${name} aperto`, 'ok', 'open'))
+        .then(() => toast(target === 'site' ? `Sito di ${name} aperto nel browser` : reveal ? `Cartella di ${name} aperta` : `${name} aperto`, 'ok', 'open'))
         .catch((e) => toast(e instanceof Error ? e.message : String(e), 'error')),
     [toast],
   );
@@ -148,11 +152,13 @@ export function Toolbox({ live, source }: Pick<ViewProps, 'live' | 'source'>) {
       <m.div variants={rise} className="notice" style={{ marginBottom: 14 }}>
         <Wrench size={18} aria-hidden />
         <span>
-          Gli strumenti di Windows si aprono da qui. CrystalDiskInfo, CrystalDiskMark e BlueScreenView sono inclusi in Polaris: copie originali del
-          produttore, verificate con l&apos;impronta SHA-256, che si aprono con un clic. Gli altri programmi non si possono ridistribuire: con{' '}
-          <b>Scarica e apri</b> Polaris ne prende la versione portable dal sito ufficiale e la avvia solo se è firmata dal produttore. Quelli già installati
-          li riconosce e li apre. Per i PC senza Internet puoi preparare un <b>kit</b> da portare su una chiavetta. Siti, licenze e firme verificati il
-          19/10/2026: le condizioni d&apos;uso restano quelle dei produttori.
+          Gli strumenti di Windows si aprono da qui. CrystalDiskInfo, CrystalDiskMark, BlueScreenView e UsbTreeView sono inclusi in Polaris: copie
+          originali del produttore, verificate con l&apos;impronta SHA-256, che si aprono con un clic. Gli altri programmi non sono nel pacchetto (per
+          molti le licenze non lo consentono): con <b>Scarica e apri</b> Polaris ne prende la versione portable dal sito ufficiale e la avvia solo se è
+          firmata dal produttore. Memtest86+ è un&apos;immagine da scrivere su una chiavetta: Polaris ne controlla l&apos;impronta pubblicata dal
+          progetto e mostra la cartella che la contiene, senza aprirla. Quelli già installati li riconosce e li apre. Per i PC senza Internet puoi
+          preparare un <b>kit</b> da portare su una chiavetta. Siti, licenze e firme verificati a ottobre e novembre 2026: le condizioni d&apos;uso
+          restano quelle dei produttori.
         </span>
       </m.div>
 
@@ -210,7 +216,7 @@ export function ToolCard({
   t: Tool;
   found: Found;
   live: boolean;
-  onOpen: (tool: string, target: 'app' | 'site', name: string) => Promise<void>;
+  onOpen: (tool: string, target: 'app' | 'site', name: string, reveal?: boolean) => Promise<void>;
   compact?: boolean;
   onGo?: (view: ToolView) => void;
 }) {
@@ -233,7 +239,7 @@ export function ToolCard({
 
   const doOpen = () => {
     setOpening(true);
-    onOpen(t.id, 'app', t.name).finally(() => setOpening(false));
+    onOpen(t.id, 'app', t.name, reveal).finally(() => setOpening(false));
   };
   const startFetch = () => {
     setConfirm(false);
@@ -536,10 +542,11 @@ function KitPanel({ found, live }: { found: Found; live: boolean }) {
         )}
       </div>
       <p className="kit-what">
-        I programmi che Polaris scarica non possono stare nel suo pacchetto: le licenze dei produttori non lo consentono. Su un PC con Internet prepara
-        il kit: Polaris li scarica dai siti ufficiali nella cartella <span className="mono">strumenti-scaricati</span>, accanto a Polaris.exe. Poi copia
-        l&apos;intera cartella di Polaris su una chiavetta: sui PC senza Internet Polaris trova i programmi lì, controlla che non siano cambiati dal
-        download e li avvia solo con la firma digitale del produttore.
+        I programmi che Polaris scarica non sono nel suo pacchetto: per molti le licenze dei produttori non lo consentono. Su un PC con Internet
+        prepara il kit: Polaris li scarica dai siti ufficiali nella cartella <span className="mono">strumenti-scaricati</span>, accanto a Polaris.exe. Poi
+        copia l&apos;intera cartella di Polaris su una chiavetta: sui PC senza Internet Polaris trova i programmi lì, controlla che non siano cambiati
+        dal download e li avvia solo con la firma digitale del produttore (l&apos;immagine di Memtest86+, che non si avvia, la mostra nella sua
+        cartella).
       </p>
 
       <AnimatePresence initial={false}>
@@ -706,6 +713,8 @@ export function ToolShortcut({ id, live, text }: { id: string; live: boolean; te
   const dl = found.portable[id];
   const downloaded = !!dl && !dl.problem && !dl.expired;
   if (!live || !t || (!included && !downloaded && !found.installed[id])) return null;
+  // Memtest86+ è un'immagine da scrivere su una chiavetta: se ne mostra la cartella.
+  const reveal = !!t.portable?.reveal && !included && !found.installed[id];
   return (
     <m.div className="tool-shortcut" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
       <Anim kind="draw">
@@ -715,8 +724,8 @@ export function ToolShortcut({ id, live, text }: { id: string; live: boolean; te
         <b>{t.name}</b> {text}
         {included ? ` · incluso in Polaris ${inc.version}` : downloaded ? ` · ${dl.kit ? 'nel kit' : 'scaricato'} dal sito ufficiale${dl.version ? `, versione ${dl.version}` : ''}` : ' · installato su questo PC'}
       </span>
-      <button className="btn small" onClick={() => open(id, 'app', t.name)}>
-        <AppWindow size={15} aria-hidden /> Apri {t.name}
+      <button className="btn small" onClick={() => open(id, 'app', t.name, reveal)}>
+        <AppWindow size={15} aria-hidden /> {reveal ? `Mostra il file di ${t.name}` : `Apri ${t.name}`}
       </button>
     </m.div>
   );

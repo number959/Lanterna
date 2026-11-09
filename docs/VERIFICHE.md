@@ -1180,7 +1180,7 @@ di UsbTreeView: pagina del programma; HCI MemTest ("License: Free", versione Pro
 velocità pratica di un disco in USB 2 (circa 40 MB/s) e l'avviso sulla chiave di BitLocker quando si cambia l'Avvio protetto
 sono indicazioni generali, scritte con prudenza ("può").
 
-**Test automatici.** vitest: 430 (57 in più della 0.11.0), tra cui dispositivi, avvio e stabilità, manutenzione, protezione e
+**Test automatici.** vitest: 430 prima della revisione (57 in più della 0.11.0), 445 dopo, tra cui dispositivi, avvio e stabilità, manutenzione, protezione e
 stampanti, test della RAM, albero USB (porte in errore, cause della velocità ridotta, nomi con il produttore, documento senza
 identificativi d'istanza, scheda per casa, clinica, macchina virtuale e dati assenti) e cassetta (programmi inclusi e
 scaricabili, Memtest86+ senza firmatario solo perché è un file da non aprire). Go: tutti i pacchetti; in più le strutture USB
@@ -1233,6 +1233,49 @@ modalità test con `bcdedit`.
   albero USB "none" (la macchina virtuale non ha controller USB); **test della RAM** su 256 MB di 16 GB, 256 MB bloccati in
   RAM, 4 thread, 29 passaggi in 15 secondi, circa 14 GB/s, 0 errori; prove native: 66 dispositivi (63 con il driver
   completo), servizi, account, accessi, stampanti e albero USB letti senza errori.
+
+**Revisione indipendente.** Due revisori separati (un agente sull'agente Go, uno su motore, interfaccia e testi), senza
+modificare il codice, con il compito di cercare difetti e riprodurli. Corretti dopo la revisione:
+- *Falsi negativi e giudizi sbagliati*: lo strumento di rimozione malware (KB890830, che si installa ogni mese anche quando i
+  cumulativi falliscono) e gli aggiornamenti di .NET, Office e simili facevano risultare "aggiornato" un PC fermo da mesi: ora
+  non contano, né nell'agente né nel motore (anche per i rapporti vecchi), e una data futura non nasconde più quelle valide;
+  un cumulativo fallito e poi sostituito da quello del mese dopo, o un driver rifiutato con 0x80070103, non risultano più "da
+  installare"; gli errori del file system di una chiavetta (volume rimovibile) non vengono più presentati come errori di un
+  disco interno; la data simbolica 18/07/1968 dei driver Intel del chipset non vale più "58 anni"; schede di rete e audio
+  virtuali con un problema non sono più "gravi"; un blocco dello schermo dopo più di 15 minuti non è più "non impostato";
+  backup non letti non sono più "nessun backup"; un dispositivo USB non riconosciuto non pesa più due volte (porta e
+  Gestione dispositivi); il giudizio sui dispositivi spiega il più grave.
+- *Documento*: le versioni dei driver ("Acme 22.40.0.7") diventavano "[IP pubblico]": ora il filtro degli indirizzi riconosce
+  le versioni dal testo intorno (provato anche in goja, il motore dentro l'exe).
+- *Testi verificati su fonti Microsoft*: 0xC1900101 è MOSETUP_E_SETUP_PLATFORM e 0xC190020E
+  MOSETUP_E_INSTALLDISKSPACE_BLOCK (pagina "Windows 10 upgrade resolution procedures"); la password dell'accesso automatico
+  nel registro la legge qualunque utente autenticato, anche da remoto (KB 324737), non solo un amministratore; impostare una
+  password non toglie il segno "password non richiesta" (serve `net user <nome> /passwordreq:yes`); 0x800F0922 dipende di
+  solito dalla partizione di sistema riservata piena o da una VPN, non dall'archivio dei componenti.
+- *Interfaccia*: un test della RAM in corso non viene più ripreso come test del disco e si riprende dopo un ricaricamento; i
+  risultati di RAM, processore e disco si aggiungono solo al rapporto del PC su cui il test è partito; pulsanti e messaggi
+  giusti per Memtest86+ (mostra la cartella, non "aperto"); testi della cassetta aggiornati (UsbTreeView incluso, Memtest86+
+  verificato con l'impronta); stato della durata dell'avvio non più indicato dal solo colore; plurali e doppi due punti
+  ("E::") corretti, durate arrotondate ("2 min" invece di "1 min 60 s").
+- *Agente*: letture di account, accessi, stampanti, USB e dispositivi con un tempo massimo (una chiamata di Windows bloccata
+  non ferma più l'analisi, e lo dice una nota); affidabilità in uno script PowerShell separato con tempi massimi per le
+  query; componenti lenti all'avvio senza identificativi d'istanza; stampanti reindirizzate da Desktop remoto (attributo
+  PRINTER_ATTRIBUTE_TS, 0x8000 in `winspool.h`) con un nome generico perché il loro nome contiene quello del computer remoto;
+  porte delle stampanti ridotte al tipo quando il nome può contenere l'indirizzo MAC; cartelle di altri utenti nei comandi
+  come ‹utente›; controller USB in errore elencati; test della RAM più robusto a 32 bit.
+- *Confermato corretto, nessuna modifica*: i valori di MSFT_Volume.HealthStatus (0 sano, 1 da analizzare, 2 correzione rapida,
+  3 riparazione completa), segnalati come dubbi da un revisore e verificati sulla pagina Microsoft della classe.
+- *Lasciato com'è e dichiarato*: su un PC in dominio lontano dalla rete dell'organizzazione la lettura del gruppo
+  Administrators può richiedere di riconoscere account di dominio; dopo 15 secondi Polaris rinuncia e lo scrive tra le note.
+
+Dopo le correzioni: vitest 445 test (15 nuovi per i casi della revisione), Go tutti i pacchetti con `go vet` per Linux e per
+Windows amd64, 386 e arm64 (più una prova in goja: le versioni dei driver restano nel documento prodotto dall'exe), axe-core
+di nuovo sulla vista Computer (0 violazioni, nessuno scorrimento orizzontale: uno introdotto dal testo per i lettori di
+schermo nelle tabelle è stato trovato e corretto) e su tutte le sezioni delle due demo, temi chiaro e scuro, 1366 e 390 px.
+Nel giro completo è comparso un contrasto di 4,26:1 su un titolo di sezione: era il titolo ancora in dissolvenza (colore
+misurato #627792 invece di #526886, che dà 5,4:1); ripetuto ad animazioni finite, nessuna violazione. Run 82 della CI (le
+correzioni dell'agente) verde su Windows reale: affidabilità letta dallo script separato (indice 10), account, accessi,
+stampa e albero USB letti entro i tempi massimi, nessuna nota di lettura abbandonata.
 
 **Avvertenze: cosa resta da provare.**
 - **Albero USB con dispositivi veri**: le macchine della CI sono virtuali e senza USB. Codici, offset e stati sono quelli

@@ -135,7 +135,7 @@ export function PrintersCard({ pc, live }: { pc: PcData; live: boolean }) {
         </h2>
         <span className="sub">
           servizio di stampa {sp ? (sp.running ? 'in esecuzione' : sp.start === 'disabled' ? 'disattivato' : 'fermo') : 'non letto'}
-          {pr.connections ? ` · ${pr.connections} condivise da altri computer` : ''}
+          {pr.connections ? ` · ${pr.connections === 1 ? 'una condivisa' : `${pr.connections} condivise`} da altri computer` : ''}
         </span>
         <span className="spacer" />
         <OpenButton tool="printers" label="Apri Stampanti e scanner" done="Stampanti e scanner aperto" live={live} />

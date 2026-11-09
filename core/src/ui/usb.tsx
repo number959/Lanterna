@@ -130,7 +130,7 @@ export function UsbCard({ pc, live }: { pc: PcData; live: boolean }) {
               <div className="usb-ctrl">
                 <b>{c.name}</b>
                 <span className="tag">{USB_CONTROLLER[c.kind] ?? USB_CONTROLLER.other}</span>
-                {c.hub && <span className="faint">{c.hub.portCount} porte</span>}
+                {c.hub && <span className="faint">{c.hub.portCount === 1 ? '1 porta' : `${c.hub.portCount} porte`}</span>}
                 {c.problem ? (
                   <span className="usb-state c-warn">
                     <SevIcon sev="warn" size={14} /> {deviceProblemText(c.problem).toLowerCase()}

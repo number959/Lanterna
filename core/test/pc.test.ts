@@ -443,7 +443,7 @@ describe('computer: sintesi e rapporto', () => {
     expect(sev('pc.av')).toBe('ok');
     const clinic = analyze(clinicScan).findings;
     expect(clinic.find((f) => f.id === 'pc.disk.1')?.severity).toBe('crit');
-    expect(clinic.find((f) => f.id === 'pc.events.disk')?.verdict).toContain('(D:)');
+    expect(clinic.find((f) => f.id === 'pc.events.disk')?.verdict).toContain('(D:, ST1000DM010-2EP102)');
   });
 
   it('il rapporto testuale riporta i dettagli del computer', () => {

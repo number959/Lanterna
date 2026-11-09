@@ -30,6 +30,9 @@ function Sparkline({ r }: { r: Reliability }) {
   );
 }
 
+/** Gravità della durata di un avvio, a parole: il colore da solo non basta. */
+const BOOT_WORD: Record<Severity, string> = { ok: 'nella norma', info: 'un po\' lento', warn: 'lento', crit: 'molto lento', unknown: 'non valutato' };
+
 function BootPart({ pc }: { pc: PcData }) {
   const b = pc.boot!;
   const sample = bootSample(b);
@@ -60,7 +63,7 @@ function BootPart({ pc }: { pc: PcData }) {
         <span className="faint">mediana degli ultimi {sample.length === 1 ? 'avvio misurato' : `${sample.length} avvii misurati`}</span>
       </div>
       {main + post > 0 && (
-        <div className="boot-split" role="img" aria-label={`Ultimo avvio: ${msText(main)} fino al desktop, ${msText(post)} dopo l'accesso`}>
+        <div className="boot-split" role="img" aria-label={`Ultimo avvio misurato: ${msText(main)} fino al desktop, ${msText(post)} dopo l'accesso`}>
           <span className="boot-main" style={{ width: `${(main / tot) * 100}%` }}>
             fino al desktop {msText(main)}
           </span>
@@ -70,8 +73,8 @@ function BootPart({ pc }: { pc: PcData }) {
         </div>
       )}
       <p className="faint boot-note">
-        Ultimo avvio del {dateIt(last.time)}
-        {last.startupApps ? `, con ${last.startupApps} programmi all'avvio` : ''}.
+        Ultimo avvio misurato del {dateIt(last.time)}, senza contare i riavvii dopo un aggiornamento
+        {last.startupApps ? `, con ${last.startupApps === 1 ? 'un programma' : `${last.startupApps} programmi`} all'avvio` : ''}.
         {b.firmwareMs !== undefined ? ` Firmware prima di Windows (Ultimo tempo BIOS): ${msText(b.firmwareMs)}.` : ''}
         {b.shutdowns?.[0] ? ` Ultimo spegnimento: ${msText(b.shutdowns[0].totalMs)}.` : ''}
       </p>
@@ -96,7 +99,11 @@ function BootPart({ pc }: { pc: PcData }) {
                     </span>
                   )}
                 </td>
-                <td className={`c-${bootSeverity(r.totalMs)}`}>{msText(r.totalMs)}</td>
+                {/* position: relative tiene il testo per i lettori di schermo dentro la tabella che scorre. */}
+                <td className={`c-${bootSeverity(r.totalMs)}`} style={{ position: 'relative' }}>
+                  <SevIcon sev={bootSeverity(r.totalMs)} size={13} /> {msText(r.totalMs)}
+                  <span className="sr-only">, {BOOT_WORD[bootSeverity(r.totalMs)]}</span>
+                </td>
                 <td>{r.mainPathMs ? msText(r.mainPathMs) : '—'}</td>
                 <td>{r.postBootMs ? msText(r.postBootMs) : '—'}</td>
               </tr>
@@ -135,7 +142,10 @@ function SlowPart({ pc }: { pc: PcData }) {
                 {s.phase === 'shutdown' ? ', allo spegnimento' : ''}
               </td>
               <td>{s.degradationMs ? `+${msText(s.degradationMs)}` : '—'}</td>
-              <td className={s.count >= 3 ? 'c-warn' : undefined}>{s.count}</td>
+              <td className={s.count >= 3 ? 'c-warn' : undefined} style={{ position: 'relative' }}>
+                {s.count >= 3 && <SevIcon sev="warn" size={13} />} {s.count}
+                {s.count >= 3 && <span className="sr-only">, si ripete spesso</span>}
+              </td>
               <td className="mono">{dateIt(s.last)}</td>
             </tr>
           ))}

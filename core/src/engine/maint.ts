@@ -1,6 +1,6 @@
 import { more, num } from './fmt';
 import { dateIt, on } from './pc';
-import type { Finding, FsCheck, PcData, Scan, Severity, UpdateEntry, Volume } from './types';
+import type { Finding, FsCheck, MemDiagInfo, PcData, Scan, Severity, UpdateEntry, Volume } from './types';
 
 // Manutenzione di Windows: esito di Diagnostica memoria, aggiornamenti non
 // riusciti e servizio di Windows Update, stato del file system dei volumi.
@@ -26,7 +26,7 @@ export const WU_ERRORS: Record<string, [string, string, WuErrorGroup]> = {
   '0x8007371B': ['ERROR_SXS_TRANSACTION_CLOSURE_INCOMPLETE', 'archivio dei componenti di Windows incompleto', 'store'],
   '0x80073701': ['ERROR_SXS_ASSEMBLY_MISSING', 'manca un componente di Windows', 'store'],
   '0x800736CC': ['ERROR_SXS_FILE_HASH_MISMATCH', 'un file di Windows non corrisponde a quello atteso', 'store'],
-  '0x800F0922': ['CBS_E_INSTALLERS_FAILED', 'l\'installazione dei componenti non è riuscita', 'store'],
+  '0x800F0922': ['CBS_E_INSTALLERS_FAILED', 'l\'installazione dei componenti non è riuscita: spesso la partizione di sistema riservata (EFI) è troppo piena, oppure una VPN impedisce il collegamento ai server di Windows Update', 'other'],
   '0x8024402C': ['WU_E_PT_WINHTTP_NAME_NOT_RESOLVED', 'il nome del server di Windows Update non è stato risolto (DNS o proxy)', 'network'],
   '0x80240034': ['WU_E_DOWNLOAD_FAILED', 'il download dell\'aggiornamento non è riuscito', 'network'],
   '0x80072EE2': ['ERROR_INTERNET_TIMEOUT', 'il server non ha risposto in tempo', 'network'],
@@ -42,10 +42,11 @@ export const WU_ERRORS: Record<string, [string, string, WuErrorGroup]> = {
   '0x8024200B': ['WU_E_UH_INSTALLERFAILURE', 'il programma di installazione dell\'aggiornamento non è riuscito', 'other'],
   '0x80242014': ['WU_E_UH_POSTREBOOTSTILLPENDING', 'l\'aggiornamento aspetta ancora il riavvio', 'restart'],
   '0x80070070': ['ERROR_DISK_FULL', 'spazio su disco insufficiente', 'space'],
-  '0xC1900101': ['MOSETUP_E_ROLLBACK', 'l\'aggiornamento di versione è stato annullato, di solito per un driver', 'driver'],
+  '0x80070103': ['ERROR_NO_MORE_ITEMS', 'di solito Windows Update prova a installare un driver già presente o in una versione più vecchia di quella installata: si può ignorare', 'other'],
+  '0xC1900101': ['MOSETUP_E_SETUP_PLATFORM', 'l\'aggiornamento di versione è stato annullato, di solito per un driver', 'driver'],
   '0xC1900208': ['MOSETUP_E_COMPAT_INSTALLREQ_BLOCK', 'un programma installato non è compatibile con la nuova versione', 'app'],
   '0xC1900200': ['MOSETUP_E_COMPAT_SYSREQ_BLOCK', 'il PC non soddisfa i requisiti della nuova versione', 'other'],
-  '0xC190020E': ['MOSETUP_E_INSUFFICIENT_SPACE', 'spazio su disco insufficiente per la nuova versione', 'space'],
+  '0xC190020E': ['MOSETUP_E_INSTALLDISKSPACE_BLOCK', 'spazio su disco insufficiente per la nuova versione', 'space'],
 };
 
 /** "0x800F081F (CBS_E_SOURCE_MISSING: mancano file...)". */
@@ -70,7 +71,27 @@ const WU_GROUP_HINT: Record<WuErrorGroup, string> = {
 /** Gruppo di un codice, 'other' se sconosciuto. */
 export const wuGroup = (code?: string): WuErrorGroup => (code ? (WU_ERRORS[code.toUpperCase().replace('0X', '0x')]?.[2] ?? 'other') : 'other');
 
-/** Aggiornamenti falliti negli ultimi `days` giorni: risolti se poi installati con successo. */
+/**
+ * Serie di un aggiornamento: il titolo senza KB, mese ("2026-10") e numeri di
+ * versione. L'aggiornamento cumulativo di un mese e quello del mese dopo, o
+ * due versioni dello stesso driver, appartengono alla stessa serie.
+ */
+const series = (title: string) =>
+  title
+    .replace(/\(?KB\d+\)?/gi, ' ')
+    .replace(/^\s*\d{4}-\d{2}\b/, ' ')
+    .replace(/\bv?\d+(?:\.\d+)+\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+/**
+ * Aggiornamenti falliti negli ultimi `days` giorni: risolti se poi installati
+ * con successo, o sostituiti da uno più recente della stessa serie installato
+ * dopo (un cumulativo fallito non serve più quando è installato quello del
+ * mese successivo). I driver rifiutati con 0x80070103 non contano: di solito
+ * Windows Update propone un driver già presente o più vecchio di quello in uso.
+ */
 export function failedUpdates(history: UpdateEntry[] | null | undefined, now: number, days = 30): { entry: UpdateEntry; resolved: boolean }[] {
   const h = history ?? [];
   const at = (e: UpdateEntry) => Date.parse(e.date);
@@ -78,13 +99,20 @@ export function failedUpdates(history: UpdateEntry[] | null | undefined, now: nu
   const seen: string[] = [];
   for (const e of h) {
     if (e.kind === 'definition' || e.operation !== 'install' || e.result !== 'failed') continue;
+    if (e.kind === 'driver' && (e.hresult ?? '').toUpperCase() === '0X80070103') continue;
     const t = at(e);
     if (isNaN(t) || now - t > days * DAY) continue;
     const key = e.updateId || e.kb || e.title;
     if (seen.indexOf(key) >= 0) continue;
     seen.push(key);
+    const fam = series(e.title ?? '');
     const resolved = h.some(
-      (x) => x !== e && (x.result === 'succeeded' || x.result === 'succeededWithErrors') && ((e.updateId && x.updateId === e.updateId) || (e.kb && x.kb === e.kb)) && at(x) > t,
+      (x) =>
+        x !== e &&
+        (x.result === 'succeeded' || x.result === 'succeededWithErrors') &&
+        x.operation === 'install' &&
+        at(x) > t &&
+        ((e.updateId && x.updateId === e.updateId) || (e.kb && x.kb === e.kb) || (fam !== '' && x.kind === e.kind && series(x.title ?? '') === fam)),
     );
     out.push({ entry: e, resolved });
   }
@@ -95,12 +123,23 @@ const DAY = 86400000;
 
 type Add = (f: Omit<Finding, 'actions'> & { actions?: string[] }) => void;
 
+/**
+ * Un test della memoria pianificato da più di un giorno senza un esito
+ * registrato dopo: non è partito o è stato interrotto. Nel primo giorno può
+ * ancora partire al riavvio.
+ */
+export function memDiagPending(m: MemDiagInfo | undefined, now: number): boolean {
+  if (!m?.lastScheduled) return false;
+  const sched = Date.parse(m.lastScheduled);
+  const last = m.results[0];
+  return !isNaN(sched) && (!last || sched > Date.parse(last.time)) && now - sched > DAY;
+}
+
 function analyzeMemDiag(pc: PcData, now: number, add: Add) {
   const m = pc.memDiag;
   if (!m) return;
   const last = m.results[0];
-  const sched = m.lastScheduled ? Date.parse(m.lastScheduled) : NaN;
-  const pending = !isNaN(sched) && (!last || sched > Date.parse(last.time)) && now - sched > DAY;
+  const pending = memDiagPending(m, now);
   if (!last && !pending) return; // nessun test registrato: Polaris non può dire che la RAM sia sana
   if (last && last.errors) {
     add({
@@ -185,24 +224,36 @@ function analyzeUpdatesHealth(pc: PcData, now: number, add: Add) {
     metric: 'pc.updates.failed',
     category: 'security',
     title: 'Aggiornamenti non riusciti',
-    value: open.length ? `${num(open.length, 'non installato', 'non installati')} negli ultimi 30 giorni` : `${failed.length} riusciti al secondo tentativo`,
+    value: open.length ? `${num(open.length, 'non installato', 'non installati')} negli ultimi 30 giorni` : num(failed.length, 'risolto in seguito', 'risolti in seguito'),
     numeric: open.length,
     severity: sev,
     verdict:
       shown.map((f) => `${f.entry.kb ? f.entry.kb : f.entry.title} ${on(f.entry.date, 'il')}: errore ${wuErrorText(f.entry.hresult)}`).join('; ') +
       more((open.length ? open : failed).length, 3) +
       '. ' +
-      (open.length ? hints.join(' ') || 'Riprova da Windows Update; se il codice si ripete, cercalo sulle pagine Microsoft degli errori di Windows Update.' : 'Windows li ha poi installati con successo: nessuna azione necessaria.') +
+      (open.length
+        ? hints.join(' ') || 'Riprova da Windows Update; se il codice si ripete, cercalo sulle pagine Microsoft degli errori di Windows Update.'
+        : 'Windows li ha poi installati, o li ha sostituiti con un aggiornamento più recente della stessa serie: nessuna azione necessaria.') +
       (managed ? ' Gli aggiornamenti di questo PC sono gestiti dall\'organizzazione.' : ''),
     actions,
   });
 }
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const HEALTH_TEXT: Record<NonNullable<Volume['health']>, string> = {
   healthy: 'sano',
   scan: 'da analizzare',
   spotfix: 'serve una correzione rapida',
   repair: 'serve una riparazione completa',
+};
+
+/** Stato del file system in una frase: "il file system di E: è da analizzare". */
+const HEALTH_PHRASE: Record<NonNullable<Volume['health']>, string> = {
+  healthy: 'è sano',
+  scan: 'è da analizzare',
+  spotfix: 'ha bisogno di una correzione rapida',
+  repair: 'ha bisogno di una riparazione completa',
 };
 
 function analyzeFileSystem(pc: PcData, add: Add) {
@@ -220,10 +271,10 @@ function analyzeFileSystem(pc: PcData, add: Add) {
   const parts: string[] = [];
   if (dirty.length)
     parts.push(
-      `${dirty.map((v) => v.letter).join(', ')}: Windows ${dirty.length === 1 ? 'lo controllerà' : 'li controllerà'} al prossimo avvio (il file system è segnato da controllare, di solito dopo uno spegnimento brusco o un errore)` +
+      `Windows controllerà ${dirty.length === 1 ? `l'unità ${dirty[0].letter}` : `le unità ${dirty.map((v) => v.letter).join(', ')}`} al prossimo avvio (il file system è segnato da controllare, di solito dopo uno spegnimento brusco o un errore)` +
         (dirty.every((v) => v.kind === 'removable') ? '; è un\'unità rimovibile, probabilmente scollegata senza la rimozione sicura' : ''),
     );
-  for (const v of bad) parts.push(`${v.letter}: secondo Windows ${HEALTH_TEXT[v.health!]}`);
+  for (const v of bad) parts.push(`secondo Windows il file system di ${v.letter} ${HEALTH_PHRASE[v.health!]}`);
   if (boots.length)
     parts.push(
       `${num(boots.length, 'controllo', 'controlli')} all'avvio negli ultimi 30 giorni${boots[0].drive ? ` (l'ultimo su ${boots[0].drive}, ${on(boots[0].time, 'il')})` : ` (l'ultimo ${on(boots[0].time, 'il')})`}` +
@@ -234,10 +285,16 @@ function analyzeFileSystem(pc: PcData, add: Add) {
     metric: 'pc.fs',
     category: 'pc',
     title: 'File system da controllare',
-    value: sysBad.length ? `${sysBad[0].letter}: riparazione completa` : dirty.length ? `${dirty.map((v) => v.letter).join(', ')} da controllare` : bad.length ? `${bad[0].letter}: ${HEALTH_TEXT[bad[0].health!]}` : `${boots.length} controlli all'avvio`,
+    value: sysBad.length
+      ? `${sysBad[0].letter} da riparare`
+      : dirty.length
+        ? `${dirty.map((v) => v.letter).join(', ')} da controllare`
+        : bad.length
+          ? `${bad[0].letter} ${HEALTH_TEXT[bad[0].health!]}`
+          : num(boots.length, 'controllo all\'avvio', 'controlli all\'avvio'),
     numeric: dirty.length + bad.length + boots.length,
     severity: sev,
-    verdict: `${parts.join('; ')}.` + (sev !== 'info' ? ' Prima di intervenire tieni aggiornato il backup: un file system danneggiato può essere il segno di un disco che si guasta.' : ''),
+    verdict: `${cap(parts.join('; '))}.` + (sev !== 'info' ? ' Prima di intervenire tieni aggiornato il backup: un file system danneggiato può essere il segno di un disco che si guasta.' : ''),
     actions: sev === 'info' ? ['check-disk-errors'] : ['check-disk-errors', 'backup-replace-disk'],
   });
 }

@@ -66,6 +66,7 @@ export {
   isDisabled,
   isTransient,
   oldDrivers,
+  symbolicDate,
   thirdPartyDrivers,
 } from './devices';
 export type { DriverPackage } from './devices';
@@ -90,7 +91,7 @@ export {
   SHUTDOWN_WARN_MS,
   SLOW_KIND,
 } from './boot';
-export { analyzeMaint, failedUpdates, WU_ERRORS, wuErrorText, wuGroup } from './maint';
+export { analyzeMaint, failedUpdates, memDiagPending, WU_ERRORS, wuErrorText, wuGroup } from './maint';
 export type { WuErrorGroup } from './maint';
 export { analyzeProtection, ENC_METHOD, ENC_PROTECTOR, encText, isPortable } from './protect';
 export { analyzePrinting, isRealPrinter, PRINTER_FLAG, printerProblems, printerText } from './printing';

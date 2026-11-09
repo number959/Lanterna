@@ -668,14 +668,24 @@ function analyzeEvents(pc: PcData, now: number, add: Add) {
     actions: nBsod ? (hw ? ['diagnose-bsod', 'check-hardware'] : ['diagnose-bsod']) : [],
   });
 
-  // Errori di disco e file system, con l'unità coinvolta quando l'evento la indica.
+  // Errori di disco e file system, con l'unità coinvolta quando l'evento la
+  // indica: il disco ("\Device\Harddisk1") o la lettera del volume ("E:").
   const disks = pc.disks ?? [];
+  const volumes = pc.volumes ?? [];
+  const letterOf = (e: EventGroup) => (/^[a-z]:$/i.test(e.detail ?? '') ? e.detail!.toUpperCase() : undefined);
+  const volOf = (e: EventGroup) => {
+    const l = letterOf(e);
+    return l ? volumes.find((v) => v.letter.toUpperCase() === l) : undefined;
+  };
   const diskOf = (e: EventGroup) => {
     const m = /harddisk(\d+)/i.exec(e.detail ?? '');
-    return m ? disks.find((d) => d.id === m[1]) : undefined;
+    const id = m ? m[1] : volOf(e)?.disk;
+    return id !== undefined ? disks.find((d) => d.id === id) : undefined;
   };
+  // Chiavette, schede SD e dischi USB: i loro errori non riguardano i dischi interni.
+  const external = (e: EventGroup) => isUsb(diskOf(e)) || volOf(e)?.kind === 'removable';
   const storage = of('disk-error', 'filesystem', 'disk-retry', 'storage-reset', 'fs-flush', 'fs-repaired');
-  const internal = storage.filter((e) => !isUsb(diskOf(e)));
+  const internal = storage.filter((e) => !external(e));
   const errors = internal.filter((e) => e.kind === 'disk-error' || e.kind === 'filesystem');
   const soft = internal.filter((e) => e.kind === 'disk-retry' || e.kind === 'storage-reset' || e.kind === 'fs-flush');
   const repairedOnly = storage.length > 0 && storage.every((e) => e.kind === 'fs-repaired');
@@ -683,7 +693,12 @@ function analyzeEvents(pc: PcData, now: number, add: Add) {
   const sev: Severity = total(errors) >= 20 ? 'crit' : errors.length ? 'warn' : total(soft) >= 10 ? 'warn' : storage.length ? 'info' : 'ok';
   const describe = (e: EventGroup) => {
     const d = diskOf(e);
-    const where = d ? ` (${d.name}${isUsb(d) ? ', USB' : ''})` : /^[a-z]:$/i.test(e.detail ?? '') ? ` (${e.detail!.toUpperCase()})` : '';
+    const l = letterOf(e);
+    const where = d
+      ? ` (${l ? `${l}, ` : ''}${d.name}${isUsb(d) ? ', USB' : ''})`
+      : l
+        ? ` (${l}${volOf(e)?.kind === 'removable' ? ', unità rimovibile' : ''})`
+        : '';
     const what: Record<string, [string, string]> = {
       'disk-error': ['errore del disco', 'errori del disco'],
       filesystem: ['danno al file system', 'danni al file system'],
@@ -707,7 +722,7 @@ function analyzeEvents(pc: PcData, now: number, add: Add) {
         (repairedOnly
           ? ' Windows ha trovato e corretto da solo piccoli danni al file system: se si ripete, controlla il disco.'
           : usbOnly
-          ? ' Riguardano solo unità USB: capita quando si scollegano senza "Rimozione sicura" o con cavi e porte difettosi.'
+          ? ' Riguardano solo unità USB o rimovibili: capita quando si scollegano senza "Rimozione sicura" o con cavi e porte difettosi.'
           : errors.length
             ? ' Errori su un disco interno sono un segnale serio: verifica il disco e tieni aggiornato il backup.'
             : ' Operazioni ripetute e reset indicano un disco che a volte non risponde in tempo: cavo, alimentazione, driver o firmware.')
@@ -735,17 +750,30 @@ function analyzeEvents(pc: PcData, now: number, add: Add) {
 }
 
 /**
+ * Aggiornamenti che passano da Windows Update ma non sono di Windows: lo
+ * strumento di rimozione del software dannoso (KB890830, che si installa ogni
+ * mese anche quando gli aggiornamenti cumulativi falliscono), .NET, Office e
+ * simili. L'agente dalla 0.12.0 li classifica già come "other"; il filtro
+ * serve per i rapporti delle versioni precedenti.
+ */
+const NOT_WINDOWS = /\.net|\boffice\b|microsoft 365|visual c\+\+|silverlight|sql server|malicious software removal|rimozione (di )?(malware|software dannoso)/i;
+
+/**
  * L'ultimo aggiornamento di Windows installato: il più recente tra quello
  * della cronologia di Windows Update (installazioni riuscite, senza le firme
- * di Defender e i driver) e quello di Get-HotFix.
+ * di Defender, i driver e gli aggiornamenti di altri prodotti) e quello di
+ * Get-HotFix. Una data nel futuro è un errore di lettura (formato regionale)
+ * e si scarta, così non nasconde quelle valide.
  */
-export function lastQualityUpdate(u?: PcData['updates']): { date: string; kb?: string } | undefined {
-  let best: { date: string; kb?: string } | undefined = u?.lastInstalled ? { date: u.lastInstalled, kb: u.lastKB } : undefined;
+export function lastQualityUpdate(u?: PcData['updates'], now = Date.now()): { date: string; kb?: string } | undefined {
   const at = (d: string) => Date.parse(d.length === 10 ? d + 'T00:00:00Z' : d);
+  const valid = (d: string) => !isNaN(at(d)) && at(d) <= now + DAY;
+  let best: { date: string; kb?: string } | undefined = u?.lastInstalled && valid(u.lastInstalled) ? { date: u.lastInstalled, kb: u.lastKB } : undefined;
   for (const e of u?.history ?? []) {
     if (e.operation !== 'install' || (e.result !== 'succeeded' && e.result !== 'succeededWithErrors')) continue;
     if (e.kind !== 'quality' && e.kind !== 'feature') continue;
-    if (isNaN(at(e.date))) continue;
+    if ((e.kb ?? '').toUpperCase() === 'KB890830' || NOT_WINDOWS.test(e.title ?? '')) continue;
+    if (!valid(e.date)) continue;
     if (!best || at(e.date) > at(best.date)) best = { date: e.date, kb: e.kb };
     break; // la cronologia è dalla più recente
   }
@@ -781,10 +809,9 @@ function analyzeSecurity(pc: PcData, now: number, add: Add) {
     });
   }
   const u = pc.updates;
-  const last = lastQualityUpdate(u);
+  const last = lastQualityUpdate(u, now);
   const t = last ? Date.parse(last.date.length === 10 ? last.date + 'T00:00:00Z' : last.date) : NaN;
-  // Una data nel futuro è un errore di lettura (formato regionale): si ignora.
-  if (last && !isNaN(t) && t <= now + DAY) {
+  if (last && !isNaN(t)) {
     const days = Math.max(0, Math.floor((now - t) / DAY));
     const sev: Severity = days > 60 ? 'warn' : days > 35 ? 'info' : 'ok';
     add({

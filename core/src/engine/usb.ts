@@ -152,10 +152,14 @@ export function usbWhere(n: UsbNode): string {
 
 /** Perché un dispositivo USB 3 va a velocità USB 2, per quanto si può dire. */
 export function usbSlowReason(n: UsbNode): string {
-  if (n.parent && n.hub.kind !== 'usb3') return 'è collegato dietro un hub USB 2, che lo limita: collegalo direttamente al PC o a un hub USB 3';
+  // Una porta USB 3 (anche la metà USB 2 di un hub USB 3, che ha una porta
+  // compagna) collegata in USB 2: il limite è nel cavo o nel collegamento.
   if (n.port.companion || n.port.usb3) {
-    return 'la porta è USB 3 ma il collegamento è avvenuto in USB 2: di solito la colpa è del cavo (un cavo solo USB 2, una prolunga, un cavo di sola ricarica) o di una porta frontale collegata male; prova il cavo originale e una porta sul retro';
+    return n.parent
+      ? 'la porta dell\'hub è USB 3 ma il collegamento è avvenuto in USB 2: di solito la colpa è del cavo (un cavo solo USB 2, una prolunga, un cavo di sola ricarica) o dell\'hub collegato al PC con un cavo USB 2; prova il cavo originale, oppure collegalo direttamente al PC'
+      : 'la porta è USB 3 ma il collegamento è avvenuto in USB 2: di solito la colpa è del cavo (un cavo solo USB 2, una prolunga, un cavo di sola ricarica) o di una porta frontale collegata male; prova il cavo originale e una porta sul retro';
   }
+  if (n.parent && n.hub.kind === 'usb2') return 'è collegato dietro un hub USB 2, che lo limita: collegalo direttamente al PC o a un hub USB 3';
   if (n.port.usb3 === false) return 'è collegato a una porta USB 2: spostalo su una porta USB 3 (spesso blu, con il simbolo SS, oppure USB-C)';
   return 'una porta, un cavo o un hub USB 2 lo limitano: prova una porta USB 3 (spesso blu, con il simbolo SS) e il cavo originale';
 }
@@ -181,9 +185,15 @@ export function analyzeUsb(scan: Scan, add: Add) {
   }
   const devices = usbDevices(usb);
   const problems = usbPortProblems(usb);
+  // Un dispositivo non riconosciuto compare anche in Gestione dispositivi
+  // (codice 43, sul bus USB) e pesa già nella voce dei dispositivi: qui
+  // resta un'informazione, per non contarlo due volte.
+  const counted = !!scan.pc?.devices?.items.some((d) => (d.enumerator ?? '').toUpperCase() === 'USB' && d.problem === 43);
+  const twice = (n: UsbNode) => counted && n.port.status === 'failed-enumeration';
   let sev: Severity = 'ok';
   for (const n of problems) {
-    const s = (USB_STATUS[n.port.status] ?? USB_STATUS.unknown)[2];
+    let s = (USB_STATUS[n.port.status] ?? USB_STATUS.unknown)[2];
+    if (twice(n) && RANK[s] > RANK.info) s = 'info';
     if (RANK[s] > RANK[sev]) sev = s;
   }
   const list = problems
@@ -198,6 +208,7 @@ export function analyzeUsb(scan: Scan, add: Add) {
     ? `Windows segnala ${list}${more(problems.length, 4)}. ${first![1][0].toUpperCase()}${first![1].slice(1)}.` +
       (problems.some((n) => n.port.status === 'overcurrent') ? ' Scollega subito il dispositivo da quella porta: lo spegnimento per sovraccarico protegge il PC.' : '')
     : `Nessuna porta USB segnala errori: ${num(devices.length, 'dispositivo collegato', 'dispositivi collegati')} su ${num(usb.controllers.length, 'controller', 'controller')}.`;
+  if (problems.some(twice)) verdict += ' Il dispositivo non riconosciuto compare anche tra i dispositivi con problemi (codice 43), dove è già contato.';
   if (usb.partial) verdict += ' La lettura non è finita in tempo: l\'albero può essere incompleto.';
   add({
     id: 'pc.usb.ports',
@@ -233,8 +244,8 @@ export function analyzeUsb(scan: Scan, add: Add) {
     numeric: slow.length,
     severity: s,
     verdict:
-      `${head}${more(slow.length, 3)}: ${reason}.` +
-      (storageSlow ? ' Per un disco o una chiavetta vuol dire copie e backup da tre a dieci volte più lenti.' : ''),
+      `${head}${more(slow.length, shown.length)}: ${reason}.` +
+      (storageSlow ? ' Per un disco o una chiavetta vuol dire copie e backup molto più lenti: in USB 2 si arriva a circa 40 MB/s, in USB 3 un disco meccanico supera di solito i 100 MB/s e un SSD i 400 MB/s.' : ''),
     actions: ['usb-faster-port'],
   });
 }

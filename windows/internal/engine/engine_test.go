@@ -150,3 +150,21 @@ func TestDocumentInGoja(t *testing.T) {
 		t.Error("indirizzo MAC nel documento")
 	}
 }
+
+// Le versioni dei driver hanno la forma di un indirizzo IPv4: il documento le
+// riconosce dal testo intorno (callback di replace con la posizione, senza
+// lookbehind) e non le scambia per indirizzi pubblici, anche in goja.
+func TestDocumentDriverVersionsInGoja(t *testing.T) {
+	e := load(t)
+	scan := `{"schema":1,"agent":{"name":"STARNET Polaris","version":"t","platform":"windows","host":"PC","startedAt":"2026-10-12T20:00:00Z","durationMs":9000},
+"adapters":[],"errors":[],"pc":{"devices":{"total":1,"problems":0,"items":[{"name":"Acme Wireless","class":"Net","enumerator":"PCI",
+ "driver":{"provider":"Acme","version":"22.40.0.7","date":"2016-11-05","inf":"oem18.inf","file":"acmewlan.sys"}}]}}}`
+	html, err := e.Document([]byte(scan), "0.12.0", "12/10/2026 alle 22:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "Acme 22.40.0.7") || strings.Contains(html, "[IP pubblico]") {
+		i := strings.Index(html, "Acme")
+		t.Errorf("versione del driver alterata nel documento: %q", html[max(0, i-40):min(len(html), i+120)])
+	}
+}

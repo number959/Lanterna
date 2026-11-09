@@ -1251,7 +1251,7 @@ const list: Metric[] = [
       { range: 'attivo', severity: 'warn', meaning: 'Chi accende il PC ne usa l\'account.' },
       { range: 'attivo con la password nel registro', severity: 'crit', meaning: 'La password è leggibile in chiaro.' },
     ],
-    why: 'Con l\'accesso automatico chiunque accenda il PC ne usa dati e programmi; la password salvata nel registro si legge in chiaro con privilegi da amministratore.',
+    why: 'Con l\'accesso automatico chiunque accenda il PC ne usa dati e programmi; la password salvata nel registro si legge in chiaro da qualunque utente del PC, e anche da un altro computer della rete se il servizio Registro remoto è raggiungibile (Microsoft, articolo KB 324737).',
     limits: 'Polaris non legge mai la password né il nome dell\'account. Su alcuni PC dedicati (chioschi, macchinari) l\'accesso automatico è voluto.',
   },
   {
