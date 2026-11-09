@@ -65,7 +65,9 @@ type fakeMLab struct {
 	agents   []string
 	paths    []string
 	uploaded int64
-	locates  int
+	// uploadDone: il gestore dell'upload ha finito e uploaded è definitivo.
+	uploadDone bool
+	locates    int
 	// active: un trasferimento è in corso (per le sonde finte).
 	active atomic.Bool
 }
@@ -232,6 +234,7 @@ func (f *fakeMLab) upload(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		f.mu.Lock()
 		f.uploaded = recv
+		f.uploadDone = true
 		f.mu.Unlock()
 	}()
 	closing := false
@@ -526,9 +529,19 @@ func TestUploadCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := res.Upload
-	f.mu.Lock()
-	got := f.uploaded
-	f.mu.Unlock()
+	// Il server conta i byte quando il suo gestore finisce, che può essere
+	// dopo il ritorno di Run (in CI, su una macchina carica, è successo):
+	// si aspetta la fine del gestore, con un limite.
+	var got int64
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		f.mu.Lock()
+		done := f.uploadDone
+		got = f.uploaded
+		f.mu.Unlock()
+		if done || time.Now().After(deadline) {
+			break
+		}
+	}
 	// Il server riceve tutto ciò che il PC ha scritto, fino al limite e non
 	// oltre. Bytes è il conteggio dell'ultimo messaggio del server (con 2 KB
 	// di TLS e WebSocket nel finto M-Lab), che può precedere gli ultimi invii.
