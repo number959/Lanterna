@@ -90,6 +90,8 @@ export {
   SHUTDOWN_WARN_MS,
   SLOW_KIND,
 } from './boot';
+export { analyzeMaint, failedUpdates, WU_ERRORS, wuErrorText, wuGroup } from './maint';
+export type { WuErrorGroup } from './maint';
 export {
   analyzeSurvey,
   bandText,
@@ -161,7 +163,7 @@ export {
 export type { DirBloat, SpeedBloat } from './speedtest';
 export { documentParts, renderDocument } from './document';
 export type { DocOptions } from './document';
-export { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';
+export { BUGCHECKS, dateIt, lastQualityUpdate, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';
 export { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw, STATUS_LABEL } from './smart';
 export type { AttrState, DiskSignal, DiskStatus } from './smart';
 export { cacheText, channelMode, channelOf, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';

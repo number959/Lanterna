@@ -93,8 +93,9 @@ export const homePc: PcData = {
     { id: '1', name: 'Kingston DataTraveler 3.0', media: 'unknown', bus: 'USB', sizeGB: 30.9, health: 'healthy', operational: ['OK'] },
   ],
   volumes: [
-    { letter: 'C:', label: 'Windows', fs: 'NTFS', kind: 'fixed', sizeGB: 237.3, freeGB: 9.8, system: true, disk: '0' },
-    { letter: 'E:', label: 'KINGSTON', fs: 'FAT32', kind: 'removable', sizeGB: 30.9, freeGB: 3.1, disk: '1' },
+    { letter: 'C:', label: 'Windows', fs: 'NTFS', kind: 'fixed', sizeGB: 237.3, freeGB: 9.8, system: true, disk: '0', dirty: false, health: 'healthy' },
+    // Chiavetta tolta senza rimozione sicura: Windows la segna da controllare.
+    { letter: 'E:', label: 'KINGSTON', fs: 'FAT32', kind: 'removable', sizeGB: 30.9, freeGB: 3.1, disk: '1', dirty: true },
   ],
   battery: { designMWh: 56000, fullMWh: 38900, cycles: 412, chargePct: 64 },
   power: { plan: 'Risparmio di energia', planKind: 'saver', onAC: true, hasBattery: true },
@@ -152,7 +153,26 @@ export const homePc: PcData = {
   },
   // Un programma con pubblicità bloccato da un installatore scaricato.
   threats: [{ name: 'PUA:Win32/Presenoker', severity: 'low', status: 'quarantined', detected: '2026-10-04T16:22:10Z', changed: '2026-10-04T16:22:14Z' }],
-  updates: { lastInstalled: '2025-11-11', lastKB: 'KB5068865', pendingReboot: true, rebootReasons: ['Windows Update'] },
+  // Gli aggiornamenti cumulativi falliscono da settimane per l'archivio dei
+  // componenti danneggiato; le firme di Defender invece arrivano.
+  updates: {
+    lastInstalled: '2025-11-11',
+    lastKB: 'KB5068865',
+    pendingReboot: true,
+    rebootReasons: ['Windows Update'],
+    history: [
+      { title: 'Aggiornamento dell\'intelligence di sicurezza per Microsoft Defender Antivirus - KB2267602 (Versione 1.419.98.0)', kb: 'KB2267602', kind: 'definition', operation: 'install', result: 'succeeded', date: '2026-10-12T06:10:00Z' },
+      { title: '2026-10 Aggiornamento cumulativo per Windows 11 Version 23H2 per sistemi basati su x64 (KB5066835)', kb: 'KB5066835', kind: 'quality', operation: 'install', result: 'failed', hresult: '0x800F081F', date: '2026-10-08T03:12:00Z', updateId: 'a1b2c3d4-0000-4000-8000-000000000001' },
+      { title: '2026-10 Aggiornamento cumulativo per Windows 11 Version 23H2 per sistemi basati su x64 (KB5066835)', kb: 'KB5066835', kind: 'quality', operation: 'install', result: 'failed', hresult: '0x800F081F', date: '2026-10-06T03:05:00Z', updateId: 'a1b2c3d4-0000-4000-8000-000000000001' },
+      { title: '2026-09 Aggiornamento cumulativo per Windows 11 Version 23H2 per sistemi basati su x64 (KB5065431)', kb: 'KB5065431', kind: 'quality', operation: 'install', result: 'failed', hresult: '0x800F081F', date: '2026-09-16T03:20:00Z', updateId: 'a1b2c3d4-0000-4000-8000-000000000002' },
+    ],
+    lastSuccess: '2026-10-12T06:10:00Z',
+    lastSearch: '2026-10-12T06:00:00Z',
+    service: { wu: { start: 'manual', running: true }, uso: { start: 'delayed', running: true }, bits: { start: 'manual' } },
+  },
+  // Un test della memoria pianificato dopo le schermate blu, mai completato.
+  memDiag: { days: 365, results: [], lastScheduled: '2026-09-28T10:14:00Z' },
+  fsChecks: [{ time: '2026-09-27T14:07:10Z', source: 'wininit', id: 1001, drive: 'C:' }],
   // Schermate blu lette dai minidump: vedi demo/crashes.ts.
   crashes: homeCrashes,
   devices: homeDevices,
@@ -283,8 +303,9 @@ export const clinicPc: PcData = {
     },
   ],
   volumes: [
-    { letter: 'C:', label: 'Sistema', fs: 'NTFS', kind: 'fixed', sizeGB: 255.1, freeGB: 61.2, system: true, disk: '0' },
-    { letter: 'D:', label: 'Archivio', fs: 'NTFS', kind: 'fixed', sizeGB: 1000.2, freeGB: 402.6, disk: '1' },
+    { letter: 'C:', label: 'Sistema', fs: 'NTFS', kind: 'fixed', sizeGB: 255.1, freeGB: 61.2, system: true, disk: '0', dirty: false, health: 'healthy' },
+    // Il disco dell'archivio con errori nel registro: Windows chiede una correzione rapida.
+    { letter: 'D:', label: 'Archivio', fs: 'NTFS', kind: 'fixed', sizeGB: 1000.2, freeGB: 402.6, disk: '1', dirty: true, health: 'spotfix' },
   ],
   power: { plan: 'Bilanciato', planKind: 'balanced', onAC: true, hasBattery: false },
   startup: [
@@ -325,7 +346,20 @@ export const clinicPc: PcData = {
     productVersion: '4.18.24090.11',
   },
   threats: [],
-  updates: { lastInstalled: '2026-09-09', lastKB: 'KB5065429', pendingReboot: false },
+  // Aggiornamenti gestiti dal server dell'organizzazione, tutti installati.
+  updates: {
+    lastInstalled: '2026-09-09',
+    lastKB: 'KB5065429',
+    pendingReboot: false,
+    history: [
+      { title: '2026-09 Aggiornamento cumulativo per Windows 10 Version 22H2 per sistemi basati su x64 (KB5065429)', kb: 'KB5065429', kind: 'quality', operation: 'install', result: 'succeeded', date: '2026-09-10T02:40:00Z' },
+    ],
+    service: { wu: { start: 'manual', running: true }, uso: { start: 'delayed', running: true }, bits: { start: 'manual' } },
+    policy: { auOptions: 4, managed: true },
+  },
+  // Test della memoria fatto dal tecnico a giugno, senza errori.
+  memDiag: { days: 365, results: [{ time: '2026-06-18T17:42:00Z', id: 1201 }] },
+  fsChecks: [],
   crashes: clinicCrashes,
   devices: clinicDevices,
   boot: clinicBoot,

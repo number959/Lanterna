@@ -144,6 +144,17 @@ jobs:
           if (-not $bt -or $bt.channel -eq 'error') { throw "registro Diagnostics-Performance non letto" }
           if (-not $ap -or $ap.channel -ne 'ok') { throw "registro Applicazione non letto" }
           if (-not $rl) { throw "indice di stabilità non letto (PowerShell)" }
+          # Aggiornamenti (API di Windows Update Agent), Diagnostica memoria, file system.
+          $up = $pc.updates
+          "Windows Update: cronologia $(if ($null -eq $up.history) { "non letta ($($up.historyError))" } else { "$(@($up.history).Count) voci" }); ultima installazione $($up.lastSuccess), ultima ricerca $($up.lastSearch); servizio $($up.service | ConvertTo-Json -Compress); criteri $($up.policy | ConvertTo-Json -Compress)"
+          "Ultime voci: " + ((@($up.history) | Select-Object -First 4 | ForEach-Object { "$($_.date) [$($_.kind)/$($_.result)] $($_.kb) $($_.hresult)" }) -join ' | ')
+          "Diagnostica memoria: $($pc.memDiag | ConvertTo-Json -Compress)"
+          "Volumi: " + ((@($pc.volumes) | ForEach-Object { "$($_.letter) dirty=$($_.dirty) stato=$($_.health)" }) -join ' | ') + "; controlli all'avvio: $(@($pc.fsChecks).Count)"
+          if ($null -eq $up.history) { throw "cronologia di Windows Update non letta: $($up.historyError)" }
+          if (-not $up.service.wu) { throw "servizio Windows Update non letto" }
+          if (-not (@($pc.volumes) | Where-Object { $null -ne $_.dirty })) { throw "stato da controllare dei volumi non letto (FSCTL_IS_VOLUME_DIRTY)" }
+          if (-not (@($pc.volumes) | Where-Object { $_.health })) { throw "stato del file system dei volumi non letto (MSFT_Volume)" }
+          if ($null -eq $pc.memDiag) { throw "registro di sistema per Diagnostica memoria non letto" }
           # Nessun percorso della cartella dell'utente nel rapporto (solo %USERPROFILE%).
           $raw = Get-Content scan.json -Raw
           $leak = [regex]::Match($raw, '.{0,60}' + [regex]::Escape($env:USERPROFILE.Replace('\', '\\')) + '.{0,40}', 'IgnoreCase')

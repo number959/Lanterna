@@ -623,6 +623,10 @@ type PcData struct {
 	Boot        *BootPerf    `json:"boot,omitempty"`
 	Apps        *AppFailures `json:"apps,omitempty"`
 	Reliability *Reliability `json:"reliability,omitempty"`
+	// MemDiag è l'esito di Diagnostica memoria Windows; FsChecks i controlli
+	// del file system degli ultimi EventsDays giorni (nil se non letti).
+	MemDiag  *MemDiagInfo `json:"memDiag,omitempty"`
+	FsChecks []FsCheck    `json:"fsChecks"`
 	// Notes spiega i limiti della raccolta (dati SMART solo da amministratore...).
 	Notes []string `json:"notes,omitempty"`
 }
@@ -829,6 +833,11 @@ type Volume struct {
 	FreeGB float64 `json:"freeGB"`
 	System bool    `json:"system,omitempty"`
 	Disk   string  `json:"disk,omitempty"` // ID del disco fisico
+	// Dirty: Windows controllerà il volume al prossimo avvio (nil se non
+	// verificabile). Health è lo stato del file system secondo Windows:
+	// healthy | scan | spotfix | repair (MSFT_Volume.HealthStatus).
+	Dirty  *bool  `json:"dirty,omitempty"`
+	Health string `json:"health,omitempty"`
 }
 
 type Battery struct {
@@ -915,6 +924,80 @@ type UpdateInfo struct {
 	LastKB        string   `json:"lastKB,omitempty"`
 	PendingReboot bool     `json:"pendingReboot"`
 	RebootReasons []string `json:"rebootReasons,omitempty"`
+	// History è la cronologia di Windows Update (API di Windows Update
+	// Agent), dalla più recente: nil se non letta, [] se vuota.
+	// HistoryError è il codice dell'errore se la lettura non è riuscita.
+	History      []UpdateEntry `json:"history"`
+	HistoryError string        `json:"historyError,omitempty"`
+	// LastSuccess e LastSearch: ultima installazione riuscita e ultima
+	// ricerca riuscita secondo Windows Update (comprese le firme di Defender).
+	LastSuccess string         `json:"lastSuccess,omitempty"`
+	LastSearch  string         `json:"lastSearch,omitempty"`
+	Service     *UpdateService `json:"service,omitempty"`
+	Policy      *UpdatePolicy  `json:"policy,omitempty"`
+}
+
+// UpdateEntry è una voce della cronologia di Windows Update.
+type UpdateEntry struct {
+	Title string `json:"title"`
+	KB    string `json:"kb,omitempty"`
+	// Kind: quality | feature | driver | definition | other.
+	Kind string `json:"kind"`
+	// Operation: install | uninstall | other. Result: succeeded |
+	// succeededWithErrors | failed | aborted | inProgress | notStarted.
+	Operation string `json:"operation"`
+	Result    string `json:"result"`
+	HResult   string `json:"hresult,omitempty"` // "0x800F081F"
+	Date      string `json:"date"`
+	UpdateID  string `json:"updateId,omitempty"`
+}
+
+// UpdateService è il modo di avvio dei servizi di Windows Update.
+type UpdateService struct {
+	WU  *ServiceState `json:"wu,omitempty"`  // wuauserv, Windows Update
+	USO *ServiceState `json:"uso,omitempty"` // UsoSvc, Servizio orchestratore aggiornamenti
+	// BITS è il servizio di trasferimento intelligente in background.
+	BITS *ServiceState `json:"bits,omitempty"`
+}
+
+// ServiceState: Start è auto | delayed | manual | disabled | unknown.
+type ServiceState struct {
+	Start   string `json:"start"`
+	Running bool   `json:"running,omitempty"`
+}
+
+// UpdatePolicy sono i criteri di gruppo di Windows Update (mai l'indirizzo
+// del server dell'organizzazione).
+type UpdatePolicy struct {
+	NoAutoUpdate bool `json:"noAutoUpdate,omitempty"`
+	AUOptions    int  `json:"auOptions,omitempty"`
+	// Managed: aggiornamenti da un server dell'organizzazione (WSUS).
+	Managed bool `json:"managed,omitempty"`
+}
+
+// MemDiagInfo è l'esito di Diagnostica memoria Windows letto dal registro di
+// sistema (MemoryDiagnostics-Results e -Schedule) dell'ultimo anno.
+type MemDiagInfo struct {
+	Days          int             `json:"days"`
+	Results       []MemDiagResult `json:"results"`
+	LastScheduled string          `json:"lastScheduled,omitempty"`
+}
+
+// MemDiagResult è l'esito di un test della memoria.
+type MemDiagResult struct {
+	Time   string `json:"time"`
+	ID     int    `json:"id"`
+	Errors bool   `json:"errors,omitempty"`
+}
+
+// FsCheck è un controllo del file system registrato nel registro
+// Applicazione: all'avvio (Wininit 1001) o lanciato a mano (Chkdsk). Solo
+// ora, fonte e lettera dell'unità: il resoconto può contenere nomi di file.
+type FsCheck struct {
+	Time   string `json:"time"`
+	Source string `json:"source"` // wininit | chkdsk
+	ID     int    `json:"id"`
+	Drive  string `json:"drive,omitempty"`
 }
 
 type BenchData struct {

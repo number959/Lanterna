@@ -58,6 +58,7 @@ import { SpaceCard, useSpaceRun } from './space';
 import { CrashesCard } from './crashes';
 import { DevicesCard } from './devices';
 import { StabilityCard } from './stability';
+import { MaintCard } from './maint';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -159,6 +160,12 @@ export function PcView(props: ViewProps) {
           <EventsCard pc={pc} />
         </Section>
       ) : null}
+
+      {pc && (pc.updates || pc.memDiag || (pc.volumes?.length ?? 0) > 0) && (
+        <Section title="Aggiornamenti e controlli di Windows">
+          <MaintCard pc={pc} live={props.live} now={Date.parse(scan.agent.startedAt) || Date.now()} />
+        </Section>
+      )}
 
       {pc && (pc.boot || pc.apps || pc.reliability) && (
         <Section title="Avvio e affidabilità">
@@ -1247,6 +1254,8 @@ const EVENT_LABEL: Record<EventKind, string> = {
   'disk-error': 'Errore del disco',
   'disk-retry': 'Operazione ripetuta sul disco',
   filesystem: 'File system danneggiato',
+  'fs-repaired': 'File system riparato da Windows',
+  'fs-flush': 'Scrittura sul disco non riuscita',
   'storage-reset': 'Reset del controller',
   'whea-fatal': 'Errore hardware grave',
   'whea-corrected': 'Errore hardware corretto',
@@ -1257,6 +1266,8 @@ const EVENT_SEV: Record<EventKind, Severity> = {
   'disk-error': 'crit',
   'disk-retry': 'warn',
   filesystem: 'crit',
+  'fs-repaired': 'info',
+  'fs-flush': 'warn',
   'storage-reset': 'warn',
   'whea-fatal': 'crit',
   'whea-corrected': 'info',

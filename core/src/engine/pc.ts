@@ -674,10 +674,11 @@ function analyzeEvents(pc: PcData, now: number, add: Add) {
     const m = /harddisk(\d+)/i.exec(e.detail ?? '');
     return m ? disks.find((d) => d.id === m[1]) : undefined;
   };
-  const storage = of('disk-error', 'filesystem', 'disk-retry', 'storage-reset');
+  const storage = of('disk-error', 'filesystem', 'disk-retry', 'storage-reset', 'fs-flush', 'fs-repaired');
   const internal = storage.filter((e) => !isUsb(diskOf(e)));
   const errors = internal.filter((e) => e.kind === 'disk-error' || e.kind === 'filesystem');
-  const soft = internal.filter((e) => e.kind === 'disk-retry' || e.kind === 'storage-reset');
+  const soft = internal.filter((e) => e.kind === 'disk-retry' || e.kind === 'storage-reset' || e.kind === 'fs-flush');
+  const repairedOnly = storage.length > 0 && storage.every((e) => e.kind === 'fs-repaired');
   const usbOnly = storage.length > 0 && internal.length === 0;
   const sev: Severity = total(errors) >= 20 ? 'crit' : errors.length ? 'warn' : total(soft) >= 10 ? 'warn' : storage.length ? 'info' : 'ok';
   const describe = (e: EventGroup) => {
@@ -688,6 +689,8 @@ function analyzeEvents(pc: PcData, now: number, add: Add) {
       filesystem: ['danno al file system', 'danni al file system'],
       'disk-retry': ['operazione ripetuta', 'operazioni ripetute'],
       'storage-reset': ['reset del controller per mancata risposta', 'reset del controller per mancata risposta'],
+      'fs-flush': ['scrittura sul disco non riuscita', 'scritture sul disco non riuscite'],
+      'fs-repaired': ['riparazione automatica del file system', 'riparazioni automatiche del file system'],
     };
     return `${num(e.count, what[e.kind][0], what[e.kind][1])}${where}`;
   };
@@ -701,7 +704,9 @@ function analyzeEvents(pc: PcData, now: number, add: Add) {
     severity: sev,
     verdict: storage.length
       ? `${period.charAt(0).toUpperCase() + period.slice(1)}: ${storage.slice(0, 4).map(describe).join('; ')}${more(storage.length, 4)}.` +
-        (usbOnly
+        (repairedOnly
+          ? ' Windows ha trovato e corretto da solo piccoli danni al file system: se si ripete, controlla il disco.'
+          : usbOnly
           ? ' Riguardano solo unità USB: capita quando si scollegano senza "Rimozione sicura" o con cavi e porte difettosi.'
           : errors.length
             ? ' Errori su un disco interno sono un segnale serio: verifica il disco e tieni aggiornato il backup.'
@@ -727,6 +732,24 @@ function analyzeEvents(pc: PcData, now: number, add: Add) {
         : `Nessun errore hardware segnalato ${period}.`,
     actions: fatal || corrected >= 10 ? ['check-hardware'] : [],
   });
+}
+
+/**
+ * L'ultimo aggiornamento di Windows installato: il più recente tra quello
+ * della cronologia di Windows Update (installazioni riuscite, senza le firme
+ * di Defender e i driver) e quello di Get-HotFix.
+ */
+export function lastQualityUpdate(u?: PcData['updates']): { date: string; kb?: string } | undefined {
+  let best: { date: string; kb?: string } | undefined = u?.lastInstalled ? { date: u.lastInstalled, kb: u.lastKB } : undefined;
+  const at = (d: string) => Date.parse(d.length === 10 ? d + 'T00:00:00Z' : d);
+  for (const e of u?.history ?? []) {
+    if (e.operation !== 'install' || (e.result !== 'succeeded' && e.result !== 'succeededWithErrors')) continue;
+    if (e.kind !== 'quality' && e.kind !== 'feature') continue;
+    if (isNaN(at(e.date))) continue;
+    if (!best || at(e.date) > at(best.date)) best = { date: e.date, kb: e.kb };
+    break; // la cronologia è dalla più recente
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------- Sicurezza
@@ -758,9 +781,10 @@ function analyzeSecurity(pc: PcData, now: number, add: Add) {
     });
   }
   const u = pc.updates;
-  const t = u?.lastInstalled ? Date.parse(u.lastInstalled + 'T00:00:00Z') : NaN;
+  const last = lastQualityUpdate(u);
+  const t = last ? Date.parse(last.date.length === 10 ? last.date + 'T00:00:00Z' : last.date) : NaN;
   // Una data nel futuro è un errore di lettura (formato regionale): si ignora.
-  if (u?.lastInstalled && !isNaN(t) && t <= now + DAY) {
+  if (last && !isNaN(t) && t <= now + DAY) {
     const days = Math.max(0, Math.floor((now - t) / DAY));
     const sev: Severity = days > 60 ? 'warn' : days > 35 ? 'info' : 'ok';
     add({
@@ -768,7 +792,7 @@ function analyzeSecurity(pc: PcData, now: number, add: Add) {
       metric: 'pc.updates',
       category: 'security',
       title: 'Ultimo aggiornamento di Windows',
-      value: `${dateIt(u.lastInstalled)} (${days === 0 ? 'oggi' : num(days, 'giorno fa', 'giorni fa')})${u.lastKB ? `, ${u.lastKB}` : ''}`,
+      value: `${dateIt(last.date)} (${days === 0 ? 'oggi' : num(days, 'giorno fa', 'giorni fa')})${last.kb ? `, ${last.kb}` : ''}`,
       numeric: days,
       severity: sev,
       verdict:

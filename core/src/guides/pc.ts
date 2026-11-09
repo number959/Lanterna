@@ -2,6 +2,7 @@ import { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from '../
 import { BUGCHECKS_MORE } from '../engine/crash';
 import { DEVICE_PROBLEMS } from '../engine/devices';
 import { EXCEPTION_TEXT } from '../engine/boot';
+import { WU_ERRORS } from '../engine/maint';
 import { SPACE_HINTS, SPACE_RISK_LABEL } from '../engine/space';
 import type { SpaceRisk } from '../engine/space';
 import type { Guide } from './types';
@@ -16,6 +17,7 @@ const win11Rows = Object.entries(WIN11_EOS).map(([v, d]) => [v, dateIt(d.home), 
 const bugcheckRows = Object.entries(BUGCHECKS).map(([code, [name, meaning]]) => [`\`${code}\``, name, meaning]);
 const deviceProblemRows = Object.keys(DEVICE_PROBLEMS).map((k) => [k, DEVICE_PROBLEMS[Number(k)][0], DEVICE_PROBLEMS[Number(k)][1]]);
 const exceptionRows = Object.keys(EXCEPTION_TEXT).map((k) => [`\`${k}\``, EXCEPTION_TEXT[k]]);
+const wuErrorRows = Object.keys(WU_ERRORS).map((k) => [`\`${k}\``, WU_ERRORS[k][0], WU_ERRORS[k][1]]);
 const moreBugcheckRows = Object.entries(BUGCHECKS_MORE).map(([code, [name, meaning]]) => [`\`${code}\``, name, meaning]);
 
 // Dove l'agente cerca le cartelle e i file noti (con Windows sull'unità C:).
@@ -780,6 +782,35 @@ export const pc: Guide[] = [
       { t: 'p', text: '**Monitoraggio affidabilità** (`perfmon /rel`) mostra un grafico giorno per giorno con un indice da 1 a 10, calcolato da Windows contando arresti dei programmi, errori di Windows e installazioni non riuscite: i problemi recenti pesano di più. Polaris legge lo stesso indice (classe WMI Win32_ReliabilityStabilityMetrics) e lo legge a fasce: da 8 in su stabile, da 5 a 8 qualche problema, da 3 a 5 instabile, sotto 3 molto instabile. Un calo di 2 punti in una settimana è segnalato anche se il valore resta alto.' },
       { t: 'p', text: 'Microsoft non pubblica la formula, e su Windows Server la raccolta è spenta per impostazione predefinita (può esserlo anche su PC aziendali): in quel caso Polaris lo dice. Dei record di affidabilità Polaris non legge l\'utente, i messaggi né il nome del computer.' },
       { t: 'note', kind: 'tip', title: 'Che cosa guardare per primo', text: 'Un avvio lento con quasi tutto il tempo dopo l\'accesso si risolve togliendo programmi dall\'avvio. Un avvio lento già prima del desktop, su un disco meccanico, si risolve davvero solo passando a un SSD. Un indice di stabilità basso si spiega aprendo Monitoraggio affidabilità sui giorni in calo.' },
+    ],
+  },
+  {
+    id: 'manutenzione-windows',
+    chapter: 'pc',
+    title: 'Aggiornamenti che falliscono, test della memoria e file system',
+    summary: 'Come leggere i codici degli aggiornamenti non riusciti, che cosa fare quando il servizio Windows Update è disattivato, dove Windows annota l\'esito di Diagnostica memoria e che cosa vuol dire un volume da controllare.',
+    level: 'intermedio',
+    metrics: ['pc.updates.failed', 'pc.updates.service', 'pc.memdiag', 'pc.fs'],
+    actions: ['repair-windows', 'enable-windows-update', 'update-windows', 'test-memory', 'check-disk-errors'],
+    tags: ['windows update', 'aggiornamento non riuscito', 'errore 0x800f081f', '0x80073712', '0x80070422', '0xc1900101', 'wuauserv', 'servizio disattivato', 'noautoupdate', 'wsus', 'dism', 'sfc', 'archivio dei componenti', 'diagnostica memoria', 'mdsched', 'memorydiagnostics-results', 'chkdsk', 'dirty bit', 'volume da controllare', 'spotfix', 'wininit', 'autochk'],
+    blocks: [
+      { t: 'h', text: 'Aggiornamenti che non si installano' },
+      { t: 'p', text: 'Polaris legge la **cronologia di Windows Update** di questo PC con l\'API di Windows Update Agent, la stessa che usa la pagina della cronologia degli aggiornamenti, senza bisogno di amministratore. Segnala gli aggiornamenti non riusciti negli ultimi 30 giorni e controlla se Windows li ha poi installati al tentativo successivo: in quel caso non serve fare nulla. Le firme di Microsoft Defender, che arrivano più volte al giorno, hanno una voce a parte (vedi [[antivirus-defender]]).' },
+      { t: 'p', text: 'Il codice di errore dice dove intervenire. Questi sono i codici che Polaris spiega, con il nome usato da Microsoft:' },
+      { t: 'table', caption: 'Codici di Windows Update', head: ['Codice', 'Nome', 'Che cosa vuol dire'], rows: wuErrorRows },
+      { t: 'list', items: [
+        '**archivio dei componenti danneggiato** (0x800F081F, 0x80073712 e simili): da un Prompt dei comandi aperto come amministratore, prima `DISM /Online /Cleanup-Image /RestoreHealth`, poi `sfc /scannow`, poi riavvia e riprova;',
+        '**rete** (0x8024402C, 0x80072EE2...): il PC non raggiunge i server di Microsoft; controlla DNS, proxy e firewall (vedi [[metodo-diagnosi]]);',
+        '**spazio** (0x80070070, 0xC190020E): libera spazio sul disco di sistema;',
+        '**aggiornamento di versione annullato** (0xC1900101): quasi sempre un driver o il firmware da aggiornare prima di riprovare;',
+        '**programmi che bloccano i file** (0x80070020, 0x80240022): spesso un antivirus di terze parti o un programma di backup.',
+      ] },
+      { t: 'note', kind: 'warn', title: 'Servizio Windows Update disattivato', text: 'Molti programmi di "ottimizzazione" disattivano il servizio Windows Update o spengono gli aggiornamenti automatici con i criteri di gruppo: il PC smette di ricevere le correzioni di sicurezza senza avvisare. Polaris lo segnala come critico. Sui PC aziendali gli aggiornamenti possono arrivare da un server dell\'organizzazione: Polaris lo riconosce e non lo considera un errore.' },
+      { t: 'h', text: 'L\'esito di Diagnostica memoria Windows' },
+      { t: 'p', text: 'Diagnostica memoria Windows (`mdsched.exe`) prova la RAM al riavvio, prima che parta Windows; dopo l\'accesso annota l\'esito nel registro di sistema con l\'origine MemoryDiagnostics-Results. Polaris cerca l\'esito più recente dell\'ultimo anno: **nessun errore** esclude un guasto evidente, **errori hardware** vuol dire un modulo guasto da trovare provandone uno alla volta. Se il test è stato pianificato ma l\'esito manca, il test non è partito o è stato interrotto. Se non c\'è nessun test, Polaris non dice nulla: non può sapere se la RAM è sana.' },
+      { t: 'h', text: 'Volumi da controllare' },
+      { t: 'p', text: 'Quando un volume non viene chiuso bene (spegnimento brusco, caduta di corrente, chiavetta tolta senza la rimozione sicura) o Windows trova un danno, il volume viene segnato da controllare e al riavvio parte il controllo automatico del disco. Windows tiene anche uno stato più preciso del file system: **da analizzare** (si fa a PC acceso con `chkdsk /scan`), **correzione rapida** (`chkdsk /spotfix`, un breve passaggio al riavvio), **riparazione completa** (`chkdsk /f` al riavvio). Tutti i comandi di chkdsk vanno lanciati come amministratore.' },
+      { t: 'p', text: 'Se il controllo all\'avvio si ripete più volte in un mese, il problema non è un episodio: spegnimenti bruschi continui, alimentazione instabile o un disco che si guasta. Prima di qualunque riparazione tieni aggiornato il backup (vedi [[salute-dischi-smart]]). Dei controlli Polaris annota solo la data e l\'unità: il resoconto di chkdsk può contenere nomi di file e non viene letto.' },
     ],
   },
   {

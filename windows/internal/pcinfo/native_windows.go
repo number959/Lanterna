@@ -47,7 +47,15 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	var health *healthOut
 	var healthErr error
 	var wg sync.WaitGroup
-	wg.Add(6)
+	wg.Add(8)
+	go func() {
+		defer wg.Done()
+		pc.MemDiag = readMemDiag(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		pc.FsChecks = readFsChecks(ctx)
+	}()
 	go func() {
 		defer wg.Done()
 		pc.Boot = readBoot(ctx)
@@ -128,6 +136,14 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 		pc.Notes = append(pc.Notes, "L'indice di stabilità di Monitoraggio affidabilità non è stato letto: PowerShell non ha risposto ("+healthErr.Error()+").")
 	} else {
 		pc.Reliability = ReliabilityFrom(health, reliabilityWMI(), os.Getenv("USERPROFILE"))
+		mergeMaint(pc, health)
+	}
+	if pc.Updates != nil {
+		pc.Updates.Service = updateServices()
+		pc.Updates.Policy = updatePolicy()
+	}
+	for i := range pc.Volumes {
+		pc.Volumes[i].Dirty = volumeDirty(pc.Volumes[i].Letter)
 	}
 	if devErr != nil {
 		pc.Notes = append(pc.Notes, "I dispositivi e i loro driver non sono stati letti: Windows non ha risposto.")

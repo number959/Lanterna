@@ -890,6 +890,29 @@ const list: Action[] = [
     impact: 'alto',
   },
   {
+    id: 'enable-windows-update',
+    title: 'Riattiva Windows Update',
+    why: 'Con il servizio Windows Update disattivato, o gli aggiornamenti automatici spenti dai criteri, il PC non riceve le correzioni di sicurezza. Succede spesso dopo programmi di "ottimizzazione" che promettono un PC più veloce.',
+    steps: [
+      'Se il PC è gestito da un reparto informatico, chiedi a loro prima di cambiare qualcosa: gli aggiornamenti possono arrivare in altro modo.',
+      {
+        text: 'Apri Servizi, fai doppio clic su Windows Update e imposta il tipo di avvio su Manuale (il valore predefinito), poi conferma e avvia il servizio.',
+        open: 'services',
+        admin: true,
+      },
+      'Se il tipo di avvio torna a Disabilitato da solo, un programma lo sta bloccando: cerca tra le app installate strumenti di "ottimizzazione" o di blocco degli aggiornamenti e disinstallali.',
+      'Se Polaris segnala gli aggiornamenti automatici spenti dai criteri (NoAutoUpdate), il valore sta nei criteri di gruppo: sui PC con Windows Pro si cambia con l\'Editor Criteri di gruppo locali (gpedit.msc), in Configurazione computer > Modelli amministrativi > Componenti di Windows > Windows Update; nel dubbio fallo fare a un tecnico.',
+      {
+        text: `Infine ${WU_W11} > "Verifica disponibilità aggiornamenti".`,
+        win10: `Infine ${WU_W10} > "Verifica disponibilità aggiornamenti".`,
+        open: 'windows-update',
+      },
+    ],
+    check: 'Ripeti l\'analisi: il servizio Windows Update non deve più risultare disattivato e la data dell\'ultimo aggiornamento deve essere recente.',
+    effort: 'media',
+    impact: 'alto',
+  },
+  {
     id: 'upgrade-windows',
     title: 'Passa a una versione di Windows supportata',
     why: 'Una versione fuori supporto non riceve più correzioni di sicurezza. Per Windows 11 l\'aggiornamento alla versione più recente è gratuito; da Windows 10 si passa a Windows 11 o, nel frattempo, al programma ESU.',
@@ -1024,7 +1047,9 @@ const list: Action[] = [
     why: 'Errori, operazioni ripetute e reset del controller possono dipendere dal disco ma anche da cavi, alimentazione, driver o firmware.',
     steps: [
       { text: 'Controlla il file system senza fermare il PC: il controllo è in sola lettura e il PC resta utilizzabile.', cmd: 'chkdsk C: /scan', admin: true },
+      { text: 'Se Windows indica che serve una correzione rapida (Polaris lo mostra come "serve una correzione rapida"), correggi i problemi trovati con un breve passaggio al riavvio.', cmd: 'chkdsk C: /spotfix', admin: true },
       { text: 'Se il controllo segnala problemi, pianifica la correzione al prossimo riavvio: alla domanda rispondi di sì (S), poi riavvia il PC.', cmd: 'chkdsk C: /f', admin: true },
+      'Se il problema è su un\'altra unità, sostituisci C: con la sua lettera nei comandi.',
       'Nei PC fissi ricollega o sostituisci il cavo SATA e il connettore di alimentazione del disco.',
       'Aggiorna i driver del controller (chipset, Intel RST) e il firmware dell\'SSD con lo strumento del produttore.',
       'Per le unità USB usa sempre la rimozione sicura dell\'hardware e prova un\'altra porta o un altro cavo.',

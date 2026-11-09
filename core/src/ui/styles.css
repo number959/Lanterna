@@ -1689,3 +1689,11 @@ a.btn { text-decoration: none; }
 .rel-spark-dot { fill: var(--accent); }
 .rel-spark-band { stroke: var(--line); stroke-dasharray: 3 3; }
 
+/* Aggiornamenti e controlli di Windows */
+.maint-card .dev-h { display: flex; align-items: center; gap: 6px; margin: 18px 0 10px; }
+.maint-card .dev-h:first-of-type { margin-top: 4px; }
+.maint-fails { margin: 10px 0; padding-left: 18px; font-size: 13.5px; }
+.maint-fails li { margin: 4px 0; }
+.maint-row { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
+.maint-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+

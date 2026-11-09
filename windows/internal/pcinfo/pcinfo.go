@@ -48,7 +48,7 @@ const PSScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncoding=[T
 	`try{$c=$d|Get-StorageReliabilityCounter;$rel=@{temperature=$c.Temperature;temperatureMax=$c.TemperatureMax;wear=$c.Wear;powerOnHours=$c.PowerOnHours;readErrors=$c.ReadErrorsTotal;readUncorrected=$c.ReadErrorsUncorrected;writeErrors=$c.WriteErrorsTotal;writeUncorrected=$c.WriteErrorsUncorrected;startStop=$c.StartStopCycleCount;loadUnload=$c.LoadUnloadCycleCount}}catch{$e.reliability="$_"};` +
 	`@{id="$($d.DeviceId)";name="$($d.FriendlyName)".Trim();media="$($d.MediaType)";bus="$($d.BusType)";size=[double]$d.Size;health="$($d.HealthStatus)";operational=@($d.OperationalStatus|ForEach-Object{"$_"});firmware="$($d.FirmwareVersion)".Trim();rpm=[long]$d.SpindleSpeed;rel=$rel}})}catch{$e.disks="$_"};` +
 	`try{$b=Get-CimInstance -Namespace root/wmi -ClassName BatteryStaticData|Select-Object -First 1;$f=Get-CimInstance -Namespace root/wmi -ClassName BatteryFullChargedCapacity|Select-Object -First 1;$cy=$null;try{$cy=[long](Get-CimInstance -Namespace root/wmi -ClassName BatteryCycleCount|Select-Object -First 1).CycleCount}catch{};if($b){$r.battery=@{design=[long]$b.DesignedCapacity;full=[long]$f.FullChargedCapacity;cycles=$cy}}}catch{$e.battery="$_"};` +
-	`try{$ev=@(Get-WinEvent -FilterHashtable @{LogName='System';Id=41,6008,1001,7,11,51,153,55,98,129,17,18,19,47;Level=1,2,3;StartTime=(Get-Date).AddDays(-30)} -MaxEvents 3000);` +
+	`try{$ev=@(Get-WinEvent -FilterHashtable @{LogName='System';Id=41,6008,1001,7,11,51,153,55,98,130,140,50,129,17,18,19,47;Level=1,2,3;StartTime=(Get-Date).AddDays(-30)} -MaxEvents 3000);` +
 	`$r.events=@($ev|Group-Object ProviderName,Id|ForEach-Object{$l=$_.Group|Sort-Object TimeCreated -Descending|Select-Object -First 1;$dt='';try{$dt="$($l.Properties[0].Value)"}catch{};@{source="$($l.ProviderName)";id=[int]$l.Id;count=[int]$_.Count;last=$l.TimeCreated.ToUniversalTime().ToString('o');detail=$dt}})}` +
 	`catch{if($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*'){$r.events=@()}else{$e.events="$_"}};` +
 	`try{$r.av=@(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct|ForEach-Object{$s=[long]$_.productState;@{name="$($_.displayName)";enabled=(($s -band 0x1000) -ne 0);upToDate=(($s -band 0x10) -eq 0);source='securitycenter'}})}catch{$e.av="$_"};` +
@@ -227,6 +227,10 @@ func ClassifyEvent(source string, id int) string {
 		return "disk-retry"
 	case (s == "ntfs" || s == "microsoft-windows-ntfs") && (id == 55 || id == 98):
 		return "filesystem"
+	case (s == "ntfs" || s == "microsoft-windows-ntfs") && id == 130:
+		return "fs-repaired"
+	case (s == "ntfs" || s == "microsoft-windows-ntfs") && (id == 140 || id == 50):
+		return "fs-flush"
 	case (s == "storahci" || s == "stornvme" || s == "storport" || strings.HasPrefix(s, "iastor")) && id == 129:
 		return "storage-reset"
 	case s == "microsoft-windows-whea-logger" && id == 18:
@@ -241,7 +245,7 @@ func ClassifyEvent(source string, id int) string {
 // (codice della schermata blu, disco coinvolto) e non è un dato personale.
 func keepDetail(kind string) bool {
 	switch kind {
-	case "bugcheck", "disk-error", "disk-retry", "filesystem", "storage-reset":
+	case "bugcheck", "disk-error", "disk-retry", "storage-reset":
 		return true
 	}
 	return false
@@ -508,7 +512,12 @@ func merge(pc *scan.PcData, ps *psOut, systemDrive string) {
 				continue
 			}
 			g := scan.EventGroup{Kind: kind, Source: ev.Source, ID: ev.ID, Count: ev.Count, Last: ev.Last}
-			if keepDetail(kind) {
+			switch {
+			case kind == "filesystem" || kind == "fs-repaired" || kind == "fs-flush":
+				// Per il file system solo la lettera dell'unità: gli altri
+				// campi possono contenere nomi di file.
+				g.Detail = FsDetail(ev.Detail)
+			case keepDetail(kind):
 				g.Detail = trimDetail(ev.Detail)
 			}
 			pc.Events = append(pc.Events, g)

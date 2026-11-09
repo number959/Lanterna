@@ -303,11 +303,20 @@ func AppsFrom(events []winevt.Event, days int, usersRoot, winDir string) *scan.A
 	return d
 }
 
-// HealthScript legge con WMI ciò che non ha un'API nativa semplice: l'indice
-// di stabilità degli ultimi 30 giorni e i record di affidabilità raggruppati
-// (senza utente, messaggi e nome del computer). Gira in parallelo con
-// PSScript, così l'analisi non si allunga.
+// HealthScript legge con WMI e COM ciò che non ha un'API nativa semplice:
+// l'indice di stabilità degli ultimi 30 giorni e i record di affidabilità
+// raggruppati (senza utente, messaggi e nome del computer), la cronologia di
+// Windows Update (API di Windows Update Agent, accessibile agli utenti
+// standard; date in UTC, come le date di IAutomaticUpdatesResults: da
+// verificare per la cronologia), lo stato del file system dei volumi
+// (MSFT_Volume.HealthStatus). Gira in parallelo con PSScript, così l'analisi
+// non si allunga.
 const HealthScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncoding=[Text.Encoding]::UTF8}catch{};$r=[ordered]@{};$e=[ordered]@{};` +
+	`$fu={param($d) if($d -and $d.Year -gt 2000){$d.ToString('yyyy-MM-ddTHH:mm:ss')+'Z'}else{''}};` +
+	`try{$q=(New-Object -ComObject Microsoft.Update.Session).CreateUpdateSearcher();$n=$q.GetTotalHistoryCount();$h=@();if($n -gt 0){$h=@($q.QueryHistory(0,[Math]::Min($n,100))|ForEach-Object{@{title="$($_.Title)";date=(&$fu $_.Date);op=[int]$_.Operation;rc=[int]$_.ResultCode;hr=('0x{0:X8}' -f $_.HResult);id="$($_.UpdateIdentity.UpdateID)"}})};$r.wu=$h}catch{$e.wu=('0x{0:X8}' -f $_.Exception.HResult)};` +
+	`try{$a=(New-Object -ComObject Microsoft.Update.AutoUpdate).Results;$r.wures=@{install=(&$fu $a.LastInstallationSuccessDate);search=(&$fu $a.LastSearchSuccessDate)}}catch{$e.wures="$_"};` +
+	`try{$r.wureboot=[bool](New-Object -ComObject Microsoft.Update.SystemInfo).RebootRequired}catch{$e.wureboot="$_"};` +
+	`try{$r.vols=@(Get-CimInstance -Namespace root/Microsoft/Windows/Storage -ClassName MSFT_Volume|Where-Object{$_.DriveLetter}|ForEach-Object{@{letter="$($_.DriveLetter)";health=[int]$_.HealthStatus}})}catch{$e.vols="$_"};` +
 	`$since=[Management.ManagementDateTimeConverter]::ToDmtfDateTime((Get-Date).AddDays(-30));` +
 	`try{$r.rel=@(Get-CimInstance -Query "SELECT SystemStabilityIndex,TimeGenerated FROM Win32_ReliabilityStabilityMetrics WHERE TimeGenerated >= '$since'" -OperationTimeoutSec 25|ForEach-Object{@{t=$_.TimeGenerated.ToUniversalTime().ToString('o');i=[double]$_.SystemStabilityIndex}})}catch{$e.rel="$_"};` +
 	`try{$r.relrec=@(Get-CimInstance -Query "SELECT SourceName,EventIdentifier,ProductName,TimeGenerated FROM Win32_ReliabilityRecords WHERE TimeGenerated >= '$since'" -OperationTimeoutSec 25|Group-Object SourceName,EventIdentifier|` +
@@ -327,6 +336,16 @@ type healthOut struct {
 		Count   int    `json:"count"`
 		Last    string `json:"last"`
 	} `json:"relrec"`
+	WU    *[]psUpdate `json:"wu"`
+	WURes *struct {
+		Install string `json:"install"`
+		Search  string `json:"search"`
+	} `json:"wures"`
+	WUReboot *bool `json:"wureboot"`
+	Vols     []struct {
+		Letter string `json:"letter"`
+		Health int    `json:"health"`
+	} `json:"vols"`
 	Errors map[string]string `json:"errors"`
 }
 

@@ -648,6 +648,10 @@ export interface PcData {
   apps?: AppFailures;
   /** Indice di stabilità di Monitoraggio affidabilità; assente se non letto. */
   reliability?: Reliability;
+  /** Esito di Diagnostica memoria Windows; assente se il registro non è stato letto. */
+  memDiag?: MemDiagInfo;
+  /** Controlli del file system degli ultimi 30 giorni: null o assente = non letti. */
+  fsChecks?: FsCheck[] | null;
   /** Limiti della raccolta (dati SMART solo da amministratore, PowerShell assente...). */
   notes?: string[];
 }
@@ -923,6 +927,10 @@ export interface Volume {
   system?: boolean;
   /** Disco fisico che contiene il volume (id di PhysicalDisk). */
   disk?: string;
+  /** Windows controllerà il volume al prossimo avvio; assente se non verificabile. */
+  dirty?: boolean;
+  /** Stato del file system secondo Windows (MSFT_Volume.HealthStatus). */
+  health?: 'healthy' | 'scan' | 'spotfix' | 'repair';
 }
 
 export interface Battery {
@@ -966,6 +974,8 @@ export type EventKind =
   | 'disk-error'
   | 'disk-retry'
   | 'filesystem'
+  | 'fs-repaired'
+  | 'fs-flush'
   | 'storage-reset'
   | 'whea-fatal'
   | 'whea-corrected';
@@ -1026,6 +1036,64 @@ export interface UpdateInfo {
   lastKB?: string;
   pendingReboot: boolean;
   rebootReasons?: string[];
+  /** Cronologia di Windows Update, dalla più recente: null = non letta, [] = vuota. */
+  history?: UpdateEntry[] | null;
+  /** Codice dell'errore se la cronologia non è stata letta, come "0x80070422". */
+  historyError?: string;
+  /** Ultima installazione e ultima ricerca riuscite secondo Windows Update (comprese le firme di Defender). */
+  lastSuccess?: string;
+  lastSearch?: string;
+  service?: UpdateService;
+  policy?: UpdatePolicy;
+}
+
+export interface UpdateEntry {
+  title: string;
+  kb?: string;
+  kind: 'quality' | 'feature' | 'driver' | 'definition' | 'other';
+  operation: 'install' | 'uninstall' | 'other';
+  result: 'succeeded' | 'succeededWithErrors' | 'failed' | 'aborted' | 'inProgress' | 'notStarted';
+  /** Codice dell'errore, come "0x800F081F". */
+  hresult?: string;
+  date: string;
+  updateId?: string;
+}
+
+export interface ServiceState {
+  start: 'auto' | 'delayed' | 'manual' | 'disabled' | 'unknown';
+  running?: boolean;
+}
+
+/** Servizi di Windows Update: wuauserv, Servizio orchestratore aggiornamenti, BITS. */
+export interface UpdateService {
+  wu?: ServiceState;
+  uso?: ServiceState;
+  bits?: ServiceState;
+}
+
+/** Criteri di gruppo di Windows Update (mai l'indirizzo del server dell'organizzazione). */
+export interface UpdatePolicy {
+  noAutoUpdate?: boolean;
+  auOptions?: number;
+  /** Aggiornamenti da un server dell'organizzazione (WSUS). */
+  managed?: boolean;
+}
+
+/** Esito di Diagnostica memoria Windows nell'ultimo anno. */
+export interface MemDiagInfo {
+  days: number;
+  /** Esiti, dal più recente. */
+  results: { time: string; id: number; errors?: boolean }[];
+  /** Ultima volta in cui un test è stato pianificato. */
+  lastScheduled?: string;
+}
+
+/** Controllo del file system: all'avvio (Wininit) o lanciato a mano (Chkdsk). */
+export interface FsCheck {
+  time: string;
+  source: 'wininit' | 'chkdsk';
+  id: number;
+  drive?: string;
 }
 
 export interface BenchData {

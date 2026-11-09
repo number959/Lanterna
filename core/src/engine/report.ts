@@ -145,6 +145,8 @@ const EVENT_TEXT: Record<EventKind, string> = {
   'disk-error': 'errore del disco',
   'disk-retry': 'operazione ripetuta',
   filesystem: 'file system danneggiato',
+  'fs-repaired': 'file system riparato da Windows',
+  'fs-flush': 'scrittura sul disco non riuscita',
   'storage-reset': 'reset del controller',
   'whea-fatal': 'errore hardware grave',
   'whea-corrected': 'errore hardware corretto',

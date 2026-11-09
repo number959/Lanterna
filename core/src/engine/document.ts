@@ -5,6 +5,7 @@ import { bugcheckInfo, CRASH_DUMP_TYPE, CRASH_LIMITED, crashSetting, crashWhen, 
 import { THREAT_SEVERITY, THREAT_STATUS } from './defender';
 import { appHint, bootSample, bootTypical, failText, msText, SLOW_KIND } from './boot';
 import { deviceClassText, deviceProblemDetail, deviceProblemText, driverText, oldDrivers } from './devices';
+import { failedUpdates, wuErrorText } from './maint';
 import { fmt, thousands } from './fmt';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 import { dateIt } from './pc';
@@ -45,6 +46,8 @@ const EVENT: Record<EventKind, string> = {
   'disk-error': 'Errore del disco',
   'disk-retry': 'Operazione ripetuta sul disco',
   filesystem: 'File system danneggiato',
+  'fs-repaired': 'File system riparato da Windows',
+  'fs-flush': 'Scrittura sul disco non riuscita',
   'storage-reset': 'Reset del controller',
   'whea-fatal': 'Errore hardware grave',
   'whea-corrected': 'Errore hardware corretto',
@@ -323,6 +326,39 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
         crashFiles.length ? '<p class="pd-muted pd-small">Il driver indicato è un indizio, non una certezza: Polaris non usa i simboli di debug e non ricostruisce lo stack completo.</p>' : ''
       }</section>`,
     );
+  }
+
+  if (pc && (pc.updates?.history || pc.memDiag || (pc.volumes ?? []).some((v) => v.dirty || (v.health && v.health !== 'healthy')))) {
+    const parts: string[] = [];
+    const failed = failedUpdates(pc.updates?.history, Date.parse(scan.agent.startedAt) || Date.now()).filter((x) => !x.resolved);
+    if (pc.updates?.history)
+      parts.push(
+        failed.length
+          ? `<p>Aggiornamenti non riusciti negli ultimi 30 giorni: ${failed
+              .slice(0, 4)
+              .map((x) => t(`${x.entry.kb || x.entry.title} (${dateIt(x.entry.date)}, errore ${wuErrorText(x.entry.hresult)})`))
+              .join('; ')}.</p>`
+          : '<p class="pd-small">Nessun aggiornamento non riuscito negli ultimi 30 giorni.</p>',
+      );
+    const ws = pc.updates?.service?.wu;
+    if (ws) parts.push(`<p class="pd-small">Servizio Windows Update: ${ws.start === 'disabled' ? '<b>disattivato</b>' : 'attivo'}${pc.updates?.policy?.managed ? ', gestito dall\'organizzazione' : ''}.</p>`);
+    const md = pc.memDiag;
+    if (md) {
+      const last = md.results[0];
+      parts.push(
+        `<p class="pd-small">Test della memoria (Diagnostica memoria Windows): ${
+          last ? (last.errors ? `<b>errori hardware il ${esc(dateIt(last.time))}</b>` : `nessun errore il ${esc(dateIt(last.time))}`) : 'nessun esito registrato nell\'ultimo anno'
+        }.</p>`,
+      );
+    }
+    const vols = (pc.volumes ?? []).filter((v) => v.dirty || (v.health && v.health !== 'healthy'));
+    if (vols.length)
+      parts.push(
+        `<p class="pd-small">File system: ${vols
+          .map((v) => t(`${v.letter} ${[v.dirty ? 'da controllare al riavvio' : '', v.health === 'scan' ? 'da analizzare' : v.health === 'spotfix' ? 'correzione rapida necessaria' : v.health === 'repair' ? 'riparazione completa necessaria' : ''].filter(Boolean).join(', ')}`))
+          .join('; ')}.</p>`,
+      );
+    out.push(`<section><h2>Aggiornamenti e controlli di Windows</h2>${parts.join('')}</section>`);
   }
 
   if (pc && (pc.boot || pc.apps || pc.reliability)) {
