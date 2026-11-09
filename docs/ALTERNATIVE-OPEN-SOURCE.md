@@ -50,7 +50,36 @@ Il confine è lo stesso per tutti:
 | Autoruns | chiavi Run e cartelle di esecuzione automatica | 0.13.0: attività pianificate, servizi, driver, sottoscrizioni WMI, estensioni dei browser | disattivare le voci: Polaris resta in sola lettura |
 | Controllo integrità PC | requisiti di Windows 11 verificabili da Windows | 0.13.0: requisiti completi, con l'elenco dei processori supportati pubblicato da Microsoft | — |
 | Malwarebytes, AdwCleaner, Microsoft Safety Scanner, ESET Online Scanner | stato, minacce e scansioni di Microsoft Defender (0.6.0) | — | un motore antivirus non si ricrea: firme e analisi aggiornate di continuo sono il prodotto stesso. Polaris usa Defender, già in Windows; per un secondo parere servono questi |
-| MemTest86 | nessun test della RAM: il piano guida alla Diagnostica memoria Windows | 0.12.0: esito della Diagnostica memoria Windows nel rapporto | il test parte da una chiavetta, fuori da Windows: un programma che gira dentro Windows non può provare la memoria che Windows stesso occupa |
+| MemTest86 | nessun test della RAM: il piano guida alla Diagnostica memoria Windows | 0.12.0: test della RAM con Windows acceso (sulla memoria libera, come HCI MemTest e MemTest64) ed esito della Diagnostica memoria Windows nel rapporto; Memtest86+ (GPL-2) e Rufus scaricabili per il test da chiavetta | la memoria che Windows e i programmi stanno usando si prova solo da chiavetta, fuori da Windows |
+
+## Programmi da aggiungere alla cassetta (decisi il 9/11/2026)
+
+Licenze lette l'8 e il 9/11/2026 sui siti ufficiali. Indicazioni generali, da rileggere prima di ogni inclusione, non una
+consulenza legale.
+
+| Programma | A che cosa serve | Licenza, in breve | Come entra in Polaris | Versione |
+| --- | --- | --- | --- | --- |
+| UsbTreeView (Uwe Sieber) | dispositivi e porte USB, dischi e porte COM collegati | freeware; ammesso l'uso in ogni ambiente, anche commerciale, e l'inclusione in prodotti software; vietato modificarlo e offrirlo tramite un programma che lo scarica | incluso nel pacchetto (non scaricabile su richiesta, proprio per la licenza) | 0.12.0 |
+| Memtest86+ | test della RAM da chiavetta, anche DDR5 e UEFI | GPL-2, open source | scaricabile dal sito ufficiale | 0.12.0 |
+| Rufus | preparare la chiavetta di Memtest86+ o dell'installazione di Windows | GPL-3; eseguibile firmato da Akeo Consulting, versione portable | scaricabile dal sito ufficiale, con la firma verificata | 0.12.0 |
+| HCI MemTest | test della RAM con Windows acceso | versione gratuita senza condizioni scritte per l'uso commerciale; la Pro (5 $) è dichiarata per uso domestico e commerciale | solo collegamento al sito | 0.12.0 |
+| TCPView, Process Monitor (Sysinternals) | connessioni di rete per programma; che cosa fa un programma su file e registro | licenza Microsoft: uso libero, ma vietato pubblicarli perché altri li copino o cederli; i registri di Process Monitor possono contenere dati personali | scaricabili dal sito Microsoft, come Autoruns e Process Explorer | 0.13.0 |
+| PuTTY | accesso SSH a router e switch | MIT: uso anche commerciale, va conservato l'avviso di copyright | incluso nel pacchetto | 0.14.0 |
+| Wireshark | analisi del traffico, per tecnici | open source, ma su Windows richiede Npcap, la cui licenza gratuita non consente la ridistribuzione (serve la licenza OEM) | solo collegamento al sito | 0.14.0 |
+
+Da ricreare invece dentro Polaris: test della RAM con Windows acceso e albero dei dispositivi USB (0.12.0); connessioni per
+programma come TCPView e requisiti di Windows 11 come WhyNotWin11, LGPL-3 (0.13.0); perdita e ritardo per tratto di rete
+nel tempo come WinMTR, GPL-2 e fermo dal 2017, e velocità della rete locale tra due PC come iperf3, licenza BSD a tre
+clausole, che ESnet non pubblica per Windows (0.14.0).
+
+Da non inserire: scanner di porte e di indirizzi (Nmap, Angry IP Scanner), contrari alla regola di Polaris di non fare
+scansioni di porte; strumenti che recuperano password, rischiosi per la privacy e segnalati dagli antivirus; programmi
+"aggiorna driver" e pulitori del registro; gli altri programmi NirSoft più recenti, la cui licenza vieta la distribuzione
+"as a part of commercial product" e che coprono cose che Polaris fa già; OCCT gratuito (solo uso personale); Emsisoft
+Emergency Kit finché le condizioni d'uso non sono chiare.
+
+Nota su BlueScreenView, già incluso: la licenza consente di distribuirlo "as long as you don't charge anything for this",
+senza modifiche. Se STARNET decidesse di vendere Polaris, andrebbe tolto dal pacchetto e reso scaricabile su richiesta.
 
 ## Programma per programma
 
