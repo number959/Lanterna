@@ -27,7 +27,7 @@ Della **rete** misura Wi-Fi, router, Internet e DNS; su richiesta disegna la **m
 
 Funziona in casa come in uno studio, in un'azienda o in una **struttura sanitaria**: riconosce le reti con più access point e
 con dominio, censisce la sottorete, verifica la separazione tra le zone e i servizi critici e guida un'autovalutazione delle
-misure organizzative. Una biblioteca di **72 guide** in italiano spiega come usare il programma, il computer e la rete, dalle
+misure organizzative. Una biblioteca di **77 guide** in italiano spiega come usare il programma, il computer e la rete, dalle
 basi alle reti cliniche.
 
 Il nome nasce dal marchio STARNET: Polaris è la stella polare, quella che indica la direzione. Qui indica cosa sistemare per primo.
@@ -152,19 +152,48 @@ script PowerShell nascosto: nessuna impostazione viene modificata.
   e-mail `‹e-mail›` e i SID del Cestino perdono la parte che identifica il PC. Il motore stima lo spazio recuperabile e aggiunge al piano
   le azioni mirate (rimuovere Windows.old, liberare i file temporanei, rivedere i download, compattare i dischi virtuali).
 - **Alimentazione**: salute della batteria, piano di alimentazione, driver della scheda video.
+- **Dispositivi e driver**, come Gestione dispositivi (dalla 0.12.0): i dispositivi con un problema e il suo codice spiegato
+  (Codice 10, 28, 43...), i driver di terze parti per rete, dischi, Bluetooth, audio e chipset dal più vecchio, la verifica delle
+  firme dei driver (modalità test, debug del kernel, integrità della memoria) e il collegamento con il driver indicato dalle
+  schermate blu. Solo codici del produttore (VEN/DEV, VID/PID), mai identificativi con numeri di serie; i nomi scelti
+  dall'utente (telefoni, dispositivi Bluetooth, stampanti) sono sostituiti dal tipo.
+- **Avvio e affidabilità**: durata dell'avvio misurata da Windows (mediana degli ultimi avvii, fino al desktop e dopo
+  l'accesso) e componenti segnalati come lenti, programmi che si chiudono da soli o si bloccano con il modulo in errore, indice
+  di stabilità di Monitoraggio affidabilità.
+- **Aggiornamenti e controlli di Windows**: aggiornamenti non riusciti con il codice di errore spiegato, servizio Windows
+  Update e criteri, esito della Diagnostica memoria Windows, volumi da controllare all'avvio e stato del file system.
+- **Protezione dei dati e degli accessi**: cifratura del disco (BitLocker o crittografia del dispositivo, con le protezioni
+  della chiave ma mai la chiave di ripristino), punti di ripristino, backup di Windows e cartelle in OneDrive, account locali
+  senza nomi (amministratori, Administrator e Guest, password non richiesta), accesso automatico (della password solo se è
+  presente), Desktop remoto con NLA, Controllo dell'account utente e blocco automatico dello schermo.
+- **Stampanti**: stato di ogni stampante (non in linea, carta o toner esauriti, inceppamenti), lavori fermi in coda e servizio
+  di stampa, mai titoli dei documenti né nomi di chi stampa.
+- **Dispositivi USB**, come UsbTreeView: controller, hub e porte occupate con produttore e modello, versione USB e
+  **velocità a cui ogni dispositivo sta funzionando davvero**; porte in errore (sovraccarico, corrente o banda insufficiente,
+  dispositivo non riconosciuto) e dispositivi USB 3 che vanno a velocità USB 2, con la causa più probabile (porta, cavo o hub
+  USB 2). Polaris legge ciò che gli hub hanno registrato al collegamento, senza interrogare i dispositivi e senza numeri di
+  serie.
 - **Test di velocità** (solo su richiesta): il processore comprime dati con un thread e con tutti per circa 25 secondi e rivela
   il calo dovuto a calore o limiti di potenza; il disco scrive e rilegge un file temporaneo fino a 1 GB senza cache di Windows
   con il profilo di CrystalDiskMark (SEQ1M Q8T1, SEQ1M Q1T1, RND4K Q32T1, RND4K Q1T1, in lettura e scrittura) e lo cancella
   alla fine anche se il test si interrompe (`FILE_FLAG_DELETE_ON_CLOSE`). I risultati si confrontano con quelli tipici del tipo
   di disco ed entrano nel rapporto; le prove precedenti restano sul PC per il confronto "prima e dopo".
+- **Test della RAM con Windows acceso** (dalla 0.12.0, solo su richiesta e con conferma), come HCI MemTest: Polaris riserva
+  la memoria libera lasciandone una parte a Windows, la blocca in RAM e la prova con più schemi (indirizzo in ogni cella,
+  inversioni con schemi fissi e casuali, sequenza casuale, spostamento di blocchi, decadimento dei bit nella versione lunga) per
+  3, 10 o 30 minuti, su tutti i processori; si interrompe quando vuoi e si ferma da solo se Windows resta a corto di memoria.
+  La memoria usata da Windows si prova da chiavetta con Memtest86+, che Polaris aiuta a preparare.
 - **Cassetta degli attrezzi**: 16 strumenti di Windows (Gestione attività, Monitoraggio affidabilità, Visualizzatore eventi,
-  Diagnostica memoria...) e 15 programmi gratuiti di diagnostica, con che cosa fanno, licenza, sito ufficiale e dove Polaris fa
+  Diagnostica memoria...) e 19 programmi gratuiti di diagnostica, con che cosa fanno, licenza, sito ufficiale e dove Polaris fa
   una cosa simile. Tutto passa da una lista bianca: dall'interfaccia arriva solo un identificativo, mai un percorso o un comando.
   - **Inclusi** nella cartella `strumenti`: CrystalDiskInfo 9.9.2 e CrystalDiskMark 9.0.3 (licenza MIT, eseguibili firmati da
-    CrystalMark Inc.) e BlueScreenView 1.55 (gratuito, ridistribuibile senza modifiche). Copie originali che si aprono con un
-    clic, senza installare nulla; Polaris le avvia solo se l'eseguibile ha l'impronta SHA-256 attesa.
+    CrystalMark Inc.), BlueScreenView 1.55 (gratuito, ridistribuibile senza modifiche) e UsbTreeView 4.8.0 (freeware di Uwe
+    Sieber, che ne consente l'inclusione senza modifiche: solo la versione per l'architettura del pacchetto). Copie originali
+    che si aprono con un clic, senza installare nulla; Polaris le avvia solo se l'eseguibile ha l'impronta SHA-256 attesa.
   - **Scaricati dal sito ufficiale**, solo su richiesta: CPU-Z, HWiNFO, AdwCleaner, Microsoft Safety Scanner, ESET Online
-    Scanner, Autoruns, Process Explorer e WizTree. Prima di scaricare Polaris dice da dove, chi deve aver firmato, quanto pesa e
+    Scanner, Autoruns, Process Explorer, WizTree e Rufus; Memtest86+ è un'immagine da scrivere su una chiavetta con Rufus,
+    verificata con l'impronta pubblicata dal progetto: Polaris non la apre, mostra la cartella che la contiene. HCI MemTest è un
+    collegamento al sito. Prima di scaricare Polaris dice da dove, chi deve aver firmato, quanto pesa e
     con quali condizioni d'uso. Il download segue solo https e gli host del produttore, scarta file troppo grandi o pagine web al
     posto del programma, controlla l'impronta SHA-256 delle versioni fissate e la firma digitale (stato valido ed editore atteso)
     al download e a ogni avvio. I programmi restano in `%LOCALAPPDATA%\STARNET Polaris\strumenti`; una copia modificata non
@@ -273,7 +302,7 @@ Senza agente, le due reti dimostrative (*Casa* e *Clinica*) mostrano tutte le fu
 
 ![Guide](docs/img/guide.webp)
 
-72 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
+77 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
 complesse e sanità, diagnosi), un glossario di 230 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
 d'uso parte dai primi passi e arriva alla riga di comando e alla cassetta degli attrezzi; il capitolo sul computer spiega
 componenti, scheda tecnica, sensori in tempo reale, dischi HDD e SSD, attributi SMART, cosa occupa spazio e come liberarlo, test di velocità, memoria, avvio, aggiornamenti, antivirus e
@@ -309,6 +338,7 @@ polaris-cli report --json           dati grezzi, riapribili nell'interfaccia con
 polaris-cli serve --open            interfaccia nel browser su http://127.0.0.1:8737
 polaris-cli bench cpu               test di velocità del processore (circa 25 secondi)
 polaris-cli bench disk --drive D:   test di un'unità (file temporaneo cancellato alla fine)
+polaris-cli bench ram --preset standard   test della RAM con Windows acceso (quick 3 min, standard 10, long 30)
 polaris-cli defender status         stato di Microsoft Defender e minacce
 polaris-cli defender quick          scansione rapida (full: completa; update: firme)
 polaris-cli report --html --out stato-pc.html   documento stampabile sullo stato del PC

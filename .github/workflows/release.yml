@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Versione da pubblicare, per esempio 0.11.0 (servono core/package.json alla stessa versione e docs/release/<versione>.md)
+        description: Versione da pubblicare, per esempio 0.12.0 (servono core/package.json alla stessa versione e docs/release/<versione>.md)
         required: true
         type: string
       draft:

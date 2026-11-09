@@ -32,8 +32,19 @@ COSA FA
   i file di Windows con piu' nomi si contano una volta, i file solo online
   di OneDrive non si scaricano. Su richiesta
   esegue test di velocita' del processore e dei dischi (profilo di
-  CrystalDiskMark) e scansioni di
-  Microsoft Defender. La cassetta degli attrezzi apre gli strumenti di
+  CrystalDiskMark), il test della RAM con Windows acceso (come HCI MemTest:
+  solo la memoria libera, 3, 10 o 30 minuti, dopo la tua conferma) e
+  scansioni di Microsoft Defender.
+  Dalla versione 0.12.0 controlla anche i dispositivi con problemi e i
+  driver vecchi o non firmati (come Gestione dispositivi), la durata
+  dell'avvio, i programmi che si chiudono da soli e l'indice di stabilita',
+  gli aggiornamenti non riusciti, l'esito della Diagnostica memoria, i
+  volumi da controllare, la cifratura del disco (BitLocker, senza mai
+  leggere la chiave di ripristino), punti di ripristino e backup, account
+  locali (senza nomi), accesso automatico, Desktop remoto, Controllo
+  dell'account utente, blocco dello schermo, stampanti e code di stampa, e
+  mostra l'albero dei dispositivi USB (come UsbTreeView) con la velocita'
+  a cui va ogni dispositivo e le porte in errore. La cassetta degli attrezzi apre gli strumenti di
   Windows e i programmi inclusi (vedi STRUMENTI INCLUSI) e scarica dal sito
   ufficiale, solo su richiesta, i programmi che non si possono includere
   (vedi PROGRAMMI SCARICATI E KIT). Il pulsante Documento prepara un
@@ -57,7 +68,7 @@ COSA FA
   (802.11k/v/r), gli AP sullo stesso canale e il PC agganciato a un AP lontano;
   riconosce le reti con dominio. La sezione Infrastruttura censisce la
   sottorete, verifica la separazione tra le zone e i servizi critici e guida
-  un'autovalutazione delle misure organizzative. 72 guide spiegano come si
+  un'autovalutazione delle misure organizzative. 77 guide spiegano come si
   usa il programma, il computer e la rete, dalle basi alle reti cliniche.
 
 REQUISITI
@@ -95,6 +106,9 @@ RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
   polaris-cli bench cpu               test di velocita' del processore (25 s)
   polaris-cli bench disk --drive D:   test di un'unita' (scrive un file
                                       temporaneo, cancellato alla fine)
+  polaris-cli bench ram --preset standard
+                                      test della RAM con Windows acceso (quick
+                                      3 minuti, standard 10, long 30)
   polaris-cli defender status         stato di Microsoft Defender e minacce
   polaris-cli defender quick          scansione rapida (full: completa,
                                       update: aggiornamento delle firme)
@@ -130,9 +144,11 @@ RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
 STRUMENTI INCLUSI
   Nella cartella strumenti ci sono CrystalDiskInfo 9.9.2 e CrystalDiskMark
   9.0.3 di hiyohiyo (https://crystalmark.info/), open source con licenza
-  MIT ed eseguibili firmati da CrystalMark Inc., e BlueScreenView 1.55 di
+  MIT ed eseguibili firmati da CrystalMark Inc., BlueScreenView 1.55 di
   NirSoft (https://www.nirsoft.net/), gratuito e ridistribuibile senza
-  modifiche: copie originali e non modificate. Si aprono da Computer >
+  modifiche, e UsbTreeView 4.8.0 di Uwe Sieber
+  (https://www.uwe-sieber.de/), freeware che l'autore consente di includere
+  senza modifiche: copie originali e non modificate. Si aprono da Computer >
   Cassetta degli attrezzi con il pulsante Apri, senza installare nulla;
   CrystalDiskInfo chiede i permessi di amministratore. Prima di avviarli
   Polaris controlla l'impronta SHA-256 dell'eseguibile: se il file e' stato
@@ -142,7 +158,8 @@ STRUMENTI INCLUSI
 
 PROGRAMMI SCARICATI E KIT
   CPU-Z, HWiNFO, AdwCleaner, Microsoft Safety Scanner, ESET Online Scanner,
-  Autoruns, Process Explorer e WizTree non si possono ridistribuire. Con
+  Autoruns, Process Explorer e WizTree non si possono ridistribuire; Rufus
+  e Memtest86+ si scaricano dal sito ufficiale per tenerli aggiornati. Con
   "Scarica e apri" Polaris dice da dove li scarica, chi deve averli firmati,
   quanto pesano e con quali condizioni d'uso; poi scarica la versione
   portable dal sito del produttore (solo https e solo i suoi siti), la
@@ -150,6 +167,13 @@ PROGRAMMI SCARICATI E KIT
   Windows conferma la firma digitale dell'editore atteso (al download e a
   ogni avvio). Una copia modificata non parte e si elimina dalla cassetta.
   Microsoft Safety Scanner smette di funzionare 10 giorni dopo il download.
+  MEMTEST86+ non e' un programma per Windows ma un'immagine (memtest.iso) da
+  scrivere su una chiavetta con Rufus: Polaris la scarica da memtest.org,
+  controlla l'impronta SHA-256 pubblicata dal progetto e apre la cartella
+  che la contiene. Il PC si avvia poi dalla chiavetta; Memtest86+ e'
+  firmato, ma non ancora da Microsoft: se l'Avvio protetto (Secure Boot) la
+  rifiuta, va disattivato solo per il test (con BitLocker tieni pronta la
+  chiave di ripristino). HCI MemTest e' un collegamento al sito.
   PC SENZA INTERNET: su un PC collegato apri Computer > Cassetta degli
   attrezzi > Kit per i PC senza Internet e premi "Prepara il kit" (oppure
   polaris-cli tools kit). I programmi scelti finiscono nella cartella

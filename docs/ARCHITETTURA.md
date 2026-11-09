@@ -13,13 +13,19 @@ nome, che non compare più all'utente.
             │    analyze.ts     diagnosi, punteggi, piano d'azione                        │
             │    pc.ts          computer: Windows e supporto, dischi, eventi, test        │
             │    crash.ts       file delle schermate blu: codici, driver ricorrenti       │
+            │    devices.ts     dispositivi e driver, firma dei driver                    │
+            │    boot.ts        avvio, programmi che si chiudono, stabilità               │
+            │    maint.ts       aggiornamenti falliti, memoria, file system               │
+            │    protect.ts     cifratura, ripristino, backup, account                    │
+            │    printing.ts    stampanti e code di stampa                                │
+            │    usb.ts         albero USB: porte in errore, velocità                     │
             │    certs.ts       certificati dei servizi interni                           │
             │    survey.ts      mappa del Wi-Fi per stanza                                │
             │    speedtest.ts   velocità di Internet (M-Lab ndt7), bufferbloat            │
             │    wifi.ts        canali, spettro, interferenza, AP della rete              │
             │    report.ts      rapporto testuale                                         │
             │    document.ts    documento stampabile: HTML A4 autonomo                    │
-            │  guides/   72 guide come dati tipizzati, glossario, ricerca                 │
+            │  guides/   77 guide come dati tipizzati, glossario, ricerca                 │
             │  demo/     PC e reti dimostrative Casa e Clinica, simulazioni               │
             │  ui/       interfaccia React (animazioni, suoni, grafici SVG, 10 viste)     │
             └───────────────▲───────────────────────────────▲────────────────────────────┘
@@ -40,7 +46,8 @@ nome, che non compare più all'utente.
    │   speedtest/ client ndt7 di M-Lab, solo con il consenso                │
    │   crash/   file delle schermate blu (minidump), in sola lettura        │
    │   pcinfo/  dati del computer: API native + uno script PowerShell        │
-   │   bench/   test di velocità di processore e dischi, su richiesta        │
+   │   winevt/  registro eventi di Windows (wevtapi), in sola lettura        │
+   │   bench/   test di processore, dischi e RAM, su richiesta               │
    │   pdh/     contatori delle prestazioni di Windows (nomi inglesi)       │
    │   cpuclock/ velocità dei core in tempo reale dai contatori PDH          │
    │   sensors/ monitor dei sensori senza driver: PDH, D3DKMT, batteria     │
@@ -167,6 +174,24 @@ Organizzazione di `core/src/ui/`:
   `sameCrashTarget`). Giudizi in `engine/crash.ts`: il conteggio delle schermate blu resta in `pc.events.bsod` (il maggiore tra
   eventi 1001 e minidump nel periodo, mai la somma); i giudizi nuovi riguardano driver e codici ricorrenti, impostazioni e
   accesso ai file.
+- `devices.tsx`, `stability.tsx`, `maint.tsx`, `protect.tsx` (dalla 0.12.0): Gestione dispositivi e driver, avvio e affidabilità,
+  aggiornamenti e controlli di Windows, protezione dei dati e degli accessi, stampanti. Solo presentazione: i dati arrivano
+  dall'analisi (`pc.devices`, `pc.boot`, `pc.apps`, `pc.reliability`, `pc.updates`, `pc.memDiag`, `pc.fsChecks`, `pc.encryption`,
+  `pc.backup`, `pc.accounts`, `pc.access`, `pc.printing`), i giudizi da `engine/devices.ts`, `boot.ts`, `maint.ts`, `protect.ts` e
+  `printing.ts`. Nell'agente: SetupAPI e Configuration Manager per i dispositivi, `NtQuerySystemInformation` per l'integrità del
+  codice, il registro eventi con `wevtapi` (`internal/winevt`), uno script PowerShell per Monitoraggio affidabilità, Windows
+  Update, BitLocker, punti di ripristino e backup, `NetUserEnum` e `NetLocalGroupGetMembers` per gli account (solo RID e flag),
+  `winspool` per le stampanti, Gestione servizi con i soli diritti di lettura. Le strutture con puntatori passate a Windows
+  stanno in memoria allineata (un `[]byte` sullo stack di Go è allineato a 1: in CI ha fatto fallire `QueryServiceConfigW`).
+- `ramtest.tsx`: "Test della RAM con Windows acceso". Lo stato vive a livello di modulo (il test continua cambiando pagina);
+  `POST /api/bench` con `kind: "ram"` e conferma. Nell'agente (`internal/bench/ram*.go`) la memoria arriva da `VirtualAlloc`,
+  fuori dal garbage collector, ed è bloccata in RAM con `VirtualLock` a blocchi da 64 MB dopo aver alzato il working set
+  minimo; le prove girano su tutti i processori e il test si ferma se la memoria libera di Windows scende sotto 192 MB.
+- `usb.tsx`: "Dispositivi USB", l'albero come liste annidate. Nell'agente (`internal/pcinfo/usb*.go`) controller e hub radice
+  si trovano con le interfacce dei dispositivi e i genitori di Configuration Manager; ogni hub si apre senza diritti di
+  lettura o scrittura e risponde alle richieste `IOCTL_USB_GET_*` (stato e velocità della porta, protocolli, porta compagna,
+  chiave del driver per collegare il dispositivo di Gestione dispositivi). Le strutture di `usbioctl.h` sono impacchettate a
+  1 byte e si leggono campo per campo; nessuna richiesta arriva ai dispositivi, nessun numero di serie esce dall'agente.
 - `wifimap.tsx`: "Mappa del Wi-Fi per stanza" nella sezione Wi-Fi. La misura in corso vive a livello di modulo; il risultato
   entra in `wifi.survey` solo se il rapporto mostrato è dello stesso PC, dello stesso gateway e della stessa rete Wi-Fi (SSID),
   e se la misura è stata fatta su quella rete (`addSurvey`, `surveyRefusal`). Con l'agente la mappa resta in `localStorage`
@@ -267,7 +292,7 @@ PowerShell 7 la eredita con i moduli di PowerShell 7 in testa, e Windows PowerSh
 `Microsoft.PowerShell.Security`, fatto per .NET Core); senza la variabile usa i propri percorsi predefiniti. All'errore di uno
 script si aggiunge la prima riga scritta da PowerShell.
 
-Modalità del programma: `Polaris.exe` (finestra), `report` (anche `--html`), `serve`, `bench cpu`, `bench disk`,
+Modalità del programma: `Polaris.exe` (finestra), `report` (anche `--html`), `serve`, `bench cpu`, `bench disk`, `bench ram` (`--preset`, `--quick`),
 `defender status|quick|full|update`, `tools status|kit`, `clock` e `sensors` (anche `--csv`), `space`, `certs`, `crashes`,
 `wifi-survey` e `speedtest` (senza `--accetto` mostra solo il consenso). La finestra usa WebView2; se il runtime manca (o non
 funziona) STARNET Polaris lo dice con un messaggio e apre l'interfaccia nel browser predefinito. `Polaris.exe` è compilato come
@@ -296,7 +321,7 @@ per la console, comoda negli script.
 | `POST /api/speedtest` | corpo `{"consent": true}` (esattamente `true`): `202` avvia il test con M-Lab; `400` senza consenso, `415` senza JSON, `403` da un'altra origine, `409` se c'è già un test, un'analisi, un test della CPU o del disco o una misura del Wi-Fi, `429` con `Retry-After` per i limiti (un test ogni 2 minuti, 10 al giorno), `501` se non disponibile |
 | `GET /api/speedtest` | test in corso con fase (`locate`, `idle`, `download`, `upload`), Mbit/s e latenza; eventuale errore, esito dell'ultimo (`SpeedTest`, senza IP), secondi di attesa e test rimasti oggi |
 | `DELETE /api/speedtest` | interrompe il test |
-| `POST /api/bench` | corpo `{"kind": "cpu"}` oppure `{"kind": "disk", "drive": "C:", "confirm": true}`: `202` avvia il test; `400` senza conferma o con unità non valida, `422` se l'unità non è un disco locale o rimovibile, `409` se c'è un test, un'analisi, un'analisi dello spazio, una misura del Wi-Fi o il test di velocità di Internet in corso |
+| `POST /api/bench` | corpo `{"kind": "cpu"}`, `{"kind": "disk", "drive": "C:", "confirm": true}` oppure `{"kind": "ram", "preset": "quick", "confirm": true}` (preset `quick`, `standard` o `long`: 3, 10 o 30 minuti): `202` avvia il test; `400` senza conferma, con unità o durata non valida, `422` se l'unità non è un disco locale o rimovibile, `409` se c'è un test, un'analisi, un'analisi dello spazio, una misura del Wi-Fi o il test di velocità di Internet in corso |
 | `GET /api/bench` | test in corso con fase e avanzamento (campioni al secondo per il processore), eventuale errore e ultimi risultati |
 | `DELETE /api/bench` | interrompe il test in corso; il file temporaneo del test del disco viene cancellato |
 | `POST /api/defender` | corpo `{"action": "quick"\|"full"\|"update"}`: `202` avvia l'operazione; `400` per un'azione non valida, `422` se Defender non è disponibile, `409` se c'è già un'operazione o un test di velocità in corso |

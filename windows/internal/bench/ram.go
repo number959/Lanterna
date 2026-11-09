@@ -49,7 +49,7 @@ var RAMPresets = map[string]time.Duration{"quick": 3 * time.Minute, "standard": 
 func RAMOptionsFor(preset string) (RAMOptions, error) {
 	d, ok := RAMPresets[preset]
 	if !ok {
-		return RAMOptions{}, fmt.Errorf("durata del test della RAM non valida: %q (rapido, standard o lungo)", preset)
+		return RAMOptions{}, fmt.Errorf("durata del test della RAM non valida: %q (quick, standard o long: 3, 10 o 30 minuti)", preset)
 	}
 	o := RAMOptions{Preset: preset, Duration: d}
 	if preset == "long" {

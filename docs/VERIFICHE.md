@@ -1,7 +1,9 @@
 # Verifiche
 
-Cosa è stato verificato, come, e cosa resta da provare. Versione attuale: 0.11.0 (8 novembre 2026), con i passi guidati nel
-piano d'azione e i programmi utili dentro le azioni (sezione 15); la sezione 14 descrive la 0.10.0 (schermate blu come
+Cosa è stato verificato, come, e cosa resta da provare. Versione attuale: 0.12.0 (9 novembre 2026), il computer seconda
+parte: dispositivi e driver, avvio e affidabilità, aggiornamenti e controlli di Windows, protezione dei dati e degli accessi,
+stampanti, test della RAM con Windows acceso, albero USB e programmi nuovi della cassetta (sezione 16); la sezione 15 descrive
+la 0.11.0, con i passi guidati nel piano d'azione e i programmi utili dentro le azioni; la sezione 14 la 0.10.0 (schermate blu come
 BlueScreenView, mappa del Wi-Fi per stanza, test di velocità di Internet, certificati dei servizi interni), le sezioni dalla 10
 alla 13 le versioni dalla 0.6.0 alla 0.9.0. Fino alla versione 0.2.0 il programma si chiamava LANterna:
 le sezioni che descrivono prove precedenti riportano i nomi di allora.
@@ -1126,3 +1128,111 @@ codice, perché i commit successivi cambiano solo la CI e la documentazione, ma 
   da provare su un PC con un router vero (con https e senza).
 - **Comandi**: sono comandi standard di Windows e Polaris non li esegue; `chkdsk C: /f` chiede conferma e lavora al riavvio,
   come dice il passo.
+
+## 16. Versione 0.12.0: il computer, seconda parte
+
+**Cosa è nuovo** (motore 1.6.0, 25 voci nuove nel catalogo, 27 azioni nuove, 5 guide nuove: 77 in tutto).
+- **Dispositivi e driver** (`pcinfo/devices*.go`, `engine/devices.ts`): dispositivi presenti con SetupAPI
+  (`SetupDiGetDevicePropertyW` con le chiavi di `devpkey.h`) e codice di problema solo con `DN_HAS_PROBLEM`
+  (`CM_Get_DevNode_Status`); significato dei codici scritto in italiano dalle pagine `CM_PROB_*` di Microsoft Learn; driver di
+  terze parti riconosciuti dal nome `oemNNN.inf`; stato dell'integrità del codice da `NtQuerySystemInformation` (classe 0x67).
+  Codici hardware ridotti a produttore e modello (VEN/DEV, VID/PID), mai l'identificativo dell'istanza; nomi scelti
+  dall'utente (Bluetooth, telefoni, stampanti, scanner) sostituiti dal tipo.
+- **Avvio e affidabilità** (`boot*.go`, `engine/boot.ts`): eventi 100-110 e 200-203 di Diagnostics-Performance, 1000 e 1002
+  del registro Applicazione (lettura con `wevtapi`, `internal/winevt`), rapporti di Segnalazione errori senza percorsi,
+  `Win32_ReliabilityStabilityMetrics` e `Win32_ReliabilityRecords` per l'indice di stabilità.
+- **Aggiornamenti e controlli di Windows** (`maint*.go`, `engine/maint.ts`): cronologia di Windows Update dall'oggetto COM
+  dell'agente di aggiornamento, codici di errore spiegati, servizi `wuauserv`, `UsoSvc` e `BITS` letti con i soli diritti
+  di lettura (`SC_MANAGER_CONNECT`, `SERVICE_QUERY_CONFIG|SERVICE_QUERY_STATUS`) e criteri; esito della Diagnostica memoria
+  dagli eventi di MemoryDiagnostics-Results e -Schedule (Microsoft non ne documenta gli identificativi: l'esito con errori
+  si riconosce dal livello Errore o dai codici 1102 e 1202), `FSCTL_IS_VOLUME_DIRTY`, `MSFT_Volume.HealthStatus` e controlli
+  di Wininit.
+- **Protezione dei dati e degli accessi** (`access*.go`, `engine/protect.ts`): `Win32_EncryptableVolume` (della chiave di
+  ripristino solo le prime 8 cifre dell'identificativo, mai la password di ripristino), punti di ripristino, eventi di
+  Backup e ripristino di Windows, cartelle note dentro OneDrive; account con `NetUserEnum` livello 20 e
+  `NetLocalGroupGetMembers` livello 2, di cui escono solo RID e flag; accesso automatico (di `DefaultPassword` solo se
+  esiste), Desktop remoto e NLA, Controllo dell'account utente, blocco dello schermo.
+- **Stampanti** (`printing_windows.go`, `engine/printing.ts`): `EnumPrintersW` livello 2, `EnumJobsW` livello 1 (solo stato e
+  ora dei lavori, mai titoli né utenti), stampante predefinita e servizio di stampa; la porta di una stampante che scrive su
+  un file o punta a una condivisione non porta il percorso nel rapporto.
+- **Test della RAM con Windows acceso** (`bench/ram*.go`, `ui/ramtest.tsx`): memoria da `VirtualAlloc`, bloccata con
+  `VirtualLock` a blocchi da 64 MB dopo aver alzato il working set minimo (con 32 MB di margine), riserva di almeno 1 GB o di
+  un ottavo della RAM per Windows, 1 GB al massimo nei processi a 32 bit; otto prove, fermata se la memoria libera scende
+  sotto 192 MB; solo su richiesta con conferma, interrompibile.
+- **Albero USB** (`pcinfo/usb*.go`, `engine/usb.ts`, `ui/usb.tsx`): controller dalle interfacce `GUID_DEVINTERFACE_USB_HOST_CONTROLLER`
+  e hub radice dai figli in Configuration Manager; per ogni hub `IOCTL_USB_GET_NODE_INFORMATION`, `..._HUB_INFORMATION_EX`,
+  `..._NODE_CONNECTION_INFORMATION_EX` e `_EX_V2`, `..._PORT_CONNECTOR_PROPERTIES`, `..._NODE_CONNECTION_DRIVERKEY_NAME` e
+  `..._NODE_CONNECTION_NAME` per gli hub in cascata. Codici delle richieste, offset e valori confrontati con `usbioctl.h`,
+  `usbiodef.h`, `usbspec.h` e `devpkey.h` (intestazioni MinGW, solo per i fatti) e con le pagine di Microsoft Learn
+  (9/11/2026): le strutture sono impacchettate a 1 byte e si leggono campo per campo; la velocità SuperSpeed si ricava dai bit
+  della V2, come indica Microsoft (il campo Speed arriva a High Speed). Nessuna richiesta ai dispositivi (niente
+  `GET_DESCRIPTOR`), nessun numero di serie.
+- **Cassetta**: UsbTreeView 4.8.0 incluso (archivi e eseguibili di x64, Win32 e ARM64 verificati con l'impronta, firmati da
+  Uwe Sieber; ogni pacchetto contiene solo quello della sua architettura); Memtest86+ 9.00 scaricabile (impronte degli archivi
+  x86_64, i586 e arm64 confrontate con `sha256sum.txt` del sito: coincidono), mostrato in Esplora file invece di essere
+  aperto; Rufus 4.15 scaricabile con la firma di Akeo Consulting; HCI MemTest come collegamento. Le versioni sono uscite da
+  almeno 14 giorni (Memtest86+ il 15/10/2026, UsbTreeView il 18/10/2026, Rufus il 30/06/2026).
+
+**Fonti delle affermazioni nuove.** Comportamento di Memtest86+ con l'Avvio protetto ("v9.00 and newer are signed, but not by
+Microsoft yet") e scrittura dell'immagine così com'è: sito memtest.org; firmatario di Rufus e requisiti: rufus.ie; condizioni
+di UsbTreeView: pagina del programma; HCI MemTest ("License: Free", versione Pro a pagamento): hcidesign.com/memtest. La
+velocità pratica di un disco in USB 2 (circa 40 MB/s) e l'avviso sulla chiave di BitLocker quando si cambia l'Avvio protetto
+sono indicazioni generali, scritte con prudenza ("può").
+
+**Test automatici.** vitest: 430 (57 in più della 0.11.0), tra cui dispositivi, avvio e stabilità, manutenzione, protezione e
+stampanti, test della RAM, albero USB (porte in errore, cause della velocità ridotta, nomi con il produttore, documento senza
+identificativi d'istanza, scheda per casa, clinica, macchina virtuale e dati assenti) e cassetta (programmi inclusi e
+scaricabili, Memtest86+ senza firmatario solo perché è un file da non aprire). Go: tutti i pacchetti; in più le strutture USB
+lette da buffer costruiti a mano con la disposizione a 1 byte, velocità e stati, nomi delle risposte degli hub, tipi dei
+dispositivi, maschera dei nomi dei dispositivi portatili, porte delle stampanti, coerenza tra agente, interfaccia,
+`scripts/strumenti.sh` e avvisi delle licenze (anche le sottocartelle per architettura). `go vet` con GOOS=windows per amd64,
+386 e arm64.
+
+**Interfaccia**, Chromium 141 sulla build di produzione, axe-core (WCAG 2.1 A/AA e buone pratiche): vista Computer intera
+nella demo di casa e della clinica, con tutte le schede nuove (dispositivi, avvio e affidabilità, protezione, stampanti, test
+della RAM, dispositivi USB), tema scuro e chiaro, 1366 e 390 px: **0 violazioni**, nessuno scorrimento orizzontale, nessun
+errore della pagina. Dalle schermate della scheda USB è emerso un "codice 43: codice 43" ripetuto, corretto.
+
+**Windows reale (CI)**, Windows Server 2025 Datacenter 24H2 (build 26100.33674) su una macchina virtuale Azure, come
+amministratore. Prove nuove nel passo del rapporto (dispositivi, integrità del codice, avvio, programmi, affidabilità,
+aggiornamenti, diagnostica memoria, volumi, cifratura, account senza nomi, accessi, servizio di stampa, albero USB senza
+identificativi d'istanza), test della RAM breve (`bench ram --quick`), prove native in Go (`-run 'Windows$'`) e controllo della
+modalità test con `bcdedit`.
+- Run 71 verde: 61 dispositivi, uno con problemi (un dispositivo VMBUS senza driver, codice 28, 0xC0000490), un driver di
+  terze parti (Mellanox, `oem5.inf`, `mlx5.sys`, 2023), integrità del codice con la modalità test attiva (confermata da
+  `bcdedit`), registro Diagnostics-Performance assente (Windows Server), indice di stabilità 10.
+- Run 72, 73 e 74 rosse: `polaris-cli report` andava in violazione di accesso dentro `QueryServiceConfigW`. Causa: il buffer
+  da 8 KB era un `[]byte` sullo stack di Go, allineato a 1, e il compilatore l'aveva messo a 4 byte da un confine di 8;
+  Windows scriveva la struttura (che contiene puntatori) allineata e la rileggeva dalla posizione spostata (registro rax con
+  metà di un puntatore spostata di 32 bit). Ora il buffer è di parole da 8 byte (commit 28b4aec); cercati gli altri buffer
+  passati a Windows: gli altri o stanno sul heap, o ricevono dati copiati dal kernel, o si leggono a byte.
+- Run 75 rossa: `FSCTL_IS_VOLUME_DIRTY` non rispondeva neppure da amministratore, perché un volume aperto senza diritti va al
+  dispositivo e non al file system; ora si apre in lettura, come fa `fsutil dirty query`.
+- Run 76 rossa su Linux per una prova del test di velocità indipendente da questa versione: il finto M-Lab contava i byte
+  dopo il ritorno del client. Corretta (si aspetta la fine del gestore), e corretta anche una seconda prova fragile trovata in
+  locale (un sì/no condiviso tra download e upload, ora un contatore); provate 15 volte, con `-race` e su un solo processore
+  sotto carico.
+- Run 77: rapporto completo e prove native verdi. Dati veri: volumi C: e D: non da controllare e sani; cifratura letta (dischi
+  non cifrati); punti di ripristino non supportati (Windows Server), nessun backup di Windows; 4 account locali, uno
+  amministratore attivo; accesso automatico attivo con la password nel registro, Desktop remoto attivo con NLA sulla porta
+  3389, Controllo dell'account utente attivo senza richiesta di conferma agli amministratori (configurazione del runner: sono
+  giudizi gravi, e giustamente); servizio di stampa in esecuzione con la sola stampante virtuale Microsoft Print to PDF;
+  albero USB "none" (la macchina virtuale non ha controller USB); **test della RAM** su 256 MB di 16 GB, 256 MB bloccati in
+  RAM, 4 thread, 29 passaggi in 15 secondi, circa 14 GB/s, 0 errori; prove native: 66 dispositivi (63 con il driver
+  completo), servizi, account, accessi, stampanti e albero USB letti senza errori.
+
+**Avvertenze: cosa resta da provare.**
+- **Albero USB con dispositivi veri**: le macchine della CI sono virtuali e senza USB. Codici, offset e stati sono quelli
+  delle intestazioni e di Microsoft Learn e il parsing è provato con buffer costruiti a mano, ma il comportamento degli hub
+  veri (porte compagne descritte dal firmware, dispositivi USB 3 collegati in USB 2, hub USB 3 esterni che compaiono due volte,
+  apertura degli hub senza diritti da utente standard) è da verificare su un PC.
+- **Durata dell'avvio**: il registro Diagnostics-Performance non esiste su Windows Server; la lettura degli eventi è provata
+  solo con dati costruiti.
+- **BitLocker attivo, punti di ripristino, backup di Windows, stampanti fisiche in errore, Diagnostica memoria con un esito**:
+  il runner non li ha; provati con dati costruiti.
+- **Test della RAM**: in CI solo la versione breve su 256 MB; la versione lunga (con il decadimento dei bit) e l'arresto per
+  memoria scarsa sono provati nei test Go, non su un PC con poca RAM libera.
+- **Memtest86+ e Rufus**: download e verifica provati nella CI (Rufus dalle release su GitHub, che da questo ambiente di
+  sviluppo non si raggiungono: richiesta rifiutata dal proxy, 403, non aggirata); l'avvio da chiavetta, l'Avvio protetto e la
+  scrittura in modalità DD non sono stati provati su un PC.
+- **Etichette di Windows** nei passi nuovi: come per la 0.11.0, da ripercorrere su un Windows italiano.

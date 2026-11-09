@@ -60,8 +60,8 @@ consulenza legale.
 | Programma | A che cosa serve | Licenza, in breve | Come entra in Polaris | Versione |
 | --- | --- | --- | --- | --- |
 | UsbTreeView (Uwe Sieber) | dispositivi e porte USB, dischi e porte COM collegati | freeware; ammesso l'uso in ogni ambiente, anche commerciale, e l'inclusione in prodotti software; vietato modificarlo e offrirlo tramite un programma che lo scarica | incluso nel pacchetto (non scaricabile su richiesta, proprio per la licenza) | 0.12.0 |
-| Memtest86+ | test della RAM da chiavetta, anche DDR5 e UEFI | GPL-2, open source | scaricabile dal sito ufficiale | 0.12.0 |
-| Rufus | preparare la chiavetta di Memtest86+ o dell'installazione di Windows | GPL-3; eseguibile firmato da Akeo Consulting, versione portable | scaricabile dal sito ufficiale, con la firma verificata | 0.12.0 |
+| Memtest86+ | test della RAM da chiavetta, anche DDR5 e UEFI | GPL-2, open source | scaricabile dal sito ufficiale (immagine 9.00 per x86-64, i586 o ARM64, con l'impronta SHA-256 pubblicata dal progetto; Polaris mostra la cartella invece di aprirla) | 0.12.0 |
+| Rufus | preparare la chiavetta di Memtest86+ o dell'installazione di Windows | GPL-3; eseguibile firmato da Akeo Consulting, versione portable | scaricabile (4.15) dalle release su GitHub indicate dal sito ufficiale, con la firma verificata | 0.12.0 |
 | HCI MemTest | test della RAM con Windows acceso | versione gratuita senza condizioni scritte per l'uso commerciale; la Pro (5 $) è dichiarata per uso domestico e commerciale | solo collegamento al sito | 0.12.0 |
 | TCPView, Process Monitor (Sysinternals) | connessioni di rete per programma; che cosa fa un programma su file e registro | licenza Microsoft: uso libero, ma vietato pubblicarli perché altri li copino o cederli; i registri di Process Monitor possono contenere dati personali | scaricabili dal sito Microsoft, come Autoruns e Process Explorer | 0.13.0 |
 | PuTTY | accesso SSH a router e switch | MIT: uso anche commerciale, va conservato l'avviso di copyright | incluso nel pacchetto | 0.14.0 |
