@@ -1,6 +1,7 @@
 import { fmt, more, num, thousands } from './fmt';
 import { analyzeCerts } from './certs';
 import { analyzeCrashes } from './crash';
+import { analyzeDevices } from './devices';
 import { analyzeSurvey } from './survey';
 import { analyzeSpeed } from './speedtest';
 import { ACTIONS } from './kb/actions';
@@ -1553,6 +1554,8 @@ export function analyze(scan: Scan): Analysis {
   analyzeFirewall(scan, c);
   analyzeInfra(scan, c);
   analyzePc(scan, (f) => c.add(f));
+  // Dispositivi e driver, come Gestione dispositivi.
+  analyzeDevices(scan, (f) => c.add(f));
   // Schermate blu dai minidump: cause ricorrenti e impostazioni, senza
   // ripetere il conteggio di pc.events.bsod.
   analyzeCrashes(scan, (f) => c.add(f));

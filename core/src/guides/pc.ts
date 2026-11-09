@@ -1,5 +1,6 @@
 import { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from '../engine/pc';
 import { BUGCHECKS_MORE } from '../engine/crash';
+import { DEVICE_PROBLEMS } from '../engine/devices';
 import { SPACE_HINTS, SPACE_RISK_LABEL } from '../engine/space';
 import type { SpaceRisk } from '../engine/space';
 import type { Guide } from './types';
@@ -12,6 +13,7 @@ import type { Guide } from './types';
 
 const win11Rows = Object.entries(WIN11_EOS).map(([v, d]) => [v, dateIt(d.home), dateIt(d.ent)]);
 const bugcheckRows = Object.entries(BUGCHECKS).map(([code, [name, meaning]]) => [`\`${code}\``, name, meaning]);
+const deviceProblemRows = Object.keys(DEVICE_PROBLEMS).map((k) => [k, DEVICE_PROBLEMS[Number(k)][0], DEVICE_PROBLEMS[Number(k)][1]]);
 const moreBugcheckRows = Object.entries(BUGCHECKS_MORE).map(([code, [name, meaning]]) => [`\`${code}\``, name, meaning]);
 
 // Dove l'agente cerca le cartelle e i file noti (con Windows sull'unità C:).
@@ -693,6 +695,53 @@ export const pc: Guide[] = [
         'la build scritta nel file è quella di base del kernel: per esempio 19041 anche su Windows 10 22H2, che è la build 19045.',
       ] },
       { t: 'note', kind: 'tip', title: 'Un secondo parere', text: 'BlueScreenView, incluso nella Cassetta degli attrezzi, legge gli stessi file e mostra l\'elenco completo dei driver. Per l\'analisi completa serve WinDbg, il debugger gratuito di Microsoft, che usa i simboli di debug scaricati dal server di Microsoft.' },
+    ],
+  },
+  {
+    id: 'dispositivi-driver',
+    chapter: 'pc',
+    title: 'Dispositivi e driver: Gestione dispositivi senza segreti',
+    summary: 'Che cosa vogliono dire i codici di Gestione dispositivi, come distinguere i driver di Windows da quelli dei produttori, perché i driver di Windows sono datati 2006, a che cosa serve la firma dei driver e come aggiornarli senza fare danni.',
+    level: 'intermedio',
+    metrics: ['pc.devices', 'pc.drivers.signing', 'pc.drivers.old'],
+    actions: ['fix-device', 'enable-device', 'disable-test-signing', 'update-drivers', 'update-crash-driver'],
+    tags: ['gestione dispositivi', 'device manager', 'devmgmt.msc', 'driver', 'codice 10', 'codice 28', 'codice 43', 'codice 52', 'punto esclamativo', 'dispositivo sconosciuto', 'altri dispositivi', 'ven', 'dev', 'vid', 'pid', 'hardware id', 'oem.inf', 'inf', 'firma digitale', 'modalità test', 'testsigning', 'bcdedit', 'integrità della memoria', 'isolamento core', 'hvci', 'pnputil'],
+    blocks: [
+      { t: 'p', text: 'Ogni componente del PC, dalla scheda di rete al lettore di impronte, è un **dispositivo** che Windows fa funzionare con un **driver**, un piccolo programma scritto dal produttore o da Microsoft. Gestione dispositivi (`devmgmt.msc`) li elenca per gruppo e mette un triangolo giallo su quelli con un problema; Polaris legge gli stessi dati con le API di Windows, in sola lettura e con gli stessi risultati con o senza amministratore.' },
+      { t: 'h', text: 'I codici di problema' },
+      { t: 'p', text: 'Facendo doppio clic su un dispositivo, il riquadro dello stato riporta un codice: è lo stesso che mostra Polaris. Questi sono i codici che Polaris riconosce, con una spiegazione in italiano scritta a partire dai messaggi di Microsoft (non sono i testi esatti di Windows):' },
+      { t: 'table', caption: 'Codici di Gestione dispositivi', head: ['Codice', 'In breve', 'Che cosa vuol dire'], rows: deviceProblemRows },
+      { t: 'p', text: 'Accanto al codice Windows conserva spesso uno **stato** esadecimale, come 0xC0000490 (nessun driver compatibile) o 0xC000009A (risorse insufficienti): Polaris lo mostra perché aiuta a capire il codice 10, il più generico.' },
+      { t: 'list', items: [
+        '**Gravi** per Polaris: un problema sulla scheda video, sulla rete, sui dischi e i loro controller, su tastiera, mouse e audio, sui controller USB e sul chipset, e i driver bloccati (48) o senza firma valida (52);',
+        '**da risolvere**: un problema su un dispositivo secondario, come un lettore di schede, una stampante o un "dispositivo sconosciuto" senza driver;',
+        '**da controllare**: dispositivi disattivati di proposito (22) e codici che si risolvono con un riavvio o con la fine della configurazione (14, 21, 25, 26, 47, 51, 54, 56).',
+      ] },
+      { t: 'h', text: 'Trovare il driver giusto con i codici del produttore' },
+      { t: 'p', text: 'Un dispositivo senza driver si chiama spesso "Dispositivo sconosciuto". Il suo **hardware ID** dice chi l\'ha fatto: `PCI\\VEN_8086&DEV_A0E8` è il dispositivo A0E8 del produttore 8086 (Intel) sul bus PCI, `USB\\VID_046D&PID_C52B` il prodotto C52B del produttore 046D sul bus USB. Polaris mostra solo questi codici, mai l\'identificativo completo dell\'esemplare, che può contenere numeri di serie. Con il codice si cerca il driver sul sito del produttore del PC o del componente.' },
+      { t: 'h', text: 'Driver di Windows e driver dei produttori' },
+      { t: 'p', text: 'Un driver installato da un produttore viene copiato da Windows con un nome come `oem42.inf`; i driver inclusi in Windows tengono il loro nome (`machine.inf`, `netrtwlane.inf`...). Polaris usa questa differenza, documentata da Microsoft, per separare i **driver di terze parti**, elencati dal più vecchio, da quelli di Windows, che si aggiornano con Windows Update.' },
+      { t: 'note', kind: 'tip', title: 'Perché i driver di Windows sono del 21 giugno 2006', text: 'Microsoft dà a tutti i driver inclusi in Windows la stessa data del 2006 e fa crescere solo il numero di versione: quando più driver vanno bene per lo stesso dispositivo Windows preferisce quello con la data più recente, e così il driver del produttore vince sempre su quello generico. La data vecchia non vuol dire che il driver sia vecchio, e Polaris non la giudica.' },
+      { t: 'p', text: 'Per i driver di terze parti di rete, controller dei dischi, Bluetooth, audio e chipset Polaris segnala quelli con più di 5 anni, e come da aggiornare quelli di rete e dei dischi con più di 8: sono soglie di Polaris, perché né Microsoft né i produttori indicano un\'età massima. La scheda video ha la sua voce (vedi [[pc-come-funziona]]).' },
+      { t: 'h', text: 'La firma dei driver' },
+      { t: 'p', text: 'Su Windows a 64 bit ogni driver che entra nel kernel deve avere una **firma digitale** riconosciuta da Microsoft: è la barriera che tiene fuori rootkit, cheat e driver difettosi. Un driver senza firma valida viene rifiutato e il dispositivo mostra il codice 52. Chi sviluppa driver può accendere la **modalità test** (`bcdedit /set testsigning on`), che accetta firme di prova e fa comparire la scritta Modalità test sul desktop: su un PC normale va spenta. Polaris legge lo stato da Windows (NtQuerySystemInformation), senza bisogno di amministratore; Microsoft avverte che quella funzione potrebbe cambiare, e se non risponde la voce non compare.' },
+      { t: 'p', text: 'L\'**integrità della memoria** (Isolamento core, in Sicurezza di Windows > Sicurezza dispositivi) usa la virtualizzazione per proteggere ancora di più il kernel: alcuni driver vecchi non sono compatibili e Windows li blocca (codice 39). Polaris mostra se è attiva.' },
+      { t: 'h', text: 'Aggiornare i driver senza fare danni' },
+      { t: 'list', ordered: true, items: [
+        'prima gli **aggiornamenti facoltativi** di Windows Update, nel gruppo dei driver: sono driver certificati per il tuo PC;',
+        'poi il **sito del produttore del PC** (per i portatili e i PC di marca) o del componente;',
+        'mai i programmi "aggiorna driver" di terze parti: installano spesso driver sbagliati o software indesiderato;',
+        'se dopo un aggiornamento qualcosa non va, in Gestione dispositivi, scheda "Driver", si ripristina il driver precedente;',
+        'se un driver compare nelle schermate blu, Polaris dice a quale dispositivo appartiene (vedi [[minidump-schermate-blu]]).',
+      ] },
+      { t: 'h', text: 'Che cosa non vede Polaris' },
+      { t: 'list', items: [
+        'i dispositivi scollegati, come Gestione dispositivi senza "Mostra dispositivi nascosti";',
+        'i messaggi personalizzati che alcuni driver mostrano al posto del testo standard del codice;',
+        'i nomi dei dispositivi Bluetooth abbinati, dei telefoni, delle stampanti e dei dispositivi di rete, sostituiti da nomi generici perché possono contenere nomi di persone o di altri computer;',
+        'la firma file per file: con la verifica attiva i driver avviati sono firmati per forza, quelli rifiutati hanno il codice 52.',
+      ] },
+      { t: 'note', kind: 'tip', title: 'Controllo a mano', text: 'Da un Prompt dei comandi, `pnputil /enum-devices /problem` (da Windows 10 versione 1903) elenca i dispositivi con un problema e il loro codice. Microsoft consiglia di aprire il prompt come amministratore per la maggior parte dei comandi di PnPUtil.' },
     ],
   },
   {

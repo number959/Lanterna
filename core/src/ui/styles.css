@@ -1666,3 +1666,8 @@ a.btn { text-decoration: none; }
   .steps.guided li { grid-template-columns: auto minmax(0, 1fr); }
   .steps.guided li::before { display: none; }
 }
+
+/* Dispositivi e driver (Gestione dispositivi) */
+.devices-card .dev-h { display: flex; align-items: center; gap: 6px; margin: 18px 0 10px; }
+.devices-card .dev-h:first-of-type { margin-top: 4px; }
+.devices-card .pc-table td { vertical-align: top; }

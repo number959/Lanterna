@@ -122,6 +122,17 @@ jobs:
           if (-not $hw.firmware) { throw "tipo di firmware non letto" }
           if ($null -eq $hw.tpm) { throw "dispositivi di sicurezza non letti (PowerShell)" }
           "Bus nominale (SMBIOS): $($hw.cpu.busMhz) MHz"
+          # Dispositivi e driver (come Gestione dispositivi), letti con SetupAPI.
+          $dv = $pc.devices
+          "Dispositivi: $($dv.total) presenti, $($dv.problems) con problemi; classi: " + (($dv.classes | Select-Object -First 12 | ForEach-Object { "$($_.class)=$($_.count)" }) -join ' ')
+          "Firma dei driver: $($dv.codeIntegrity | ConvertTo-Json -Compress)"
+          "Con problemi o driver di terze parti: " + (($dv.items | Select-Object -First 15 | ForEach-Object { "$($_.name) [$($_.class) $($_.enumerator) $($_.hardwareId)] codice=$($_.problem) $($_.problemStatus) driver=$($_.driver.provider) $($_.driver.version) $($_.driver.date) $($_.driver.inf) $($_.driver.file)" }) -join ' | ')
+          if (-not $dv -or $dv.total -lt 10) { throw "dispositivi non letti" }
+          if (-not $dv.codeIntegrity) { throw "integrità del codice non letta" }
+          if (-not ($dv.classes | Where-Object { $_.class -eq 'DiskDrive' })) { throw "classi dei dispositivi non lette (DEVPKEY_Device_Class)" }
+          $ids = @($dv.items | Where-Object { $_.hardwareId -match '\\' })
+          if ($dv.items.Count -and -not $ids.Count) { throw "hardware ID non letti" }
+          if ($s | ConvertTo-Json -Depth 20 | Select-String -Pattern '\\[0-9A-F]&[0-9A-F]{6,}&' -Quiet) { throw "identificativi d'istanza nel rapporto" }
           "Defender: $($pc.defender | ConvertTo-Json -Compress)"
           "Minacce: $(if ($null -eq $pc.threats) { 'non lette' } else { "$(@($pc.threats).Count)" })"
       - name: Velocità dei core in tempo reale (contatori di Windows)

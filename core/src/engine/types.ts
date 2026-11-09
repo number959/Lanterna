@@ -640,8 +640,77 @@ export interface PcData {
   space?: SpaceReport[];
   /** Schermate blu lette dai file di Windows (minidump) e impostazioni dei dump; assente se non lette. */
   crashes?: CrashData;
+  /** Dispositivi e driver, come Gestione dispositivi; assente se non letti. */
+  devices?: DevicesData;
   /** Limiti della raccolta (dati SMART solo da amministratore, PowerShell assente...). */
   notes?: string[];
+}
+
+/**
+ * Dispositivi presenti, come Gestione dispositivi. Nessun identificativo
+ * d'istanza e nessun nome scelto dall'utente: l'agente li toglie prima.
+ */
+export interface DevicesData {
+  /** Dispositivi presenti. */
+  total: number;
+  /** Dispositivi con un codice di problema, compresi i disattivati (codice 22). */
+  problems: number;
+  /** Dispositivi presenti per classe di installazione (Net, Display...). */
+  classes?: DeviceClassCount[];
+  /** I dispositivi con un problema, quelli con un driver di terze parti e quelli il cui driver compare nelle schermate blu. */
+  items: DeviceInfo[];
+  /** Verifica delle firme del codice nel kernel; assente se Windows non la comunica. */
+  codeIntegrity?: CodeIntegrity;
+  /** Lettura interrotta prima della fine. */
+  partial?: boolean;
+}
+
+export interface DeviceClassCount {
+  class: string;
+  count: number;
+  problems?: number;
+}
+
+export interface DeviceInfo {
+  name: string;
+  class?: string;
+  /** Bus che ha trovato il dispositivo: PCI, USB, ACPI, HDAUDIO, BTHENUM, SWD... */
+  enumerator?: string;
+  /** Solo produttore, modello e revisione: PCI\VEN_10DE&DEV_2206&SUBSYS_...&REV_A1. */
+  hardwareId?: string;
+  /** Codice di Gestione dispositivi (10, 28, 43...); assente se nessun problema. */
+  problem?: number;
+  /** NTSTATUS che accompagna il problema, come "0xC0000034". */
+  problemStatus?: string;
+  /** Servizio (driver) del dispositivo. */
+  service?: string;
+  driver?: DriverInfo;
+}
+
+export interface DriverInfo {
+  provider?: string;
+  version?: string;
+  /** Data dichiarata dal produttore nel file INF (AAAA-MM-GG). */
+  date?: string;
+  /** oem42.inf per i driver di terze parti, il nome originale per quelli di Windows. */
+  inf?: string;
+  /** Driver incluso in Windows: la sua data (21/06/2006) non dice l'età. */
+  inbox?: boolean;
+  /** File del driver, solo il nome: nvlddmkm.sys. */
+  file?: string;
+}
+
+/** Stato della verifica delle firme nel kernel (NtQuerySystemInformation). */
+export interface CodeIntegrity {
+  options: number;
+  /** Windows carica in kernel solo codice firmato. */
+  enabled: boolean;
+  /** Modalità test: accetta driver firmati con qualunque certificato. */
+  testSigning?: boolean;
+  /** Debug del kernel attivo: consente codice non firmato. */
+  debugMode?: boolean;
+  /** Integrità della memoria (Isolamento core) attiva. */
+  hvci?: boolean;
 }
 
 export interface PcOs {

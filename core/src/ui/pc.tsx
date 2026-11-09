@@ -56,6 +56,7 @@ import { CoreClock } from './clock';
 import { SensorsCard } from './sensors';
 import { SpaceCard, useSpaceRun } from './space';
 import { CrashesCard } from './crashes';
+import { DevicesCard } from './devices';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -157,6 +158,12 @@ export function PcView(props: ViewProps) {
           <EventsCard pc={pc} />
         </Section>
       ) : null}
+
+      {pc?.devices && (
+        <Section title="Dispositivi e driver">
+          <DevicesCard pc={pc} live={props.live} now={Date.parse(scan.agent.startedAt) || Date.now()} />
+        </Section>
+      )}
 
       {pc && (
         <Section title="Schermate blu">

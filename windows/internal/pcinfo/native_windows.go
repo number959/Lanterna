@@ -41,8 +41,11 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	var ps *psOut
 	var psErr error
 	var smart map[string]diskSmart
+	var devRaw []rawDevice
+	var devPartial bool
+	var devErr error
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		ps, psErr = runPS(ctx)
@@ -50,6 +53,12 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	go func() {
 		defer wg.Done()
 		smart = readSmart(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		dctx, cancel := context.WithTimeout(ctx, devicesTimeout)
+		defer cancel()
+		devRaw, devPartial, devErr = readDevices(dctx)
 	}()
 	// Schermate blu (minidump e impostazioni), in parallelo e con un tempo
 	// massimo: di solito sono pochi file piccoli.
@@ -101,8 +110,22 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	if pc.Crashes != nil && pc.Crashes.Partial {
 		pc.Notes = append(pc.Notes, "La lettura dei file delle schermate blu non è finita in tempo: l'elenco può essere incompleto.")
 	}
+	if devErr != nil {
+		pc.Notes = append(pc.Notes, "I dispositivi e i loro driver non sono stati letti: Windows non ha risposto.")
+	} else {
+		pc.Devices = BuildDevices(devRaw, CrashSuspects(pc.Crashes))
+		pc.Devices.Partial = devPartial
+		pc.Devices.CodeIntegrity = codeIntegrity()
+		if devPartial {
+			pc.Notes = append(pc.Notes, "La lettura dei dispositivi non è finita in tempo: l'elenco può essere incompleto.")
+		}
+	}
 	return pc, nil
 }
+
+// devicesTimeout limita la lettura dei dispositivi: di solito bastano poche
+// centinaia di millisecondi.
+const devicesTimeout = 20 * time.Second
 
 // crashTimeout limita la lettura dei file delle schermate blu; crashGrace è
 // l'attesa massima dopo la fine delle altre letture, crashStopWait quella

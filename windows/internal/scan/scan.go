@@ -614,6 +614,9 @@ type PcData struct {
 	// Crashes sono le schermate blu lette dai file di Windows (minidump) e le
 	// impostazioni con cui Windows li salva; nil se non lette.
 	Crashes *CrashData `json:"crashes,omitempty"`
+	// Devices è lo stato dei dispositivi e dei loro driver, come Gestione
+	// dispositivi; nil se non letto.
+	Devices *DevicesData `json:"devices,omitempty"`
 	// Notes spiega i limiti della raccolta (dati SMART solo da amministratore...).
 	Notes []string `json:"notes,omitempty"`
 }
@@ -1132,4 +1135,80 @@ type CrashCulprit struct {
 	Param    int    `json:"param,omitempty"`
 	Offset   string `json:"offset,omitempty"` // distanza dall'inizio del driver
 	Unloaded bool   `json:"unloaded,omitempty"`
+}
+
+// DevicesData è lo stato dei dispositivi presenti, come Gestione dispositivi.
+// Nessun identificativo d'istanza (contiene numeri di serie e indirizzi
+// Bluetooth) e nessun nome scelto dall'utente: vedi pcinfo.SanitizeHardwareID
+// e pcinfo.DeviceName.
+type DevicesData struct {
+	// Total conta i dispositivi presenti; Problems quelli con un codice di
+	// problema, compresi i disattivati (codice 22).
+	Total    int `json:"total"`
+	Problems int `json:"problems"`
+	// Classes conta i dispositivi presenti per classe di installazione.
+	Classes []DeviceClassCount `json:"classes,omitempty"`
+	// Items sono i dispositivi con un problema, quelli con un driver di terze
+	// parti e quelli il cui driver compare nelle schermate blu lette.
+	Items []DeviceInfo `json:"items"`
+	// CodeIntegrity è lo stato della verifica delle firme dei driver; nil se
+	// Windows non lo comunica.
+	CodeIntegrity *CodeIntegrity `json:"codeIntegrity,omitempty"`
+	// Partial: la lettura si è fermata prima della fine (tempo massimo).
+	Partial bool `json:"partial,omitempty"`
+}
+
+// DeviceClassCount conta i dispositivi di una classe (Net, Display...).
+type DeviceClassCount struct {
+	Class    string `json:"class"`
+	Count    int    `json:"count"`
+	Problems int    `json:"problems,omitempty"`
+}
+
+// DeviceInfo è un dispositivo come lo mostra Gestione dispositivi.
+type DeviceInfo struct {
+	Name  string `json:"name"`
+	Class string `json:"class,omitempty"`
+	// Enumerator è il bus che ha trovato il dispositivo: PCI, USB, ACPI,
+	// HDAUDIO, BTHENUM, SWD...
+	Enumerator string `json:"enumerator,omitempty"`
+	// HardwareID tiene solo i codici di produttore, modello e revisione
+	// (PCI\VEN_10DE&DEV_2206&SUBSYS_...&REV_A1).
+	HardwareID string `json:"hardwareId,omitempty"`
+	// Problem è il codice di Gestione dispositivi (Codice 10, 28, 43...), 0
+	// se nessuno; ProblemStatus l'NTSTATUS che lo accompagna ("0xC0000034").
+	Problem       int    `json:"problem,omitempty"`
+	ProblemStatus string `json:"problemStatus,omitempty"`
+	// Service è il servizio (driver) del dispositivo, come nvlddmkm.
+	Service string      `json:"service,omitempty"`
+	Driver  *DriverInfo `json:"driver,omitempty"`
+}
+
+// DriverInfo è il driver installato per un dispositivo.
+type DriverInfo struct {
+	Provider string `json:"provider,omitempty"`
+	Version  string `json:"version,omitempty"`
+	// Date è la data dichiarata dal produttore nel file INF (AAAA-MM-GG).
+	Date string `json:"date,omitempty"`
+	// Inf è il nome del file INF: oem42.inf per i driver di terze parti,
+	// il nome originale (machine.inf, netrtwlane.inf...) per quelli di Windows.
+	Inf   string `json:"inf,omitempty"`
+	Inbox bool   `json:"inbox,omitempty"`
+	// File è il file del driver (solo il nome, mai il percorso): nvlddmkm.sys.
+	File string `json:"file,omitempty"`
+}
+
+// CodeIntegrity è lo stato della verifica delle firme del codice nel kernel
+// (NtQuerySystemInformation, SystemCodeIntegrityInformation).
+type CodeIntegrity struct {
+	Options uint32 `json:"options"`
+	// Enabled: Windows carica in kernel solo codice firmato.
+	Enabled bool `json:"enabled"`
+	// TestSigning: modalità test, accetta driver firmati con qualunque
+	// certificato (sul desktop compare la scritta "Modalità test").
+	TestSigning bool `json:"testSigning,omitempty"`
+	// DebugMode: debug del kernel attivo, che consente codice non firmato.
+	DebugMode bool `json:"debugMode,omitempty"`
+	// HVCI: integrità della memoria (Isolamento core) attiva.
+	HVCI bool `json:"hvci,omitempty"`
 }

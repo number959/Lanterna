@@ -55,6 +55,21 @@ export {
 } from './crash';
 export type { BugcheckInfo, CrashFamily, CrashGroup } from './crash';
 export {
+  analyzeDevices,
+  DEVICE_PROBLEMS,
+  deviceClassText,
+  deviceOfDriver,
+  deviceProblemDetail,
+  deviceProblemText,
+  deviceSeverity,
+  driverText,
+  isDisabled,
+  isTransient,
+  oldDrivers,
+  thirdPartyDrivers,
+} from './devices';
+export type { DriverPackage } from './devices';
+export {
   analyzeSurvey,
   bandText,
   dbmText,

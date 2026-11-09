@@ -1,3 +1,4 @@
+import { deviceClassText, deviceOfDriver, driverText } from './devices';
 import { num } from './fmt';
 import { BUGCHECKS, crashDumpsVerified, dateIt, on } from './pc';
 import type { CrashCulprit, CrashData, CrashDump, CrashDumpType, CrashSettings, EventGroup, Finding, Scan, Severity } from './types';
@@ -287,6 +288,17 @@ function span(g: CrashGroup): string {
 type Add = (f: Omit<Finding, 'actions'> & { actions?: string[] }) => void;
 
 /**
+ * A che cosa appartiene il driver indicato, se l'agente ha trovato il
+ * dispositivo che lo usa: " È il driver di Scheda video NVIDIA..., NVIDIA 31.0... del 12/03/2024."
+ */
+export function ownerText(pc: Scan['pc'], file: string): string {
+  const d = deviceOfDriver(pc, file);
+  if (!d) return '';
+  const drv = driverText(d.driver);
+  return ` È il driver di ${d.name} (${deviceClassText(d.class).toLowerCase()})${drv ? `: ${drv}` : ''}${d.driver?.inbox ? ', incluso in Windows: spesso è la vittima di un altro driver, non la causa' : ''}.`;
+}
+
+/**
  * Giudizi che solo i minidump permettono: driver o codice ricorrente,
  * salvataggio dei dump disattivato, file non leggibili senza
  * amministratore. Il numero di schermate blu resta in "pc.events.bsod".
@@ -324,6 +336,7 @@ export function analyzeCrashes(scan: Scan, add: Add) {
         `Il driver ${top.label}${top.unloaded ? ' (già scaricato al momento dell\'arresto in almeno un caso)' : ''} è indicato in ${top.count} schermate blu su ${read.length} lette, ${span(top)}; ` +
         `codic${top.codes.length === 1 ? 'e' : 'i'} ${top.codes.map(bugcheckText).join(', ')}. ${clue} Aggiornalo o ripristinalo prima di sostituire componenti.` +
         (others.length ? ` Indicati più volte anche: ${others.join(', ')}.` : '') +
+        ownerText(pc, top.label) +
         (sev === 'info' ? ` L'ultima volta è stata più di ${CRASH_RECENT_DAYS} giorni prima dell'analisi.` : ''),
       actions: ['update-crash-driver', 'diagnose-bsod'],
     });

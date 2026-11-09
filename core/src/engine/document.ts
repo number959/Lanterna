@@ -3,6 +3,7 @@ import { ENGINE_VERSION } from './analyze';
 import { certExpiryText, certSeverity, certWhere } from './certs';
 import { bugcheckInfo, CRASH_DUMP_TYPE, CRASH_LIMITED, crashSetting, crashWhen, culpritHow } from './crash';
 import { THREAT_SEVERITY, THREAT_STATUS } from './defender';
+import { deviceClassText, deviceProblemDetail, deviceProblemText, driverText, oldDrivers } from './devices';
 import { fmt, thousands } from './fmt';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 import { dateIt } from './pc';
@@ -319,6 +320,35 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
         crashes.needsAdmin ? '<p class="pd-small"><b>Per leggere i file delle schermate blu serve avviare Polaris come amministratore.</b></p>' : ''
       }${
         crashFiles.length ? '<p class="pd-muted pd-small">Il driver indicato è un indizio, non una certezza: Polaris non usa i simboli di debug e non ricostruisce lo stack completo.</p>' : ''
+      }</section>`,
+    );
+  }
+
+  const dev = pc?.devices;
+  if (dev) {
+    const probs = dev.items.filter((d) => d.problem);
+    const old = oldDrivers(dev, Date.parse(scan.agent.startedAt) || Date.now());
+    const ci = dev.codeIntegrity;
+    out.push(
+      `<section><h2>Dispositivi e driver</h2><p>${dev.total} dispositivi presenti${probs.length ? `, ${probs.length} con problemi` : ', nessuno con problemi'}.</p>${
+        probs.length
+          ? `<table class="pd-table"><thead><tr><th>Dispositivo</th><th>Problema</th><th>Driver</th></tr></thead><tbody>${probs
+              .map(
+                (d) =>
+                  `<tr><td>${t(d.name)}<br><span class="pd-small">${t(deviceClassText(d.class))}${d.hardwareId ? ` · ${t(d.hardwareId)}` : ''}</span></td><td>${t(deviceProblemText(d.problem ?? 0))}<br><span class="pd-small">${t(deviceProblemDetail(d))}</span></td><td class="pd-small">${t(d.driver ? driverText(d.driver) : 'nessun driver')}</td></tr>`,
+              )
+              .join('')}</tbody></table>`
+          : ''
+      }${
+        old.length
+          ? `<p class="pd-small">Driver di terze parti con più di 5 anni: ${old
+              .map((o) => t(`${o.pkg.devices[0].name} (${[o.pkg.provider, o.pkg.version].filter(Boolean).join(' ')}, del ${dateIt(o.pkg.date!)})`))
+              .join('; ')}.</p>`
+          : ''
+      }${
+        ci
+          ? `<p class="pd-small">Firma dei driver: verifica ${ci.enabled ? 'attiva' : '<b>spenta</b>'}${ci.testSigning ? ', <b>modalità test attiva</b>' : ''}${ci.debugMode ? ', <b>debug del kernel attivo</b>' : ''}; integrità della memoria ${ci.hvci ? 'attiva' : 'spenta'}.</p>`
+          : ''
       }</section>`,
     );
   }
