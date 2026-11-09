@@ -3,6 +3,7 @@ import { ENGINE_VERSION } from './analyze';
 import { certExpiryText, certSeverity, certWhere } from './certs';
 import { bugcheckInfo, CRASH_DUMP_TYPE, CRASH_LIMITED, crashSetting, crashWhen, culpritHow } from './crash';
 import { THREAT_SEVERITY, THREAT_STATUS } from './defender';
+import { appHint, bootSample, bootTypical, failText, msText, SLOW_KIND } from './boot';
 import { deviceClassText, deviceProblemDetail, deviceProblemText, driverText, oldDrivers } from './devices';
 import { fmt, thousands } from './fmt';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
@@ -322,6 +323,48 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
         crashFiles.length ? '<p class="pd-muted pd-small">Il driver indicato è un indizio, non una certezza: Polaris non usa i simboli di debug e non ricostruisce lo stack completo.</p>' : ''
       }</section>`,
     );
+  }
+
+  if (pc && (pc.boot || pc.apps || pc.reliability)) {
+    const b = pc.boot;
+    const typical = bootTypical(b);
+    const sample = bootSample(b);
+    const parts: string[] = [];
+    if (b) {
+      parts.push(
+        `<p>Durata dell'avvio: ${
+          typical
+            ? `<b>${esc(msText(typical))}</b> (mediana di ${sample.length} avvii misurati da Windows; l'ultimo il ${esc(dateIt(sample[0].time))}${sample[0].mainPathMs ? `, ${esc(msText(sample[0].mainPathMs))} fino al desktop e ${esc(msText(sample[0].postBootMs ?? 0))} dopo l'accesso` : ''})`
+            : 'non misurata da Windows'
+        }${b.firmwareMs !== undefined ? `; firmware prima di Windows ${esc(msText(b.firmwareMs))}` : ''}${b.shutdowns?.[0] ? `; ultimo spegnimento ${esc(msText(b.shutdowns[0].totalMs))}` : ''}.</p>`,
+      );
+      const slow = b.slow ?? [];
+      if (slow.length)
+        parts.push(
+          `<p class="pd-small">Segnalati da Windows come lenti: ${slow
+            .slice(0, 5)
+            .map((x) => t(`${x.friendly || x.name} (${SLOW_KIND[x.kind] ?? x.kind}${x.phase === 'shutdown' ? ' allo spegnimento' : ''}, ${x.count} volte)`))
+            .join('; ')}.</p>`,
+        );
+    }
+    const ap = pc.apps;
+    if (ap && ap.channel === 'ok')
+      parts.push(
+        ap.apps.length
+          ? `<table class="pd-table"><caption>Programmi che si sono chiusi da soli o bloccati negli ultimi ${ap.days} giorni</caption><thead><tr><th>Programma</th><th>Arresti e blocchi</th><th>Ultima volta</th><th>Indizi</th></tr></thead><tbody>${ap.apps
+              .slice(0, 8)
+              .map((a) => `<tr><td>${t(a.app)}</td><td>${t(failText(a))}</td><td>${esc(dateIt(a.last))}</td><td class="pd-small">${t(appHint(a) || '—')}</td></tr>`)
+              .join('')}</tbody></table>`
+          : `<p class="pd-small">Nessun programma si è chiuso da solo negli ultimi ${ap.days} giorni.</p>`,
+      );
+    const r = pc.reliability;
+    if (r)
+      parts.push(
+        `<p class="pd-small">Indice di stabilità di Monitoraggio affidabilità: ${
+          r.available && r.index !== undefined ? `<b>${fmt(r.index, 1)} su 10</b>${r.indexAt ? `, calcolato il ${esc(dateIt(r.indexAt))}` : ''}` : 'non disponibile'
+        }.</p>`,
+      );
+    out.push(`<section><h2>Avvio e affidabilità</h2>${parts.join('')}</section>`);
   }
 
   const dev = pc?.devices;

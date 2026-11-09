@@ -617,6 +617,12 @@ type PcData struct {
 	// Devices è lo stato dei dispositivi e dei loro driver, come Gestione
 	// dispositivi; nil se non letto.
 	Devices *DevicesData `json:"devices,omitempty"`
+	// Boot è la durata di avvio e spegnimento misurata da Windows; Apps i
+	// programmi che si sono chiusi da soli o bloccati; Reliability l'indice
+	// di stabilità di Monitoraggio affidabilità. nil se non letti.
+	Boot        *BootPerf    `json:"boot,omitempty"`
+	Apps        *AppFailures `json:"apps,omitempty"`
+	Reliability *Reliability `json:"reliability,omitempty"`
 	// Notes spiega i limiti della raccolta (dati SMART solo da amministratore...).
 	Notes []string `json:"notes,omitempty"`
 }
@@ -1211,4 +1217,154 @@ type CodeIntegrity struct {
 	DebugMode bool `json:"debugMode,omitempty"`
 	// HVCI: integrità della memoria (Isolamento core) attiva.
 	HVCI bool `json:"hvci,omitempty"`
+}
+
+// BootPerf è la durata di avvio e spegnimento come la misura Windows nel
+// registro Microsoft-Windows-Diagnostics-Performance/Operational.
+type BootPerf struct {
+	// Days è la finestra letta; Channel lo stato del registro: ok | denied
+	// (serve l'amministratore) | missing (registro assente) | error.
+	Days    int    `json:"days"`
+	Channel string `json:"channel"`
+	// FirmwareMs è l'ultimo tempo del firmware prima di Windows (FwPOSTTime,
+	// "Ultimo tempo BIOS" in Gestione attività); nil se il firmware non lo comunica.
+	FirmwareMs *int64 `json:"firmwareMs,omitempty"`
+	// Boots: gli avvii misurati (evento 100), il più recente prima.
+	Boots []BootRecord `json:"boots"`
+	// Slow: i componenti che Windows ha segnalato come lenti all'avvio
+	// (eventi 101-110) o allo spegnimento (201-203), raggruppati.
+	Slow []BootSlow `json:"slow,omitempty"`
+	// Shutdowns: gli spegnimenti misurati (evento 200), il più recente prima.
+	Shutdowns []ShutdownRecord `json:"shutdowns,omitempty"`
+}
+
+// BootRecord è un avvio misurato da Windows.
+type BootRecord struct {
+	Time    string `json:"time"`
+	TotalMs int64  `json:"totalMs"`
+	// MainPathMs va dall'accensione di Windows al desktop; PostBootMs dal
+	// desktop al sistema pronto (programmi all'avvio).
+	MainPathMs  int64 `json:"mainPathMs,omitempty"`
+	PostBootMs  int64 `json:"postBootMs,omitempty"`
+	StartupApps int   `json:"startupApps,omitempty"`
+	Degraded    bool  `json:"degraded,omitempty"`
+	AfterUpdate bool  `json:"afterUpdate,omitempty"`
+}
+
+// BootSlow è un componente segnalato come lento.
+type BootSlow struct {
+	// Phase: boot | shutdown. Kind: app | driver | service | core |
+	// prefetch | policy | device | session.
+	Phase string `json:"phase"`
+	Kind  string `json:"kind"`
+	// Name è solo il nome del file o del servizio, mai il percorso.
+	Name          string `json:"name"`
+	Friendly      string `json:"friendly,omitempty"`
+	Version       string `json:"version,omitempty"`
+	TotalMs       int64  `json:"totalMs"`
+	DegradationMs int64  `json:"degradationMs"`
+	Count         int    `json:"count"`
+	Last          string `json:"last"`
+}
+
+// ShutdownRecord è uno spegnimento misurato da Windows.
+type ShutdownRecord struct {
+	Time     string `json:"time"`
+	TotalMs  int64  `json:"totalMs"`
+	Degraded bool   `json:"degraded,omitempty"`
+}
+
+// AppFailures sono i programmi che si sono chiusi da soli (evento 1000) o
+// bloccati (1002) nel registro Applicazione, e i rapporti di Segnalazione
+// errori Windows (1001). Niente percorsi, identificativi dei processi o dei
+// rapporti.
+type AppFailures struct {
+	Days    int    `json:"days"`
+	Channel string `json:"channel"` // ok | denied | error
+	Crashes int    `json:"crashes"`
+	Hangs   int    `json:"hangs"`
+	// Apps: raggruppati per programma, dal più frequente (al massimo 25).
+	Apps    []AppFailure `json:"apps"`
+	Reports []WerReport  `json:"reports,omitempty"`
+	Wer     *WerSettings `json:"wer,omitempty"`
+}
+
+// AppFailure riassume gli arresti di un programma.
+type AppFailure struct {
+	App     string `json:"app"` // nome del file eseguibile
+	Version string `json:"version,omitempty"`
+	Crashes int    `json:"crashes"`
+	Hangs   int    `json:"hangs"`
+	Last    string `json:"last"`
+	// Modules: i moduli in errore (solo il nome del file); Exceptions i
+	// codici di eccezione ("0xc0000005"); i tre più frequenti.
+	Modules    []NameCount `json:"modules,omitempty"`
+	Exceptions []NameCount `json:"exceptions,omitempty"`
+	// Store: app dello Store o pacchettizzata; UserFolder: eseguibile nella
+	// cartella di un utente; System: eseguibile di Windows.
+	Store      bool `json:"store,omitempty"`
+	UserFolder bool `json:"userFolder,omitempty"`
+	System     bool `json:"system,omitempty"`
+}
+
+// NameCount è un nome con il numero di volte.
+type NameCount struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+// WerReport conta i rapporti di Segnalazione errori per tipo (APPCRASH,
+// APPHANG, BlueScreen, LiveKernelEvent...).
+type WerReport struct {
+	Event string `json:"event"`
+	Count int    `json:"count"`
+	Last  string `json:"last"`
+}
+
+// WerSettings sono le impostazioni di Segnalazione errori Windows lette dal
+// registro, senza modificarle.
+type WerSettings struct {
+	Disabled        bool `json:"disabled,omitempty"`
+	DontShowUI      bool `json:"dontShowUI,omitempty"`
+	LoggingDisabled bool `json:"loggingDisabled,omitempty"`
+	// Policy: almeno un valore viene dai criteri di gruppo.
+	Policy bool `json:"policy,omitempty"`
+	// LocalDumps: Windows salva una copia della memoria dei programmi che si chiudono.
+	LocalDumps      bool `json:"localDumps,omitempty"`
+	CorporateServer bool `json:"corporateServer,omitempty"`
+}
+
+// Reliability è l'indice di stabilità di Monitoraggio affidabilità
+// (Win32_ReliabilityStabilityMetrics) e i suoi record raggruppati
+// (Win32_ReliabilityRecords), senza utente né messaggi.
+type Reliability struct {
+	Available bool `json:"available"`
+	// Reason spiega perché manca: no-data | disabled | error.
+	Reason string `json:"reason,omitempty"`
+	// Index è l'ultimo valore (da 1 a 10), IndexAt quando è stato calcolato.
+	Index   *float64           `json:"index,omitempty"`
+	IndexAt string             `json:"indexAt,omitempty"`
+	Series  []ReliabilityPoint `json:"series,omitempty"`
+	Records []ReliabilityGroup `json:"records,omitempty"`
+	// WMIEnabled è il valore WMIEnable del registro; nil se assente.
+	WMIEnabled *bool `json:"wmiEnabled,omitempty"`
+}
+
+// ReliabilityPoint è l'ultimo indice di un giorno.
+type ReliabilityPoint struct {
+	Date  string  `json:"date"`
+	Index float64 `json:"index"`
+}
+
+// ReliabilityGroup raggruppa i record di affidabilità per fonte e codice.
+type ReliabilityGroup struct {
+	// Category: app-crash | app-hang | windows-failure | shutdown |
+	// install-failed | update-failed | install | update | other
+	// (classificazione di Polaris).
+	Category string `json:"category"`
+	Source   string `json:"source"`
+	ID       int    `json:"id"`
+	Product  string `json:"product,omitempty"`
+	Count    int    `json:"count"`
+	Last     string `json:"last"`
 }

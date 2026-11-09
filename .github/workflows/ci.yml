@@ -133,6 +133,21 @@ jobs:
           $ids = @($dv.items | Where-Object { $_.hardwareId -match '\\' })
           if ($dv.items.Count -and -not $ids.Count) { throw "hardware ID non letti" }
           if ($s | ConvertTo-Json -Depth 20 | Select-String -Pattern '\\[0-9A-F]&[0-9A-F]{6,}&' -Quiet) { throw "identificativi d'istanza nel rapporto" }
+          # Avvio, programmi che si chiudono da soli e indice di stabilità (registri eventi nativi e WMI).
+          $bt = $pc.boot
+          "Avvio: registro $($bt.channel), $(@($bt.boots).Count) avvii misurati, firmware $($bt.firmwareMs) ms; ultimi: " + ((@($bt.boots) | Select-Object -First 3 | ForEach-Object { "$($_.time) $($_.totalMs) ms (desktop $($_.mainPathMs), dopo $($_.postBootMs))" }) -join ' | ')
+          "Componenti lenti: " + ((@($bt.slow) | Select-Object -First 5 | ForEach-Object { "$($_.phase)/$($_.kind) $($_.name) x$($_.count) +$($_.degradationMs) ms" }) -join ' | ') + "; spegnimenti: $(@($bt.shutdowns).Count)"
+          $ap = $pc.apps
+          "Programmi: registro $($ap.channel), $($ap.crashes) arresti, $($ap.hangs) blocchi; " + ((@($ap.apps) | Select-Object -First 5 | ForEach-Object { "$($_.app) $($_.crashes)/$($_.hangs)" }) -join ' | ') + "; rapporti: " + ((@($ap.reports) | ForEach-Object { "$($_.event) x$($_.count)" }) -join ' ') + "; WER $($ap.wer | ConvertTo-Json -Compress)"
+          $rl = $pc.reliability
+          "Affidabilità: disponibile $($rl.available), indice $($rl.index) del $($rl.indexAt), motivo '$($rl.reason)', WMIEnable '$($rl.wmiEnabled)', $(@($rl.series).Count) giorni, record: " + ((@($rl.records) | Select-Object -First 6 | ForEach-Object { "$($_.category) $($_.source) $($_.id) x$($_.count)" }) -join ' | ')
+          if (-not $bt -or $bt.channel -eq 'error') { throw "registro Diagnostics-Performance non letto" }
+          if (-not $ap -or $ap.channel -ne 'ok') { throw "registro Applicazione non letto" }
+          if (-not $rl) { throw "indice di stabilità non letto (PowerShell)" }
+          # Nessun percorso della cartella dell'utente nel rapporto (solo %USERPROFILE%).
+          $raw = Get-Content scan.json -Raw
+          $leak = [regex]::Match($raw, '.{0,60}' + [regex]::Escape($env:USERPROFILE.Replace('\', '\\')) + '.{0,40}', 'IgnoreCase')
+          if ($leak.Success) { throw "cartella dell'utente nel rapporto: $($leak.Value)" }
           "Defender: $($pc.defender | ConvertTo-Json -Compress)"
           "Minacce: $(if ($null -eq $pc.threats) { 'non lette' } else { "$(@($pc.threats).Count)" })"
       - name: Velocità dei core in tempo reale (contatori di Windows)

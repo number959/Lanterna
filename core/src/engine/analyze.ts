@@ -1,5 +1,6 @@
 import { fmt, more, num, thousands } from './fmt';
 import { analyzeCerts } from './certs';
+import { analyzeStability } from './boot';
 import { analyzeCrashes } from './crash';
 import { analyzeDevices } from './devices';
 import { analyzeSurvey } from './survey';
@@ -1556,6 +1557,8 @@ export function analyze(scan: Scan): Analysis {
   analyzePc(scan, (f) => c.add(f));
   // Dispositivi e driver, come Gestione dispositivi.
   analyzeDevices(scan, (f) => c.add(f));
+  // Avvio, programmi che si chiudono da soli, indice di stabilità.
+  analyzeStability(scan, (f) => c.add(f));
   // Schermate blu dai minidump: cause ricorrenti e impostazioni, senza
   // ripetere il conteggio di pc.events.bsod.
   analyzeCrashes(scan, (f) => c.add(f));

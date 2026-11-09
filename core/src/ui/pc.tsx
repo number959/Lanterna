@@ -57,6 +57,7 @@ import { SensorsCard } from './sensors';
 import { SpaceCard, useSpaceRun } from './space';
 import { CrashesCard } from './crashes';
 import { DevicesCard } from './devices';
+import { StabilityCard } from './stability';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -158,6 +159,12 @@ export function PcView(props: ViewProps) {
           <EventsCard pc={pc} />
         </Section>
       ) : null}
+
+      {pc && (pc.boot || pc.apps || pc.reliability) && (
+        <Section title="Avvio e affidabilità">
+          <StabilityCard pc={pc} live={props.live} />
+        </Section>
+      )}
 
       {pc?.devices && (
         <Section title="Dispositivi e driver">

@@ -70,6 +70,27 @@ export {
 } from './devices';
 export type { DriverPackage } from './devices';
 export {
+  analyzeStability,
+  appHint,
+  APP_CRIT,
+  APPS_WARN,
+  BOOT_CRIT_MS,
+  BOOT_WARN_MS,
+  bootSample,
+  bootSeverity,
+  bootTypical,
+  EXCEPTION_TEXT,
+  failText,
+  FIRMWARE_INFO_MS,
+  FIRMWARE_WARN_MS,
+  msText,
+  reliabilityFalling,
+  reliabilitySeverity,
+  SHUTDOWN_INFO_MS,
+  SHUTDOWN_WARN_MS,
+  SLOW_KIND,
+} from './boot';
+export {
   analyzeSurvey,
   bandText,
   dbmText,

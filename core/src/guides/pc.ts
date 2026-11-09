@@ -1,6 +1,7 @@
 import { BUGCHECKS, dateIt, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from '../engine/pc';
 import { BUGCHECKS_MORE } from '../engine/crash';
 import { DEVICE_PROBLEMS } from '../engine/devices';
+import { EXCEPTION_TEXT } from '../engine/boot';
 import { SPACE_HINTS, SPACE_RISK_LABEL } from '../engine/space';
 import type { SpaceRisk } from '../engine/space';
 import type { Guide } from './types';
@@ -14,6 +15,7 @@ import type { Guide } from './types';
 const win11Rows = Object.entries(WIN11_EOS).map(([v, d]) => [v, dateIt(d.home), dateIt(d.ent)]);
 const bugcheckRows = Object.entries(BUGCHECKS).map(([code, [name, meaning]]) => [`\`${code}\``, name, meaning]);
 const deviceProblemRows = Object.keys(DEVICE_PROBLEMS).map((k) => [k, DEVICE_PROBLEMS[Number(k)][0], DEVICE_PROBLEMS[Number(k)][1]]);
+const exceptionRows = Object.keys(EXCEPTION_TEXT).map((k) => [`\`${k}\``, EXCEPTION_TEXT[k]]);
 const moreBugcheckRows = Object.entries(BUGCHECKS_MORE).map(([code, [name, meaning]]) => [`\`${code}\``, name, meaning]);
 
 // Dove l'agente cerca le cartelle e i file noti (con Windows sull'unità C:).
@@ -742,6 +744,42 @@ export const pc: Guide[] = [
         'la firma file per file: con la verifica attiva i driver avviati sono firmati per forza, quelli rifiutati hanno il codice 52.',
       ] },
       { t: 'note', kind: 'tip', title: 'Controllo a mano', text: 'Da un Prompt dei comandi, `pnputil /enum-devices /problem` (da Windows 10 versione 1903) elenca i dispositivi con un problema e il loro codice. Microsoft consiglia di aprire il prompt come amministratore per la maggior parte dei comandi di PnPUtil.' },
+    ],
+  },
+  {
+    id: 'avvio-affidabilita',
+    chapter: 'pc',
+    title: 'Avvio lento, programmi che si chiudono e indice di stabilità',
+    summary: 'Come Windows misura l\'avvio e lo spegnimento, che cosa dice la divisione tra prima e dopo il desktop, come leggere gli arresti dei programmi con modulo e codice di eccezione e che cos\'è l\'indice di stabilità di Monitoraggio affidabilità.',
+    level: 'intermedio',
+    metrics: ['pc.boot', 'pc.boot.slow', 'pc.boot.firmware', 'pc.boot.shutdown', 'pc.apps', 'pc.reliability'],
+    actions: ['trim-startup', 'upgrade-ssd', 'check-firmware-boot', 'update-app', 'repair-windows', 'review-reliability'],
+    tags: ['avvio lento', 'boot', 'diagnostics-performance', 'evento 100', 'bootpostboottime', 'impatto di avvio', 'ultimo tempo bios', 'fwposttime', 'avvio rapido', 'spegnimento lento', 'arresto anomalo', 'crash', 'application error', 'evento 1000', 'evento 1002', 'blocco', 'non risponde', 'modulo', 'eccezione', '0xc0000005', 'wer', 'segnalazione errori', 'monitoraggio affidabilità', 'perfmon /rel', 'indice di stabilità', 'sfc', 'dism'],
+    blocks: [
+      { t: 'p', text: 'Windows misura da solo ogni avvio completo e lo annota nel registro **Microsoft-Windows-Diagnostics-Performance/Operational**: l\'evento 100 riporta la durata totale e le sue parti, gli eventi da 101 a 110 i componenti che hanno rallentato rispetto al solito. Polaris li legge con le API del registro eventi, in sola lettura, senza programmi esterni.' },
+      { t: 'h', text: 'Prima e dopo il desktop' },
+      { t: 'table', head: ['Parte', 'Che cosa comprende', 'Se è lunga'], rows: [
+        ['firmware', 'il BIOS/UEFI del PC, prima ancora di Windows (Ultimo tempo BIOS in Gestione attività)', 'avvio dalla rete, controlli della memoria, dischi provati prima di quello di sistema: vedi le impostazioni del firmware'],
+        ['fino al desktop', 'caricamento di Windows, driver, servizi essenziali e accesso', 'disco meccanico, driver o servizi lenti, criteri di gruppo sui PC in dominio'],
+        ['dopo l\'accesso', 'i programmi all\'avvio e i servizi che partono con l\'utente', 'troppi programmi all\'avvio: si tolgono da Gestione attività (vedi [[avvio-processi]])'],
+      ] },
+      { t: 'p', text: 'Polaris prende la **mediana degli ultimi 5 avvii**, senza i riavvii dopo un aggiornamento, che sono più lunghi per natura: sotto il minuto è normale per un PC con disco SSD, oltre i 3 minuti è molto lento. Sono soglie di Polaris: Microsoft non ne pubblica.' },
+      { t: 'note', kind: 'warn', title: 'Quando la misura manca', text: 'Su molti PC con le versioni recenti di Windows l\'evento 100 non viene più scritto, e con Avvio rapido attivo l\'accensione dopo lo spegnimento è un ripristino dall\'ibernazione, non un avvio: Windows misura solo gli avvii completi, come i riavvii. Se la misura non c\'è, Polaris scrive "non misurata" e non dà un giudizio.' },
+      { t: 'h', text: 'Componenti segnalati come lenti' },
+      { t: 'p', text: 'Quando un programma, un servizio, un driver o un dispositivo impiega più del solito, Windows lo annota con il nome e il ritardo. Un componente segnalato tre volte o più rallenta ogni avvio: spesso è un servizio di aggiornamento di un produttore o un programma che si avvia con Windows senza bisogno. Lo stesso vale per lo spegnimento (eventi da 201 a 203): servizi e programmi che non si chiudono allungano l\'attesa.' },
+      { t: 'h', text: 'Programmi che si chiudono da soli' },
+      { t: 'p', text: 'Quando un programma si chiude per un errore Windows scrive l\'evento 1000 (Application Error) nel registro Applicazione, con il **modulo** in cui è avvenuto l\'errore e il **codice di eccezione**; quando un programma non risponde e viene chiuso, l\'evento 1002 (Application Hang). Polaris li raggruppa per programma negli ultimi 30 giorni. Alcuni codici frequenti:' },
+      { t: 'table', caption: 'Codici di eccezione', head: ['Codice', 'Che cosa vuol dire'], rows: exceptionRows },
+      { t: 'list', items: [
+        'il **modulo** indica dove l\'errore si è manifestato: se è un componente aggiuntivo, un plug-in o una DLL di un altro produttore (antivirus, programmi di stampa, firma digitale), è il primo sospettato;',
+        'i moduli di Windows come `ntdll.dll` e `KernelBase.dll` compaiono spesso perché sono il punto in cui l\'errore viene rilevato, non perché ne siano la causa;',
+        'se si chiudono spesso componenti di Windows (Esplora file, servizi di sistema), i file di sistema possono essere danneggiati: Windows li controlla e ripara con `DISM /Online /Cleanup-Image /RestoreHealth` e poi `sfc /scannow`, da un Prompt dei comandi aperto come amministratore;',
+        'gli arresti con codici sempre diversi in programmi diversi fanno pensare alla memoria del PC: vedi [[minidump-schermate-blu]].',
+      ] },
+      { t: 'h', text: 'L\'indice di stabilità' },
+      { t: 'p', text: '**Monitoraggio affidabilità** (`perfmon /rel`) mostra un grafico giorno per giorno con un indice da 1 a 10, calcolato da Windows contando arresti dei programmi, errori di Windows e installazioni non riuscite: i problemi recenti pesano di più. Polaris legge lo stesso indice (classe WMI Win32_ReliabilityStabilityMetrics) e lo legge a fasce: da 8 in su stabile, da 5 a 8 qualche problema, da 3 a 5 instabile, sotto 3 molto instabile. Un calo di 2 punti in una settimana è segnalato anche se il valore resta alto.' },
+      { t: 'p', text: 'Microsoft non pubblica la formula, e su Windows Server la raccolta è spenta per impostazione predefinita (può esserlo anche su PC aziendali): in quel caso Polaris lo dice. Dei record di affidabilità Polaris non legge l\'utente, i messaggi né il nome del computer.' },
+      { t: 'note', kind: 'tip', title: 'Che cosa guardare per primo', text: 'Un avvio lento con quasi tutto il tempo dopo l\'accesso si risolve togliendo programmi dall\'avvio. Un avvio lento già prima del desktop, su un disco meccanico, si risolve davvero solo passando a un SSD. Un indice di stabilità basso si spiega aprendo Monitoraggio affidabilità sui giorni in calo.' },
     ],
   },
   {

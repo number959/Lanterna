@@ -1,6 +1,7 @@
 import type { PcData, SmartAttr, StartupItem } from '../engine/types';
 import { clinicCrashes, homeCrashes } from './crashes';
 import { clinicDevices, homeDevices } from './devices';
+import { clinicApps, clinicBoot, clinicReliability, homeApps, homeBoot, homeReliability } from './stability';
 
 // Dati dimostrativi del computer, plausibili ma inventati. Il portatile di
 // casa ha i problemi tipici di un PC trascurato (versione di Windows scaduta,
@@ -155,6 +156,9 @@ export const homePc: PcData = {
   // Schermate blu lette dai minidump: vedi demo/crashes.ts.
   crashes: homeCrashes,
   devices: homeDevices,
+  boot: homeBoot,
+  apps: homeApps,
+  reliability: homeReliability,
 };
 
 export const clinicPc: PcData = {
@@ -324,4 +328,7 @@ export const clinicPc: PcData = {
   updates: { lastInstalled: '2026-09-09', lastKB: 'KB5065429', pendingReboot: false },
   crashes: clinicCrashes,
   devices: clinicDevices,
+  boot: clinicBoot,
+  apps: clinicApps,
+  reliability: clinicReliability,
 };

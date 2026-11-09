@@ -642,6 +642,12 @@ export interface PcData {
   crashes?: CrashData;
   /** Dispositivi e driver, come Gestione dispositivi; assente se non letti. */
   devices?: DevicesData;
+  /** Durata di avvio e spegnimento misurata da Windows; assente se non letta. */
+  boot?: BootPerf;
+  /** Programmi che si sono chiusi da soli o bloccati; assente se non letti. */
+  apps?: AppFailures;
+  /** Indice di stabilità di Monitoraggio affidabilità; assente se non letto. */
+  reliability?: Reliability;
   /** Limiti della raccolta (dati SMART solo da amministratore, PowerShell assente...). */
   notes?: string[];
 }
@@ -1337,3 +1343,131 @@ export interface CrashCulprit {
   /** Il driver era già stato scaricato al momento dell'arresto. */
   unloaded?: boolean;
 }
+
+/** Avvii e spegnimenti misurati da Windows (registro Diagnostics-Performance). */
+export interface BootPerf {
+  /** Giorni letti. */
+  days: number;
+  /** Stato del registro: ok | denied (serve l'amministratore) | missing (registro assente) | error. */
+  channel: 'ok' | 'denied' | 'missing' | 'error';
+  /** Ultimo tempo del firmware prima di Windows (FwPOSTTime, "Ultimo tempo BIOS" di Gestione attività), in ms. */
+  firmwareMs?: number;
+  /** Avvii misurati (evento 100), il più recente prima. */
+  boots: BootRecord[];
+  /** Componenti segnalati come lenti all'avvio (101-110) o allo spegnimento (201-203). */
+  slow?: BootSlow[];
+  /** Spegnimenti misurati (evento 200), il più recente prima. */
+  shutdowns?: ShutdownRecord[];
+}
+
+export interface BootRecord {
+  time: string;
+  totalMs: number;
+  /** Dall'avvio di Windows al desktop. */
+  mainPathMs?: number;
+  /** Dal desktop al sistema pronto: il tempo dei programmi all'avvio. */
+  postBootMs?: number;
+  startupApps?: number;
+  degraded?: boolean;
+  /** Riavvio dopo un aggiornamento: più lento del normale. */
+  afterUpdate?: boolean;
+}
+
+export interface BootSlow {
+  phase: 'boot' | 'shutdown';
+  kind: 'app' | 'driver' | 'service' | 'core' | 'prefetch' | 'policy' | 'device' | 'session';
+  /** Nome del file o del servizio, mai il percorso. */
+  name: string;
+  friendly?: string;
+  version?: string;
+  totalMs: number;
+  degradationMs: number;
+  count: number;
+  last: string;
+}
+
+export interface ShutdownRecord {
+  time: string;
+  totalMs: number;
+  degraded?: boolean;
+}
+
+/** Arresti (evento 1000) e blocchi (1002) dei programmi e rapporti di Segnalazione errori (1001). */
+export interface AppFailures {
+  days: number;
+  channel: 'ok' | 'denied' | 'error';
+  crashes: number;
+  hangs: number;
+  /** Raggruppati per programma, dal più frequente. */
+  apps: AppFailure[];
+  reports?: WerReport[];
+  wer?: WerSettings;
+}
+
+export interface AppFailure {
+  /** Nome del file eseguibile. */
+  app: string;
+  version?: string;
+  crashes: number;
+  hangs: number;
+  last: string;
+  /** Moduli in errore (nome del file) e codici di eccezione, i più frequenti. */
+  modules?: NameCount[];
+  exceptions?: NameCount[];
+  /** App dello Store o pacchettizzata. */
+  store?: boolean;
+  /** Eseguibile nella cartella di un utente. */
+  userFolder?: boolean;
+  /** Eseguibile di Windows. */
+  system?: boolean;
+}
+
+export interface NameCount {
+  name: string;
+  count: number;
+}
+
+export interface WerReport {
+  /** APPCRASH, APPHANG, BlueScreen, LiveKernelEvent... */
+  event: string;
+  count: number;
+  last: string;
+}
+
+/** Impostazioni di Segnalazione errori Windows, lette senza modificarle. */
+export interface WerSettings {
+  disabled?: boolean;
+  dontShowUI?: boolean;
+  loggingDisabled?: boolean;
+  /** Almeno un valore viene dai criteri di gruppo. */
+  policy?: boolean;
+  /** Windows salva una copia della memoria dei programmi che si chiudono. */
+  localDumps?: boolean;
+  corporateServer?: boolean;
+}
+
+/** Indice di stabilità di Monitoraggio affidabilità e i suoi record raggruppati. */
+export interface Reliability {
+  available: boolean;
+  /** Perché manca: no-data | disabled | error. */
+  reason?: 'no-data' | 'disabled' | 'error';
+  /** Ultimo valore, da 1 a 10. */
+  index?: number;
+  indexAt?: string;
+  /** Un valore al giorno (l'ultimo), al massimo 30 giorni. */
+  series?: { date: string; index: number }[];
+  records?: ReliabilityGroup[];
+  /** Valore WMIEnable del registro; assente se non c'è. */
+  wmiEnabled?: boolean;
+}
+
+export interface ReliabilityGroup {
+  /** Classificazione di Polaris. */
+  category: 'app-crash' | 'app-hang' | 'windows-failure' | 'shutdown' | 'install-failed' | 'update-failed' | 'install' | 'update' | 'other';
+  source: string;
+  id: number;
+  product?: string;
+  count: number;
+  last: string;
+}
+

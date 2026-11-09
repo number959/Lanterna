@@ -44,8 +44,22 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	var devRaw []rawDevice
 	var devPartial bool
 	var devErr error
+	var health *healthOut
+	var healthErr error
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(6)
+	go func() {
+		defer wg.Done()
+		pc.Boot = readBoot(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		pc.Apps = readApps(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		health, healthErr = runHealth(ctx)
+	}()
 	go func() {
 		defer wg.Done()
 		ps, psErr = runPS(ctx)
@@ -109,6 +123,11 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	pc.Crashes = crashes.Wait(crashGrace, crashStopWait)
 	if pc.Crashes != nil && pc.Crashes.Partial {
 		pc.Notes = append(pc.Notes, "La lettura dei file delle schermate blu non è finita in tempo: l'elenco può essere incompleto.")
+	}
+	if healthErr != nil {
+		pc.Notes = append(pc.Notes, "L'indice di stabilità di Monitoraggio affidabilità non è stato letto: PowerShell non ha risposto ("+healthErr.Error()+").")
+	} else {
+		pc.Reliability = ReliabilityFrom(health, reliabilityWMI(), os.Getenv("USERPROFILE"))
 	}
 	if devErr != nil {
 		pc.Notes = append(pc.Notes, "I dispositivi e i loro driver non sono stati letti: Windows non ha risposto.")
