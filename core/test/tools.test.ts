@@ -15,10 +15,10 @@ describe('cassetta degli attrezzi', () => {
 
   it('inclusi nel pacchetto solo i programmi ridistribuibili, gli altri si scaricano', () => {
     const included = TOOLS.filter((t) => t.included);
-    expect(included.map((t) => t.id).sort()).toEqual(['bluescreenview', 'crystaldiskinfo', 'crystaldiskmark']);
+    expect(included.map((t) => t.id).sort()).toEqual(['bluescreenview', 'crystaldiskinfo', 'crystaldiskmark', 'usbtreeview']);
     for (const t of included) {
       expect(t.included, t.id).toMatch(/^\d+\.\d+(\.\d+)?$/);
-      expect(t.license, t.id).toMatch(/licenza MIT|ridistribuibile/);
+      expect(t.license, t.id).toMatch(/licenza MIT|ridistribuibile|includerlo in altri programmi/);
       expect(t.portable, t.id).toBeUndefined();
     }
     // CPU-Z resta fuori dal pacchetto: il produttore non ne concede la
@@ -29,7 +29,9 @@ describe('cassetta degli attrezzi', () => {
     for (const t of TOOLS.filter((x) => x.portable)) {
       const p = t.portable!;
       expect(p.from, t.id).toMatch(/^[a-z0-9.-]+\.[a-z]+$/);
-      expect(p.signer.length, t.id).toBeGreaterThan(2);
+      // Senza firmatario solo un file da non avviare, verificato con l'impronta del produttore (l'immagine di Memtest86+).
+      if (p.reveal) expect(p.signer, t.id).toBe('');
+      else expect(p.signer.length, t.id).toBeGreaterThan(2);
       expect(p.mb, t.id).toBeGreaterThan(0);
       expect(p.terms.length, t.id).toBeGreaterThan(5);
     }

@@ -369,6 +369,9 @@ func TestPortableCatalog(t *testing.T) {
 				t.Errorf("%s: in tools.ts manca %s", id, want)
 			}
 		}
+		if p.Reveal != strings.Contains(block[1], "reveal: true") {
+			t.Errorf("%s: in tools.ts reveal diverso dall'agente (%v)", id, p.Reveal)
+		}
 		if p.Version != "" && !strings.Contains(block[1], "version: '"+p.Version+"'") {
 			t.Errorf("%s: in tools.ts manca la versione %s", id, p.Version)
 		}

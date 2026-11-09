@@ -146,6 +146,12 @@ export interface PortableInfo {
   terms: string;
   /** Giorni dopo i quali il programma smette di funzionare e va riscaricato. */
   expiresDays?: number;
+  /**
+   * Il file non è un programma da avviare (l'immagine di Memtest86+ da scrivere
+   * su una chiavetta): Polaris apre la cartella con il file selezionato. Senza
+   * firmatario (signer vuoto) conta l'impronta SHA-256 pubblicata dal produttore.
+   */
+  reveal?: boolean;
 }
 
 export const TOOLS: Tool[] = [
@@ -284,10 +290,60 @@ export const TOOLS: Tool[] = [
     vendor: 'PassMark Software',
     category: 'hardware',
     what: 'Test approfondito della RAM da chiavetta USB avviabile, fuori da Windows.',
-    polaris: 'Polaris non prova la RAM: per i blocchi casuali e le schermate blu sospette si usa questo o la Diagnostica memoria Windows.',
+    polaris: 'Computer > Test della RAM: prova la memoria libera con Windows acceso; per provare tutta la RAM serve un test da chiavetta come questo o Memtest86+.',
+    polarisView: 'pc',
     license: 'versione gratuita; versioni Pro e Site a pagamento',
     site: 'https://www.memtest86.com/',
     note: 'Si prepara una chiavetta e si riavvia il PC da lì: un test completo dura ore.',
+  },
+  {
+    id: 'memtest86plus',
+    name: 'Memtest86+',
+    vendor: 'progetto Memtest86+',
+    category: 'hardware',
+    what: 'Test approfondito di tutta la RAM da chiavetta USB, prima di Windows: prova anche la memoria che Windows starebbe usando.',
+    polaris: 'Computer > Test della RAM: prova la memoria libera con Windows acceso; per tutta la RAM serve un test da chiavetta come questo.',
+    polarisView: 'pc',
+    license: 'open source, GNU GPL v2',
+    site: 'https://www.memtest.org/',
+    note: 'Polaris scarica l\'immagine (memtest.iso) e apre la cartella: con Rufus la si scrive su una chiavetta, poi si riavvia il PC da lì. Dalla versione 9.00 è firmato, ma non ancora da Microsoft: con l\'Avvio protetto attivo il PC può rifiutare la chiavetta, e va disattivato per il tempo del test.',
+    portable: { from: 'www.memtest.org', signer: '', mb: 0.3, version: '9.00', reveal: true, terms: 'software libero (GNU GPL v2); l\'impronta SHA-256 pubblicata dal progetto viene controllata al download' },
+  },
+  {
+    id: 'rufus',
+    name: 'Rufus',
+    vendor: 'Pete Batard (Akeo Consulting)',
+    category: 'hardware',
+    what: 'Prepara chiavette USB avviabili da un\'immagine: Memtest86+, l\'installazione di Windows, sistemi di ripristino.',
+    license: 'open source, GNU GPL v3',
+    site: 'https://rufus.ie/it/',
+    note: 'Cancella tutto il contenuto della chiavetta scelta: controlla due volte di aver scelto quella giusta.',
+    portable: { from: 'github.com', signer: 'Akeo Consulting', mb: 1.9, version: '4.15', terms: 'software libero (GNU GPL v3), scaricato dalle release su GitHub a cui rimanda il sito ufficiale rufus.ie; all\'avvio chiede i permessi di amministratore' },
+  },
+  {
+    id: 'usbtreeview',
+    name: 'UsbTreeView',
+    vendor: 'Uwe Sieber',
+    category: 'hardware',
+    what: 'Albero completo dei dispositivi USB: anche le porte vuote, i descrittori, la velocità, la corrente dichiarata, i dischi e le porte COM collegati.',
+    polaris: 'Computer > Dispositivi USB: controller, hub e porte occupate con la velocità reale e gli errori delle porte, senza numeri di serie.',
+    polarisView: 'pc',
+    license: 'freeware; l\'autore consente di includerlo in altri programmi senza modifiche, non di offrirlo tramite un programma che lo scarica',
+    site: 'https://www.uwe-sieber.de/usbtreeview_e.html',
+    note: 'Mostra anche i numeri di serie dei dispositivi: attenzione prima di condividerne le schermate.',
+    included: '4.8.0',
+  },
+  {
+    id: 'hci-memtest',
+    name: 'HCI MemTest',
+    vendor: 'HCI Design',
+    category: 'hardware',
+    what: 'Test della RAM con Windows acceso, come secondo parere.',
+    polaris: 'Computer > Test della RAM: lo stesso principio (la memoria libera, con Windows acceso), integrato in Polaris con conferma e interruzione.',
+    polarisView: 'pc',
+    license: 'gratuito ("License: Free" sul sito del produttore); versione Pro a pagamento',
+    site: 'https://hcidesign.com/memtest/',
+    note: 'Il produttore consiglia di arrivare almeno al 100% di copertura, al 400% per gli errori che compaiono solo ogni tanto.',
   },
   {
     id: 'wiztree',
@@ -360,8 +416,11 @@ export const ACTION_APPS: Record<string, string[]> = {
   'diagnose-bsod': ['bluescreenview'],
   'update-crash-driver': ['bluescreenview'],
   'read-crash-files': ['bluescreenview'],
-  'test-memory': ['memtest86'],
-  'check-hardware': ['memtest86', 'hwinfo'],
+  'test-memory': ['memtest86plus', 'rufus', 'memtest86'],
+  'check-hardware': ['memtest86plus', 'memtest86', 'hwinfo'],
+  'memtest-usb': ['memtest86plus', 'rufus'],
+  'usb-port-error': ['usbtreeview'],
+  'usb-faster-port': ['usbtreeview'],
   'check-temperatures': ['hwinfo'],
   'cool-cpu': ['hwinfo'],
   'check-power-supply': ['hwinfo'],

@@ -28,7 +28,8 @@ type Binary struct {
 
 // Bundled sono i programmi inclusi. Gli archivi originali e le loro impronte
 // sono in scripts/strumenti.sh; qui ci sono le impronte degli eseguibili che
-// contengono, firmati dal produttore (CrystalMark Inc., Nir Sofer).
+// contengono, firmati dal produttore (CrystalMark Inc., Nir Sofer, Uwe
+// Sieber).
 // BlueScreenView esiste solo a 32 e 64 bit: su Windows per ARM gira emulato.
 var Bundled = map[string]Bundle{
 	"crystaldiskinfo": {Dir: "CrystalDiskInfo", Version: "9.9.2", Exe: map[string]Binary{
@@ -44,6 +45,13 @@ var Bundled = map[string]Bundle{
 	"bluescreenview": {Dir: "BlueScreenView", Version: "1.55", Exe: map[string]Binary{
 		"amd64": {"BlueScreenView.exe", "09f3023554be864f31d80f2e7e7c7e824d79a69ddf84f1f02a433e85e866282c"},
 		"arm64": {"BlueScreenView.exe", "09f3023554be864f31d80f2e7e7c7e824d79a69ddf84f1f02a433e85e866282c"},
+	}},
+	// UsbTreeView ha un eseguibile per architettura con lo stesso nome: ogni
+	// pacchetto include solo quello della sua, in una sottocartella.
+	"usbtreeview": {Dir: "UsbTreeView", Version: "4.8.0", Exe: map[string]Binary{
+		"amd64": {"x64/UsbTreeView.exe", "738f13e74ca20c19b2aa6c6785fb164880ac94e7d91b6828d239160f492efcb1"},
+		"arm64": {"arm64/UsbTreeView.exe", "008132d94633c406a7d87164f4f4963e1daaf5b29b436bab87f8aba0f52d98b2"},
+		"386":   {"Win32/UsbTreeView.exe", "6d0e17ac748791bbdd28e2aa26688a55f9c1f0f72ff598e2d6f72da18fd8d120"},
 	}},
 }
 

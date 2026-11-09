@@ -1006,7 +1006,7 @@ SOFTWARE.
 
 # Programmi inclusi nella cartella strumenti
 
-Il pacchetto contiene le copie originali e non modificate di tre programmi di terze parti, verificate con l'impronta SHA-256 dell'archivio: CrystalDiskInfo e CrystalDiskMark, scaricati dalla pagina SourceForge del produttore (a cui rimanda il sito ufficiale https://crystalmark.info/), con gli eseguibili firmati digitalmente da CrystalMark Inc. e i testi completi delle licenze nella sottocartella License; BlueScreenView, scaricato dal sito https://www.nirsoft.net/, con l'eseguibile firmato da Nir Sofer e la licenza nel suo readme.txt.
+Il pacchetto contiene le copie originali e non modificate di quattro programmi di terze parti, verificate con l'impronta SHA-256 dell'archivio: CrystalDiskInfo e CrystalDiskMark, scaricati dalla pagina SourceForge del produttore (a cui rimanda il sito ufficiale https://crystalmark.info/), con gli eseguibili firmati digitalmente da CrystalMark Inc. e i testi completi delle licenze nella sottocartella License; BlueScreenView, scaricato dal sito https://www.nirsoft.net/, con l'eseguibile firmato da Nir Sofer e la licenza nel suo readme.txt; UsbTreeView, scaricato dal sito https://www.uwe-sieber.de/, con l'eseguibile firmato da Uwe Sieber (nel pacchetto solo la versione per l'architettura del pacchetto).
 
 ## CrystalDiskInfo 9.9.2 (hiyohiyo, MIT)
 
@@ -1088,4 +1088,20 @@ or implied, including, but not limited to, the implied warranties of
 merchantability and fitness for a particular purpose. The author will not
 be liable for any special, incidental, consequential or indirect damages
 due to loss of data or any other reason.
+```
+
+## UsbTreeView 4.8.0 (Uwe Sieber, freeware)
+
+Archivi originali, uno per architettura: UsbTreeView_x64.zip (SHA-256 bce7e2d861d586904d57f7d6500b91c7931105aba3888ac761c90dc8aedbae06), UsbTreeView_arm64.zip (SHA-256 355ef6d8dcb8cc6588c8ba9e6dac8992ec030253b2a7b2e8fa02416dc6bf2b8f) e UsbTreeView_Win32.zip (SHA-256 83baa7abe12d8e489a6b70b7daa783c366ebcea0a9987f03abc147f28c178a5c), dal sito https://www.uwe-sieber.de/usbtreeview_e.html, in strumenti/UsbTreeView/<architettura>. Polaris lo include senza modifiche e non lo scarica mai su richiesta: la licenza vieta di offrirlo tramite un programma che lo scarica. Condizioni pubblicate dall'autore (pagina del programma, 9 novembre 2026):
+
+```
+UsbTreeView is Freeware.
+Allowed:
+- usage in any environment, including commercial
+- include in software products, including commercial
+- include on CD/DVD of computer magazines
+- distribution by means of packet managers
+Not allowed:
+- modify any of the files
+- offer for download by means of a "downloader" software
 ```

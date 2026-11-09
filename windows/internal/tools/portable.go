@@ -46,6 +46,10 @@ type Portable struct {
 	// ExpiresDays: giorni dopo i quali il programma smette di funzionare e va
 	// riscaricato (Microsoft Safety Scanner).
 	ExpiresDays int
+	// Reveal: il file scaricato non è un programma da avviare (l'immagine di
+	// Memtest86+ da scrivere su una chiavetta): Polaris lo mostra in Esplora
+	// file invece di aprirlo.
+	Reveal bool
 }
 
 var sourceForge = []string{"downloads.sourceforge.net", ".dl.sourceforge.net"}
@@ -97,6 +101,38 @@ var Portables = map[string]Portable{
 		Hosts:  []string{"download.eset.com"},
 		Exe:    map[string]string{"*": "esetonlinescanner.exe"},
 		Signer: "ESET, spol. s r.o.", MaxMB: 40,
+	},
+	// Memtest86+ 9.00 (GPL-2), immagine da scrivere su una chiavetta con
+	// Rufus: impronte degli archivi da sha256sum.txt del sito, ricontrollate
+	// sui file scaricati il 9 novembre 2026. Ogni architettura di Windows ha
+	// la sua immagine (i586 per i PC a 32 bit).
+	"memtest86plus": {
+		URL: map[string]string{
+			"amd64": "https://www.memtest.org/download/v9.00/mt86plus_9.00_x86_64.iso.zip",
+			"386":   "https://www.memtest.org/download/v9.00/mt86plus_9.00_i586.iso.zip",
+			"arm64": "https://www.memtest.org/download/v9.00/mt86plus_9.00_arm64.iso.zip",
+		},
+		Hosts: []string{"www.memtest.org"}, Zip: true,
+		Exe:     map[string]string{"*": "memtest.iso"},
+		Version: "9.00", MaxMB: 10, Reveal: true,
+		SHA256: map[string]string{
+			"amd64": "55d378c0d7d2e1a99edb6a1ff4bd5c78c179801b1f7cfe5893786c397bc19702",
+			"386":   "2d11dc26de5cfa85ea5b3114e545057ab0ce1eff7b5db666b3e40750ee7362a5",
+			"arm64": "8e4f27c2f9b1db9222de40b03c625bf3c9c4b006dabefc3a9c710c36c32b34a6",
+		},
+	},
+	// Rufus 4.15 (GPL-3), dai link della pagina ufficiale rufus.ie, che
+	// rimanda alle release su GitHub: si verifica la firma di Akeo Consulting
+	// (quella dichiarata dal sito per le versioni dalla 1.3.0).
+	"rufus": {
+		URL: map[string]string{
+			"amd64": "https://github.com/pbatard/rufus/releases/download/v4.15/rufus-4.15p.exe",
+			"386":   "https://github.com/pbatard/rufus/releases/download/v4.15/rufus-4.15_x86.exe",
+			"arm64": "https://github.com/pbatard/rufus/releases/download/v4.15/rufus-4.15_arm64.exe",
+		},
+		Hosts:  []string{"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"},
+		Exe:    map[string]string{"*": "rufus.exe"},
+		Signer: "Akeo Consulting", Version: "4.15", MaxMB: 15,
 	},
 	"wiztree": {
 		URL:   map[string]string{"amd64": "https://diskanalyzer.com/files/wiztree_4_33_portable.zip", "386": "https://diskanalyzer.com/files/wiztree_4_33_portable.zip"},

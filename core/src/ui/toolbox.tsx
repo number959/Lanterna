@@ -29,7 +29,7 @@ let current: Found = EMPTY;
 let shared: { at: number; req: Promise<Found> } | null = null;
 const listeners = new Set<(f: Found) => void>();
 let polling = false;
-let openAfter: { id: string; name: string; toast: Toast } | null = null;
+let openAfter: { id: string; name: string; toast: Toast; reveal?: boolean } | null = null;
 // Chi ha avviato la preparazione del kit riceve il riepilogo alla fine.
 let kitAfter: Toast | null = null;
 
@@ -87,9 +87,9 @@ function pollFetch() {
           return;
         }
         const p = f.portable[after.id];
-        after.toast(`${after.name} scaricato e verificato${p?.signer ? `: firma di ${p.signer}` : ''}`);
+        after.toast(`${after.name} scaricato e verificato${p?.signer ? `: firma di ${p.signer}` : ': impronta del produttore'}`);
         openTool(after.id, 'app')
-          .then(() => after.toast(`${after.name} aperto`, 'ok', 'open'))
+          .then(() => after.toast(after.reveal ? `Cartella di ${after.name} aperta` : `${after.name} aperto`, 'ok', 'open'))
           .catch((e) => after.toast(e instanceof Error ? e.message : String(e), 'error'));
       })
       .catch(() => {
@@ -228,6 +228,7 @@ export function ToolCard({
   const busyElsewhere = !!fetch?.running && fetch.tool !== t.id;
   const fetchable = found.fetchable.includes(t.id);
   const canOpen = live && (included || ready || !!installed);
+  const reveal = !!t.portable?.reveal && !included && !installed;
   const loading = live && !found.loaded;
 
   const doOpen = () => {
@@ -236,7 +237,7 @@ export function ToolCard({
   };
   const startFetch = () => {
     setConfirm(false);
-    openAfter = { id: t.id, name: t.name, toast };
+    openAfter = { id: t.id, name: t.name, toast, reveal: !!t.portable?.reveal };
     fetchTool(t.id)
       .then(() => {
         publish({ ...current, fetch: { running: true, tool: t.id, done: 0, total: -1 } });
@@ -324,11 +325,12 @@ export function ToolCard({
         </p>
       )}
       {t.note && <p className="faint tool-note">{t.note}</p>}
-      {ready && dl.signer && (
+      {ready && (dl.signer || reveal) && (
         <p className="faint tool-note">
           Scaricato da {t.portable?.from}
           {dl.date ? ` il ${new Date(dl.date).toLocaleDateString('it-IT')}` : ''}
-          {dl.kit ? ', nel kit accanto a Polaris' : ''}; firma digitale di {dl.signer}, verificata a ogni avvio.
+          {dl.kit ? ', nel kit accanto a Polaris' : ''}
+          {dl.signer ? `; firma digitale di ${dl.signer}, verificata a ogni avvio.` : '; impronta SHA-256 del produttore controllata al download, e a ogni apertura il file deve essere ancora quello.'}
         </p>
       )}
       {bundled?.problem && (
@@ -358,14 +360,25 @@ export function ToolCard({
               <ShieldCheck size={18} />
             </Anim>
             <span>
-              Polaris scarica la versione portable di {t.name}
-              {t.portable.version ? ` ${t.portable.version}` : ''} da <b>{t.portable.from}</b> (circa {t.portable.mb.toLocaleString('it-IT')} MB), controlla che sia
-              firmata da <b>{t.portable.signer}</b> e la apre. Il programma resta su questo PC, in %LOCALAPPDATA%\STARNET Polaris\strumenti. Condizioni
-              d&apos;uso: {t.portable.terms}.
+              {reveal ? (
+                <>
+                  Polaris scarica {t.name}
+                  {t.portable.version ? ` ${t.portable.version}` : ''} da <b>{t.portable.from}</b> (circa {t.portable.mb.toLocaleString('it-IT')} MB), controlla
+                  l&apos;impronta SHA-256 pubblicata dal produttore e apre la cartella con il file. Il file resta su questo PC, in %LOCALAPPDATA%\STARNET
+                  Polaris\strumenti. Condizioni d&apos;uso: {t.portable.terms}.
+                </>
+              ) : (
+                <>
+                  Polaris scarica la versione portable di {t.name}
+                  {t.portable.version ? ` ${t.portable.version}` : ''} da <b>{t.portable.from}</b> (circa {t.portable.mb.toLocaleString('it-IT')} MB), controlla che
+                  sia firmata da <b>{t.portable.signer}</b> e la apre. Il programma resta su questo PC, in %LOCALAPPDATA%\STARNET Polaris\strumenti.
+                  Condizioni d&apos;uso: {t.portable.terms}.
+                </>
+              )}
             </span>
             <span className="chip-actions">
               <button className="btn primary small" onClick={startFetch}>
-                <Download size={15} className="nudge" aria-hidden /> Scarica e apri
+                <Download size={15} className="nudge" aria-hidden /> {reveal ? 'Scarica' : 'Scarica e apri'}
               </button>
               <button className="btn small" onClick={() => setConfirm(false)}>
                 Annulla
@@ -377,13 +390,20 @@ export function ToolCard({
 
       <div className="chip-actions">
         {canOpen && !(ready && dl.expired && !included && !installed) && (
-          <button className="btn primary small" onClick={doOpen} disabled={opening || fetching} aria-label={`Apri ${t.name}`} title={included ? `Avvia la copia inclusa in Polaris (${bundled.version})` : ready ? 'Verifica la firma e avvia la copia scaricata' : 'Avvia la versione installata su questo PC'}>
-            {opening ? <HexLoader size={15} /> : <AppWindow size={15} aria-hidden />} {opening ? (ready && !included ? 'Verifica della firma…' : 'Apertura…') : 'Apri'}
+          <button
+            className="btn primary small"
+            onClick={doOpen}
+            disabled={opening || fetching}
+            aria-label={reveal ? `Mostra il file di ${t.name}` : `Apri ${t.name}`}
+            title={included ? `Avvia la copia inclusa in Polaris (${bundled.version})` : reveal ? 'Apre la cartella con il file scaricato' : ready ? 'Verifica la firma e avvia la copia scaricata' : 'Avvia la versione installata su questo PC'}
+          >
+            {opening ? <HexLoader size={15} /> : <AppWindow size={15} aria-hidden />}{' '}
+            {opening ? (ready && !included && !reveal ? 'Verifica della firma…' : 'Apertura…') : reveal ? 'Mostra il file' : 'Apri'}
           </button>
         )}
         {live && t.portable && fetchable && !included && !fetching && !confirm && (!ready || dl.expired) && (
           <button className="btn small primary-soft" onClick={() => setConfirm((c) => !c)} disabled={busyElsewhere} aria-expanded={confirm} title={busyElsewhere ? 'Attendi la fine dell\'altro download' : undefined}>
-            <Download size={15} className="nudge" aria-hidden /> {dl ? 'Riscarica' : 'Scarica e apri'}
+            <Download size={15} className="nudge" aria-hidden /> {dl ? 'Riscarica' : reveal ? 'Scarica' : 'Scarica e apri'}
           </button>
         )}
         {live ? (
@@ -431,7 +451,7 @@ function FetchProgress({ t, fetch }: { t: Tool; fetch: FetchState }) {
         )}
         <span aria-live="polite">
           {verifying ? (
-            <>Verifica della firma di {t.portable?.signer}…</>
+            <>{t.portable?.signer ? `Verifica della firma di ${t.portable.signer}…` : 'Verifica dell\'impronta…'}</>
           ) : (
             <>
               Scaricamento da {t.portable?.from}: {mb(fetch.done)}

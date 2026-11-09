@@ -85,12 +85,17 @@ func Open(id, target string, f *Fetcher) error {
 	if err != nil {
 		return err
 	}
+	file, args := t.File, t.Args
 	if d, ok := portable[id]; ok && d.Path != "" && t.File == d.Path {
 		if err := f.Check(id, d.Path); err != nil {
 			return err
 		}
+		// Un'immagine da scrivere su una chiavetta (Memtest86+) non si apre:
+		// Esplora file mostra la cartella con il file selezionato.
+		if Portables[id].Reveal {
+			file, args = "explorer.exe", `/select,"`+d.Path+`"`
+		}
 	}
-	file, args := t.File, t.Args
 	if t.URL && windows.GetCurrentProcessToken().IsElevated() {
 		file, args = "explorer.exe", `"`+t.File+`"`
 	}

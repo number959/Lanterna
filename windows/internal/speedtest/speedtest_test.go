@@ -68,8 +68,10 @@ type fakeMLab struct {
 	// uploadDone: il gestore dell'upload ha finito e uploaded è definitivo.
 	uploadDone bool
 	locates    int
-	// active: un trasferimento è in corso (per le sonde finte).
-	active atomic.Bool
+	// active: trasferimenti in corso (per le sonde finte). È un contatore e
+	// non un sì/no: il gestore del download finisce dopo la chiusura del
+	// client e può farlo quando l'upload è già cominciato.
+	active atomic.Int32
 }
 
 func newFakeMLab(t *testing.T, machines ...string) *fakeMLab {
@@ -188,8 +190,8 @@ func (f *fakeMLab) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-	f.active.Store(true)
-	defer f.active.Store(false)
+	f.active.Add(1)
+	defer f.active.Add(-1)
 	buf := make([]byte, 1<<14)
 	start := time.Now()
 	var sent int64
@@ -225,8 +227,8 @@ func (f *fakeMLab) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-	f.active.Store(true)
-	defer f.active.Store(false)
+	f.active.Add(1)
+	defer f.active.Add(-1)
 	conn.SetReadLimit(1 << 25)
 	start := time.Now()
 	last := start
@@ -297,7 +299,7 @@ func (f *fakeMLab) options() Options {
 		ProbeEvery: 20 * time.Millisecond,
 		Ping: func(ctx context.Context, tcp bool) *float64 {
 			v := 10.0
-			if f.active.Load() {
+			if f.active.Load() > 0 {
 				v = 45
 			}
 			return &v
@@ -766,7 +768,7 @@ func TestLostProbesUnderLoad(t *testing.T) {
 	f := newFakeMLab(t, "mlab1-mil05.mlab-oti.measurement-lab.org")
 	opt := f.options()
 	opt.Ping = func(ctx context.Context, tcp bool) *float64 {
-		if f.active.Load() {
+		if f.active.Load() > 0 {
 			return nil
 		}
 		v := 10.0

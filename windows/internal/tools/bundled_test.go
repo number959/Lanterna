@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -101,14 +102,21 @@ func TestBundledMatchesBuild(t *testing.T) {
 			}
 			allowed := false
 			for _, x := range p.Exes {
-				allowed = allowed || strings.EqualFold(x, bin.Name)
+				allowed = allowed || strings.EqualFold(x, path.Base(bin.Name))
 			}
 			if !allowed {
 				t.Errorf("%s: %s non è tra gli eseguibili ammessi", id, bin.Name)
 			}
-		}
-		if !regexp.MustCompile(`"` + b.Dir + ` ` + regexp.QuoteMeta(b.Version) + ` https://\S+ [0-9a-f]{64}"`).MatchString(script) {
-			t.Errorf("%s %s: manca in scripts/strumenti.sh", b.Dir, b.Version)
+			// Un eseguibile in una sottocartella viene da un archivio per
+			// architettura: la riga di strumenti.sh indica l'architettura, così
+			// ogni pacchetto include solo il suo.
+			line := `"` + regexp.QuoteMeta(b.Dir) + ` ` + regexp.QuoteMeta(b.Version) + ` https://\S+ [0-9a-f]{64}"`
+			if sub := path.Dir(bin.Name); sub != "." {
+				line = `"` + regexp.QuoteMeta(b.Dir+"/"+sub) + ` ` + regexp.QuoteMeta(b.Version) + ` https://\S+ [0-9a-f]{64} ` + arch + `"`
+			}
+			if !regexp.MustCompile(line).MatchString(script) {
+				t.Errorf("%s %s (%s): manca in scripts/strumenti.sh", b.Dir, b.Version, arch)
+			}
 		}
 		if !strings.Contains(notices, "## "+b.Dir+" "+b.Version) {
 			t.Errorf("%s %s: manca negli avvisi di scripts/notices.sh", b.Dir, b.Version)

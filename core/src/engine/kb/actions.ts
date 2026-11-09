@@ -1658,9 +1658,10 @@ const list: Action[] = [
     title: 'Prova tutta la RAM con Memtest86+ da chiavetta',
     why: 'Da Windows si prova solo la memoria libera; Memtest86+ parte da una chiavetta prima di Windows e prova tutta la RAM, modulo per modulo se ne lasci uno alla volta.',
     steps: [
-      'Scarica Memtest86+ dal sito ufficiale (memtest.org) e Rufus (rufus.ie) dalla cassetta degli attrezzi di Polaris, oppure dai loro siti.',
-      'Con Rufus scrivi l\'immagine di Memtest86+ su una chiavetta USB (cancella tutto il contenuto della chiavetta).',
-      'Avvia il PC dalla chiavetta (menu di avvio del firmware, spesso F12, F11, F8 o Esc all\'accensione): Memtest86+ parte da solo.',
+      'Scarica Memtest86+ e Rufus con i pulsanti qui sotto (Polaris li prende dai siti ufficiali memtest.org e rufus.ie e li verifica), oppure dai loro siti. Di Memtest86+ Polaris apre la cartella con il file memtest.iso.',
+      'Collega una chiavetta USB che puoi cancellare: tutto il suo contenuto andrà perso. Avvia Rufus, scegli la chiavetta e il file memtest.iso, poi avvia la scrittura; se Rufus chiede come scrivere l\'immagine, scegli la modalità immagine DD (il sito di Memtest86+ chiede di copiarla così com\'è).',
+      'Se il disco è cifrato con BitLocker, prima di toccare le impostazioni del firmware tieni a portata di mano la chiave di ripristino, o sospendi la protezione: cambiare l\'Avvio protetto può far chiedere la chiave al riavvio.',
+      'Riavvia il PC dalla chiavetta (menu di avvio del firmware, spesso F12, F11, F8 o Esc all\'accensione): Memtest86+ parte da solo. Se il PC rifiuta la chiavetta per l\'Avvio protetto (Secure Boot): dalla versione 9.00 Memtest86+ è firmato, ma non ancora da Microsoft; disattiva l\'Avvio protetto nelle impostazioni del firmware solo per il test e poi riattivalo.',
       'Lascialo lavorare almeno un passaggio completo, meglio tutta la notte. Se trova errori, prova un modulo alla volta per capire quale è guasto.',
       'Con il PC in garanzia, porta i risultati all\'assistenza.',
     ],

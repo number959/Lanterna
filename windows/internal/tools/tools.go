@@ -97,10 +97,15 @@ var Programs = map[string]Program{
 	"autoruns":            {Site: "https://learn.microsoft.com/it-it/sysinternals/downloads/autoruns"},
 	"process-explorer":    {Site: "https://learn.microsoft.com/it-it/sysinternals/downloads/process-explorer"},
 	"memtest86":           {Site: "https://www.memtest86.com/"},
-	"wiztree":             {Site: "https://diskanalyzer.com/", Names: []string{"wiztree"}, Exes: []string{"WizTree64.exe", "WizTree.exe"}},
-	"windirstat":          {Site: "https://windirstat.net/", Names: []string{"windirstat"}, Exes: []string{"windirstat.exe"}},
-	"bluescreenview":      {Site: "https://www.nirsoft.net/utils/blue_screen_view.html", Names: []string{"bluescreenview"}, Exes: []string{"BlueScreenView.exe"}},
-	"pc-health-check":     {Site: "https://support.microsoft.com/it-it/windows/come-usare-l-app-controllo-integrit%C3%A0-pc-9c8abd9b-03ba-4e67-81ef-36f37caa7844", Names: []string{"pc health check", "controllo integrità pc"}, Exes: []string{"PCHealthCheck.exe"}},
+	// Aggiunti con la 0.12.0; siti verificati il 9 novembre 2026.
+	"memtest86plus":   {Site: "https://www.memtest.org/"},
+	"rufus":           {Site: "https://rufus.ie/it/"},
+	"usbtreeview":     {Site: "https://www.uwe-sieber.de/usbtreeview_e.html", Exes: []string{"UsbTreeView.exe"}},
+	"hci-memtest":     {Site: "https://hcidesign.com/memtest/"},
+	"wiztree":         {Site: "https://diskanalyzer.com/", Names: []string{"wiztree"}, Exes: []string{"WizTree64.exe", "WizTree.exe"}},
+	"windirstat":      {Site: "https://windirstat.net/", Names: []string{"windirstat"}, Exes: []string{"windirstat.exe"}},
+	"bluescreenview":  {Site: "https://www.nirsoft.net/utils/blue_screen_view.html", Names: []string{"bluescreenview"}, Exes: []string{"BlueScreenView.exe"}},
+	"pc-health-check": {Site: "https://support.microsoft.com/it-it/windows/come-usare-l-app-controllo-integrit%C3%A0-pc-9c8abd9b-03ba-4e67-81ef-36f37caa7844", Names: []string{"pc health check", "controllo integrità pc"}, Exes: []string{"PCHealthCheck.exe"}},
 }
 
 // Installed è un programma trovato tra quelli installati.

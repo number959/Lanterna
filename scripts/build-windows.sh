@@ -2,7 +2,7 @@
 # Compila STARNET Polaris per Windows (da Linux, macOS o Windows con Git Bash).
 #   scripts/build-windows.sh            -> build/STARNET-Polaris/ e build/STARNET-Polaris-windows-<arch>.zip
 #   ARCH=arm64 scripts/build-windows.sh -> versione per Windows su ARM
-#   STRUMENTI=no scripts/build-windows.sh -> senza CrystalDiskInfo e CrystalDiskMark
+#   STRUMENTI=no scripts/build-windows.sh -> senza i programmi inclusi (CrystalDiskInfo, CrystalDiskMark, BlueScreenView, UsbTreeView)
 # Requisiti: Node.js 20+, Go 1.27+ (go.mod indica la versione, Go la scarica da solo), curl e unzip (o Python 3) per i programmi inclusi.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -39,7 +39,7 @@ if [ "${STRUMENTI:-si}" = no ]; then
   echo "==> Programmi inclusi: esclusi (STRUMENTI=no)"
 else
   echo "==> Programmi inclusi (copie originali verificate)"
-  "$ROOT/scripts/strumenti.sh" "$OUT"
+  ARCH="$ARCH" "$ROOT/scripts/strumenti.sh" "$OUT"
 fi
 
 cd "$ROOT/build"
