@@ -1,4 +1,4 @@
-import type { CertData, CertTarget, CpuBench, DefenderInfo, DiskBench, Inventory, ReachData, ReachTarget, Scan, SpaceReport, SpeedServer, SpeedTest, SurveySample, Threat } from '../engine';
+import type { CertData, CertTarget, CpuBench, DefenderInfo, DiskBench, Inventory, RamTest, ReachData, ReachTarget, Scan, SpaceReport, SpeedServer, SpeedTest, SurveySample, Threat } from '../engine';
 import type { CrashData } from '../engine';
 
 // Comunicazione con l'agente locale (Polaris.exe serve / finestra).
@@ -227,19 +227,42 @@ export interface BenchProgress {
   value?: number;
   /** MB/s secondo per secondo della fase multi-thread del processore. */
   samples?: number[];
+  /** Test della RAM: errori trovati finora e passaggio in corso. */
+  errors?: number;
+  pass?: number;
 }
 
 export interface BenchState {
   running: boolean;
-  kind?: 'cpu' | 'disk';
+  kind?: 'cpu' | 'disk' | 'ram';
   drive?: string;
   progress?: BenchProgress;
   error?: string;
   cpu?: CpuBench;
   disk?: DiskBench;
+  ram?: RamTest;
 }
 
 export type BenchRequest = { kind: 'cpu' } | { kind: 'disk'; drive: string; confirm: true };
+export type RamRequest = { kind: 'ram'; preset: 'quick' | 'standard' | 'long'; confirm: true };
+
+/**
+ * Avvia il test della RAM e ne attende la fine; un test interrotto
+ * restituisce comunque l'esito della parte provata.
+ */
+export async function runRamTest(req: RamRequest, onProgress: (st: BenchState) => void, opts: { resume?: boolean } = {}): Promise<RamTest> {
+  if (!opts.resume) await postJson<{ started: boolean }>('api/bench', req);
+  const startedAt = Date.now();
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 400));
+    const st = await benchStatus();
+    onProgress(st);
+    if (!st.running) {
+      if (st.ram && Date.parse(st.ram.startedAt) >= startedAt - 60000) return st.ram;
+      throw new Error(st.error || 'Test terminato senza risultato');
+    }
+  }
+}
 
 export const benchStatus = () => getJson<BenchState>('api/bench');
 

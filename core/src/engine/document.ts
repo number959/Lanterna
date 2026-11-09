@@ -452,8 +452,16 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
   }
 
   const bench = pc?.bench;
-  if (bench?.cpu || bench?.disk?.length) {
+  if (bench?.cpu || bench?.disk?.length || bench?.ram) {
     const parts: string[] = [];
+    if (bench.ram) {
+      const r = bench.ram;
+      parts.push(
+        `<p>RAM con Windows acceso, ${dateIt(r.startedAt)}: ${
+          r.errors ? `<b>${r.errors} errori</b>` : 'nessun errore'
+        } su ${Math.round(r.testedMB / 1024 * 10) / 10} GB provati di ${Math.round(r.totalMB / 1024 * 10) / 10} GB, ${r.passes} passaggi completi. <span class="pd-small">Vale solo per la memoria libera provata.</span></p>`.replace(/(\d)\.(\d)/g, '$1,$2'),
+      );
+    }
     if (bench.cpu)
       parts.push(
         `<p>Processore, ${dateIt(bench.cpu.startedAt)}: un thread ${n1(bench.cpu.singleMBs)} MB/s; ${bench.cpu.threads} thread ${n1(bench.cpu.multiMBs)} MB/s di punta e ${n1(bench.cpu.sustainedMBs)} MB/s alla fine.</p>`,

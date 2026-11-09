@@ -10,7 +10,8 @@
 //	GET  /api/inventory avanzamento e ultimo inventario
 //	POST /api/reach     verifiche di raggiungibilità ({"targets": [...]})
 //	GET  /api/reach     ultime verifiche (204 se nessuna)
-//	POST /api/bench     avvia un test di velocità ({"kind": "cpu"} oppure
+//	POST /api/bench     avvia un test ({"kind": "cpu"}, {"kind": "ram", "preset":
+//	                    "quick", "confirm": true} per la RAM, oppure
 //	                    {"kind": "disk", "drive": "C:", "confirm": true})
 //	GET  /api/bench     avanzamento e ultimi risultati dei test di velocità
 //	DELETE /api/bench   interrompe il test in corso
@@ -147,6 +148,9 @@ type Server struct {
 	// un'analisi e viceversa: si falserebbero a vicenda.
 	BenchCPU  func(ctx context.Context, report bench.Report) (*scan.CPUBench, error)
 	BenchDisk func(ctx context.Context, drive string, report bench.Report) (*scan.DiskBench, error)
+	// BenchRAM esegue il test della RAM con Windows acceso (preset: quick,
+	// standard, long).
+	BenchRAM func(ctx context.Context, preset string, report bench.Report) (*scan.RAMTest, error)
 	// BenchDrive verifica subito che l'unità si possa provare (nil = nessun controllo).
 	BenchDrive func(drive string) error
 
@@ -159,6 +163,7 @@ type Server struct {
 	benchCancel  context.CancelFunc
 	benchCPU     *scan.CPUBench
 	benchDisk    *scan.DiskBench
+	benchRAM     *scan.RAMTest
 	benchFinish  chan struct{}
 
 	// Analisi dello spazio (nil = non disponibile): che cosa occupa
@@ -443,6 +448,7 @@ type benchState struct {
 	Error    string          `json:"error,omitempty"`
 	CPU      *scan.CPUBench  `json:"cpu,omitempty"`
 	Disk     *scan.DiskBench `json:"disk,omitempty"`
+	RAM      *scan.RAMTest   `json:"ram,omitempty"`
 }
 
 // startBench avvia un test in background. L'ordine dei lock (prima mu, poi
@@ -481,6 +487,10 @@ func (s *Server) startBench(kind, drive string) error {
 	if kind == "disk" {
 		timeout = 3 * time.Minute
 	}
+	if kind == "ram" {
+		// La durata scelta più due minuti per riservare e liberare la memoria.
+		timeout = bench.RAMPresets[drive] + 2*time.Minute
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	s.benchRunning, s.benchKind, s.benchDrive, s.benchErr, s.benchProg, s.benchCancel = true, kind, drive, "", nil, cancel
 	s.benchFinish = make(chan struct{})
@@ -495,6 +505,7 @@ func (s *Server) startBench(kind, drive string) error {
 		}
 		var cpu *scan.CPUBench
 		var disk *scan.DiskBench
+		var ram *scan.RAMTest
 		var err error
 		func() {
 			defer func() {
@@ -502,16 +513,24 @@ func (s *Server) startBench(kind, drive string) error {
 					err = errors.New("errore interno durante il test")
 				}
 			}()
-			if kind == "cpu" {
+			switch kind {
+			case "cpu":
 				cpu, err = s.BenchCPU(ctx, report)
-			} else {
+			case "ram":
+				ram, err = s.BenchRAM(ctx, drive, report)
+			default:
 				disk, err = s.BenchDisk(ctx, drive, report)
 			}
 		}()
 		s.benchMu.Lock()
 		defer s.benchMu.Unlock()
 		s.benchRunning, s.benchCancel = false, nil
+		// Il test della RAM interrotto restituisce comunque l'esito della parte provata.
+		if ram != nil {
+			s.benchRAM = ram
+		}
 		switch {
+		case ram != nil && err == nil:
 		case errors.Is(err, context.Canceled):
 			s.benchErr = "test interrotto"
 		case errors.Is(err, context.DeadlineExceeded):
@@ -871,6 +890,7 @@ func (s *Server) Handler() http.Handler {
 		var body struct {
 			Kind    string `json:"kind"`
 			Drive   string `json:"drive"`
+			Preset  string `json:"preset"`
 			Confirm bool   `json:"confirm"`
 		}
 		if code, err := readJSON(w, r, &body); err != nil {
@@ -905,19 +925,40 @@ func (s *Server) Handler() http.Handler {
 				}
 			}
 			drive = d
+		case "ram":
+			if s.BenchRAM == nil {
+				writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "test della RAM non disponibile"})
+				return
+			}
+			if !body.Confirm {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "serve la conferma: il test occupa la memoria libera e tutti i processori, il computer sarà lento"})
+				return
+			}
+			if _, ok := bench.RAMPresets[body.Preset]; !ok {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "durata del test della RAM non valida (quick, standard o long)"})
+				return
+			}
+			drive = body.Preset // per il test della RAM il campo porta la durata scelta
 		default:
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind deve essere cpu o disk"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind deve essere cpu, disk o ram"})
 			return
 		}
 		if err := s.startBench(body.Kind, drive); err != nil {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 			return
 		}
+		if body.Kind == "ram" {
+			writeJSON(w, http.StatusAccepted, map[string]any{"started": true, "kind": body.Kind, "preset": body.Preset})
+			return
+		}
 		writeJSON(w, http.StatusAccepted, map[string]any{"started": true, "kind": body.Kind, "drive": drive})
 	})
 	mux.HandleFunc("GET /api/bench", func(w http.ResponseWriter, r *http.Request) {
 		s.benchMu.Lock()
-		st := benchState{Running: s.benchRunning, Kind: s.benchKind, Drive: s.benchDrive, Progress: s.benchProg, Error: s.benchErr, CPU: s.benchCPU, Disk: s.benchDisk}
+		st := benchState{Running: s.benchRunning, Kind: s.benchKind, Drive: s.benchDrive, Progress: s.benchProg, Error: s.benchErr, CPU: s.benchCPU, Disk: s.benchDisk, RAM: s.benchRAM}
+		if st.Kind == "ram" {
+			st.Drive = "" // il campo porta la durata scelta, non un'unità
+		}
 		s.benchMu.Unlock()
 		writeJSON(w, 200, st)
 	})

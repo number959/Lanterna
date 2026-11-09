@@ -43,6 +43,9 @@ type Progress struct {
 	Value float64 `json:"value,omitempty"`
 	// Samples sono le velocità secondo per secondo della fase multi-thread.
 	Samples []float64 `json:"samples,omitempty"`
+	// Errors e Pass: errori trovati e passaggio in corso del test della RAM.
+	Errors int `json:"errors,omitempty"`
+	Pass   int `json:"pass,omitempty"`
 }
 
 // Report riceve l'avanzamento; può essere nil.

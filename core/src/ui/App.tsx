@@ -27,7 +27,7 @@ import { AnimatePresence, LazyMotion, MotionConfig, domMax, m, useReducedMotion,
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { analyze, ENGINE_VERSION, primaryAdapter, renderText, surveyForExport } from '../engine';
-import type { AnswerValue, CertData, CpuBench, DiskBench, Finding, InfraData, PcData, Scan, Severity, SpaceReport, SpeedTest, SurveySample, WifiSurvey } from '../engine';
+import type { AnswerValue, CertData, CpuBench, DiskBench, Finding, RamTest, InfraData, PcData, Scan, Severity, SpaceReport, SpeedTest, SurveySample, WifiSurvey } from '../engine';
 import { clinicScan } from '../demo/clinic';
 import { demoScan } from '../demo/sample';
 import { agentInfo, download, isScan, lastScan, runScan } from './api';
@@ -311,12 +311,12 @@ function Shell() {
   const setInfra = useCallback((patch: Partial<InfraData>) => setScan((s) => (s ? { ...s, infra: { ...s.infra, ...patch } } : s)), []);
   // Il risultato più recente per il processore e per ogni unità.
   const addBench = useCallback(
-    (r: { cpu?: CpuBench; disk?: DiskBench }) =>
+    (r: { cpu?: CpuBench; disk?: DiskBench; ram?: RamTest }) =>
       setScan((s) => {
         if (!s) return s;
         const b = s.pc?.bench ?? {};
         const disk = r.disk ? [r.disk, ...(b.disk ?? []).filter((x) => x.drive.toUpperCase() !== r.disk!.drive.toUpperCase())] : b.disk;
-        return { ...s, pc: { ...s.pc, bench: { ...b, ...(r.cpu ? { cpu: r.cpu } : {}), ...(disk ? { disk } : {}) } } };
+        return { ...s, pc: { ...s.pc, bench: { ...b, ...(r.cpu ? { cpu: r.cpu } : {}), ...(disk ? { disk } : {}), ...(r.ram ? { ram: r.ram } : {}) } } };
       }),
     [],
   );

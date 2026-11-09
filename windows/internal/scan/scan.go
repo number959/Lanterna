@@ -1013,6 +1013,53 @@ type FsCheck struct {
 type BenchData struct {
 	CPU  *CPUBench   `json:"cpu,omitempty"`
 	Disk []DiskBench `json:"disk,omitempty"`
+	// RAM è l'ultimo test della memoria con Windows acceso.
+	RAM *RAMTest `json:"ram,omitempty"`
+}
+
+// RAMTest è l'esito del test della RAM con Windows acceso: vale solo per la
+// memoria libera provata, non per quella usata da Windows e dai programmi.
+type RAMTest struct {
+	StartedAt  string `json:"startedAt"`
+	DurationMs int64  `json:"durationMs"`
+	Preset     string `json:"preset"` // quick | standard | long
+	PlannedSec int    `json:"plannedSec"`
+	// Stop: completed | time | cancelled | low-memory.
+	Stop        string `json:"stop"`
+	TotalMB     int    `json:"totalMB"`
+	AvailableMB int    `json:"availableMB"`
+	TestedMB    int    `json:"testedMB"`
+	// LockedMB è la parte tenuta bloccata in RAM: il resto può essere stato
+	// spostato su disco o compresso da Windows, ed è meno affidabile.
+	LockedMB int `json:"lockedMB"`
+	Threads  int `json:"threads"`
+	// Passes sono i passaggi completi; MBs la velocità media, solo indicativa.
+	Passes       int           `json:"passes"`
+	MBs          float64       `json:"mbs,omitempty"`
+	Tests        []RAMTestStat `json:"tests"`
+	Errors       int           `json:"errors"`
+	ErrorSamples []RAMError    `json:"errorSamples,omitempty"`
+	// BadBits sono i bit trovati diversi (OR delle differenze), in esadecimale.
+	BadBits string `json:"badBits,omitempty"`
+	OnAC    *bool  `json:"onAC,omitempty"`
+	Note    string `json:"note,omitempty"`
+}
+
+// RAMTestStat conta le esecuzioni e gli errori di una prova.
+type RAMTestStat struct {
+	Name   string `json:"name"`
+	Runs   int    `json:"runs"`
+	Errors int    `json:"errors"`
+}
+
+// RAMError è una differenza trovata: la posizione è nel blocco del test,
+// non indica il modulo né lo slot.
+type RAMError struct {
+	Test     string  `json:"test"`
+	Pass     int     `json:"pass"`
+	OffsetMB float64 `json:"offsetMB"`
+	Expected string  `json:"expected"`
+	Actual   string  `json:"actual"`
 }
 
 type CPUBench struct {

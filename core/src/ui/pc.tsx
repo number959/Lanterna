@@ -58,6 +58,7 @@ import { SpaceCard, useSpaceRun } from './space';
 import { CrashesCard } from './crashes';
 import { DevicesCard } from './devices';
 import { StabilityCard } from './stability';
+import { RamTestCard } from './ramtest';
 import { MaintCard } from './maint';
 import { PrintersCard, ProtectionCard } from './protect';
 import { cascade, ease, rise, spring } from './motion';
@@ -134,6 +135,11 @@ export function PcView(props: ViewProps) {
       <Section title="Cosa occupa spazio">
         <SpaceCard {...props} />
         <ToolShortcut id="wiztree" live={props.live} text="per l'elenco di ogni singolo file e, da amministratore, la lettura diretta della tabella dei file di NTFS" />
+      </Section>
+
+      <Section title="Test della RAM">
+        <RamTestCard {...props} />
+        <ToolShortcut id="memtest86plus" live={props.live} text="per provare tutta la RAM da chiavetta, prima di Windows" />
       </Section>
 
       <Section title="Test di velocità">

@@ -886,7 +886,48 @@ function analyzePower(pc: PcData, now: number, add: Add) {
 
 // ---------------------------------------------------------------- Test di velocità
 
+/** Esito del test della RAM con Windows acceso: errori, parziale o pulito. */
+export function ramTestSeverity(r: NonNullable<NonNullable<PcData['bench']>['ram']>): Severity {
+  if (r.errors > 0) return 'crit';
+  const partial = r.passes === 0 || r.stop === 'cancelled' || r.stop === 'low-memory' || r.lockedMB < r.testedMB || r.testedMB < r.totalMB / 4;
+  return partial ? 'info' : 'ok';
+}
+
+function analyzeRamTest(pc: PcData, add: Add) {
+  const r = pc.bench?.ram;
+  if (!r) return;
+  const sev = ramTestSeverity(r);
+  const pct = r.totalMB ? Math.round((r.testedMB / r.totalMB) * 100) : 0;
+  const gbs = (mb: number) => `${fmt(mb / 1024, mb < 10240 ? 1 : 0)} GB`;
+  const what = `${gbs(r.testedMB)} su ${gbs(r.totalMB)} (${pct} % della RAM), ${num(r.passes, 'passaggio completo', 'passaggi completi')}`;
+  const stopText: Record<string, string> = { cancelled: 'interrotto', 'low-memory': 'fermato perché Windows aveva poca memoria libera', time: '', completed: '' };
+  const v: string[] = [];
+  if (sev === 'crit') {
+    v.push(
+      `Il test ha trovato ${num(r.errors, 'errore', 'errori')} nella RAM provata (${what}). Anche un solo errore è un problema serio: la causa può essere un modulo difettoso, impostazioni troppo spinte (profili XMP/EXPO, overclock) o il calore.`,
+      'Riporta la memoria alle impostazioni predefinite nel BIOS/UEFI e ripeti il test; se gli errori restano, prova un modulo alla volta con Memtest86+ da chiavetta.',
+    );
+  } else {
+    v.push(`Nessun errore su ${what}.`);
+    if (stopText[r.stop]) v.push(`Il test è stato ${stopText[r.stop]}: il risultato vale solo per la parte provata.`);
+    if (r.lockedMB < r.testedMB) v.push('Windows non ha permesso di tenere bloccata in RAM tutta la memoria del test: una parte può essere finita su disco o compressa, e gli errori in quelle celle non si vedrebbero.');
+    v.push('Non garantisce che tutta la RAM sia sana: la parte usata da Windows e dai programmi non è stata provata e alcuni errori compaiono solo dopo ore. Per un controllo completo serve Memtest86+ da chiavetta.');
+  }
+  add({
+    id: 'pc.ramtest',
+    metric: 'pc.ramtest',
+    category: 'pc',
+    title: 'Test della RAM con Windows acceso',
+    value: r.errors ? `${num(r.errors, 'errore', 'errori')} su ${gbs(r.testedMB)}` : `nessun errore su ${gbs(r.testedMB)}`,
+    numeric: r.errors,
+    severity: sev,
+    verdict: v.join(' '),
+    actions: sev === 'crit' ? ['ram-default-settings', 'memtest-usb'] : sev === 'info' ? ['memtest-usb'] : [],
+  });
+}
+
 function analyzeBench(pc: PcData, add: Add) {
+  analyzeRamTest(pc, add);
   const c = pc.bench?.cpu;
   if (c && c.multiMBs > 0) {
     const ratio = c.sustainedMBs / c.multiMBs;

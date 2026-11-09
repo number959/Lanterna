@@ -819,6 +819,15 @@ jobs:
             $env:LOCALAPPDATA = $saved
             Remove-Item -Recurse -Force $kit -ErrorAction SilentlyContinue
           }
+      - name: Test della RAM con Windows acceso (versione breve)
+        run: |
+          $r = ./polaris-cli.exe bench ram --quick --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "test della RAM non riuscito" }
+          "RAM: provati $($r.testedMB) MB su $($r.totalMB), bloccati $($r.lockedMB) MB, $($r.threads) thread, $($r.passes) passaggi, $($r.mbs) MB/s, errori $($r.errors), arresto $($r.stop)"
+          "Prove: " + (($r.tests | ForEach-Object { "$($_.name) x$($_.runs)" }) -join ' ')
+          if ($r.errors -ne 0) { throw "errori nella RAM della macchina di collaudo: $($r.badBits)" }
+          if ($r.testedMB -ne 256 -or $r.passes -lt 1) { throw "test della RAM incompleto" }
+          if ($r.lockedMB -lt $r.testedMB) { throw "memoria del test non bloccata in RAM (VirtualLock)" }
       - name: Sorgenti per le prove native
         uses: actions/checkout@v4
         with:

@@ -25,7 +25,7 @@ import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apCount, ownRadios, phyLabel, primaryAdapter, secFamily, stepOpens, windowsMajor } from '../engine';
-import type { Analysis, AnswerValue, Band, Bss, Category, CertData, CpuBench, DiskBench, InfraData, PcData, Scan, Severity, SpaceReport, SpeedTest, SurveySample, WifiSurvey } from '../engine';
+import type { Analysis, AnswerValue, Band, Bss, Category, CertData, CpuBench, DiskBench, InfraData, RamTest, PcData, Scan, Severity, SpaceReport, SpeedTest, SurveySample, WifiSurvey } from '../engine';
 import { download, openTool } from './api';
 import { ACTION_TOOLS, LOCATION_MARK } from '../tools';
 import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './charts';
@@ -77,7 +77,7 @@ export interface ViewProps {
   /** Unisce al rapporto i risultati di inventario e verifiche. */
   setInfra: (patch: Partial<InfraData>) => void;
   /** Unisce al rapporto il risultato di un test di velocità. */
-  addBench: (r: { cpu?: CpuBench; disk?: DiskBench }) => void;
+  addBench: (r: { cpu?: CpuBench; disk?: DiskBench; ram?: RamTest }) => void;
   /**
    * Unisce al rapporto un'analisi dello spazio (una per unità, la più recente),
    * solo se il rapporto mostrato è ancora del PC su cui è partita; restituisce

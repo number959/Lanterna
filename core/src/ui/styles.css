@@ -1702,3 +1702,9 @@ a.btn { text-decoration: none; }
 .protect-card .dev-h:first-of-type { margin-top: 4px; }
 .printers-card .pc-table td { vertical-align: top; }
 
+
+/* Test della RAM con Windows acceso */
+.ram-card .seg { margin: 10px 0; }
+.ram-card .consent { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; font-size: 14px; }
+.ram-result { margin-top: 14px; }
+.ram-verdict { display: flex; align-items: center; gap: 8px; font-weight: 650; margin: 0 0 4px; }

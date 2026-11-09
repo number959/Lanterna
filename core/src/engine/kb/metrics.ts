@@ -1306,6 +1306,19 @@ const list: Metric[] = [
     limits: 'Lo stato è quello che conosce il servizio di stampa: una stampante di rete spenta può risultare pronta finché non le si manda un lavoro. Delle stampanti condivise da altri computer Polaris conta solo il numero. Non legge mai titoli dei documenti né nomi di chi stampa.',
   },
   {
+    id: 'pc.ramtest',
+    label: 'Test della RAM con Windows acceso',
+    category: 'pc',
+    what: 'Test su richiesta, come HCI MemTest: Polaris riserva la memoria libera (lasciandone una parte a Windows), la tiene bloccata in RAM e ci scrive e rilegge sequenze di bit con più prove (indirizzo in ogni cella, inversioni con schemi fissi, casuali e con un bit acceso per byte, sequenza casuale, schema ogni 20 celle, spostamento di blocchi e, nella versione lunga, decadimento dei bit), contando le differenze.',
+    scale: [
+      { range: 'nessun errore su almeno un quarto della RAM, memoria bloccata, almeno un passaggio', severity: 'ok', meaning: 'Nessun guasto nella parte provata.' },
+      { range: 'test parziale (interrotto, poca memoria provata o non bloccata)', severity: 'info', meaning: 'Il risultato vale per poco.' },
+      { range: 'anche un solo errore', severity: 'crit', meaning: 'RAM guasta o impostazioni troppo spinte.' },
+    ],
+    why: 'Un guasto della RAM causa schermate blu, programmi che si chiudono e file danneggiati, spesso in modo casuale. Il test con Windows acceso non richiede riavvii e si fa in pochi minuti.',
+    limits: 'Prova solo la memoria libera: quella usata da Windows e dai programmi aperti non si può provare da Windows (per quella serve Memtest86+ da chiavetta). La posizione degli errori è nel blocco del test e non indica il modulo né lo slot. Alcuni errori compaiono solo dopo ore o con il PC caldo. Con la RAM ECC gli errori singoli vengono corretti prima che il test li veda.',
+  },
+  {
     id: 'pc.cpubench',
     label: 'Velocità del processore (test)',
     category: 'pc',

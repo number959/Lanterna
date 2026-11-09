@@ -1110,6 +1110,8 @@ export interface BenchData {
   cpu?: CpuBench;
   /** Ultimo test per ogni unità. */
   disk?: DiskBench[];
+  /** Ultimo test della RAM con Windows acceso. */
+  ram?: RamTest;
 }
 
 export interface CpuBench {
@@ -1648,5 +1650,30 @@ export interface Printer {
   stuck?: number;
   jobErrors?: number;
   oldestMin?: number;
+}
+
+/** Esito del test della RAM con Windows acceso: vale solo per la memoria libera provata. */
+export interface RamTest {
+  startedAt: string;
+  durationMs: number;
+  preset: 'quick' | 'standard' | 'long';
+  plannedSec: number;
+  stop: 'completed' | 'time' | 'cancelled' | 'low-memory';
+  totalMB: number;
+  availableMB: number;
+  testedMB: number;
+  /** Parte tenuta bloccata in RAM: il resto può essere finito su disco o compresso. */
+  lockedMB: number;
+  threads: number;
+  /** Passaggi completi. */
+  passes: number;
+  /** Velocità media di scrittura e lettura, solo indicativa. */
+  mbs?: number;
+  tests: { name: string; runs: number; errors: number }[];
+  errors: number;
+  errorSamples?: { test: string; pass: number; offsetMB: number; expected: string; actual: string }[];
+  badBits?: string;
+  onAC?: boolean;
+  note?: string;
 }
 

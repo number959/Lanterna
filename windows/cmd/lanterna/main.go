@@ -77,6 +77,9 @@ Uso:
                                  con il profilo di CrystalDiskMark:
       --drive X:                 unità da provare (predefinita quella di sistema)
                                  scrive un file temporaneo, cancellato alla fine
+  polaris-cli bench ram          test della RAM con Windows acceso, solo sulla memoria
+                                 libera (come HCI MemTest): il PC sarà lento
+      --preset quick|standard|long  durata di 3, 10 o 30 minuti (predefinita quick)
   polaris-cli bench ... --json   stampa il risultato in JSON
   polaris-cli bench ... --quick  versione breve, per le verifiche automatiche
   polaris-cli defender status    stato di Microsoft Defender e minacce rilevate
@@ -309,6 +312,14 @@ func startServer(port int) (*server.Server, string, error) {
 		BenchDisk: func(ctx context.Context, drive string, r bench.Report) (*scan.DiskBench, error) {
 			return runDiskBench(ctx, drive, false, r)
 		},
+		BenchRAM: func(ctx context.Context, preset string, r bench.Report) (*scan.RAMTest, error) {
+			opt, err := bench.RAMOptionsFor(preset)
+			if err != nil {
+				return nil, err
+			}
+			opt.OnAC = pcinfo.OnAC
+			return bench.RAM(ctx, opt, r)
+		},
 		BenchDrive: func(drive string) error {
 			_, err := bench.DirFor(drive)
 			return err
@@ -371,14 +382,15 @@ func runDiskBench(ctx context.Context, drive string, quick bool, r bench.Report)
 }
 
 func runBench(args []string) error {
-	if len(args) == 0 || (args[0] != "cpu" && args[0] != "disk") {
-		return errors.New("specificare cpu oppure disk (polaris-cli bench cpu)")
+	if len(args) == 0 || (args[0] != "cpu" && args[0] != "disk" && args[0] != "ram") {
+		return errors.New("specificare cpu, disk oppure ram (polaris-cli bench cpu)")
 	}
 	kind := args[0]
 	fs := flag.NewFlagSet("bench", flag.ContinueOnError)
 	drive := fs.String("drive", os.Getenv("SystemDrive"), "")
 	asJSON := fs.Bool("json", false, "")
 	quick := fs.Bool("quick", false, "")
+	preset := fs.String("preset", "quick", "")
 	fs.Usage = func() { fmt.Fprintf(os.Stderr, usage, version) }
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -394,6 +406,30 @@ func runBench(args []string) error {
 	}
 	var out any
 	var text string
+	if kind == "ram" {
+		opt, err := bench.RAMOptionsFor(*preset)
+		if err != nil {
+			return err
+		}
+		if *quick {
+			opt = bench.QuickRAM
+		}
+		opt.OnAC = pcinfo.OnAC
+		fmt.Fprintf(os.Stderr, "Test della RAM in corso per %s: occupa la memoria libera e tutti i processori (Ctrl+C per interrompere)...\n", opt.Duration)
+		res, err := bench.RAM(ctx, opt, report)
+		if res == nil {
+			return err
+		}
+		out = res
+		text = ramText(res)
+		if *asJSON {
+			b, _ := json.MarshalIndent(out, "", "  ")
+			fmt.Println(string(b))
+			return nil
+		}
+		fmt.Print(text)
+		return nil
+	}
 	if kind == "cpu" {
 		fmt.Fprintln(os.Stderr, "Test del processore in corso (Ctrl+C per interrompere)...")
 		res, err := bench.CPU(ctx, cpuOptions(*quick), report)
@@ -817,8 +853,39 @@ func onOffPtr(b *bool) string {
 	return onOff(*b)
 }
 
+// ramText riassume l'esito del test della RAM.
+func ramText(r *scan.RAMTest) string {
+	stop := map[string]string{"completed": "completato", "time": "durata raggiunta", "cancelled": "interrotto", "low-memory": "fermato: memoria libera di Windows esaurita"}[r.Stop]
+	t := fmt.Sprintf("RAM: provati %d MB su %d (bloccati in RAM %d MB), %d thread, %d passaggi completi, %s\n", r.TestedMB, r.TotalMB, r.LockedMB, r.Threads, r.Passes, stop)
+	if r.Errors == 0 {
+		t += "  nessun errore (la memoria usata da Windows e dai programmi non è stata provata)\n"
+	} else {
+		t += fmt.Sprintf("  ERRORI: %d, bit diversi %s\n", r.Errors, r.BadBits)
+		for _, e := range r.ErrorSamples {
+			t += fmt.Sprintf("    %s, passaggio %d, a %.1f MB dall'inizio del blocco: atteso %s, letto %s\n", e.Test, e.Pass+1, e.OffsetMB, e.Expected, e.Actual)
+		}
+	}
+	return t
+}
+
 func benchPhaseLabel(p string) string {
 	switch p {
+	case "own-address":
+		return "indirizzo in ogni cella"
+	case "mi-01":
+		return "inversioni con zeri e uni"
+	case "mi-random":
+		return "inversioni con uno schema casuale"
+	case "random-seq":
+		return "sequenza casuale"
+	case "mi-walk8":
+		return "inversioni con un bit acceso per byte"
+	case "modulo20":
+		return "schema ogni 20 celle"
+	case "block-move":
+		return "spostamento di blocchi"
+	case "bit-fade":
+		return "decadimento dei bit (memoria ferma)"
 	case "load":
 		return "carico attuale del processore"
 	case "single":
