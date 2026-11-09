@@ -76,7 +76,10 @@ func allocRAM(maxMB int) (*ramBlock, error) {
 	hadWS := false
 	if r, _, _ := procGetProcessWorkingSetSizeEx.Call(uintptr(proc), uintptr(unsafe.Pointer(&oldMin)), uintptr(unsafe.Pointer(&oldMax)), uintptr(unsafe.Pointer(&oldFlags))); r != 0 {
 		hadWS = true
-		procSetProcessWorkingSetSizeEx.Call(uintptr(proc), oldMin+uintptr(size), oldMax+uintptr(size)+256<<20, quotaLimitsHardwsMinDisable|quotaLimitsHardwsMaxDisable)
+		// VirtualLock blocca al massimo il working set minimo "meno un piccolo
+		// margine" (documentazione di VirtualLock): 32 MB in più evitano che
+		// l'ultimo blocco resti fuori.
+		procSetProcessWorkingSetSizeEx.Call(uintptr(proc), oldMin+uintptr(size)+32<<20, oldMax+uintptr(size)+256<<20, quotaLimitsHardwsMinDisable|quotaLimitsHardwsMaxDisable)
 	}
 	var locked uint64
 	for off := uint64(0); off < size; off += lockChunk {

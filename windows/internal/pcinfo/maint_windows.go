@@ -86,8 +86,13 @@ func serviceState(m windows.Handle, name string) *scan.ServiceState {
 	defer windows.CloseServiceHandle(h)
 	st := &scan.ServiceState{Start: "unknown"}
 	var need uint32
-	buf := make([]byte, 8192)
-	if err := windows.QueryServiceConfig(h, (*windows.QUERY_SERVICE_CONFIG)(unsafe.Pointer(&buf[0])), uint32(len(buf)), &need); err == nil {
+	// 8 KB, il massimo documentato, in parole da 8 byte: QUERY_SERVICE_CONFIG
+	// contiene puntatori e va allineata a 8. Un []byte sullo stack di Go è
+	// allineato a 1: in CI (Windows Server 2025) il compilatore l'ha messo a
+	// 4 byte dal confine e QueryServiceConfigW è andata in violazione di
+	// accesso rileggendo i puntatori spostati.
+	buf := make([]uint64, 1024)
+	if err := windows.QueryServiceConfig(h, (*windows.QUERY_SERVICE_CONFIG)(unsafe.Pointer(&buf[0])), uint32(len(buf)*8), &need); err == nil {
 		cfg := (*windows.QUERY_SERVICE_CONFIG)(unsafe.Pointer(&buf[0]))
 		switch cfg.StartType {
 		case windows.SERVICE_AUTO_START, windows.SERVICE_BOOT_START, windows.SERVICE_SYSTEM_START:
