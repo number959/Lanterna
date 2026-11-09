@@ -1109,8 +1109,12 @@ utente, per la 0.12.0), prova una pagina di Impostazioni e verifica che il panne
 - Nella run 60 la prova dei certificati era fallita perché il servizio TLS di prova in Python non era ancora in ascolto dopo
   2 secondi: ora si aspetta che la porta risponda (commit bdb47ae).
 
-**Pacchetto**: `STARNET-Polaris-0.11.0-windows-amd64.zip` (28,6 MB), costruito dal commit fcc5864 (i commit successivi
-cambiano solo la CI e la documentazione), SHA-256 `11cfdedca2e8001227f7a932ce76d50dfa534f94cba6f3113feb9fcd5c78c30f`.
+**Pacchetto della release** (GitHub, release v0.11.0 creata come bozza il 9/11/2026 dal workflow Release, run 1, che
+rifà test e build in un ambiente pulito): `STARNET-Polaris-0.11.0-windows-amd64.zip`, costruito dal commit 9498bf7 con la
+versione `0.11.0`, SHA-256 `644462a15d934f1d809834707819474a47edda7fa548f0200aa0442d6ee4793b` (anche nel file `.sha256`
+allegato). Il pacchetto consegnato l'8/11, costruito in locale dal commit fcc5864 (versione `0.11.0+fcc5864`), ha lo stesso
+codice, perché i commit successivi cambiano solo la CI e la documentazione, ma un'impronta diversa:
+`11cfdedca2e8001227f7a932ce76d50dfa534f94cba6f3113feb9fcd5c78c30f`.
 
 **Avvertenze: cosa resta da provare.**
 - **Le etichette non sono state viste su un Windows italiano vero**: il runner della CI è un Windows Server 2025 in inglese.
