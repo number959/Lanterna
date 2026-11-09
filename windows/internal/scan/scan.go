@@ -637,6 +637,9 @@ type PcData struct {
 	Accounts   *AccountsInfo   `json:"accounts,omitempty"`
 	Access     *AccessInfo     `json:"access,omitempty"`
 	Printing   *PrintingInfo   `json:"printing,omitempty"`
+	// Usb è l'albero dei dispositivi USB (controller, hub, porte); nil se
+	// non letto.
+	Usb *UsbInfo `json:"usb,omitempty"`
 	// Notes spiega i limiti della raccolta (dati SMART solo da amministratore...).
 	Notes []string `json:"notes,omitempty"`
 }
@@ -1683,4 +1686,87 @@ type Printer struct {
 	JobErrors int `json:"jobErrors,omitempty"`
 	// OldestMin è l'età in minuti del lavoro più vecchio in coda.
 	OldestMin int `json:"oldestMin,omitempty"`
+}
+
+// UsbInfo è l'albero dei dispositivi USB, come UsbTreeView: controller,
+// hub radice, porte e dispositivi collegati, con velocità e stato della
+// porta. Polaris legge solo dati già noti a Windows, senza interrogare i
+// dispositivi; mai numeri di serie né identificativi di istanza (che li
+// contengono).
+type UsbInfo struct {
+	// Read: ok | none (nessun controller USB, per esempio in una macchina
+	// virtuale) | error.
+	Read        string          `json:"read"`
+	Controllers []UsbController `json:"controllers"`
+	// Partial: la lettura si è fermata prima della fine (tempo massimo).
+	Partial bool `json:"partial,omitempty"`
+}
+
+// UsbController è un controller host con il suo hub radice.
+type UsbController struct {
+	Name string `json:"name"`
+	// Kind: xhci (USB 3 e successivi) | ehci (USB 2) | ohci | uhci (USB 1) |
+	// other, dal driver del controller.
+	Kind    string  `json:"kind"`
+	Problem int     `json:"problem,omitempty"`
+	Hub     *UsbHub `json:"hub,omitempty"`
+}
+
+// UsbHub è un hub (radice o esterno). Ports contiene solo le porte con un
+// dispositivo o con un errore; PortCount le conta tutte.
+type UsbHub struct {
+	// Kind: root | usb2 | usb3 (IOCTL_USB_GET_HUB_INFORMATION_EX); vuoto se
+	// Windows non lo dice. Un hub USB 3 esterno compare due volte, come hub
+	// USB 2 e come hub USB 3: Windows li vede così.
+	Kind       string    `json:"kind,omitempty"`
+	PortCount  int       `json:"portCount"`
+	BusPowered bool      `json:"busPowered,omitempty"`
+	Ports      []UsbPort `json:"ports"`
+}
+
+// UsbPort è una porta di un hub.
+type UsbPort struct {
+	Index int `json:"index"`
+	// Status: ok | failed-enumeration | general-failure | overcurrent |
+	// not-enough-power | not-enough-bandwidth | nested-too-deeply |
+	// legacy-hub | enumerating | reset (USB_CONNECTION_STATUS).
+	Status string `json:"status"`
+	// Usb3: la porta supporta USB 3 (USB_PROTOCOLS); nil se Windows non lo
+	// dice (per esempio sui controller USB 2).
+	Usb3 *bool `json:"usb3,omitempty"`
+	// Visible: la porta è accessibile dall'esterno (USB_PORT_PROPERTIES);
+	// nil se non noto. TypeC: connettore USB-C.
+	Visible *bool `json:"visible,omitempty"`
+	TypeC   bool  `json:"typeC,omitempty"`
+	// Companion: la porta condivide il connettore con una porta dell'altro
+	// protocollo (la parte USB 2 e la parte USB 3 dello stesso connettore).
+	Companion bool       `json:"companion,omitempty"`
+	Device    *UsbDevice `json:"device,omitempty"`
+}
+
+// UsbDevice è il dispositivo collegato a una porta.
+type UsbDevice struct {
+	// Name: il nome del prodotto riportato dal dispositivo o quello di
+	// Windows, con le stesse regole di riservatezza di Gestione dispositivi.
+	Name string `json:"name"`
+	// VID e PID in esadecimale (4 cifre): produttore e modello.
+	VID string `json:"vid"`
+	PID string `json:"pid"`
+	// Kind: storage | input | audio | camera | network | bluetooth |
+	// printer | phone | serial | smartcard | hub | other, dalle classi del
+	// dispositivo e delle sue funzioni.
+	Kind string `json:"kind"`
+	// USB è la versione dichiarata dal dispositivo (bcdUSB: "2.00", "3.20").
+	USB string `json:"usb,omitempty"`
+	// Speed: low (1,5 Mbit/s) | full (12) | high (480) | super (5 Gbit/s) |
+	// super-plus (10 Gbit/s o più).
+	Speed string `json:"speed"`
+	// CanSuper e CanSuperPlus: il dispositivo saprebbe andare a 5 o a 10
+	// Gbit/s (USB_NODE_CONNECTION_INFORMATION_EX_V2_FLAGS).
+	CanSuper     bool `json:"canSuper,omitempty"`
+	CanSuperPlus bool `json:"canSuperPlus,omitempty"`
+	// Problem: codice di problema di Gestione dispositivi (0: nessuno).
+	Problem int `json:"problem,omitempty"`
+	// Hub: il dispositivo è un hub, con le sue porte.
+	Hub *UsbHub `json:"hub,omitempty"`
 }

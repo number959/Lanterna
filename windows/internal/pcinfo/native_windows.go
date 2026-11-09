@@ -47,7 +47,13 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	var health *healthOut
 	var healthErr error
 	var wg sync.WaitGroup
-	wg.Add(11)
+	wg.Add(12)
+	go func() {
+		defer wg.Done()
+		uctx, cancel := context.WithTimeout(ctx, usbTimeout)
+		defer cancel()
+		pc.Usb = readUsb(uctx)
+	}()
 	go func() {
 		defer wg.Done()
 		pc.Accounts = readAccounts()

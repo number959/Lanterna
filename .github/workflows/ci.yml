@@ -166,6 +166,11 @@ jobs:
           if (-not $pc.accounts -or -not @($pc.accounts.local).Count) { throw "account locali non letti" }
           if (-not $pc.access.uac) { throw "Controllo dell'account utente non letto" }
           if (-not $pc.printing.spooler) { throw "servizio di stampa non letto" }
+          # Albero USB (come UsbTreeView): le macchine della CI sono virtuali e
+          # di solito senza controller USB ("none"); mai identificativi di istanza.
+          "USB: $($pc.usb.read), $(@($pc.usb.controllers).Count) controller: " + ((@($pc.usb.controllers) | ForEach-Object { "$($_.name) [$($_.kind)] porte $($_.hub.portCount)" }) -join ' | ')
+          if (-not $pc.usb -or $pc.usb.read -eq 'error' -or $pc.usb.partial) { throw "albero USB non letto: $($pc.usb | ConvertTo-Json -Compress)" }
+          if (($pc.usb | ConvertTo-Json -Depth 20) -match '(USB|USBSTOR|PCI)\\\\(VID|VEN|DISK|ROOT_HUB)') { throw "identificativo di istanza nell'albero USB" }
           if ($raw -match '"(name|userName|fullName)"\s*:\s*"[^"]*(runneradmin|Administrator)[^"]*"') { throw "nome di account nel rapporto" }
           # Nessun percorso della cartella dell'utente nel rapporto (solo %USERPROFILE%).
           $raw = Get-Content scan.json -Raw

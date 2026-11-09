@@ -135,3 +135,17 @@ func TestProtectionFrom(t *testing.T) {
 		t.Errorf("unione: %+v %+v", pc.Encryption, pc.Backup)
 	}
 }
+
+func TestPrinterPort(t *testing.T) {
+	for in, want := range map[string]string{
+		`C:\Users\Mario\Desktop\stampa.prn`: "file",
+		`\\server\HP-Ufficio`:               "condivisione di rete",
+		"IP_192.168.1.50":                   "IP_192.168.1.50",
+		"USB001":                            "USB001",
+		" WSD-1234 ":                        "WSD-1234",
+	} {
+		if got := PrinterPort(in); got != want {
+			t.Errorf("%q: %q", in, got)
+		}
+	}
+}

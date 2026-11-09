@@ -44,8 +44,10 @@ func readFsChecks(ctx context.Context) []scan.FsCheck {
 const fsctlIsVolumeDirty = 0x00090078
 
 // volumeDirty dice se Windows controllerà il volume al prossimo avvio. Il
-// volume si apre senza diritti di lettura o scrittura (basta per chiedere lo
-// stato); nil se Windows non risponde, per esempio senza amministratore.
+// volume si apre in sola lettura, come fa "fsutil dirty query": aperto
+// senza diritti la richiesta arriverebbe al dispositivo e non al file system
+// (in CI su Windows Server 2025 non rispondeva). Senza amministratore
+// Windows nega l'apertura e il valore resta nil.
 func volumeDirty(letter string) *bool {
 	if len(letter) != 2 || letter[1] != ':' {
 		return nil
@@ -54,7 +56,7 @@ func volumeDirty(letter string) *bool {
 	if err != nil {
 		return nil
 	}
-	h, err := windows.CreateFile(p, 0, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, 0, 0)
+	h, err := windows.CreateFile(p, windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, 0, 0)
 	if err != nil {
 		return nil
 	}

@@ -119,6 +119,20 @@ func PrinterKind(port, driver string) string {
 	return "other"
 }
 
+// PrinterPort toglie dal nome della porta i percorsi: una porta locale può
+// scrivere su un file (anche nella cartella dell'utente) o puntare a una
+// condivisione; resta solo il tipo.
+func PrinterPort(port string) string {
+	p := strings.TrimSpace(port)
+	switch {
+	case strings.HasPrefix(p, `\\`):
+		return "condivisione di rete"
+	case strings.ContainsAny(p, `\/`):
+		return "file"
+	}
+	return p
+}
+
 // Stati di un lavoro di stampa (JOB_STATUS_*, winspool.h).
 const (
 	jobPaused   = 0x1

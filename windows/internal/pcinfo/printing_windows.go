@@ -141,7 +141,7 @@ func readPrinting(ctx context.Context) *scan.PrintingInfo {
 			driver := windows.UTF16PtrToString(pi.DriverName)
 			pr := scan.Printer{
 				Name: name, Kind: PrinterKind(port, driver), Default: strings.ToLower(name) == def,
-				Shared: pi.Attributes&printerAttrShared != 0, Port: port, Driver: driver,
+				Shared: pi.Attributes&printerAttrShared != 0, Port: PrinterPort(port), Driver: driver,
 				Status: pi.Status, Flags: PrinterFlags(pi.Status), WorkOffline: pi.Attributes&printerAttrWorkOffline != 0, Jobs: int(pi.Jobs),
 			}
 			if pi.Jobs > 0 {
