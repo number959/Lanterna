@@ -57,9 +57,11 @@ describe('scene ricostruite', () => {
     expect(tcp.packets[1].dir).toBe('response');
     expect(tcp.packets[1].hops).toEqual([...tcp.packets[0].hops].reverse());
     const ping = byId(list, 'ping');
-    const avg = demoScan.gateway!.ping!.avgMs;
-    const first = ping.steps[0].packets;
-    expect(first[1].t - first[0].t).toBeCloseTo(avg!, 1);
+    const samples = demoScan.gateway!.ping!.samples!;
+    ping.steps.forEach((s, i) => {
+      if (samples[i] === null) expect(s.packets).toHaveLength(1);
+      else expect(s.packets[1].t - s.packets[0].t).toBeCloseTo(samples[i]!, 1);
+    });
     expect(ping.title).toBe('Ping al router');
     expect(byId(scenes(clinicScan).list, 'ping').title).toBe('Ping al firewall');
   });
@@ -119,7 +121,7 @@ describe('scene ricostruite', () => {
   it('traceroute: un passo per salto, i salti muti si fermano senza risposta', () => {
     const trace = byId(scenes(demoScan).list, 'trace');
     const hops = demoScan.internet!.traceroute!;
-    expect(trace.steps).toHaveLength(Math.min(8, hops.length));
+    expect(trace.steps).toHaveLength(Math.min(10, hops.length));
     trace.steps.forEach((s, i) => {
       expect(s.packets[0].label).toBe(`TTL ${hops[i].ttl}`);
       expect(s.packets.length).toBe(hops[i].ip ? 2 : 1);
@@ -140,6 +142,182 @@ describe('scene ricostruite', () => {
   });
 });
 
+describe('esiti veri dell\'analisi (revisione)', () => {
+  const allText = (sc: TrafficScenario) => JSON.stringify(sc.steps);
+
+  it('Internet giù: il DNS non risponde e il browser si ferma, senza risposte inventate', () => {
+    const scan = clone(demoScan);
+    for (const t of scan.internet!.targets) Object.assign(t, { received: 0, avgMs: undefined, minMs: undefined, maxMs: undefined });
+    scan.internet!.http = [{ url: 'https://www.google.com/generate_204', ok: false, error: 'context deadline exceeded' }];
+    for (const d of scan.dns!.system) Object.assign(d, { ok: false, timeMs: undefined, error: 'timeout' });
+    const web = byId(scenes(scan).list, 'web');
+    const dns = web.steps.find((s) => s.id === 'web-dns')!;
+    expect(dns.packets).toHaveLength(1);
+    expect(packetNote(dns.packets[0])).toEqual({ text: 'nessuna risposta', sev: 'crit' });
+    expect(web.steps.map((s) => s.id)).toEqual(['web-start', 'web-dns', 'web-stop']);
+    expect(allText(web)).not.toMatch(/204|SYN-ACK|ha risposto in/);
+  });
+
+  it('il DNS risponde ma la connessione no: il SYN si ferma e non ci sono TLS né HTTP', () => {
+    const scan = clone(demoScan);
+    scan.internet!.http = [{ url: 'https://www.google.com/generate_204', ok: false, error: 'dial tcp 142.250.180.4:443: i/o timeout' }];
+    const web = byId(scenes(scan).list, 'web');
+    const tcp = web.steps.find((s) => s.id === 'web-tcp')!;
+    expect(tcp.packets.map((p) => p.label)).toEqual(['SYN', 'SYN']);
+    expect(tcp.packets.every((p) => p.stopAt !== undefined && p.sev === 'crit')).toBe(true);
+    expect(web.steps.find((s) => s.id === 'web-tls')).toBeUndefined();
+    expect(web.steps.find((s) => s.id === 'web-http')).toBeUndefined();
+  });
+
+  it('proxy con 407, certificato rifiutato, verifica assente', () => {
+    const scan = clone(demoScan);
+    scan.internet!.http = [{ url: 'https://www.google.com/generate_204', ok: false, status: 407, timeMs: 90 }];
+    const h407 = byId(scenes(scan).list, 'web').steps.find((s) => s.id === 'web-http')!;
+    expect(h407.packets[1]).toMatchObject({ label: '407', sev: 'warn', note: 'risposta di errore' });
+    expect(h407.detail).toContain('proxy');
+    scan.internet!.http = [{ url: 'https://www.google.com/generate_204', ok: false, error: 'tls: failed to verify certificate: x509: certificate signed by unknown authority' }];
+    const tls = byId(scenes(scan).list, 'web');
+    expect(tls.steps.find((s) => s.id === 'web-tls')!.packets.map((p) => p.label)).toEqual(['CLIENT HELLO', 'SERVER HELLO', 'ALERT']);
+    expect(tls.steps.find((s) => s.id === 'web-http')).toBeUndefined();
+    delete scan.internet!.http;
+    const none = byId(scenes(scan).list, 'web').steps.find((s) => s.id === 'web-http')!;
+    expect(none.detail).toContain('la verifica HTTPS non c\'è');
+    expect(none.fields.find((f) => f.k === 'Risposta')!.v).toContain('non misurata');
+  });
+
+  it('ping: ogni richiesta dal suo campione, nessuna risposta inventata, singolare giusto', () => {
+    const scan = clone(demoScan);
+    scan.gateway!.ping = { ...scan.gateway!.ping!, sent: 4, received: 0, avgMs: undefined, minMs: undefined, maxMs: undefined, samples: [null, null, null, null] };
+    const ping = byId(scenes(scan).list, 'ping');
+    expect(ping.steps.every((s) => s.packets.length === 1 && s.packets[0].stopAt !== undefined)).toBe(true);
+    expect(ping.steps[0].detail).toContain('0 risposte');
+    scan.gateway!.ping = { ...scan.gateway!.ping!, sent: 20, received: 1, avgMs: 3, minMs: 3, maxMs: 3, samples: [null, 3, ...Array(18).fill(null)] };
+    const one = byId(scenes(scan).list, 'ping');
+    expect(one.steps.map((s) => s.packets.length)).toEqual([1, 2, 1]);
+    expect(one.steps[0].detail).toContain('1 risposta,');
+  });
+
+  it('ping bloccato: il tempo misurato con TCP si mostra come TCP', () => {
+    const scan = clone(clinicScan);
+    scan.gateway!.ping = { ...scan.gateway!.ping!, method: 'tcp' };
+    const ping = byId(scenes(scan).list, 'ping');
+    expect(ping.title).toBe('Raggiungere il firewall (TCP)');
+    expect(ping.steps[0].packets.every((p) => p.proto === 'TCP')).toBe(true);
+    expect(ping.steps[0].detail).toContain('non risponde al ping');
+  });
+
+  it('servizi: rifiuto di un servizio necessario, verifiche non eseguite, nessuna verifica nascosta in silenzio', () => {
+    const scan = clone(clinicScan);
+    const res = scan.infra!.reach!.results;
+    const ehr = res.find((r) => r.label === 'Cartella clinica (web)')!;
+    Object.assign(ehr, { status: 'closed', ok: false });
+    res.push({ label: 'Server sconosciuto', host: 'srv-x.clinica.local', port: 443, expect: 'reachable', status: 'unresolved', ok: false });
+    const svc = byId(scenes(scan).list, 'services');
+    const step = svc.steps.find((s) => s.title === 'Cartella clinica (web)')!;
+    const rst = step.packets.find((p) => p.label === 'RST')!;
+    expect(packetNote(rst)).toEqual({ text: 'rifiuta la connessione', sev: 'crit' });
+    expect(rst.breach).toBeUndefined();
+    const other = svc.steps.find((s) => s.id === 'svc-other')!;
+    expect(other.fields.some((f) => f.k.startsWith('Server sconosciuto') && f.v.includes('non verificata'))).toBe(true);
+    // Ogni verifica dell'analisi è in un passo o nell'elenco delle altre.
+    const listed = svc.steps.filter((s) => s.id !== 'svc-other').length + other.fields.length;
+    expect(listed).toBe(res.length);
+    const ids = svc.steps.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('servizi: la stessa destinazione due volte, una zona isolata nella rete del PC', () => {
+    const scan = clone(clinicScan);
+    const res = scan.infra!.reach!.results;
+    res.push({ ...res[0], label: 'Ancora la cartella clinica' });
+    res.push({ label: 'Stampante del piano', host: '10.20.30.12', ip: '10.20.30.12', port: 9100, expect: 'isolated', status: 'filtered', ok: true });
+    const svc = byId(scenes(scan).list, 'services');
+    const ids = svc.steps.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const local = svc.steps.find((s) => s.title === 'Stampante del piano');
+    const text = local ? local.detail : svc.steps.find((s) => s.id === 'svc-other')!.fields.map((f) => f.k).join();
+    expect(text).toMatch(/stessa rete del PC|Stampante del piano/);
+    if (local) expect(local.packets[0].hops[local.packets[0].stopAt!]).toBe('ip:10.20.30.12');
+  });
+
+  it('zona isolata nella rete del PC: niente firewall tra le zone nel testo, il pacchetto si ferma al dispositivo', () => {
+    const scan = clone(clinicScan);
+    scan.infra!.reach!.results = [
+      { label: 'Stampante del piano', host: '10.20.30.12', ip: '10.20.30.12', port: 9100, expect: 'isolated', status: 'filtered', ok: true },
+      { label: 'Stampante aperta', host: '10.20.30.15', ip: '10.20.30.15', port: 9100, expect: 'isolated', status: 'open', ok: false, rttMs: 4 },
+    ];
+    const svc = byId(scenes(scan).list, 'services');
+    const [blocked, open] = svc.steps;
+    expect(blocked.detail).toContain('stessa rete del PC');
+    expect(blocked.detail).not.toContain('il firewall o le regole tra le zone scartano');
+    expect(blocked.packets[0].hops[blocked.packets[0].stopAt!]).toBe('ip:10.20.30.12');
+    expect(open.detail).toContain('non passa dal firewall tra le zone');
+    expect(open.packets.find((p) => p.label === 'SYN-ACK')!.breach).toBe(true);
+  });
+
+  it('DNS: il primo server IPv4 sulla mappa e il suo tempo, i DNS IPv6 fuori dal DHCP', () => {
+    const scan = clone(demoScan);
+    const a = scan.adapters.find((x) => x.gateways.includes(scan.gateway!.ip))!;
+    a.dns = ['fd00::1', '192.168.1.1'];
+    const list = scenes(scan).list;
+    const dns = byId(list, 'web').steps.find((s) => s.id === 'web-dns')!;
+    expect(dns.packets[0].dst).toBe('192.168.1.1');
+    const lease = byId(list, 'dhcp').steps[1].fields.find((f) => f.k === 'DNS')!;
+    expect(lease.v).toBe('192.168.1.1');
+    // Il tempo è quello del server interrogato, non del primo che ha risposto.
+    const clinic = clone(clinicScan);
+    const first = clinic.dns!.system.find((d) => d.server === '10.10.10.10')!;
+    Object.assign(first, { ok: false, timeMs: undefined, error: 'timeout' });
+    const cd = byId(scenes(clinic).list, 'web').steps.find((s) => s.id === 'web-dns')!;
+    expect(cd.packets).toHaveLength(1);
+    expect(cd.detail).toContain('non ha risposto');
+  });
+
+  it('traceroute: i salti muti non arrivano oltre l\'ultimo router noto', () => {
+    const { map, list } = scenes(clinicScan);
+    const fw = map.nodes.find((n) => n.gateway)!.id;
+    const trace = byId(list, 'trace');
+    for (const s of trace.steps.slice(1)) {
+      const p = s.packets[0];
+      expect(p.hops[p.hops.length - 1]).toBe(fw);
+    }
+    expect(trace.steps[trace.steps.length - 1].detail).toContain('nessun router risponde');
+    const scan = clone(demoScan);
+    scan.internet!.traceroute = Array.from({ length: 14 }, (_, i) => ({ ttl: i + 1, ip: i === 0 ? '192.168.1.1' : `10.4.${i}.1`, rttMs: 5 + i }));
+    const long = byId(scenes(scan).list, 'trace');
+    expect(long.steps).toHaveLength(11);
+    expect(long.steps[10].detail).toContain('14 salti');
+  });
+
+  it('strade senza doppioni: verifica verso il firewall stesso, PC che fa da DNS', () => {
+    const scan = clone(clinicScan);
+    scan.infra!.reach!.results.push({ label: 'Pannello del firewall', host: '10.20.30.1', ip: '10.20.30.1', port: 443, expect: 'reachable', status: 'open', ok: true, rttMs: 4 });
+    const { list } = scenes(scan);
+    for (const sc of list) for (const p of sc.steps.flatMap((s) => s.packets)) for (let i = 1; i < p.hops.length; i++) expect(p.hops[i]).not.toBe(p.hops[i - 1]);
+    const self = clone(demoScan);
+    const a = self.adapters.find((x) => x.gateways.includes(self.gateway!.ip))!;
+    a.dns = [a.ipv4[0].split('/')[0]];
+    const dns = byId(scenes(self).list, 'web').steps.find((s) => s.id === 'web-dns')!;
+    expect(dns.packets).toHaveLength(0);
+    expect(dns.subtitle).toBe('Il server DNS è questo PC');
+  });
+
+  it('NAT: doppio NAT e CGNAT detti quando la mappa li trova', () => {
+    const scan = clone(demoScan);
+    scan.internet!.traceroute = [
+      { ttl: 1, ip: '192.168.1.1', rttMs: 2 },
+      { ttl: 2, ip: '192.168.0.1', rttMs: 3 },
+      { ttl: 3, ip: '100.64.12.1', rttMs: 12 },
+      { ttl: 4, ip: '1.1.1.1', rttMs: 20 },
+    ];
+    scan.internet!.traceTarget = '1.1.1.1';
+    const tcp = byId(scenes(scan).list, 'web').steps.find((s) => s.id === 'web-tcp')!;
+    expect(tcp.detail).toContain('doppio NAT');
+    expect(tcp.detail).toContain('CGNAT');
+    expect(byId(scenes(demoScan).list, 'web').steps.find((s) => s.id === 'web-tcp')!.detail).not.toMatch(/doppio NAT|CGNAT/);
+  });
+});
+
 describe('disposizione dei nodi', () => {
   const labelBox = (s: ReturnType<typeof stageLayout>['slots'] extends Map<string, infer T> ? T : never, len: number) => {
     const n = Math.min(len, s.chars) * CHAR_W;
@@ -157,7 +335,13 @@ describe('disposizione dei nodi', () => {
       for (const width of [1100, 760, 600, 390, 320]) {
         for (const sc of list) {
           const L = stageLayout(sc, (id) => nodes.has(id), width);
-          expect(L.vertical).toBe(width < VERTICAL_BELOW);
+          if (width < VERTICAL_BELOW) expect(L.vertical).toBe(true);
+          if (width >= 760) expect(L.vertical).toBe(false);
+          // Gli indirizzi stanno interi nelle etichette.
+          for (const id of sc.lanes) {
+            const ip = nodes.get(id)!.ip;
+            if (ip) expect(L.slots.get(id)!.chars, `${sc.id} ${id} a ${width}px`).toBeGreaterThanOrEqual(ip.length);
+          }
           const boxes: { id: string; b: { x0: number; x1: number; y0: number; y1: number } }[] = [];
           for (const id of sc.lanes) {
             const s = L.slots.get(id)!;
@@ -176,6 +360,34 @@ describe('disposizione dei nodi', () => {
             for (let j = i + 1; j < boxes.length; j++) expect(overlap(boxes[i].b, boxes[j].b), `${sc.id}: ${boxes[i].id} e ${boxes[j].id} a ${width}px`).toBe(false);
         }
       }
+    }
+  });
+
+  it('elenco anche a metà strada (verifiche nella rete del PC e in altre reti): etichette leggibili e senza sovrapposizioni', () => {
+    const scan = clone(clinicScan);
+    for (const ip of ['10.20.30.10', '10.20.30.12', '10.20.30.15'])
+      scan.infra!.reach!.results.push({ label: `Locale ${ip}`, host: ip, ip, port: 9100, expect: 'reachable', status: 'open', ok: true, rttMs: 3 });
+    const { map, list } = scenes(scan);
+    const nodes = new Map(map.nodes.map((n) => [n.id, n]));
+    const svc = byId(list, 'services');
+    for (const width of [560, 600, 760, 1100]) {
+      const L = stageLayout(svc, (id) => nodes.has(id), width);
+      const boxes = svc.lanes.map((id) => {
+        const s = L.slots.get(id)!;
+        const n = nodes.get(id)!;
+        const len = Math.min(Math.max((n.self ? 'Questo PC' : n.label).length, (n.ip ?? '').length), s.chars) * CHAR_W;
+        return s.right ? { id, x0: s.x - 22, x1: s.x + 28 + len, y0: s.y - 24, y1: s.y + 16, s } : { id, x0: s.x - Math.max(29, len / 2), x1: s.x + Math.max(29, len / 2), y0: s.y - 31, y1: s.y + 53, s };
+      });
+      for (const b of boxes) {
+        expect(b.x1, `${b.id} a ${width}px`).toBeLessThanOrEqual(L.w + 1);
+        expect(b.s.chars, `${b.id} a ${width}px`).toBeGreaterThanOrEqual(nodes.get(b.id)!.ip?.length ?? 6);
+      }
+      for (let i = 0; i < boxes.length; i++)
+        for (let j = i + 1; j < boxes.length; j++) {
+          const a = boxes[i];
+          const b = boxes[j];
+          expect(a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1, `${a.id} e ${b.id} a ${width}px`).toBe(false);
+        }
     }
   });
 

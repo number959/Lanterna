@@ -1455,3 +1455,64 @@ Dopo le correzioni: vitest 489 test, Go tutti i pacchetti con `go vet` per Linux
 -race`. axe-core ripetuto sulla build con le correzioni (Rete locale, Infrastruttura con Reti e VLAN, guida della mappa con la
 videoguida aperta; casa e clinica, temi scuro e chiaro, 1366 e 390 px): 0 violazioni, nessuno scorrimento orizzontale,
 nessun errore della pagina.
+
+**Il traffico passo passo** (aggiunto dopo la revisione, su un esempio visivo mostrato da STARNET: disegno, nomi e testi sono
+di Polaris). Una seconda revisione indipendente, solo su questa parte (motore, disposizione, interfaccia, test), ha
+riprodotto 12 difetti con prove usa e getta, tutti corretti:
+- *Esiti inventati*: la scena del sito mostrava sempre DNS, TCP, TLS e "204" riusciti, anche con Internet giù, e il ping
+  mostrava risposte quando non ce n'erano state. Ora ogni fase segue l'analisi: un server DNS che non risponde ferma il
+  pacchetto e la scena ("Il browser si ferma"); una connessione senza risposta, rifiutata o con il certificato non accettato
+  si ferma dove si è fermata la verifica HTTPS (dal testo dell'errore); lo stato HTTP è quello vero (anche 407 del proxy); ogni
+  richiesta del ping usa il suo campione, con il singolare giusto ("1 risposta"); quando una misura manca la scena lo dice.
+- *Ping misurato con TCP*: quando il gateway non risponde all'ICMP l'agente misura con TCP (porte 80, 443 o 53); ora la scena
+  lo mostra come TCP e lo spiega.
+- *Servizi*: un servizio necessario che rifiuta la connessione era segnato "passa, ma non dovrebbe"; le verifiche non
+  eseguite (nome non risolto, indirizzo non privato, errore) risultavano "come previsto". Ora ogni esito ha la sua nota e il
+  segnale rosso spetta solo a una risposta da una zona che doveva essere isolata, sul dispositivo isolato; le verifiche fuori
+  dai passi (oltre le otto, senza un nodo sulla mappa, non eseguite) sono elencate in un passo finale, nessuna sparisce. Testo
+  proprio per una zona isolata nella rete del PC, dove il firewall tra le zone non c'entra.
+- *DNS*: si usa il primo server IPv4 della scheda, preferendo quello sulla mappa, con il tempo di quel server e non del primo
+  che ha risposto; i DNS IPv6 non compaiono più tra quelli dati dal DHCP; un PC che fa da DNS non manda nulla in rete.
+- *Traceroute*: i salti muti non sono più disegnati oltre l'ultimo router che ha risposto (nella clinica si fermano al
+  firewall, perché dopo il primo salto nessuno risponde e Internet risponde solo via TCP); i salti oltre il decimo sono detti.
+- *Strade*: niente nodi ripetuti (verifica verso il firewall stesso), la strada fino al gateway dai collegamenti della mappa
+  anche senza Internet; passi con identificativi unici; NAT descritto secondo la mappa (doppio NAT, CGNAT).
+- *Disposizione*: con verifiche nella rete del PC e in altre reti insieme le etichette di un elenco a metà strada si
+  riducevano a 6 caratteri e si sovrapponevano; ora quelle colonne hanno più spazio, le linee escono da sotto le etichette e,
+  sotto i 760 px, se un indirizzo non sta intero si passa alla disposizione dall'alto in basso (un albero, sul telefono).
+- *Tastiera* (un sospetto della revisione, che non l'ha potuto confermare): i pulsanti ‹ › e "Ricomincia" si disattivavano
+  all'ultimo passo, e un pulsante disattivato perde il focus. Ora restano raggiungibili (`aria-disabled`); provato in
+  Chromium: dopo l'ultimo passo il focus resta sul pulsante.
+
+Test: 26 prove per questa parte (515 vitest in tutto), tra cui i casi della revisione (Internet giù, connessione senza
+risposta, 407, certificato rifiutato, verifica assente, ping senza risposte o con una sola, ping via TCP, rifiuto di un
+servizio necessario, verifiche non eseguite, la stessa destinazione due volte, zona isolata nella rete del PC, DNS IPv6 e
+server DNS senza risposta, salti muti e traceroute lunghi, strade senza doppioni, doppio NAT e CGNAT) e la disposizione:
+nodi dentro il palco, etichette senza sovrapposizioni e indirizzi interi da 320 a 1100 px, anche con un elenco a metà strada
+(controllato al contrario: con spaziature troppo strette la prova fallisce). axe-core sull'anteprima (temi scuro e chiaro,
+1440 e 390 px, inizio, pacchetto in viaggio, vista a sequenza, pacchetto bloccato) e sull'applicazione (Rete locale, demo
+della clinica a 1366 px in tema scuro e della casa a 1920 px in tema chiaro): 0 violazioni, nessuno scorrimento orizzontale.
+axe lascia "da verificare" il contrasto dei testi dentro i disegni: misurato a mano sulla tavolozza della console, testi da
+6,4:1 a 16,8:1, etichette dei protocolli da 8,6:1, linee dei collegamenti 3,6:1 (alzate da 2,6:1 dopo la misura).
+
+**Avvertenze: cosa resta da provare.**
+- **Ascolto degli annunci con uno switch vero** (Cisco, HPE Aruba, altri): provato con trame costruite, su milioni di trame
+  casuali e su macchine virtuali che non ricevono annunci. Alcune schede di rete con un agente LLDP nel firmware trattengono
+  gli annunci e Windows non li vede. Restano da confrontare su un PC i punti segnati sopra tra le fonti: byte di stato e di
+  tipo di DTP, evento 1001 e campi del provider di cattura, `-TruncationLength 0`, offset della VLAN nelle BPDU PVST+.
+- **Limite noto dell'ascolto**: se il processo di PowerShell della cattura, o Polaris stesso, viene chiuso dall'esterno (per
+  esempio da Gestione attività), la sessione di cattura resta registrata in Windows fino all'ascolto successivo, che la
+  rimuove; nel frattempo un'altra cattura (per esempio `netsh trace`) la trova attiva. Si toglie anche a mano con
+  `Remove-NetEventSession`.
+- **SNMP con apparati reali**: provato contro un dispositivo simulato, anche con SNMPv3 autenticato e cifrato. Sugli switch
+  Cisco la tabella dei MAC per porta letta senza indicazione della VLAN copre di solito solo la VLAN 1.
+- **Active Directory in un dominio**: provata solo su PC fuori dominio (CI, Wine).
+- **Voce Elsa**: le macchine della CI hanno solo voci inglesi; la scelta della voce è provata con elenchi costruiti, la voce
+  italiana in WebView2 su un Windows in italiano no.
+- **Annunci mDNS e SSDP su reti vere**: provati con risposte costruite; il riconoscimento può sbagliare e ogni tipo mostra il
+  perché e quanto è sicuro.
+- **Il traffico passo passo** è una ricostruzione didattica, non una cattura: tempi e indirizzi vengono dall'analisi, ma
+  sequenza e dimensioni dei pacchetti sono quelle tipiche dei protocolli (per esempio TLS 1.3 con il messaggio di
+  compatibilità Change Cipher Spec) e non sono state confrontate con catture di questi PC.
+- **Elenco dei prefissi MAC della IEEE**: condizioni d'uso da verificare.
+- **Etichette di Windows** nei testi nuovi: come per le versioni precedenti, da ripercorrere su un Windows italiano.

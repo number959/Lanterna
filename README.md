@@ -25,7 +25,7 @@ chiavetta. Un **documento stampabile** riassume lo stato del PC, da consegnare o
 Della **rete** misura Wi-Fi, router, Internet e DNS e disegna la **mappa della rete**: un grafico interattivo con l'icona di ogni
 dispositivo, riconosciuto da solo (router, switch, access point, PC, stampanti, NAS, telecamere, dispositivi medicali...), e i
 percorsi animati del traffico; sotto la mappa **il traffico passo passo** ricostruisce i pacchetti di un sito web, del DHCP, di un
-ping, del traceroute e dei servizi verificati con gli indirizzi e i tempi dell'analisi. Su richiesta **scopre le altre reti e le VLAN** senza doverle scrivere (annunci dello switch,
+ping, del traceroute e dei servizi verificati con gli indirizzi, i tempi e gli esiti dell'analisi. Su richiesta **scopre le altre reti e le VLAN** senza doverle scrivere (annunci dello switch,
 Active Directory, SNMP in sola lettura), disegna la **mappa del Wi-Fi stanza per stanza**, controlla i **certificati dei
 servizi interni** e, con il tuo consenso ogni volta, misura la **velocità di Internet** con Measurement Lab.
 
@@ -295,7 +295,8 @@ e **senza scansioni di porte**.
   dettagli di ogni dispositivo ed elenco testuale accessibile.
 - **Il traffico passo passo** (sotto la mappa, dalla 0.13.0): per sei azioni comuni (aprire un sito, ricevere l'indirizzo dal
   DHCP, un ping al router, il percorso verso Internet, i servizi verificati e le zone isolate, una stampa) i pacchetti che il
-  protocollo prevede, con gli indirizzi e i tempi misurati dall'analisi: dispositivi disegnati a linee e pacchetti che viaggiano
+  protocollo prevede, con gli indirizzi, i tempi e gli esiti misurati dall'analisi (dove l'analisi ha visto un guasto, il
+  pacchetto si ferma lì): dispositivi disegnati a linee e pacchetti che viaggiano
   con la loro etichetta, vista a sequenza, dettagli di ogni passo e tabella dei pacchetti come in un analizzatore di rete, con i
   colori dei protocolli. I pacchetti verso una zona isolata si fermano al firewall; una risposta che arriva da una zona che
   doveva essere isolata è segnata in rosso. È una ricostruzione didattica: Polaris non registra il traffico e non invia nulla.

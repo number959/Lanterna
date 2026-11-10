@@ -196,8 +196,9 @@
   font: 600 13px var(--font);
   cursor: pointer;
 }
-.tx-btn:hover:not(:disabled) { border-color: var(--tx-accent); }
-.tx-btn:disabled { opacity: 0.45; cursor: default; }
+.tx-btn:hover:not([aria-disabled='true']) { border-color: var(--tx-accent); }
+/* Restano raggiungibili con la tastiera (aria-disabled, non disabled): il focus non si perde all'ultimo passo. */
+.tx-btn[aria-disabled='true'] { opacity: 0.45; cursor: default; }
 .tx-btn.primary { background: var(--tx-accent); border-color: var(--tx-accent); color: var(--tx-ink); padding: 0 16px; min-width: 124px; }
 .tx-btn.primary:hover { filter: brightness(1.08); }
 .tx-speed select {
@@ -269,8 +270,8 @@
 .tx-note { display: flex; gap: 8px; align-items: flex-start; margin: 12px 2px 0; font-size: 12.5px; line-height: 1.45; color: var(--tx-text-3); }
 .tx-note svg { flex: none; margin-top: 2px; }
 
-/* Larghezza media: dettagli sotto il palco. */
-@container tx (max-width: 1100px) {
+/* Larghezza media: dettagli sotto il palco, così il palco resta largo. */
+@container tx (max-width: 1280px) {
   .tx-grid {
     grid-template-columns: 212px minmax(0, 1fr);
     grid-template-rows: auto auto auto;

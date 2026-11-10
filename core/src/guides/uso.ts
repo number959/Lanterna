@@ -127,11 +127,11 @@ export const uso: Guide[] = [
         ['Stampare un documento', 'la connessione alla stampante e l\'invio del lavoro, senza passare dal router', 'la stampante riconosciuta nella rete del PC'],
       ] },
       { t: 'list', items: [
-        'una **✕ verde** segna un pacchetto bloccato come previsto; una **✕ gialla o rossa** un pacchetto rimasto senza risposta;',
+        'una **✕ verde** segna un pacchetto bloccato come previsto; una **✕ gialla o rossa** un pacchetto rimasto senza risposta durante l\'analisi;',
         'un **punto esclamativo rosso** segna una risposta arrivata da una zona che doveva essere isolata: le regole tra le zone vanno riviste;',
         'il colore delle etichette e dei numeri nella tabella indica il protocollo: DNS, DHCP, TCP, TLS, HTTP, ICMP, IPP.',
       ] },
-      { t: 'note', kind: 'tip', title: 'Una ricostruzione, non una registrazione', text: 'Indirizzi e tempi vengono da questa analisi; i pacchetti sono quelli che ogni protocollo prevede e le dimensioni sono quelle tipiche. Polaris non registra il traffico del PC e per le scene non invia nulla. Una cattura vera si fa con un analizzatore di rete, con l\'autorizzazione di chi gestisce la rete.' },
+      { t: 'note', kind: 'tip', title: 'Una ricostruzione, non una registrazione', text: 'Indirizzi, tempi ed esiti vengono da questa analisi: dove l\'analisi ha visto un guasto (un server DNS che non risponde, una connessione rifiutata, un router muto) la scena si ferma lì, e quando una misura manca la scena mostra lo scambio tipico e lo dice. I pacchetti sono quelli che ogni protocollo prevede e le dimensioni sono quelle tipiche. Polaris non registra il traffico del PC e per le scene non invia nulla. Una cattura vera si fa con un analizzatore di rete, con l\'autorizzazione di chi gestisce la rete.' },
       { t: 'h', text: 'Come riconosce i dispositivi' },
       { t: 'p', text: 'Polaris non entra nei dispositivi e non ne prova le porte: mette insieme gli indizi che i dispositivi danno da soli. Ogni indizio dà punti a uno o più tipi; vince il tipo con più punti e la confidenza dipende dal punteggio.' },
       { t: 'table', head: ['Indizio', 'Che cosa dice', 'Esempio'], rows: [

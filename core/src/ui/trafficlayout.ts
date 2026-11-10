@@ -42,9 +42,20 @@ export function outwardPaths(sc: TrafficScenario, has: (id: string) => boolean):
     .filter((h) => h.length > 0);
 }
 
+/** Caratteri che servono almeno nelle etichette: un indirizzo IPv4 intero. */
+const MIN_CHARS = 15;
+
 export function stageLayout(sc: TrafficScenario, has: (id: string) => boolean, width: number): StageLayout {
   const w = Math.max(300, Math.floor(width) || 0);
-  const vertical = w < VERTICAL_BELOW;
+  if (w >= VERTICAL_BELOW) {
+    const L = layoutOf(sc, has, w, false);
+    // Tra 540 e 760 px, se le etichette non contengono un indirizzo intero, meglio dall'alto in basso.
+    if (w >= 760 || Math.min(...[...L.slots.values()].map((sl) => sl.chars)) >= MIN_CHARS) return L;
+  }
+  return layoutOf(sc, has, w, true);
+}
+
+function layoutOf(sc: TrafficScenario, has: (id: string) => boolean, w: number, vertical: boolean): StageLayout {
   const paths = outwardPaths(sc, has);
   // La strada principale: quella verso Internet, altrimenti la più lunga.
   const main = paths.find((h) => h[h.length - 1] === 'internet') ?? paths.reduce<string[]>((a, b) => (b.length > a.length ? b : a), []);
@@ -68,6 +79,14 @@ export function stageLayout(sc: TrafficScenario, has: (id: string) => boolean, w
     const d = depth.get(id)!;
     (levels[d] = levels[d] || []).push(id);
   }
+  // Il nodo della strada principale sta in mezzo agli altri della sua colonna.
+  const onMain = new Set(main);
+  for (const lv of levels) {
+    const mi = lv.findIndex((id) => onMain.has(id));
+    if (mi < 0 || lv.length < 2) continue;
+    const [m] = lv.splice(mi, 1);
+    lv.splice(Math.floor(lv.length / 2), 0, m);
+  }
   const slots = new Map<string, Slot>();
 
   if (!vertical) {
@@ -75,22 +94,29 @@ export function stageLayout(sc: TrafficScenario, has: (id: string) => boolean, w
     const SPF = 56;
     const TOP = 96;
     const BOTTOM = 60;
-    const MX = 70;
+    const MX = 60;
     const fan = (lv: string[]) => lv.length >= FAN;
     const n = levels.length;
     const lastFan = n > 0 && fan(levels[n - 1]);
-    const xr = lastFan ? w - 210 : w - MX;
-    const step = n > 1 ? (xr - MX) / (n - 1) : 0;
+    const xr = lastFan ? w - 190 : w - MX;
+    // Le colonne con un elenco hanno bisogno di più spazio, per le etichette a destra.
+    const need: number[] = levels.map((lv, c) => (c < n - 1 ? (fan(lv) ? 250 : 120) : 0));
+    const total = need.reduce((a, b) => a + b, 0);
+    const k = total > 0 ? (xr - MX) / total : 0;
+    const xs: number[] = [];
+    levels.forEach((_, c) => xs.push(n === 1 ? w / 2 : c === 0 ? MX : xs[c - 1] + need[c - 1] * k));
     const span = (lv: string[]) => (lv.length - 1) * (fan(lv) ? SPF : SP);
     const inner = Math.max(0, ...levels.map(span));
     const h = Math.max(300, TOP + inner + BOTTOM);
     const cy = TOP + (h - TOP - BOTTOM) / 2;
     levels.forEach((lv, c) => {
-      const x = n === 1 ? w / 2 : MX + c * step;
+      const x = xs[c];
       const f = fan(lv);
       const gap = f ? SPF : SP;
-      // Etichette sotto il disegno: centrate, quindi limitate anche dal bordo più vicino.
-      const room = f ? (c === n - 1 ? w - x - 36 : step - 70) : Math.min(n > 1 ? step - 14 : w - 24, 2 * Math.min(x, w - x) - 8);
+      const left = c > 0 ? x - xs[c - 1] : 2 * x;
+      const right = c < n - 1 ? xs[c + 1] - x : 2 * (w - x);
+      // Etichette a destra fino alla colonna dopo; sotto il disegno, centrate tra le vicine e dentro il bordo.
+      const room = f ? (c === n - 1 ? w - x - 36 : right - 80) : Math.min(left, right) - 14;
       lv.forEach((id, j) => {
         const trunk = f && parent.has(id) ? x - 46 : undefined;
         slots.set(id, { x, y: cy + (j - (lv.length - 1) / 2) * gap, s: f ? 0.6 : 0.9, right: f, chars: Math.max(6, Math.floor(room / CHAR_W)), trunk });
@@ -99,23 +125,31 @@ export function stageLayout(sc: TrafficScenario, has: (id: string) => boolean, w
     return { w, h, vertical, slots, parent };
   }
 
-  // Schermo stretto: dall'alto in basso, le etichette a destra; più nodi alla
-  // stessa distanza diventano un elenco rientrato, collegato da una linea comune.
+  // Schermo stretto: un albero dall'alto in basso, le etichette a destra. Un
+  // solo figlio continua sotto il padre; più figli diventano un elenco
+  // rientrato, collegato da una linea comune che scende dal padre.
+  const kids = new Map<string, string[]>();
+  for (const id of order) {
+    const pa = parent.get(id);
+    if (!pa) continue;
+    const l = kids.get(pa);
+    if (l) l.push(id);
+    else kids.set(pa, [id]);
+  }
   const X0 = 50;
-  const XI = 112;
+  const IND = 62;
   let y = 66;
-  for (const lv of levels) {
-    if (lv.length === 1) {
-      slots.set(lv[0], { x: X0, y, s: 0.74, right: true, chars: Math.max(6, Math.floor((w - X0 - 30 - 8) / CHAR_W)) });
-      y += 86;
-    } else {
-      for (const id of lv) {
-        slots.set(id, { x: XI, y, s: 0.58, right: true, chars: Math.max(6, Math.floor((w - XI - 26 - 8) / CHAR_W)), trunk: X0 });
-        y += 60;
-      }
+  const place = (id: string, x: number, trunk: number | undefined, sc: number) => {
+    slots.set(id, { x, y, s: sc, right: true, chars: Math.max(6, Math.floor((w - x - 32 * (sc / 0.74) - 10) / CHAR_W)), trunk });
+    y += trunk === undefined ? 86 : 60;
+    const ch = kids.get(id) ?? [];
+    if (ch.length === 1) place(ch[0], x, undefined, sc);
+    else if (ch.length) {
+      for (const c of ch) place(c, x + IND, x, 0.58);
       y += 18;
     }
-  }
+  };
+  for (const id of order) if (!parent.has(id) && !slots.has(id)) place(id, X0, undefined, 0.74);
   const last = Math.max(0, ...[...slots.values()].map((sl) => sl.y));
   return { w, h: Math.max(240, last + 44), vertical, slots, parent };
 }
@@ -125,24 +159,29 @@ export function route(L: StageLayout, a: string, b: string): Pt[] {
   const sa = L.slots.get(a);
   const sb = L.slots.get(b);
   if (!sa || !sb) return [];
-  const branch = (from: Slot, to: Slot): Pt[] | undefined => {
-    if (to.trunk === undefined) return undefined;
+  // Sempre disegnata dal padre al figlio, poi rovesciata se serve.
+  if (L.parent.get(a) === b && L.parent.get(b) !== a) return route(L, b, a).reverse();
+  const pts: Pt[] = [{ x: sa.x, y: sa.y }];
+  let y0 = sa.y;
+  // Da un nodo con l'etichetta a destra la linea esce dal basso, sotto l'etichetta.
+  if (!L.vertical && sa.right && sb.x > sa.x + 30) {
+    y0 = sa.y + 26;
+    pts.push({ x: sa.x, y: y0 });
+  }
+  if (L.parent.get(b) === a && sb.trunk !== undefined) {
     if (L.vertical) {
-      if (Math.abs(from.x - to.trunk) > 1) return undefined;
-      return [{ x: from.x, y: from.y }, { x: to.trunk, y: to.y }, { x: to.x, y: to.y }];
+      if (Math.abs(sa.x - sb.trunk) <= 1) {
+        pts.push({ x: sb.trunk, y: sb.y }, { x: sb.x, y: sb.y });
+        return pts;
+      }
+    } else if (sb.trunk - sa.x >= 30) {
+      pts.push({ x: sb.trunk, y: y0 }, { x: sb.trunk, y: sb.y }, { x: sb.x, y: sb.y });
+      return pts;
     }
-    if (to.trunk - from.x < 30) return undefined;
-    return [{ x: from.x, y: from.y }, { x: to.trunk, y: from.y }, { x: to.trunk, y: to.y }, { x: to.x, y: to.y }];
-  };
-  if (L.parent.get(b) === a) {
-    const r = branch(sa, sb);
-    if (r) return r;
   }
-  if (L.parent.get(a) === b) {
-    const r = branch(sb, sa);
-    if (r) return r.reverse();
-  }
-  return [{ x: sa.x, y: sa.y }, { x: sb.x, y: sb.y }];
+  if (y0 !== sa.y) pts.push({ x: sb.x - 34, y: y0 });
+  pts.push({ x: sb.x, y: sb.y });
+  return pts;
 }
 
 /** Punto a una frazione f (0..1) di una spezzata, in proporzione alla lunghezza. */
@@ -220,10 +259,12 @@ export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, Math
 
 const STOP_TEXT = { ok: 'bloccato, come previsto', warn: 'nessuna risposta', crit: 'nessuna risposta' } as const;
 
-/** Nota sull'esito del pacchetto: scartato, passato quando non dovrebbe, rifiutato. */
+/** Nota sull'esito del pacchetto, come la scrive il motore; per i pacchetti scartati senza nota, una generica. */
 export function packetNote(p: TrafficPacket): { text: string; sev: 'ok' | 'warn' | 'crit' } | undefined {
+  if (p.note) return { text: p.note, sev: p.sev ?? 'warn' };
   if (p.stopAt !== undefined) return { text: STOP_TEXT[p.sev ?? 'warn'], sev: p.sev ?? 'warn' };
-  if (p.sev === 'crit') return { text: 'passa, ma non dovrebbe', sev: 'crit' };
-  if (p.sev === 'warn') return { text: 'risponde con un rifiuto', sev: 'warn' };
   return undefined;
 }
+
+/** Il nodo dove segnalare un pacchetto passato da una zona che doveva essere isolata: il dispositivo isolato. */
+export const breachNode = (p: TrafficPacket) => (p.dir === 'response' ? p.hops[0] : p.hops[reachOf(p)]);

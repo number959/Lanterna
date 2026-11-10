@@ -6,7 +6,7 @@ import { buildNetworkMap, KIND_LABEL, packetTime, trafficScenarios, trafficSize 
 import type { Analysis, MapNode, NetworkMap, PacketProto, Scan, TrafficPacket, TrafficScenario, TrafficStep } from '../engine';
 import { DeviceArt } from './deviceart';
 import { useWidth } from './hooks';
-import { advance, along, CHAR_W, clip, packetNote, progressOf, reachOf, route, stageLayout, timeline } from './trafficlayout';
+import { advance, along, breachNode, CHAR_W, clip, packetNote, progressOf, reachOf, route, stageLayout, timeline } from './trafficlayout';
 import type { Entry, Pt, StageLayout } from './trafficlayout';
 import './traffic.css';
 
@@ -219,14 +219,14 @@ function Explorer({ map, scenarios }: { map: NetworkMap; scenarios: TrafficScena
                 <option value={2}>2×</option>
               </select>
             </label>
-            <button type="button" className="tx-btn" onClick={() => goStep(stepIdx - 1)} disabled={stepIdx === 0} aria-label="Passo precedente">
+            <button type="button" className="tx-btn" onClick={() => stepIdx > 0 && goStep(stepIdx - 1)} aria-disabled={stepIdx === 0} aria-label="Passo precedente">
               <ChevronLeft size={17} aria-hidden />
             </button>
             <button type="button" className="tx-btn primary" onClick={toggle}>
               {playing ? <Pause size={15} aria-hidden /> : ended ? <RotateCcw size={15} aria-hidden /> : <Play size={15} aria-hidden />}
               {playing ? 'Pausa' : ended ? 'Di nuovo' : started ? 'Riprendi' : 'Riproduci'}
             </button>
-            <button type="button" className="tx-btn" onClick={() => goStep(stepIdx + 1)} disabled={stepIdx >= sc.steps.length - 1} aria-label="Passo successivo">
+            <button type="button" className="tx-btn" onClick={() => stepIdx < sc.steps.length - 1 && goStep(stepIdx + 1)} aria-disabled={stepIdx >= sc.steps.length - 1} aria-label="Passo successivo">
               <ChevronRight size={17} aria-hidden />
             </button>
             <button
@@ -236,7 +236,7 @@ function Explorer({ map, scenarios }: { map: NetworkMap; scenarios: TrafficScena
                 setCur({ i: 0, t: 0 });
                 setPlaying(false);
               }}
-              disabled={!started}
+              aria-disabled={!started}
               aria-label="Ricomincia dall'inizio"
             >
               <RotateCcw size={15} aria-hidden />
@@ -462,8 +462,8 @@ function PacketMark({ pkt, layout, prog, vertical }: { pkt: TrafficPacket; layou
   const color = PROTO_COLOR[pkt.proto];
   const cw = pkt.label.length * 7.2 + 16;
   const stopAt = prog >= 1 && pkt.stopAt !== undefined ? layout.slots.get(pkt.hops[end]) : undefined;
-  // Passato anche se non dovrebbe: un segnale rosso sul nodo dove arriva.
-  const alarm = prog >= 1 && pkt.stopAt === undefined && pkt.sev === 'crit' ? layout.slots.get(pkt.hops[end]) : undefined;
+  // Passato da una zona che doveva essere isolata: un segnale rosso sul dispositivo isolato.
+  const alarm = prog >= 1 && pkt.breach ? layout.slots.get(breachNode(pkt)) : undefined;
   // Etichetta sopra il pacchetto; sullo schermo stretto, a destra.
   const cx = vertical ? Math.min(layout.w - cw - 4, p.x + 22) : Math.min(layout.w - cw - 6, Math.max(6, p.x - cw / 2));
   const cy = vertical ? p.y - 36 : p.y - 44;
@@ -550,8 +550,8 @@ function SequenceView({ step, pkt, prog, node, width }: { step: TrafficStep; pkt
               return f <= frac ? <circle key={hp} cx={x(hp)} cy={y + 12 * f} r={3.2} fill={color} /> : null;
             })}
             {frac >= 1 && p.stopAt === undefined && <path d={`M${b} ${y + 12} l${b >= a ? -9 : 9} -4.5 l0 9 z`} fill={color} />}
-            {frac >= 1 && p.stopAt === undefined && p.sev === 'crit' && (
-              <g className="tx-x crit" transform={`translate(${b + (b >= a ? -22 : 22)} ${y + 12})`}>
+            {frac >= 1 && p.breach && (
+              <g className="tx-x crit" transform={`translate(${x(breachNode(p)) + (p.dir === 'response' ? (b >= a ? 18 : -18) : b >= a ? -22 : 22)} ${p.dir === 'response' ? y + 4 : y + 12})`}>
                 <circle r="8" />
                 <path d="M0 -4 V1 M0 3.8 V4" />
               </g>
