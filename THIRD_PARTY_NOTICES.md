@@ -314,6 +314,68 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
+## github.com/gosnmp/gosnmp (v1.47.0)
+
+```
+Copyright 2012-2020 The GoSNMP Authors. All rights reserved.  Use of this
+rights reserved.  Use of this source code is governed by a BSD-style
+license that can be found in the LICENSE file.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Parts of the gosnmp code are from GoLang ASN.1 Library
+(as marked in the source code).
+For those part of code the following license applies:
+
+Copyright (c) 2009 The Go Authors. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
 ## github.com/jchv/go-webview2 (v0.0.0-20250406165304-0bcfea011047)
 
 ```
@@ -1002,6 +1064,20 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+## Elenco pubblico dei prefissi MAC della IEEE Registration Authority (MA-L, MA-M, MA-S)
+
+Elenco pubblico dei prefissi MAC (MA-L, MA-M, MA-S) della IEEE Registration Authority, scaricato il 2026-11-10 (UTC) da https://standards-oui.ieee.org/oui/oui.csv, https://standards-oui.ieee.org/oui28/mam.csv e https://standards-oui.ieee.org/oui36/oui36.csv. L'agente lo incorpora in forma ridotta (windows/internal/oui/oui.txt.gz, generato da scripts/oui.sh) per riconoscere il produttore di un dispositivo dal suo indirizzo MAC senza collegarsi a Internet: per ogni blocco solo il prefisso e il nome dell'organizzazione, abbreviato (senza forme societarie, per i produttori più comuni con il nome del marchio), senza indirizzi; esclusi i blocchi "Private" e quelli che la IEEE Registration Authority suddivide in blocchi più piccoli. Voci: MA-L 39906, MA-M 6601, MA-S 7235.
+
+Le pagine della IEEE Registration Authority (https://standards.ieee.org/products-programs/regauth/) offrono l'elenco come pubblico, da scaricare, e non indicano una licenza: condizioni d'uso da verificare. Lo stesso elenco è ridistribuito, per esempio, dal pacchetto `ieee-data` di Debian (https://packages.debian.org/sid/ieee-data), il cui file di copyright attribuisce alla IEEE la dichiarazione che segue; sulle pagine attuali della IEEE non compare: da verificare.
+
+```
+IEEE does not assert any copyright in the OUI Public Listing or attempt
+to restrict distribution of the listing in any way. The IEEE
+Registration Authority does, however, strongly encourage those who use
+the list to obtain it directly from IEEE (and to update it on a regular
+basis) to ensure the integrity of the information.
 ```
 
 # Programmi inclusi nella cartella strumenti

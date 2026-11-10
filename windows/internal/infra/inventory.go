@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"lanterna/internal/oui"
 	"lanterna/internal/scan"
 	"lanterna/internal/winapi"
 )
@@ -26,6 +27,11 @@ type InventoryRequest struct {
 	Adapter string
 	Gateway string
 	SelfMAC string
+	// Remote: CIDR è un'altra sottorete, raggiunta attraverso il router (per
+	// esempio una VLAN scoperta). Valgono solo ping, DNS inverso e NetBIOS:
+	// le domande mDNS e SSDP restano nella rete del PC e la tabella ARP non
+	// contiene i dispositivi oltre il router.
+	Remote bool
 }
 
 // Progress riceve l'avanzamento: phase è "ping" o "nomi".
@@ -87,7 +93,9 @@ func printable(s string) string {
 // Inventory censisce la sottorete del PC: ping a ogni indirizzo con ritmo
 // prudente, tabella ARP (molti dispositivi che ignorano il ping rispondono
 // comunque alla richiesta ARP che lo precede), poi nome DNS inverso e nome
-// NetBIOS dei soli dispositivi trovati. Non apre connessioni verso le porte.
+// NetBIOS dei soli dispositivi trovati. Durante il ping una ricerca SSDP e
+// una domanda mDNS raccolgono i tipi di dispositivo e di servizio annunciati.
+// Non apre connessioni verso le porte.
 func Inventory(ctx context.Context, req InventoryRequest, p Prims, opt Options, progress Progress) (*scan.Inventory, error) {
 	start := time.Now()
 	subnet, hosts, note, err := Plan(req.CIDR)
@@ -127,6 +135,17 @@ func Inventory(ctx context.Context, req InventoryRequest, p Prims, opt Options, 
 	var mu sync.Mutex
 	found := map[string]*scan.InventoryHost{}
 
+	// 0. In parallelo al ping: ricerca SSDP e domanda mDNS dalla scheda
+	// esaminata, con qualche secondo di ascolto delle risposte.
+	var sigs map[string]*signals
+	discovered := make(chan struct{})
+	go func() {
+		defer close(discovered)
+		if !req.Remote {
+			sigs = discover(ctx, p, self, subnet, opt)
+		}
+	}()
+
 	// 1. Ping: un pinger per lavoratore, una richiesta per intervallo.
 	jobs := make(chan net.IP)
 	var wg sync.WaitGroup
@@ -149,8 +168,12 @@ func Inventory(ctx context.Context, req InventoryRequest, p Prims, opt Options, 
 					r := pg.Echo(ip, 64, 32, false, opt.PingTimeout)
 					if r.Status == winapi.EchoOK && (r.From == nil || r.From.Equal(ip)) {
 						v := ms(r.RTT)
+						h := &scan.InventoryHost{IP: ip.String(), RttMs: &v}
+						if r.TTL > 0 && r.TTL <= 255 {
+							h.TTL = r.TTL
+						}
 						mu.Lock()
-						found[ip.String()] = &scan.InventoryHost{IP: ip.String(), RttMs: &v}
+						found[ip.String()] = h
 						mu.Unlock()
 					}
 				}
@@ -171,6 +194,7 @@ func Inventory(ctx context.Context, req InventoryRequest, p Prims, opt Options, 
 	close(jobs)
 	pc.stop()
 	wg.Wait()
+	<-discovered
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("inventario interrotto: %w", err)
 	}
@@ -192,13 +216,19 @@ func Inventory(ctx context.Context, req InventoryRequest, p Prims, opt Options, 
 			}
 		}
 	}
-	found[self.String()] = &scan.InventoryHost{IP: self.String(), MAC: req.SelfMAC, Self: true}
+	if !req.Remote {
+		found[self.String()] = &scan.InventoryHost{IP: self.String(), MAC: req.SelfMAC, Self: true}
+	}
+	attachSignals(found, sigs, subnet)
 	if g := found[req.Gateway]; g != nil {
 		g.Gateway = true
 	}
 	list := make([]*scan.InventoryHost, 0, len(found))
 	for _, h := range found {
 		h.RandomMAC = h.MAC != "" && RandomMAC(h.MAC)
+		if h.MAC != "" && !h.RandomMAC {
+			h.Vendor = oui.Lookup(h.MAC)
+		}
 		list = append(list, h)
 	}
 	sort.Slice(list, func(i, j int) bool { return ipToU32(net.ParseIP(list[i].IP)) < ipToU32(net.ParseIP(list[j].IP)) })
@@ -221,7 +251,9 @@ func Inventory(ctx context.Context, req InventoryRequest, p Prims, opt Options, 
 					cancel()
 				}
 				if p.NetBIOS != nil && !h.Self {
-					h.NetBIOS = printable(p.NetBIOS(ctx, ip, opt.NameTimeout))
+					st := p.NetBIOS(ctx, ip, opt.NameTimeout)
+					h.NetBIOS = printable(st.Name)
+					h.Roles = st.Roles
 				}
 				report("nomi", int(atomic.AddInt32(&nd, 1)), len(list))
 			}

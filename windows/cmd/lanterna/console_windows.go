@@ -3,6 +3,8 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"os"
 
 	"golang.org/x/sys/windows"
@@ -22,4 +24,21 @@ func attachConsole() {
 	if f, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
 		os.Stdout, os.Stderr = f, f
 	}
+}
+
+// readSecret chiede un segreto senza mostrarlo: se lo standard input è la
+// console, si spegne l'eco dei caratteri per la durata della lettura.
+func readSecret(prompt string, in io.Reader) (string, error) {
+	fmt.Fprint(os.Stderr, prompt)
+	h := windows.Handle(os.Stdin.Fd())
+	var mode uint32
+	if in == os.Stdin && windows.GetConsoleMode(h, &mode) == nil {
+		if windows.SetConsoleMode(h, mode&^windows.ENABLE_ECHO_INPUT) == nil {
+			defer func() {
+				_ = windows.SetConsoleMode(h, mode)
+				fmt.Fprintln(os.Stderr)
+			}()
+		}
+	}
+	return readLine(in)
 }

@@ -1099,3 +1099,19 @@ func TestCrashesEndpoint(t *testing.T) {
 		t.Fatalf("da un altro nome: %d", r.Code)
 	}
 }
+
+func TestRemoteInventoryRequest(t *testing.T) {
+	local := infra.InventoryRequest{CIDR: "10.20.30.57/24", Adapter: "Wi-Fi", Gateway: "10.20.30.1", SelfMAC: "aa:bb:cc:dd:ee:ff"}
+	r, err := remoteRequest(local, "10.20.50.0/24")
+	if err != nil || r.CIDR != "10.20.50.0/24" || !r.Remote || r.Adapter != "Wi-Fi" || r.Gateway != "" {
+		t.Fatalf("sottorete remota: %+v %v", r, err)
+	}
+	if r, err := remoteRequest(local, "10.20.30.0/24"); err != nil || r.Remote || r.CIDR != local.CIDR {
+		t.Fatalf("la rete del PC resta un inventario normale: %+v %v", r, err)
+	}
+	for _, bad := range []string{"8.8.8.0/24", "10.0.0.0/8", "10.20.50.7/32", "nonsense", "2001:db8::/64"} {
+		if _, err := remoteRequest(local, bad); err == nil {
+			t.Errorf("%q accettata", bad)
+		}
+	}
+}

@@ -8,6 +8,7 @@
 //	polaris-cli.exe sensors            monitor dei sensori
 //	polaris-cli.exe space [C:]         cosa occupa spazio su un'unità
 //	polaris-cli.exe speedtest          test di velocità di Internet con M-Lab
+//	polaris-cli.exe discover ...       altre reti e VLAN (rotte, switch, AD, SNMP)
 //	polaris-cli.exe version
 //
 // Polaris.exe è compilato come applicazione grafica, polaris-cli.exe per la
@@ -43,11 +44,14 @@ import (
 	"lanterna/internal/engine"
 	"lanterna/internal/gui"
 	"lanterna/internal/infra"
+	"lanterna/internal/l2disc"
+	"lanterna/internal/netdisc"
 	"lanterna/internal/pcinfo"
 	"lanterna/internal/probe"
 	"lanterna/internal/scan"
 	"lanterna/internal/sensors"
 	"lanterna/internal/server"
+	"lanterna/internal/snmp"
 	"lanterna/internal/space"
 	"lanterna/internal/speedtest"
 	"lanterna/internal/survey"
@@ -128,6 +132,25 @@ Uso:
       --accetto                  accetta il consenso e avvia il test (circa 30 secondi,
                                  fino a circa 500 MB di dati)
       --json                     stampa il risultato in JSON
+  polaris-cli discover routes    altre reti private note al PC (tabella di instradamento,
+                                 comprese le rotte ricevute dal DHCP)
+  polaris-cli discover l2        ascolta gli annunci che lo switch manda alla porta del PC
+                                 (LLDP, CDP, DTP, Spanning Tree): switch, porta, VLAN della
+                                 porta e della voce, altre VLAN. Polaris non trasmette nulla.
+                                 Serve il cavo e il Prompt avviato come amministratore
+      --secondi N                durata da 10 a 180 secondi (predefinita 61)
+  polaris-cli discover ad        sottoreti definite in Active Directory (Siti e servizi),
+                                 solo per i PC in un dominio
+  polaris-cli discover snmp IP   legge in sola lettura uno switch o un router della rete
+                                 interna con le tue credenziali SNMP: VLAN, reti, vicini
+                                 LLDP, tabella ARP, indirizzi MAC per porta. Le credenziali
+                                 si scrivono quando richieste e non vengono mostrate né
+                                 salvate (oppure POLARIS_SNMP_COMMUNITY, POLARIS_SNMP_USER,
+                                 POLARIS_SNMP_AUTH_PASS, POLARIS_SNMP_PRIV_PASS)
+      --autorizzato              conferma di essere autorizzato a interrogare il dispositivo
+      --v3                       SNMPv3 (predefinito SNMPv2c)
+      --auth SHA256|SHA|...      autenticazione SNMPv3; --priv AES|DES cifratura
+  polaris-cli discover ... --json  stampa il risultato in JSON
   polaris-cli tools status       versioni portable scaricate (su questo PC e nel kit)
   polaris-cli tools kit [ID...]  prepara il kit per l'uso senza Internet: scarica dai
                                  siti ufficiali e verifica i programmi nella cartella
@@ -183,6 +206,8 @@ func main() {
 		err = runWifiSurvey(args[1:])
 	case args[0] == "speedtest":
 		err = runSpeedTest(args[1:])
+	case args[0] == "discover":
+		err = runDiscover(args[1:])
 	case args[0] == "version" || args[0] == "--version":
 		eng, e := engine.Load(nil)
 		ev := "non incluso"
@@ -344,6 +369,13 @@ func startServer(port int) (*server.Server, string, error) {
 		OpenTool:   func(id, target string) error { return tools.Open(id, target, fetcher) },
 		OpenRouter: tools.OpenRouter,
 		Survey:     survey.Sample,
+		ListenL2:   l2disc.Listen,
+		ADSubnets: func(ctx context.Context) netdisc.ADSubnets {
+			return netdisc.ADSubnetsOf(ctx, winapi.Domain())
+		},
+		SNMP: func(ctx context.Context, target string, cr snmp.Creds, p func(string)) (*snmp.Result, error) {
+			return snmp.Collect(ctx, target, cr, snmp.Prudent, p)
+		},
 		SpeedTest: func(ctx context.Context, p func(speedtest.Progress)) (*scan.SpeedTest, error) {
 			opt := speedOptions(c)
 			opt.Progress = p

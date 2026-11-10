@@ -28,7 +28,11 @@ type EchoResult struct {
 	Status EchoStatus
 	From   net.IP
 	RTT    time.Duration
-	Err    error
+	// TTL è il TTL IP della risposta (solo con EchoOK; 0 se non disponibile):
+	// il valore di partenza del dispositivo (spesso 64, 128 o 255) meno i
+	// router attraversati.
+	TTL int
+	Err error
 }
 
 // Pinger invia echo ICMP; ogni goroutine dovrebbe usarne uno proprio.

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"lanterna/internal/netdisc"
 	"lanterna/internal/pcinfo"
 	"lanterna/internal/probe"
 	"lanterna/internal/scan"
@@ -35,6 +36,9 @@ type Platform interface {
 	// durata indicata.
 	SampleLoad(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo)
 }
+
+// readRoutes legge la tabella di instradamento (sostituibile nei test).
+var readRoutes = netdisc.Routes
 
 // Native è la piattaforma reale (Windows; altrove ogni misura fallisce con
 // un errore esplicito).
@@ -423,6 +427,10 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 			return err
 		}
 		s.LAN = &scan.LANData{Neighbors: n}
+		// Le rotte verso le altre reti interne: una lettura locale, nessun pacchetto.
+		if r, err := readRoutes(); err == nil {
+			s.LAN.Routes = r
+		}
 		if s.Gateway != nil {
 			for _, x := range n {
 				if x.IP == s.Gateway.IP {

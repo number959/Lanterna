@@ -114,7 +114,13 @@ func (p *icmpPinger) Echo(dst net.IP, ttl, size int, df bool, timeout time.Durat
 	if rt := time.Duration(r.RoundTripTime) * time.Millisecond; rt > rtt {
 		rtt = rt
 	}
-	return classify(r.Status, from, rtt, nil)
+	res := classify(r.Status, from, rtt, nil)
+	if res.Status == EchoOK {
+		// Options riporta i campi dell'intestazione IP della risposta: è il
+		// TTL che mostra anche ping.exe ("TTL=64").
+		res.TTL = int(r.Options.TTL)
+	}
+	return res
 }
 
 func classify(status uint32, from net.IP, rtt time.Duration, err error) EchoResult {

@@ -437,6 +437,20 @@ type Neighbor struct {
 
 type LANData struct {
 	Neighbors []Neighbor `json:"neighbors"`
+	// Routes sono le rotte verso le reti private della tabella di
+	// instradamento (comprese quelle collegate al PC); assenti se non lette.
+	Routes []Route `json:"routes,omitempty"`
+}
+
+// Route è una rotta IPv4 verso un'altra rete privata.
+type Route struct {
+	// Prefix è la rete di destinazione in notazione CIDR ("10.20.50.0/24").
+	Prefix string `json:"prefix"`
+	// NextHop è il router a cui va il traffico; vuoto per le reti collegate.
+	NextHop string `json:"nextHop,omitempty"`
+	Metric  uint32 `json:"metric,omitempty"`
+	// Origin: manuale (statica o dai criteri) | dhcp | rete collegata | altro.
+	Origin string `json:"origin,omitempty"`
 }
 
 type FirewallProfile struct {
@@ -457,11 +471,19 @@ type InventoryHost struct {
 	IP        string   `json:"ip"`
 	MAC       string   `json:"mac,omitempty"`
 	RandomMAC bool     `json:"randomMac,omitempty"` // indirizzo amministrato localmente (MAC casuale o virtuale)
+	Vendor    string   `json:"vendor,omitempty"`    // produttore dal prefisso del MAC (elenco IEEE incorporato)
 	Name      string   `json:"name,omitempty"`      // DNS inverso
 	NetBIOS   string   `json:"netbios,omitempty"`
 	RttMs     *float64 `json:"rttMs,omitempty"` // assente = non ha risposto al ping (visto solo via ARP)
 	Self      bool     `json:"self,omitempty"`
 	Gateway   bool     `json:"gateway,omitempty"`
+	// Segnali per riconoscere il tipo di dispositivo, raccolti senza aprire
+	// connessioni verso le sue porte.
+	TTL      int      `json:"ttl,omitempty"`      // TTL IP grezzo della risposta al ping (in partenza di solito 64, 128 o 255)
+	Services []string `json:"services,omitempty"` // tipi di servizio DNS-SD annunciati via mDNS ("_ipp._tcp"): mai nomi di istanze o di host
+	UPnP     []string `json:"upnp,omitempty"`     // tipi URN di dispositivi e servizi dalle risposte SSDP
+	Server   string   `json:"server,omitempty"`   // intestazione SERVER delle risposte SSDP
+	Roles    []string `json:"roles,omitempty"`    // ruoli dai nomi NetBIOS: workstation, file-server, domain-controller, master-browser
 }
 
 // Inventory è il censimento della sottorete locale.

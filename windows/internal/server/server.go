@@ -6,7 +6,8 @@
 //	                    "busy": "scan", o se un'altra attività lo impedisce)
 //	GET  /api/progress  avanzamento reale dell'analisi in corso
 //	GET  /api/ping      un singolo ping (target=gateway|internet) per il monitor
-//	POST /api/inventory avvia l'inventario della sottorete ({"authorized": true})
+//	POST /api/inventory avvia l'inventario della sottorete ({"authorized": true}; con
+//	                    "subnet" un'altra sottorete privata, attraverso il router)
 //	GET  /api/inventory avanzamento e ultimo inventario
 //	POST /api/reach     verifiche di raggiungibilità ({"targets": [...]})
 //	GET  /api/reach     ultime verifiche (204 se nessuna)
@@ -42,6 +43,11 @@
 //	POST /api/speedtest avvia il test di velocità di Internet con M-Lab
 //	                    ({"consent": true}); GET avanzamento ed esito,
 //	                    DELETE interrompe (vedi speedtest.go)
+//	POST /api/discover/l2|ad|snmp scoperta delle altre reti e delle VLAN:
+//	                    ascolto degli annunci degli switch, sottoreti di
+//	                    Active Directory, lettura SNMP in sola lettura;
+//	                    GET avanzamento ed esito, DELETE interrompe
+//	                    (vedi discover.go)
 //
 // Ascolta solo su 127.0.0.1 e rifiuta richieste con Host diverso (difesa dal
 // DNS rebinding) e POST provenienti da altre origini (difesa dal CSRF). Le
@@ -54,6 +60,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"maps"
 	"mime"
@@ -73,8 +80,11 @@ import (
 	"lanterna/internal/cpuclock"
 	"lanterna/internal/defender"
 	"lanterna/internal/infra"
+	"lanterna/internal/l2disc"
+	"lanterna/internal/netdisc"
 	"lanterna/internal/scan"
 	"lanterna/internal/sensors"
+	"lanterna/internal/snmp"
 	"lanterna/internal/space"
 	"lanterna/internal/speedtest"
 	"lanterna/internal/survey"
@@ -127,6 +137,14 @@ type Server struct {
 	// leggere gli stessi file due volte insieme.
 	Crashes   func(ctx context.Context) (*scan.CrashData, error)
 	crashesMu sync.Mutex
+	// Scoperta delle altre reti e delle VLAN (nil = non disponibile):
+	// ascolto passivo degli annunci degli switch, sottoreti di Active
+	// Directory e lettura SNMP con le credenziali del tecnico.
+	ListenL2  func(ctx context.Context, d time.Duration) l2disc.Discovery
+	ADSubnets func(ctx context.Context) netdisc.ADSubnets
+	SNMP      func(ctx context.Context, target string, cr snmp.Creds, progress func(step string)) (*snmp.Result, error)
+	disc      discoverJobs
+
 	// Survey misura il Wi-Fi in un punto per la mappa per stanza (nil = non
 	// disponibile). Non si sovrappone a un'analisi o a un inventario.
 	Survey func(ctx context.Context, opt survey.Options) (*scan.SurveySample, error)
@@ -388,6 +406,25 @@ func (s *Server) network() (infra.InventoryRequest, error) {
 		}
 	}
 	return infra.InventoryRequest{}, errors.New("nessuna scheda di rete collegata con un indirizzo IPv4 e un gateway")
+}
+
+// remoteRequest prepara l'inventario di un'altra sottorete privata: la rete
+// in notazione CIDR (prefisso da /22 a /30), diversa da quella del PC.
+func remoteRequest(local infra.InventoryRequest, subnet string) (infra.InventoryRequest, error) {
+	ip, n, err := net.ParseCIDR(strings.TrimSpace(subnet))
+	if err != nil || ip.To4() == nil {
+		return infra.InventoryRequest{}, fmt.Errorf("sottorete non valida: %q (serve una rete IPv4 come 10.20.50.0/24)", subnet)
+	}
+	if !infra.Private(ip) {
+		return infra.InventoryRequest{}, fmt.Errorf("%s non è una rete privata: l'inventario si esegue solo nelle reti locali", n)
+	}
+	if ones, _ := n.Mask.Size(); ones < infra.MaxPrefix || ones > 30 {
+		return infra.InventoryRequest{}, fmt.Errorf("la sottorete %s è troppo grande o troppo piccola: si esaminano reti da /%d a /30", n, infra.MaxPrefix)
+	}
+	if lip, ln, err := net.ParseCIDR(local.CIDR); err == nil && (ln.Contains(ip) || n.Contains(lip)) {
+		return local, nil // è la rete del PC
+	}
+	return infra.InventoryRequest{CIDR: n.String(), Adapter: local.Adapter, Remote: true}, nil
 }
 
 // WaitInventory attende la fine dell'inventario in corso (usato dai test).
@@ -808,6 +845,9 @@ func (s *Server) Handler() http.Handler {
 		}
 		var body struct {
 			Authorized bool `json:"authorized"`
+			// Subnet: un'altra sottorete privata da esaminare attraverso il
+			// router (per esempio una VLAN scoperta); vuota = la rete del PC.
+			Subnet string `json:"subnet"`
 		}
 		if code, err := readJSON(w, r, &body); err != nil {
 			writeJSON(w, code, map[string]string{"error": err.Error()})
@@ -818,6 +858,9 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		req, err := s.network()
+		if err == nil && body.Subnet != "" {
+			req, err = remoteRequest(req, body.Subnet)
+		}
 		if err == nil {
 			_, _, _, err = infra.Plan(req.CIDR)
 		}
@@ -1364,6 +1407,7 @@ func (s *Server) Handler() http.Handler {
 		}))
 	}
 	s.surveyRoutes(mux)
+	s.discoverRoutes(mux)
 	return guard(mux)
 }
 

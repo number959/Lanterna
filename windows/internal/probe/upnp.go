@@ -27,6 +27,10 @@ var searchTargets = []string{
 	"urn:schemas-upnp-org:device:InternetGatewayDevice:2",
 }
 
+// MSearch costruisce la ricerca SSDP per il tipo st (MX 2): la usa anche
+// l'inventario della sottorete, con "ssdp:all".
+func MSearch(st string) []byte { return mSearch(st) }
+
 func mSearch(st string) []byte {
 	return []byte("M-SEARCH * HTTP/1.1\r\n" +
 		"HOST: 239.255.255.250:1900\r\n" +

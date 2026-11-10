@@ -20,6 +20,7 @@ var fast = Options{Interval: time.Microsecond, Workers: 4, PingTimeout: time.Mil
 // Rete finta: alcuni host rispondono al ping, altri solo all'ARP.
 type fakeLAN struct {
 	alive     map[string]time.Duration
+	ttl       map[string]int // TTL della risposta, per indirizzo
 	inFlight  int32
 	maxFlight int32
 	echoes    int32
@@ -41,7 +42,7 @@ func (p fakePinger) Echo(dst net.IP, ttl, size int, df bool, timeout time.Durati
 	atomic.AddInt32(&p.l.echoes, 1)
 	time.Sleep(200 * time.Microsecond)
 	if d, ok := p.l.alive[dst.String()]; ok {
-		return winapi.EchoResult{Status: winapi.EchoOK, From: dst, RTT: d}
+		return winapi.EchoResult{Status: winapi.EchoOK, From: dst, RTT: d, TTL: p.l.ttl[dst.String()]}
 	}
 	return winapi.EchoResult{Status: winapi.EchoTimeout}
 }
@@ -63,11 +64,11 @@ func (l *fakeLAN) prims() Prims {
 			}
 			return nil, errors.New("no PTR")
 		},
-		NetBIOS: func(ctx context.Context, ip net.IP, timeout time.Duration) string {
+		NetBIOS: func(ctx context.Context, ip net.IP, timeout time.Duration) NBStatus {
 			if ip.String() == "192.168.10.30" {
-				return "STAMPA-PIANO2 "
+				return NBStatus{Name: "STAMPA-PIANO2 ", Roles: []string{"workstation", "file-server"}}
 			}
-			return ""
+			return NBStatus{}
 		},
 	}
 }
@@ -138,7 +139,7 @@ func TestInventory(t *testing.T) {
 	if s := got["192.168.10.50"]; !s.Self || s.MAC != "3c:58:c2:aa:bb:cc" {
 		t.Fatalf("questo PC: %+v", s)
 	}
-	if p := got["192.168.10.30"]; p.RttMs != nil || p.NetBIOS != "STAMPA-PIANO2" || p.RandomMAC {
+	if p := got["192.168.10.30"]; p.RttMs != nil || p.NetBIOS != "STAMPA-PIANO2" || p.RandomMAC || strings.Join(p.Roles, ",") != "workstation,file-server" {
 		t.Fatalf("stampante vista solo via ARP: %+v", p)
 	}
 	if a := got["192.168.10.12"]; a.Name != "ambulatorio-3.clinica.local" {
@@ -299,9 +300,9 @@ func TestNBStat(t *testing.T) {
 	resp = append(resp, entry("PC-ACCETTAZIONE", 0x00, 0x0400)...)
 	resp = append(resp, entry("PC-ACCETTAZIONE", 0x20, 0x0400)...)
 	resp = append(resp, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55)
-	name, err := parseNBStat(resp)
-	if err != nil || name != "PC-ACCETTAZIONE" {
-		t.Fatalf("%q %v", name, err)
+	st, err := parseNBStat(resp)
+	if err != nil || st.Name != "PC-ACCETTAZIONE" || strings.Join(st.Roles, ",") != "workstation,file-server" {
+		t.Fatalf("%+v %v", st, err)
 	}
 	if _, err := parseNBStat(q); err == nil {
 		t.Fatal("una richiesta non è una risposta")

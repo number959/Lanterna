@@ -7,6 +7,10 @@
 // reti sanitarie ci sono dispositivi medicali che il traffico inatteso può
 // rallentare o bloccare. Nessuna funzione esegue scansioni di porte: l'unica
 // connessione TCP è quella verso la porta che l'utente indica per una verifica.
+// Oltre a ping, NetBIOS e DNS inverso, l'inventario manda solo poche domande
+// ai gruppi multicast della rete locale, le stesse che PC e telefoni inviano
+// di continuo: una ricerca SSDP e una domanda mDNS, con un secondo giro per i
+// tipi di servizio annunciati; i dispositivi rispondono in unicast al PC.
 package infra
 
 import (
@@ -27,9 +31,25 @@ type Prims struct {
 	Neighbors  func() ([]scan.Neighbor, error)
 	LookupAddr func(ctx context.Context, ip string) ([]string, error)
 	LookupHost func(ctx context.Context, host string) ([]string, error)
-	NetBIOS    func(ctx context.Context, ip net.IP, timeout time.Duration) string
+	NetBIOS    func(ctx context.Context, ip net.IP, timeout time.Duration) NBStatus
 	// Dial apre una connessione TCP e la chiude subito: restituisce il tempo di apertura.
 	Dial func(ctx context.Context, addr string, timeout time.Duration) (time.Duration, error)
+	// Multicast apre il socket per interrogare un gruppo multicast
+	// ("224.0.0.251:5353" per mDNS, "239.255.255.250:1900" per SSDP)
+	// dall'indirizzo IPv4 local della scheda esaminata.
+	Multicast func(local net.IP, group string) (MulticastConn, error)
+}
+
+// MulticastConn è il socket UDP con cui l'inventario invia una domanda a un
+// gruppo multicast e riceve le risposte unicast dei dispositivi.
+type MulticastConn interface {
+	// Send invia un pacchetto al gruppo.
+	Send(b []byte) error
+	// Receive attende un pacchetto fino a deadline e ne restituisce la
+	// lunghezza e il mittente; alla scadenza l'errore soddisfa
+	// errors.Is(err, os.ErrDeadlineExceeded).
+	Receive(buf []byte, deadline time.Time) (int, *net.UDPAddr, error)
+	Close() error
 }
 
 // Native restituisce le operazioni reali del sistema.
@@ -39,7 +59,8 @@ func Native() Prims {
 		Neighbors:  winapi.Neighbors,
 		LookupAddr: net.DefaultResolver.LookupAddr,
 		LookupHost: net.DefaultResolver.LookupHost,
-		NetBIOS:    NetBIOSName,
+		NetBIOS:    NetBIOSStatus,
+		Multicast:  listenMulticast,
 		Dial: func(ctx context.Context, addr string, timeout time.Duration) (time.Duration, error) {
 			d := net.Dialer{Timeout: timeout}
 			start := time.Now()
@@ -61,16 +82,20 @@ type Options struct {
 	PingTimeout time.Duration
 	DialTimeout time.Duration
 	NameTimeout time.Duration // DNS inverso e NetBIOS
+	// ListenWindow è l'ascolto delle risposte mDNS e SSDP, in parallelo al
+	// giro di ping (0 = valore predefinito, 3 secondi).
+	ListenWindow time.Duration
 }
 
 // Prudent è il ritmo predefinito: circa 30 richieste al secondo, otto alla
 // volta. Una sottorete /24 si esamina in una decina di secondi.
 var Prudent = Options{
-	Interval:    33 * time.Millisecond,
-	Workers:     8,
-	PingTimeout: 700 * time.Millisecond,
-	DialTimeout: 1500 * time.Millisecond,
-	NameTimeout: 900 * time.Millisecond,
+	Interval:     33 * time.Millisecond,
+	Workers:      8,
+	PingTimeout:  700 * time.Millisecond,
+	DialTimeout:  1500 * time.Millisecond,
+	NameTimeout:  900 * time.Millisecond,
+	ListenWindow: defaultListen,
 }
 
 var privateNets = func() []*net.IPNet {

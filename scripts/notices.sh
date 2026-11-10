@@ -55,6 +55,30 @@ OUT="$ROOT/THIRD_PARTY_NOTICES.md"
     echo
   done
   rm -rf "$MAPS"
+  # Dati incorporati nell'agente: l'elenco dei prefissi MAC della IEEE
+  # (scripts/oui.sh). Giorno del download, fonti e conteggi vengono
+  # dall'intestazione del file incorporato, così restano allineati.
+  oui_meta() { gzip -dc "$ROOT/windows/internal/oui/oui.txt.gz" | sed -n "s/^# $1: //p"; }
+  OUI_DATA=$(oui_meta scaricato)
+  OUI_FONTI=$(oui_meta fonte | paste -sd, - | sed 's/,\([^,]*\)$/ e \1/; s/,/, /g')
+  OUI_VOCI=$(oui_meta voci)
+  [ -n "$OUI_DATA" ] && [ -n "$OUI_FONTI" ] && [ -n "$OUI_VOCI" ] || { echo "Intestazione di windows/internal/oui/oui.txt.gz incompleta" >&2; exit 1; }
+  echo "## Elenco pubblico dei prefissi MAC della IEEE Registration Authority (MA-L, MA-M, MA-S)"
+  echo
+  echo "Elenco pubblico dei prefissi MAC (MA-L, MA-M, MA-S) della IEEE Registration Authority, scaricato il $OUI_DATA da $OUI_FONTI. L'agente lo incorpora in forma ridotta (windows/internal/oui/oui.txt.gz, generato da scripts/oui.sh) per riconoscere il produttore di un dispositivo dal suo indirizzo MAC senza collegarsi a Internet: per ogni blocco solo il prefisso e il nome dell'organizzazione, abbreviato (senza forme societarie, per i produttori più comuni con il nome del marchio), senza indirizzi; esclusi i blocchi \"Private\" e quelli che la IEEE Registration Authority suddivide in blocchi più piccoli. Voci: $OUI_VOCI."
+  echo
+  cat <<'EOF'
+Le pagine della IEEE Registration Authority (https://standards.ieee.org/products-programs/regauth/) offrono l'elenco come pubblico, da scaricare, e non indicano una licenza: condizioni d'uso da verificare. Lo stesso elenco è ridistribuito, per esempio, dal pacchetto `ieee-data` di Debian (https://packages.debian.org/sid/ieee-data), il cui file di copyright attribuisce alla IEEE la dichiarazione che segue; sulle pagine attuali della IEEE non compare: da verificare.
+
+```
+IEEE does not assert any copyright in the OUI Public Listing or attempt
+to restrict distribution of the listing in any way. The IEEE
+Registration Authority does, however, strongly encourage those who use
+the list to obtain it directly from IEEE (and to update it on a regular
+basis) to ensure the integrity of the information.
+```
+
+EOF
   # Programmi inclusi nella cartella strumenti (scripts/strumenti.sh): copie
   # originali con i testi delle licenze nella loro sottocartella License.
   mit() {
