@@ -1,0 +1,25 @@
+/* Dispositivi isometrici: tre toni di blu notte per le facce, contorni e
+   dettagli nel colore corrente (di solito il blu pervinca degli schemi). */
+.iso {
+  --iso-t: #1a2550;
+  --iso-l: #121b3d;
+  --iso-r: #0c1330;
+  --iso-hole: #070c20;
+}
+.iso-t, .iso-l, .iso-r { stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.iso-t { fill: var(--iso-t); }
+.iso-l { fill: var(--iso-l); }
+.iso-r { fill: var(--iso-r); }
+.iso-d { fill: none; stroke: currentColor; stroke-width: 1.1; stroke-linecap: round; opacity: 0.85; }
+.iso-d.faint { opacity: 0.45; }
+.iso-key { fill: none; stroke: currentColor; stroke-width: 0.7; opacity: 0.8; }
+.iso-pad { fill: none; stroke: currentColor; stroke-width: 0.9; opacity: 0.85; }
+.iso-screen { fill: #0a1233; stroke: currentColor; stroke-width: 1; }
+.iso-led { fill: currentColor; stroke: none; opacity: 0.95; }
+.iso-strip { fill: #9fc0ff; stroke: none; }
+.iso-port { fill: var(--iso-hole); stroke: currentColor; stroke-width: 0.9; }
+.iso-inset { fill: rgba(127, 156, 245, 0.18); stroke: currentColor; stroke-width: 0.9; }
+.iso-ant { stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.iso-ball { fill: currentColor; }
+.iso-cloud { fill: var(--iso-l); stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+.iso-mark { font: 700 13px var(--mono, monospace); fill: currentColor; }
