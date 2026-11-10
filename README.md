@@ -297,8 +297,9 @@ e **senza scansioni di porte**.
 - **Il traffico passo passo** (sotto la mappa, dalla 0.13.0): per sei azioni comuni (aprire un sito, ricevere l'indirizzo dal
   DHCP, un ping al router, il percorso verso Internet, i servizi verificati e le zone isolate, una stampa) i pacchetti che il
   protocollo prevede, con gli indirizzi, i tempi e gli esiti misurati dall'analisi (dove l'analisi ha visto un guasto, il
-  pacchetto si ferma lì): dispositivi disegnati a linee e pacchetti che viaggiano
-  con la loro etichetta, vista a sequenza, dettagli di ogni passo e tabella dei pacchetti come in un analizzatore di rete, con i
+  pacchetto si ferma lì): dispositivi disegnati a linee in prospettiva isometrica, che compaiono man mano mentre
+  l'inquadratura si allarga (all'inizio c'è solo il PC, con l'indirizzo del sito che si scrive), pacchetti che viaggiano
+  con la loro etichetta su due corsie per collegamento (andata e ritorno), vista a sequenza, dettagli di ogni passo e tabella dei pacchetti come in un analizzatore di rete, con i
   colori dei protocolli. I pacchetti verso una zona isolata si fermano al firewall; una risposta che arriva da una zona che
   doveva essere isolata è segnata in rosso. È una ricostruzione didattica: Polaris non registra il traffico e non invia nulla.
 - **Reti e VLAN** (dalla 0.13.0): le altre reti senza doverle scrivere, ognuna con la fonte da cui risulta. Oltre alle rotte del

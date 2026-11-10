@@ -76,8 +76,9 @@ COSA FA
   stessi access point) e i percorsi animati del traffico di questo PC.
   Sotto la mappa, "Il traffico passo passo" ricostruisce i pacchetti di un
   sito web, del DHCP, di un ping, del traceroute, dei servizi verificati e
-  di una stampa con gli indirizzi e i tempi dell'analisi: vista della rete,
-  vista a sequenza e tabella dei pacchetti. E' una ricostruzione didattica:
+  di una stampa con gli indirizzi e i tempi dell'analisi: vista della rete
+  in prospettiva (i dispositivi compaiono man mano e l'inquadratura si
+  allarga), vista a sequenza e tabella dei pacchetti. E' una ricostruzione didattica:
   Polaris non registra il traffico e non invia nulla.
   In Infrastruttura, "Reti e VLAN" trova le altre reti senza doverle
   scrivere: rotte del PC, annunci dello switch ascoltati per un minuto

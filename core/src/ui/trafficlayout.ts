@@ -386,7 +386,9 @@ export const bubbleW = (text: string) => 34 + text.length * 7.2;
 export const BUBBLE_H = 24;
 
 const LABEL_H = 30;
+/** Caratteri delle etichette considerati per l'inquadratura; sullo schermo possono essere di più, se c'è spazio. */
 const LABEL_MAX = 22;
+const LABEL_LONG = 30;
 
 /** Riquadro del disegno sullo schermo, attorno al punto a terra p con scala s. */
 export function glyphBox(p: Pt, s: number, top: number): Box {
@@ -459,10 +461,10 @@ const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y
 
 /**
  * I nodi sullo schermo con la telecamera data. Le etichette si accorciano
- * (con i puntini) se toccherebbero un altro disegno o un'altra etichetta, ma
- * gli indirizzi restano interi.
+ * (con i puntini) se toccherebbero un altro disegno, un'altra etichetta o il
+ * bordo del palco largo w, ma gli indirizzi restano interi.
  */
-export function frameScene(scene: IsoScene, ids: string[], info: (id: string) => IsoInfo, cam: Camera): Map<string, Placed> {
+export function frameScene(scene: IsoScene, ids: string[], info: (id: string) => IsoInfo, cam: Camera, w = Infinity): Map<string, Placed> {
   const s = cam.k * GLYPH;
   const out = new Map<string, Placed>();
   const glyphs = new Map<string, Box>();
@@ -478,11 +480,11 @@ export function frameScene(scene: IsoScene, ids: string[], info: (id: string) =>
     const p = toScreen(cam, q);
     const nf = info(id);
     const side = scene.sides.get(id) ?? 'left';
-    const full = Math.min(LABEL_MAX, Math.max(nf.name.length, nf.sub.length));
+    const full = Math.min(LABEL_LONG, Math.max(nf.name.length, nf.sub.length));
     const least = Math.min(full, Math.max(8, nf.sub.length));
     let chars = full;
     let box = labelBox(p, s, side, chars);
-    const clash = (b: Box) => labels.some((l) => hit(l, b)) || [...glyphs].some(([o, gb]) => o !== id && hit(gb, b));
+    const clash = (b: Box) => b.x0 < 0 || b.x1 > w || labels.some((l) => hit(l, b)) || [...glyphs].some(([o, gb]) => o !== id && hit(gb, b));
     while (chars > least && clash(box)) box = labelBox(p, s, side, --chars);
     labels.push(box);
     out.set(id, { p, s, side, chars, glyph: g, label: box });

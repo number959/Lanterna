@@ -548,7 +548,7 @@ function IsoView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const target = useMemo(() => sceneCamera(scene, ids, info, w, h, bubble), [scene, key, w, h]);
   const cam = useCamera(target, w, h, reduce, sc.id);
-  const placed = frameScene(scene, ids, info, cam);
+  const placed = frameScene(scene, ids, info, cam, w);
   const s = cam.k * 0.95;
 
   // Collegamenti: le coppie di nodi vicini nei pacchetti fin qui, orientate dal nodo più vicino al PC.

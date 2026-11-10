@@ -379,7 +379,7 @@ describe('scena isometrica', () => {
           const ids = [...scene.places.keys()].filter((id) => revealed(scene, id, es.length - 1, Infinity));
           expect(ids.length, sc.id).toBe(scene.places.size);
           const cam = sceneCamera(scene, ids, info, w, h);
-          const placed = frameScene(scene, ids, info, cam);
+          const placed = frameScene(scene, ids, info, cam, w);
           const where = (id: string) => `${sc.id} ${id} a ${w}px`;
           for (const [id, pl] of placed) {
             for (const b of [pl.glyph, pl.label]) {
