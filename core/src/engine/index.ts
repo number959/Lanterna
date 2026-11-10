@@ -197,3 +197,5 @@ export { buildNetworkMap, CELL_H, CELL_W, cidrText, inCidr, ipNum, layoutMap, pa
 export type { Cidr, FlowKind, LinkKind, MapFlow, MapLink, MapNode, MapSegment, NetworkMap, SegmentKind } from './topology';
 export { analyzeDiscovery, discoveredNets, netLabel, netsWithoutTargets, segmentationTargets, switchPort } from './discovery';
 export type { DiscoveredNet, SwitchPort } from './discovery';
+export { msText as trafficMs, packetTime, sizeText as trafficSize, trafficScenarios } from './traffic';
+export type { PacketProto, TrafficPacket, TrafficScenario, TrafficStep } from './traffic';

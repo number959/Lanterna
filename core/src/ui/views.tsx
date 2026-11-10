@@ -33,6 +33,7 @@ import { HexGauge } from './brand';
 import { guidesForAction } from '../guides';
 import { AnimatedNumber, FindingList, Segmented, SevBadge, SevIcon, Stat, TableWrap, fmtNum, sevColor, spotHandlers, useOpenGuide, useToast } from './components';
 import { NetMap } from './netmap';
+import { TrafficExplorer } from './traffic';
 import { Anim } from './anim';
 import { useFx } from './fx';
 import { useLocalState } from './hooks';
@@ -642,6 +643,13 @@ export function LanView({ scan, analysis: a, go, gwMacChange }: ViewProps) {
           </span>
         </div>
         <NetMap scan={scan} analysis={a} />
+      </m.section>
+      <m.section variants={rise} className="card tx-card">
+        <div className="card-head">
+          <h2>Il traffico passo passo</h2>
+          <span className="sub">che cosa passa in rete quando il PC apre un sito, riceve l'indirizzo, fa un ping o stampa</span>
+        </div>
+        <TrafficExplorer scan={scan} analysis={a} />
       </m.section>
       <m.div className="grid cols-2" variants={cascade(0.06)}>
         <m.section variants={rise} className="card">

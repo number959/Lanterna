@@ -30,6 +30,7 @@ import { demoScan } from '../src/demo/sample';
 import { BrandSymbol } from '../src/ui/brand';
 import { Segmented } from '../src/ui/components';
 import { NetMap } from '../src/ui/netmap';
+import { TrafficExplorer } from '../src/ui/traffic';
 
 /** Classe dark/light su <html> dal tema di chi guarda (data-theme, poi preferenza di sistema). */
 function syncTheme() {
@@ -54,7 +55,7 @@ function Preview() {
       <header className="pv-head">
         <BrandSymbol size={34} title="STARNET" />
         <div className="pv-titles">
-          <h1>Mappa della rete</h1>
+          <h1>Mappa della rete e traffico</h1>
           <p>Anteprima della versione 0.13.0 di STARNET Polaris, con i dati dimostrativi di una casa e di un poliambulatorio.</p>
         </div>
       </header>
@@ -74,6 +75,13 @@ function Preview() {
         </div>
         <NetMap key={demo} scan={scan} analysis={analysis} height={640} />
       </section>
+      <section className="card pv-card">
+        <div className="card-head">
+          <h2>Il traffico passo passo</h2>
+          <span className="sub">che cosa passa in rete quando il PC apre un sito, riceve l'indirizzo, fa un ping o stampa</span>
+        </div>
+        <TrafficExplorer key={demo} scan={scan} analysis={analysis} />
+      </section>
       <section className="pv-notes">
         <h2>Cosa mostra</h2>
         <ul>
@@ -85,6 +93,11 @@ function Preview() {
           <li>
             <b>Da dove passa il traffico</b> di questo PC: verso Internet, verso il server DNS e verso i servizi verificati. I percorsi bloccati come previsto
             dal firewall si fermano con un segnale di stop; quelli che passano anche se non dovrebbero sono in rosso.
+          </li>
+          <li>
+            <b>Il traffico passo passo</b>: per alcune azioni comuni (aprire un sito, ricevere l'indirizzo, un ping, il percorso verso Internet, i servizi
+            verificati, una stampa) i pacchetti che il protocollo prevede, con gli indirizzi e i tempi misurati dall'analisi: vista della rete, vista a
+            sequenza e tabella dei pacchetti come in un analizzatore di rete. È una ricostruzione didattica, non una registrazione del traffico.
           </li>
           <li>
             <b>Le zone</b>: la rete del PC, le altre sottoreti e VLAN scoperte e le reti Wi-Fi trasmesse dagli stessi access point, che di solito sono VLAN

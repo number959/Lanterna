@@ -26,6 +26,7 @@ nome, che non compare più all'utente.
             │    devicetype.ts  tipo di ogni dispositivo dai segnali, con le ragioni      │
             │    topology.ts    mappa della rete: zone, collegamenti, percorsi, posizioni │
             │    discovery.ts   reti e VLAN scoperte, giudizi, test di segmentazione      │
+            │    traffic.ts     il traffico passo passo: pacchetti ricostruiti per scena  │
             │    report.ts      rapporto testuale                                         │
             │    document.ts    documento stampabile: HTML A4 autonomo                    │
             │  guides/   79 guide come dati tipizzati, glossario, ricerca, videoguide     │
