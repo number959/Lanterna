@@ -32,6 +32,7 @@ import { ChannelLoad, HBars, LatencyChart, LiveChart, SpectrumChart } from './ch
 import { HexGauge } from './brand';
 import { guidesForAction } from '../guides';
 import { AnimatedNumber, FindingList, Segmented, SevBadge, SevIcon, Stat, TableWrap, fmtNum, sevColor, spotHandlers, useOpenGuide, useToast } from './components';
+import { NetMap } from './netmap';
 import { Anim } from './anim';
 import { useFx } from './fx';
 import { useLocalState } from './hooks';
@@ -622,6 +623,15 @@ export function LanView({ scan, analysis: a, go, gwMacChange }: ViewProps) {
   return (
     <>
       <GatewayMacNotice change={gwMacChange} />
+      <m.section variants={rise} className="card netmap-card">
+        <div className="card-head">
+          <h2>Mappa della rete</h2>
+          <span className="sub">
+            {scan.infra?.inventory ? 'dall\'inventario della sottorete' : 'dai dispositivi visti dal PC: l\'inventario (Infrastruttura) li trova tutti'}
+          </span>
+        </div>
+        <NetMap scan={scan} analysis={a} />
+      </m.section>
       <m.div className="grid cols-2" variants={cascade(0.06)}>
         <m.section variants={rise} className="card">
           <div className="card-head"><h2>Scheda in uso</h2></div>

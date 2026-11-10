@@ -484,6 +484,18 @@ export interface InventoryHost {
   rttMs?: number;
   self?: boolean;
   gateway?: boolean;
+  /** Produttore dal prefisso del MAC (elenco pubblico IEEE); assente per i MAC casuali. */
+  vendor?: string;
+  /** TTL della risposta al ping: 64 Linux e dispositivi, 128 Windows, 255 apparati di rete. */
+  ttl?: number;
+  /** Tipi di servizio annunciati via mDNS (per esempio "_ipp._tcp"), mai i nomi. */
+  services?: string[];
+  /** Tipi annunciati via SSDP/UPnP (URN). */
+  upnp?: string[];
+  /** Intestazione SERVER delle risposte SSDP. */
+  server?: string;
+  /** Ruoli dalla risposta NetBIOS: workstation, file-server, domain-controller, master-browser. */
+  roles?: string[];
 }
 
 export interface Inventory {

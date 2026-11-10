@@ -1,4 +1,4 @@
-import type { Bss, Scan } from '../engine/types';
+import type { Bss, InventoryHost, Scan } from '../engine/types';
 import { homePc } from './pc';
 import { homeSurvey } from './survey';
 import { pingSamples, stats } from './util';
@@ -29,6 +29,23 @@ const nets: Bss[] = [
   { ssid: 'Iliad-BOX-7F21', bssid: '68:a3:78:44:55:66', rssiDbm: -84, freqMhz: 2427, channel: 4, band: '2.4', widthMhz: 20, phy: '802.11ax', security: sec('wpa3') },
   { ssid: 'Iliad-BOX-7F21', bssid: '68:a3:78:44:55:67', rssiDbm: -86, freqMhz: 5745, channel: 149, band: '5', widthMhz: 80, centerChannel: 155, phy: '802.11ax', security: sec('wpa3') },
   { ssid: 'Condominio-Ospiti', bssid: '9c:c9:eb:10:20:30', rssiDbm: -79, freqMhz: 2452, channel: 9, band: '2.4', widthMhz: 20, phy: '802.11g', security: sec('wep', { akm: [], pairwise: ['WEP'] }) },
+];
+
+// Inventario della rete di casa con i segnali per il riconoscimento del tipo.
+const homeHosts: InventoryHost[] = [
+  { ip: '192.168.1.1', mac: 'a4:2b:b0:11:22:30', gateway: true, rttMs: 3.1, vendor: 'TP-Link', ttl: 64, upnp: ['urn:schemas-upnp-org:device:InternetGatewayDevice:1', 'urn:schemas-wifialliance-org:device:WFADevice:1'], server: 'Linux/2.6.36, UPnP/1.0, Portable SDK for UPnP devices/1.6.19' },
+  { ip: '192.168.1.12', mac: 'b8:27:eb:12:34:56', name: 'homeassistant.home', rttMs: 4.2, vendor: 'Raspberry Pi', ttl: 64, services: ['_home-assistant._tcp', '_hap._tcp', '_http._tcp'] },
+  { ip: '192.168.1.20', mac: '50:c7:bf:aa:00:01', name: 'RE450.home', rttMs: 5.6, vendor: 'TP-Link', ttl: 64, upnp: ['urn:schemas-wifialliance-org:device:WFADevice:1'] },
+  { ip: '192.168.1.27', mac: 'dc:a6:32:00:11:22', name: 'pihole.home', rttMs: 3.9, vendor: 'Raspberry Pi', ttl: 64, services: ['_http._tcp', '_ssh._tcp'] },
+  { ip: '192.168.1.34', mac: '3c:58:c2:aa:bb:cc', self: true, name: 'PORTATILE-DEMO', vendor: 'Intel' },
+  { ip: '192.168.1.40', mac: '74:da:38:5e:6f:70', name: 'cam-ingresso.home', rttMs: 9.4, vendor: 'Edimax', ttl: 64, services: ['_rtsp._tcp', '_http._tcp'] },
+  { ip: '192.168.1.51', mac: '18:b4:30:01:02:03', name: 'Nest-Termostato.home', rttMs: 12.1, vendor: 'Nest Labs', ttl: 64 },
+  { ip: '192.168.1.60', mac: '00:11:32:5a:6b:7c', name: 'DiskStation.home', netbios: 'DISKSTATION', rttMs: 2.8, vendor: 'Synology', ttl: 64, services: ['_smb._tcp', '_afpovertcp._tcp', '_http._tcp'], upnp: ['urn:schemas-upnp-org:device:MediaServer:1'], roles: ['file-server'] },
+  { ip: '192.168.1.66', mac: '00:80:77:a1:b2:c3', name: 'BRN008077A1B2C3.home', rttMs: 6.7, vendor: 'Brother', ttl: 64, services: ['_ipp._tcp', '_printer._tcp', '_pdl-datastream._tcp', '_uscan._tcp'], upnp: ['urn:schemas-upnp-org:device:Printer:1'] },
+  { ip: '192.168.1.72', mac: 'da:a1:19:6b:22:01', randomMac: true, rttMs: 41.5, ttl: 64, services: ['_apple-mobdev2._tcp', '_companion-link._tcp'] },
+  { ip: '192.168.1.85', mac: '04:d4:c4:11:22:33', name: 'DESKTOP-SALOTTO.home', netbios: 'DESKTOP-SALOTTO', rttMs: 1.9, vendor: 'ASUSTek', ttl: 128, roles: ['workstation', 'file-server'] },
+  { ip: '192.168.1.90', mac: 'a8:23:fe:44:55:66', name: 'LGwebOSTV.home', rttMs: 8.8, vendor: 'LG Electronics', ttl: 64, services: ['_airplay._tcp'], upnp: ['urn:dial-multiscreen-org:service:dial:1', 'urn:schemas-upnp-org:device:MediaRenderer:1'], server: 'WebOS/4.1.0 UPnP/1.0' },
+  { ip: '192.168.1.95', mac: 'e8:68:e7:0a:0b:0c', name: 'shellyplug-s-0A0B0C.home', rttMs: 14.0, vendor: 'Espressif', ttl: 255, services: ['_shelly._tcp', '_http._tcp'] },
 ];
 
 export const demoScan: Scan = {
@@ -107,6 +124,9 @@ export const demoScan: Scan = {
       { name: 'private', enabled: false, active: true },
       { name: 'public', enabled: true },
     ],
+  },
+  infra: {
+    inventory: { subnet: '192.168.1.0/24', adapter: 'Wi-Fi', scanned: 254, startedAt: '2026-10-12T20:33:10Z', durationMs: 11800, hosts: homeHosts },
   },
   pc: homePc,
   errors: [],

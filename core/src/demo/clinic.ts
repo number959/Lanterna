@@ -78,6 +78,29 @@ const inventoryHosts: InventoryHost[] = [
   host('10.20.30.202', 'ap-ambulatori.clinica.local', undefined, '44:48:c1:a0:20:b0', 7.0),
 ];
 
+// Segnali per il riconoscimento del tipo (produttore dal MAC, TTL, servizi
+// annunciati, ruoli NetBIOS), come li raccoglie l'inventario dalla 0.13.0.
+const PRINT = { services: ['_ipp._tcp', '_pdl-datastream._tcp', '_printer._tcp'], upnp: ['urn:schemas-upnp-org:device:Printer:1'], ttl: 64, vendor: 'HP' };
+const SIGNALS: Record<string, Partial<InventoryHost>> = {
+  '10.20.30.1': { vendor: 'Fortinet', ttl: 255 },
+  '10.20.30.10': { vendor: 'VMware', ttl: 128, roles: ['file-server'] },
+  '10.20.30.12': PRINT,
+  '10.20.30.15': PRINT,
+  '10.20.30.64': { ttl: 64, services: ['_companion-link._tcp'] },
+  '10.20.30.71': { ttl: 64, services: ['_apple-mobdev2._tcp'] },
+  '10.20.30.73': { ttl: 64 },
+  '10.20.30.88': { vendor: 'GE Healthcare', ttl: 64 },
+  '10.20.30.96': { vendor: 'Sysmex', ttl: 128 },
+  '10.20.30.120': { vendor: 'Lantronix', ttl: 64 },
+  '10.20.30.140': { vendor: 'Microchip Technology', ttl: 64 },
+  '10.20.30.201': { vendor: 'Aruba', ttl: 64 },
+  '10.20.30.202': { vendor: 'Aruba', ttl: 64 },
+};
+for (const h of inventoryHosts) {
+  Object.assign(h, SIGNALS[h.ip] ?? {});
+  if (/^amb-/.test(h.name ?? '')) Object.assign(h, { vendor: 'Intel', ttl: 128, roles: ['workstation'] });
+}
+
 export const clinicScan: Scan = {
   schema: 1,
   agent: {

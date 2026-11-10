@@ -191,3 +191,7 @@ export type { ChannelMode } from './hardware';
 export { pctText, reclaimableBytes, sizeText, spaceHintLabel, spaceLine, SPACE_CATEGORY_LABEL, SPACE_HINTS, SPACE_RISK_LABEL, unattributedBytes } from './space';
 export type { SpaceHintInfo, SpaceRisk } from './space';
 export { THREAT_SEVERITY, THREAT_STATUS, unresolved as unresolvedThreat } from './defender';
+export { classifyHost, KIND_GROUP, KIND_LABEL, KIND_ORDER, KIND_PLURAL, nearBssid } from './devicetype';
+export type { ClassifyContext, Confidence, DeviceGuess, DeviceKind, KindGroup } from './devicetype';
+export { buildNetworkMap, CELL_H, CELL_W, cidrText, inCidr, ipNum, layoutMap, parseCidr, privateKind, ZONE_BUS } from './topology';
+export type { Cidr, FlowKind, LinkKind, MapFlow, MapLink, MapNode, MapSegment, NetworkMap, SegmentKind } from './topology';

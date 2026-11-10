@@ -1,0 +1,13 @@
+/* Impaginazione della pagina di anteprima: margini laterali che rispettano i bordi del telefono. */
+html, body { background: var(--bg); color: var(--text); }
+body { margin: 0; font-family: var(--font); }
+.pv { max-width: 1240px; margin: 0 auto; padding-block: 28px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 18px; }
+.pv-head { display: flex; gap: 14px; align-items: center; }
+.pv-titles { min-width: 0; }
+.pv-titles h1 { margin: 0; font: 700 clamp(22px, 3vw, 30px) / 1.1 var(--display); letter-spacing: 0.01em; text-wrap: balance; }
+.pv-titles p { margin: 4px 0 0; color: var(--text-2); font-size: 14.5px; max-width: 70ch; }
+.pv-card { min-width: 0; }
+.pv-card .card-head h2 { margin: 0; font-size: 16px; }
+.pv-notes { max-width: 78ch; }
+.pv-notes h2 { font-size: 15px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); }
+.pv-notes ul { margin: 0 0 10px; padding-left: 18px; display: grid; gap: 8px; color: var(--text-2); font-size: 14px; line-height: 1.5; }

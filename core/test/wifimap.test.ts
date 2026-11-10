@@ -483,7 +483,9 @@ describe('documento, rapporto ed esportazione', () => {
   it('il rapporto di testo elenca le stanze entro 90 colonne, con gli alias', () => {
     const txt = renderText(demoScan, analyze(demoScan), { verbose: true });
     expect(txt).toContain('MAPPA DEL WI-FI PER STANZA');
-    const sec = txt.slice(txt.indexOf('MAPPA DEL WI-FI PER STANZA'), txt.indexOf('INFRASTRUTTURA') > 0 ? txt.indexOf('INFRASTRUTTURA') : undefined);
+    const start = txt.indexOf('MAPPA DEL WI-FI PER STANZA');
+    const end = txt.indexOf('INFRASTRUTTURA', start);
+    const sec = txt.slice(start, end > 0 ? end : undefined);
     expect(sec).toContain('[CRIT] Bagno');
     expect(sec).toContain('access point: AP');
     expect(sec).not.toMatch(/[0-9a-f]{2}(:[0-9a-f]{2}){5}/i);
