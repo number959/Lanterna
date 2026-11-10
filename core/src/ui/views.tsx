@@ -75,8 +75,12 @@ export interface ViewProps {
   live: boolean;
   /** Da dove vengono i dati mostrati: agente, demo o rapporto importato. */
   source: 'agent' | 'demo' | 'file';
-  /** Unisce al rapporto i risultati di inventario e verifiche. */
-  setInfra: (patch: Partial<InfraData>) => void;
+  /**
+   * Unisce al rapporto i risultati di inventario, verifiche e scoperta delle
+   * reti; con una funzione si parte dai dati più recenti (utile per i
+   * risultati che arrivano dopo un minuto).
+   */
+  setInfra: (patch: Partial<InfraData> | ((infra: InfraData) => Partial<InfraData>)) => void;
   /** Unisce al rapporto il risultato di un test di velocità. */
   /** Aggiunge un test al rapporto mostrato, se è ancora quello del PC su cui è partito (false altrimenti). */
   addBench: (r: { cpu?: CpuBench; disk?: DiskBench; ram?: RamTest }, target: SpaceTarget) => boolean;

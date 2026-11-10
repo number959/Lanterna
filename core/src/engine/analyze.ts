@@ -1,4 +1,6 @@
 import { fmt, more, num, thousands } from './fmt';
+import { primaryAdapter } from './adapters';
+import { analyzeDiscovery } from './discovery';
 import { analyzeCerts } from './certs';
 import { analyzeStability } from './boot';
 import { analyzeMaint } from './maint';
@@ -144,16 +146,7 @@ function lossPct(p: PingStats) {
   return p.sent > 0 ? (100 * (p.sent - p.received)) / p.sent : 0;
 }
 
-/** Scheda principale: quella attiva con il gateway, preferendo quella del gateway misurato. */
-export function primaryAdapter(scan: Scan): Adapter | undefined {
-  const up = scan.adapters.filter((a) => a.up && a.kind !== 'loopback');
-  const gw = scan.gateway?.ip;
-  return (
-    (gw && up.find((a) => a.gateways.includes(gw))) ||
-    up.find((a) => a.gateways.length > 0 && a.ipv4.length > 0) ||
-    up.find((a) => a.ipv4.length > 0)
-  );
-}
+export { primaryAdapter };
 
 class Collector {
   findings: Finding[] = [];
@@ -1558,6 +1551,7 @@ export function analyze(scan: Scan): Analysis {
   analyzeRouter(scan, c);
   analyzeFirewall(scan, c);
   analyzeInfra(scan, c);
+  analyzeDiscovery(scan, (f) => c.add(f), primary);
   analyzePc(scan, (f) => c.add(f));
   // Dispositivi e driver, come Gestione dispositivi.
   analyzeDevices(scan, (f) => c.add(f));

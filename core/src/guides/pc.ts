@@ -732,6 +732,7 @@ export const pc: Guide[] = [
       { t: 'p', text: 'L\'**integrità della memoria** (Isolamento core, in Sicurezza di Windows > Sicurezza dispositivi) usa la virtualizzazione per proteggere ancora di più il kernel: alcuni driver vecchi non sono compatibili e Windows li blocca (codice 39). Polaris mostra se è attiva.' },
       { t: 'h', text: 'L\'albero USB, come UsbTreeView' },
       { t: 'p', text: 'Nella sezione del computer Polaris mostra l\'albero USB: i **controller** (USB 3 xHCI, USB 2 EHCI), l\'hub radice di ciascuno, le porte occupate, gli hub collegati e i dispositivi con produttore e modello (VID e PID), la versione USB dichiarata e la **velocità a cui stanno funzionando davvero**. Polaris legge ciò che gli hub di Windows hanno registrato quando il dispositivo è stato collegato, senza interrogare i dispositivi e senza numeri di serie.' },
+      { t: 'video', id: 'usb-lento' },
       { t: 'table', caption: 'Velocità USB', head: ['Nome', 'Velocità nominale', 'Tipico per'], rows: [
         ['USB 1 Low Speed', '1,5 Mbit/s', 'tastiere e mouse semplici'],
         ['USB 1 Full Speed', '12 Mbit/s', 'ricevitori senza fili, Bluetooth, lettori di smart card'],
@@ -740,6 +741,7 @@ export const pc: Guide[] = [
         ['USB 3.2 Gen 2 e Gen 2x2 (SuperSpeed+)', '10 e 20 Gbit/s', 'SSD esterni veloci, docking station'],
       ] },
       { t: 'p', text: 'Un connettore USB 3 contiene in realtà **due porte**: una USB 2 e una USB 3, dette porte compagne. Se un dispositivo USB 3 viene collegato con un cavo solo USB 2, una prolunga o dietro un hub USB 2, Windows lo fa funzionare dalla parte USB 2: funziona, ma molto più piano. Polaris lo segnala con la causa più probabile, perché la capacità del dispositivo è quella che dichiara e la mappa delle porte compagne la descrive il firmware del PC, non sempre bene.' },
+      { t: 'diagram', id: 'usbspeed', caption: 'Lo stesso disco USB 3: sulla porta USB 3 usa la parte SuperSpeed, a 5 Gbit/s; dietro un cavo o un hub USB 2 passa dalla porta USB 2 compagna, a 480 Mbit/s, circa 40 MB/s.' },
       { t: 'list', items: [
         '**sovraccarico elettrico**: la porta ha rilevato troppa corrente e si è spenta per protezione; scollega il dispositivo, controlla il cavo e spegni completamente il PC per riarmarla;',
         '**corrente insufficiente**: tipico dei dischi esterni collegati a un hub senza alimentatore;',
@@ -782,6 +784,7 @@ export const pc: Guide[] = [
         ['fino al desktop', 'caricamento di Windows, driver, servizi essenziali e accesso', 'disco meccanico, driver o servizi lenti, criteri di gruppo sui PC in dominio'],
         ['dopo l\'accesso', 'i programmi all\'avvio e i servizi che partono con l\'utente', 'troppi programmi all\'avvio: si tolgono da Gestione attività (vedi [[avvio-processi]])'],
       ] },
+      { t: 'diagram', id: 'bootphases', caption: 'Le tre parti di un avvio con la loro durata: firmware, fino al desktop, dopo l\'accesso. I numeri indicano i componenti che Windows ha segnalato come più lenti del solito.' },
       { t: 'p', text: 'Polaris prende la **mediana degli ultimi 5 avvii**, senza i riavvii dopo un aggiornamento, che sono più lunghi per natura: sotto il minuto è normale per un PC con disco SSD, oltre i 3 minuti è molto lento. Sono soglie di Polaris: Microsoft non ne pubblica.' },
       { t: 'note', kind: 'warn', title: 'Quando la misura manca', text: 'Su molti PC con le versioni recenti di Windows l\'evento 100 non viene più scritto, e con Avvio rapido attivo l\'accensione dopo lo spegnimento è un ripristino dall\'ibernazione, non un avvio: Windows misura solo gli avvii completi, come i riavvii. Se la misura non c\'è, Polaris scrive "non misurata" e non dà un giudizio.' },
       { t: 'h', text: 'Componenti segnalati come lenti' },
@@ -827,12 +830,15 @@ export const pc: Guide[] = [
       { t: 'p', text: 'Diagnostica memoria Windows (`mdsched.exe`) prova la RAM al riavvio, prima che parta Windows; dopo l\'accesso annota l\'esito nel registro di sistema con l\'origine MemoryDiagnostics-Results. Polaris cerca l\'esito più recente dell\'ultimo anno: **nessun errore** esclude un guasto evidente, **errori hardware** vuol dire un modulo guasto da trovare provandone uno alla volta. Se il test è stato pianificato ma l\'esito manca, il test non è partito o è stato interrotto. Se non c\'è nessun test, Polaris non dice nulla: non può sapere se la RAM è sana.' },
       { t: 'h', text: 'Il test della RAM con Windows acceso' },
       { t: 'p', text: 'Polaris ha anche un test della RAM che non richiede riavvii, come HCI MemTest: su richiesta, e solo dopo una conferma, riserva la memoria libera (lasciandone almeno 1 GB, o un ottavo della RAM, a Windows), la tiene bloccata in RAM e per 3, 10 o 30 minuti ci scrive e rilegge sequenze di bit con più prove: l\'indirizzo in ogni cella, inversioni con zeri e uni, con schemi casuali e con un bit acceso per byte, una sequenza casuale, uno schema ogni 20 celle, lo spostamento di blocchi e, nella versione lunga, il decadimento dei bit con la memoria ferma. Si può interrompere in qualsiasi momento e si ferma da solo se Windows resta con poca memoria libera.' },
+      { t: 'video', id: 'ram-memtest' },
+      { t: 'diagram', id: 'ramtest', caption: 'Che cosa prova il test con Windows acceso: non la memoria usata da Windows e dai programmi né la riserva lasciata libera, ma il resto, bloccato in RAM. Gli schemi di bit scritti e riletti devono coincidere: un bit diverso è un errore.' },
       { t: 'list', items: [
         '**anche un solo errore** è un problema serio: un modulo difettoso, impostazioni troppo spinte (profili XMP/EXPO, overclock) o il calore; si riporta la memoria alle impostazioni predefinite e si ripete il test;',
         'un test **senza errori** vale solo per la memoria provata: quella usata da Windows e dai programmi aperti non si può provare da Windows, e alcuni errori compaiono solo dopo ore;',
         'per provare **tutta** la RAM, un modulo alla volta, serve **Memtest86+** da chiavetta, preparata con Rufus: entrambi si scaricano dalla cassetta degli attrezzi;',
         'la posizione degli errori è nel blocco di memoria del test: non indica il modulo né lo slot.',
       ] },
+      { t: 'diagram', id: 'memtestusb', caption: 'Memtest86+ da chiavetta: Rufus scrive l\'immagine in modalità DD, il PC si avvia dalla chiavetta con il menu di avvio e Memtest86+ prova tutta la RAM fuori da Windows, un passaggio dopo l\'altro.' },
       { t: 'h', text: 'Volumi da controllare' },
       { t: 'p', text: 'Quando un volume non viene chiuso bene (spegnimento brusco, caduta di corrente, chiavetta tolta senza la rimozione sicura) o Windows trova un danno, il volume viene segnato da controllare e al riavvio parte il controllo automatico del disco. Windows tiene anche uno stato più preciso del file system: **da analizzare** (si fa a PC acceso con `chkdsk /scan`), **correzione rapida** (`chkdsk /spotfix`, un breve passaggio al riavvio), **riparazione completa** (`chkdsk /f` al riavvio). Tutti i comandi di chkdsk vanno lanciati come amministratore.' },
       { t: 'p', text: 'Se il controllo all\'avvio si ripete più volte in un mese, il problema non è un episodio: spegnimenti bruschi continui, alimentazione instabile o un disco che si guasta. Prima di qualunque riparazione tieni aggiornato il backup (vedi [[salute-dischi-smart]]). Dei controlli Polaris annota solo la data e l\'unità: il resoconto di chkdsk può contenere nomi di file e non viene letto.' },
@@ -888,6 +894,7 @@ export const pc: Guide[] = [
     tags: ['stampante', 'non stampa', 'coda di stampa', 'spooler', 'non in linea', 'offline', 'carta esaurita', 'toner', 'wsd', 'tcp/ip', 'usb', 'stampanti e scanner', 'print to pdf'],
     blocks: [
       { t: 'p', text: 'Ogni stampa passa dal **servizio di stampa** di Windows (spooler), che mette i lavori in coda e li manda alla stampante. Polaris legge l\'elenco delle stampanti installate, il loro stato e le code, senza mai leggere i titoli dei documenti o i nomi di chi stampa. Le stampanti virtuali (Microsoft Print to PDF, XPS, OneNote, fax) e quelle reindirizzate da Desktop remoto, che compaiono con un nome generico perché il loro nome contiene quello del computer remoto, non vengono giudicate.' },
+      { t: 'diagram', id: 'printpath', caption: 'Il percorso di una stampa: programma, coda del servizio di stampa, porta e stampante. Se la stampante segnala carta esaurita, il lavoro in testa alla coda si ferma e blocca quelli dietro.' },
       { t: 'list', items: [
         '**non in linea** o **in pausa**: Windows tiene i lavori in coda e non li manda; a volte è rimasta spuntata l\'opzione per usare la stampante non in linea;',
         '**carta esaurita, inceppata, sportello aperto, toner esaurito**: lo comunica la stampante stessa, se il driver lo supporta;',

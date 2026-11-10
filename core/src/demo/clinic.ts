@@ -2,6 +2,7 @@ import type { Bss, InventoryHost, Roaming, Scan, WifiSecurity } from '../engine/
 import { clinicSurvey } from './survey';
 import { pingSamples, stats } from './util';
 import { clinicPc } from './pc';
+import { clinicDiscovery } from './discovery';
 
 // Seconda rete dimostrativa: un poliambulatorio con dominio, rete Wi-Fi
 // aziendale 802.1X su più access point e reti separate per ospiti,
@@ -319,6 +320,9 @@ export const clinicScan: Scan = {
         },
       ],
     },
+    // Scoperta delle reti: sottoreti di Active Directory e letture SNMP del
+    // firewall (router tra le VLAN) e dello switch centrale.
+    discovery: clinicDiscovery,
   },
   pc: clinicPc,
   errors: [],

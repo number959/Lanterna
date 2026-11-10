@@ -168,3 +168,79 @@ func TestDocumentDriverVersionsInGoja(t *testing.T) {
 		t.Errorf("versione del driver alterata nel documento: %q", html[max(0, i-40):min(len(html), i+120)])
 	}
 }
+
+// Scoperta delle reti in goja: annunci dello switch, SNMP, Active Directory e
+// inventario di un'altra sottorete producono gli stessi giudizi del browser.
+const discoveryJSON = `{"schema":1,"agent":{"name":"STARNET Polaris","version":"t","platform":"windows","host":"PC","startedAt":"2026-10-12T20:00:00Z","durationMs":9000,"domain":"studio.local"},
+"adapters":[{"name":"Ethernet","kind":"ethernet","up":true,"ipv4":["10.1.20.34/24"],"ipv6":[],"gateways":["10.1.20.1"],"dns":["10.1.10.5"]}],
+"gateway":{"ip":"10.1.20.1"},
+"lan":{"neighbors":[],"routes":[{"prefix":"10.1.30.0/24","nextHop":"10.1.20.1","origin":"dhcp"}]},
+"infra":{
+ "discovery":{
+  "l2":{"read":"ok","seconds":61,"frames":9,"counts":{"lldp":2,"cdp":0,"dtp":2,"stp":5,"vtp":0,"eapol":0,"other":0},
+   "lldp":[{"chassisId":"00:11:22:33:44:55","chassisIdType":"mac","portId":"Gi0/7","portIdType":"interface-name","ttl":120,"systemName":"SW-UFFICI","portVlanId":1,"vlans":[{"id":1,"name":"default"}],"speedMbps":100,"duplex":"half","frames":2}],
+   "dtp":[{"version":1,"operStatus":"access","adminStatus":"desirable","frames":2}],
+   "stp":[{"format":"pvst","protocol":"stp","vlan":40,"rootPriority":32768,"rootSysIdExt":40,"rootMac":"00:11:22:33:44:00","rootPathCost":19,"bridgePriority":32768,"bridgeSysIdExt":40,"bridgeMac":"00:11:22:33:44:55","portPriority":128,"portNumber":7,"messageAge":1,"maxAge":20,"helloTime":2,"forwardDelay":15,"frames":5}]},
+  "ad":{"read":"ok","subnets":[{"prefix":"10.1.10.0/24","site":"Sede"},{"prefix":"10.2.0.0/16","site":"Filiale"}]},
+  "snmp":[{"target":"10.1.20.1","version":"2c","defaultCommunity":true,"startedAt":"2026-10-12T20:05:00Z","durationMs":3000,"requests":20,
+   "system":{"name":"RTR-STUDIO"},
+   "interfaces":[{"index":10,"name":"Vlan10","vlanId":10,"ips":[{"ip":"10.1.10.1","prefix":24,"subnet":"10.1.10.0/24"}]},{"index":20,"name":"Vlan20","vlanId":20,"ips":[{"ip":"10.1.20.1","prefix":24,"subnet":"10.1.20.0/24"}]},{"index":40,"name":"Vlan40","vlanId":40,"ips":[{"ip":"10.1.40.1","prefix":24,"subnet":"10.1.40.0/24"}]}],
+   "vlans":[{"id":10,"name":"SERVER"},{"id":20,"name":"UFFICI"},{"id":40,"name":"TELECAMERE"}],
+   "lldpNeighbors":[],"arp":[{"ifIndex":40,"ip":"10.1.40.21","mac":"bc:ad:28:00:00:21"}],"fdb":[],
+   "sections":{"system":{"state":"ok","rows":1},"interfaces":{"state":"ok","rows":3},"vlans":{"state":"ok","rows":3},"lldp":{"state":"absent","rows":0},"arp":{"state":"ok","rows":1},"fdb":{"state":"absent","rows":0}}}]},
+ "remote":[{"subnet":"10.1.40.0/24","scanned":254,"startedAt":"2026-10-12T20:06:00Z","durationMs":9000,"hosts":[{"ip":"10.1.40.21","rttMs":4}]}]},
+"errors":[]}`
+
+func TestDiscoveryInGoja(t *testing.T) {
+	e := load(t)
+	out, err := e.Analyze([]byte(discoveryJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a struct {
+		Findings []struct {
+			ID       string   `json:"id"`
+			Severity string   `json:"severity"`
+			Verdict  string   `json:"verdict"`
+			Actions  []string `json:"actions"`
+		} `json:"findings"`
+	}
+	if err := json.Unmarshal(out, &a); err != nil {
+		t.Fatal(err)
+	}
+	sev := map[string]string{}
+	verdict := map[string]string{}
+	for _, f := range a.Findings {
+		sev[f.ID] = f.Severity
+		verdict[f.ID] = f.Verdict
+	}
+	want := map[string]string{
+		"lan.switchport":               "warn", // half duplex
+		"lan.dtp":                      "warn", // dynamic desirable
+		"lan.vlan1":                    "warn", // VLAN 1 con altre VLAN
+		"lan.stp":                      "info",
+		"lan.snmp.10.1.20.1":           "crit", // community predefinita
+		"lan.vlans":                    "info",
+		"infra.inventory.10.1.40.0/24": "info",
+	}
+	for id, s := range want {
+		if sev[id] != s {
+			t.Errorf("%s: gravità %q, attesa %q", id, sev[id], s)
+		}
+	}
+	if !strings.Contains(verdict["lan.vlans"], "VLAN 40 TELECAMERE (10.1.40.0/24)") || !strings.Contains(verdict["lan.vlans"], "Active Directory") {
+		t.Errorf("riepilogo delle reti: %s", verdict["lan.vlans"])
+	}
+	if !strings.Contains(verdict["lan.stp"], "classico") {
+		t.Errorf("Spanning Tree: %s", verdict["lan.stp"])
+	}
+	txt, err := e.Report([]byte(discoveryJSON), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range []string{"Reti e VLAN scoperte", "Negoziazione del trunk (DTP)", "Spegni la negoziazione del trunk"} {
+		if !strings.Contains(txt, w) {
+			t.Errorf("manca %q nel rapporto", w)
+		}
+	}
+}

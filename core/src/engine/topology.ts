@@ -1,4 +1,7 @@
-import { primaryAdapter } from './analyze';
+import { primaryAdapter } from './adapters';
+import { cidrText, inCidr, ipNum, numIp, parseCidr, privateKind } from './cidr';
+import type { Cidr } from './cidr';
+import { discoveredNets, netLabel, switchPort } from './discovery';
 import { classifyHost, KIND_ORDER, nearBssid, vlanIn } from './devicetype';
 import type { Confidence, DeviceKind } from './devicetype';
 import type { Analysis, InventoryHost, Scan, Severity } from './types';
@@ -104,53 +107,13 @@ export interface NetworkMap {
 
 // ---------------------------------------------------------------- indirizzi
 
-export function ipNum(ip?: string): number | undefined {
-  if (!ip) return undefined;
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip.trim());
-  if (!m) return undefined;
-  const o = [m[1], m[2], m[3], m[4]].map(Number);
-  if (o.some((x) => x > 255)) return undefined;
-  return ((o[0] * 256 + o[1]) * 256 + o[2]) * 256 + o[3];
-}
-
-const numIp = (n: number) => [Math.floor(n / 16777216) % 256, Math.floor(n / 65536) % 256, Math.floor(n / 256) % 256, n % 256].join('.');
-
-export interface Cidr {
-  net: number;
-  prefix: number;
-}
-
-export function parseCidr(c?: string): Cidr | undefined {
-  if (!c) return undefined;
-  const [ip, p] = c.split('/');
-  const n = ipNum(ip);
-  const prefix = p === undefined ? 32 : Number(p);
-  if (n === undefined || !(prefix >= 0 && prefix <= 32)) return undefined;
-  const size = Math.pow(2, 32 - prefix);
-  return { net: n - (n % size), prefix };
-}
-
-export const cidrText = (c: Cidr) => `${numIp(c.net)}/${c.prefix}`;
-
-export function inCidr(ip: string | undefined, c: Cidr | undefined): boolean {
-  const n = ipNum(ip);
-  if (n === undefined || !c) return false;
-  const size = Math.pow(2, 32 - c.prefix);
-  return n >= c.net && n < c.net + size;
-}
-
-/** Indirizzi privati (RFC 1918) e dello spazio condiviso degli operatori (RFC 6598). */
-export function privateKind(ip?: string): 'private' | 'cgnat' | 'public' | undefined {
-  const n = ipNum(ip);
-  if (n === undefined) return undefined;
-  const a = Math.floor(n / 16777216);
-  const b = Math.floor(n / 65536) % 256;
-  if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return 'private';
-  if (a === 100 && b >= 64 && b <= 127) return 'cgnat';
-  return 'public';
-}
+export { cidrText, inCidr, ipNum, parseCidr, privateKind } from './cidr';
+export type { Cidr } from './cidr';
 
 const by24 = (ip: string): Cidr => parseCidr(`${ip}/24`)!;
+
+/** Dispositivi scoperti mostrati al massimo in ogni altra rete: gli altri restano nell'elenco. */
+const MAX_DISCOVERED = 12;
 
 // ---------------------------------------------------------------- costruzione
 
@@ -234,6 +197,25 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
     if (!labels[r.ip]) labels[r.ip] = r.label;
   }
 
+  // Scoperta delle reti: VLAN e sottoreti note, capacità e nomi annunciati
+  // dai vicini LLDP/CDP (switch, router, access point), per indirizzo.
+  const nets = discoveredNets(scan, primary);
+  const neighborCaps: Record<string, string[]> = {};
+  const neighborNames: Record<string, string> = {};
+  const disc = scan.infra?.discovery;
+  for (const r of disc?.snmp ?? []) {
+    if (r.system?.name) neighborNames[r.target] = r.system.name;
+    for (const n of r.lldpNeighbors) {
+      if (!n.mgmtIp) continue;
+      if (n.capsEnabled?.length) neighborCaps[n.mgmtIp] = n.capsEnabled.map((c) => (c === 'wlanAccessPoint' ? 'wlan-ap' : c));
+      if (n.sysName && !neighborNames[n.mgmtIp]) neighborNames[n.mgmtIp] = n.sysName;
+    }
+  }
+  if (disc?.l2?.read === 'ok') {
+    for (const n of disc.l2.lldp ?? []) for (const ip of n.managementAddresses ?? []) if (n.capabilities?.length) neighborCaps[ip] = n.capabilities;
+    for (const n of disc.l2.cdp ?? []) for (const ip of n.managementAddresses ?? []) if (n.capabilities?.length && !neighborCaps[ip]) neighborCaps[ip] = n.capabilities;
+  }
+
   // Dispositivi: inventario, poi quelli visti dal PC (tabella ARP).
   const hosts = new Map<string, InventoryHost>();
   for (const h of inv?.hosts ?? []) hosts.set(h.ip, { ...h });
@@ -253,7 +235,7 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
   const nodes: MapNode[] = [];
   const byIp = new Map<string, MapNode>();
   const nodeOf = (h: InventoryHost, segment: string): MapNode => {
-    const g = classifyHost(h, { gatewayIp: gwIp, gatewayFirewall, dnsServers, dhcpServer, bssids, roles, labels });
+    const g = classifyHost(h, { gatewayIp: gwIp, gatewayFirewall, dnsServers, dhcpServer, bssids, roles, labels, neighborCaps });
     let kind = g.kind;
     let reasons = g.reasons;
     let confidence = g.confidence;
@@ -314,11 +296,57 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
     localSeg.sources.push(`numero di VLAN nel nome del gateway (${gwHost?.name ?? gwHost?.netbios})`);
   }
 
+  const localNet = nets.find((n) => n.local);
+  if (localNet?.vlan && localNet.vlan !== localSeg.vlan) {
+    localSeg.vlan = localNet.vlan;
+    localSeg.sources = localSeg.sources.filter((x) => !/^numero di VLAN/.test(x));
+  }
+  if (localNet?.name) localSeg.label = `Rete di questo PC · ${localNet.name}`;
+  for (const x of localNet?.sources ?? []) if (x !== 'rete di questo PC' && localSeg.sources.indexOf(x) < 0) localSeg.sources.push(x);
+
   // Dispositivi della rete del PC.
   for (const h of hosts.values()) {
     if (h.gateway) continue;
     if (local && !inCidr(h.ip, local) && !h.self) continue;
     nodeOf(h, localSeg.id);
+  }
+
+  // Lo switch che annuncia sé stesso alla porta del PC (LLDP o CDP): sta tra
+  // il PC e il gateway, se il PC è collegato con il cavo.
+  const sp = primary?.kind === 'ethernet' ? switchPort(scan) : undefined;
+  let swNode: MapNode | undefined;
+  if (sp) {
+    const why = `annuncia sé stesso con ${sp.protocol} sulla porta del PC: porta ${sp.port ?? 'non indicata'}${sp.vlan ? `, VLAN ${sp.vlan}` : ''}`;
+    const existing = sp.mgmt ? byIp.get(sp.mgmt) : undefined;
+    if (existing && existing !== gwNode && !existing.self) {
+      swNode = existing;
+      swNode.kind = 'switch';
+      swNode.confidence = 'alta';
+      swNode.reasons = [why, ...swNode.reasons];
+    } else {
+      swNode = {
+        id: `sw:${sp.name}`,
+        kind: 'switch',
+        label: sp.name.split('.')[0],
+        ip: sp.mgmt,
+        names: [sp.name],
+        confidence: 'alta',
+        reasons: [why],
+        segment: localSeg.id,
+        inferred: true,
+        roles: [],
+        signals: sp.model ? [sp.model] : [],
+        x: 0,
+        y: 0,
+      };
+      nodes.push(swNode);
+      // L'indirizzo di gestione appartiene a questo switch: non diventa un altro nodo.
+      if (sp.mgmt && !hosts.has(sp.mgmt)) {
+        hosts.set(sp.mgmt, { ip: sp.mgmt, name: sp.name });
+        byIp.set(sp.mgmt, swNode);
+      }
+    }
+    if (sp.port) swNode.roles.push(`porta ${sp.port}`);
   }
 
   // Wi-Fi: l'access point a cui è collegato il PC.
@@ -380,19 +408,53 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
     });
   }
 
-  // Altre sottoreti note: server DNS e DHCP, servizi verificati.
-  const remote = new Map<string, { seg: MapSegment; ips: string[] }>();
-  const addRemote = (ip: string, source: string) => {
-    if (!ip || hosts.has(ip) || ipNum(ip) === undefined || privateKind(ip) !== 'private') return;
-    if (local && inCidr(ip, local)) return;
-    const c = by24(ip);
+  // Altre sottoreti note: prima quelle con il prefisso esatto (rotte del PC),
+  // poi i server DNS e DHCP e i servizi verificati, ognuno nella zona più
+  // specifica che lo contiene o, se nessuna lo contiene, nella sua /24.
+  const remote = new Map<string, { seg: MapSegment; ips: string[]; cidr: Cidr }>();
+  const addSegment = (c: Cidr, source: string, extra: Partial<MapSegment> = {}) => {
     const key = cidrText(c);
+    if (local && local.net === c.net && local.prefix === c.prefix) {
+      if (localSeg.sources.indexOf(source) < 0) localSeg.sources.push(source);
+      return undefined;
+    }
     let r = remote.get(key);
     if (!r) {
-      r = { seg: { id: `seg:${key}`, label: `Rete ${key}`, subnet: key, kind: 'remote', sources: [], x: 0, y: 0, w: 0, h: 0 }, ips: [] };
+      r = { seg: { id: `seg:${key}`, label: c.prefix < 22 ? `Reti ${key}` : `Rete ${key}`, subnet: key, kind: 'remote', sources: [], x: 0, y: 0, w: 0, h: 0, ...extra }, ips: [], cidr: c };
       remote.set(key, r);
       segments.push(r.seg);
     }
+    if (r.seg.sources.indexOf(source) < 0) r.seg.sources.push(source);
+    return r;
+  };
+  for (const rt of scan.lan?.routes ?? []) {
+    const c = parseCidr(rt.prefix);
+    if (!c || privateKind(numIp(c.net)) !== 'private' || c.prefix < 8) continue;
+    addSegment(c, rt.origin === 'dhcp' ? 'rotta ricevuta dal DHCP' : 'tabella di instradamento del PC');
+  }
+  // Reti scoperte (switch, Active Directory, SNMP, inventari): le zone hanno
+  // il numero e il nome della VLAN. Gli aggregati (una /16 che contiene reti
+  // già note) e le /24 presunte dai soli server non diventano zone.
+  const named = new Set<string>();
+  for (const n of nets) {
+    if (n.local || !n.prefix || n.contains || n.guessed) continue;
+    const c = parseCidr(n.prefix);
+    if (!c || privateKind(numIp(c.net)) !== 'private') continue;
+    let r: ReturnType<typeof addSegment>;
+    for (const x of n.sources) r = addSegment(c, x) ?? r;
+    if (!r) continue;
+    if (n.vlan) r.seg.vlan = n.vlan;
+    if (n.vlan || n.name) r.seg.label = `${netLabel(n)} · ${n.prefix}`;
+    else if (n.site) r.seg.label = `Sito ${n.site} · ${n.prefix}`;
+    if (n.vlan || n.name || n.site) named.add(r.seg.id);
+  }
+  const addRemote = (ip: string, source: string) => {
+    if (!ip || hosts.has(ip) || ipNum(ip) === undefined || privateKind(ip) !== 'private') return;
+    if (local && inCidr(ip, local)) return;
+    let best: { seg: MapSegment; ips: string[]; cidr: Cidr } | undefined;
+    for (const r of remote.values()) if (inCidr(ip, r.cidr) && (!best || r.cidr.prefix > best.cidr.prefix)) best = r;
+    const r = best ?? addSegment(by24(ip), source)!;
+    if (r.seg.sources.indexOf(source) < 0) r.seg.sources.push(source);
     if (r.seg.sources.indexOf(source) < 0) r.seg.sources.push(source);
     if (r.ips.indexOf(ip) < 0) {
       r.ips.push(ip);
@@ -405,9 +467,11 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
   for (const r of scan.infra?.reach?.results ?? []) if (r.ip) addRemote(r.ip, r.expect === 'reachable' ? 'servizi critici verificati' : 'test di segmentazione');
   for (const r of remote.values()) {
     const v = r.ips.map((ip) => vlanIn(labels[ip])).find((x) => x !== undefined);
-    if (v) r.seg.vlan = v;
-    if (r.seg.sources.some((s) => /DNS|DHCP/.test(s))) r.seg.label = `Server · ${r.seg.subnet}`;
-    else if (v) r.seg.label = `VLAN ${v} · ${r.seg.subnet}`;
+    if (!named.has(r.seg.id)) {
+      if (v) r.seg.vlan = v;
+      if (r.seg.sources.some((s) => /DNS|DHCP/.test(s))) r.seg.label = `Server · ${r.seg.subnet}`;
+      else if (v) r.seg.label = `VLAN ${v} · ${r.seg.subnet}`;
+    }
     // Nome dei nodi remoti: il servizio verificato o il ruolo.
     for (const ip of r.ips) {
       const n = byIp.get(ip)!;
@@ -423,6 +487,34 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
       }
     }
   }
+
+  // Dispositivi noti nelle altre reti: dagli inventari fatti attraverso il
+  // router (con nomi e tempi) e dalla tabella ARP letta via SNMP (con il MAC).
+  const remoteInv = new Map<string, InventoryHost>();
+  for (const i of scan.infra?.remote ?? []) for (const h of i.hosts) if (!h.self) remoteInv.set(h.ip, h);
+  const arpMac = new Map<string, string>();
+  for (const r of disc?.snmp ?? []) for (const a of r.arp) if (!arpMac.has(a.ip)) arpMac.set(a.ip, a.mac);
+  let hidden = 0;
+  for (const n of nets) {
+    if (n.local || !n.prefix) continue;
+    const r = remote.get(n.prefix);
+    if (!r) continue;
+    const fresh = n.hosts.filter((ip) => !hosts.has(ip));
+    for (const ip of fresh.slice(0, MAX_DISCOVERED)) {
+      const known = remoteInv.get(ip);
+      const mac = known?.mac ?? arpMac.get(ip);
+      const h: InventoryHost = {
+        ...(known ?? { ip }),
+        ...(mac ? { mac, randomMac: /^.[26ae]/i.test(mac) } : {}),
+        ...(!known?.name && neighborNames[ip] ? { name: neighborNames[ip] } : {}),
+      };
+      hosts.set(ip, h);
+      r.ips.push(ip);
+      nodeOf(h, r.seg.id);
+    }
+    hidden += Math.max(0, fresh.length - MAX_DISCOVERED);
+  }
+  if (hidden) notes.push(`Nelle altre reti ci sono altri ${hidden} dispositivi noti: l'elenco completo è in Infrastruttura, nella scheda Reti e VLAN.`);
 
   // Catena verso Internet: altri router privati (doppio NAT), operatore, Internet.
   const links: MapLink[] = [];
@@ -514,7 +606,10 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
     links.push({ id: `${from.id}>${to.id}`, from: from.id, to: to.id, kind, ...extra });
   };
   const gwRtt = scan.gateway?.ping && scan.gateway.ping.received > 0 ? scan.gateway.ping.avgMs : undefined;
-  if (self && apNode && apNode !== gwNode) {
+  if (self && swNode) {
+    link(self, swNode, 'cable', { label: sp?.port, sev: sevOf(analysis, 'lan.switchport') });
+    link(swNode, gwNode, 'cable', { inferred: true, label: gwRtt !== undefined ? fmtMs(gwRtt) : undefined });
+  } else if (self && apNode && apNode !== gwNode) {
     link(self, apNode, 'wifi', { sev: sevOf(analysis, 'wifi.rssi'), label: conn?.rssiDbm !== undefined ? `${conn.rssiDbm} dBm` : undefined });
     link(apNode, gwNode, 'cable', { inferred: true });
   } else if (self && gwNode) {
@@ -524,7 +619,7 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
     });
   }
   for (const n of nodes) {
-    if (n.segment !== localSeg.id || n === self || n === apNode) continue;
+    if (n.segment !== localSeg.id || n === self || n === apNode || n === swNode) continue;
     links.push({ id: `${n.id}>lan`, from: n.id, to: localSeg.id, kind: 'lan' });
   }
   for (const s of segments) {
@@ -538,7 +633,7 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
   }
 
   // Percorsi del traffico di questo PC.
-  const toGw: string[] = self ? (apNode && apNode !== gwNode ? [self.id, apNode.id] : [self.id]) : [];
+  const toGw: string[] = self ? (swNode ? [self.id, swNode.id] : apNode && apNode !== gwNode ? [self.id, apNode.id] : [self.id]) : [];
   if (gwNode) toGw.push(gwNode.id);
   if (self && inet) {
     flows.push({

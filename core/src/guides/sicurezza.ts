@@ -51,7 +51,9 @@ export const sicurezza: Guide[] = [
     blocks: [
       { t: 'p', text: 'In una **rete piatta** ogni dispositivo può parlare con ogni altro: il PC dell\'accettazione con il server dei referti, la telecamera del parcheggio con l\'ecografo, il portatile di un visitatore con la stampante delle ricette. Se uno di loro viene compromesso, l\'attaccante si muove liberamente (**movimento laterale**) e un ransomware cifra tutto ciò che raggiunge.' },
       { t: 'p', text: 'La **segmentazione** divide la rete in zone, ognuna con dispositivi simili per funzione e livello di rischio, e tra le zone lascia passare solo il traffico necessario. È la misura che più di ogni altra limita i danni di un incidente.' },
+      { t: 'video', id: 'segmentazione-sanita' },
       { t: 'h', text: 'Le zone tipiche di una struttura sanitaria' },
+      { t: 'diagram', id: 'clinic', caption: 'Le zone attorno al firewall interno: le postazioni e i dispositivi medicali raggiungono i server clinici, gli ospiti solo Internet. Ogni flusso permesso corrisponde a una regola scritta; tutto il resto è bloccato.' },
       { t: 'table', head: ['Zona', 'Contenuto', 'Note'], rows: [
         ['Server e dati clinici', 'cartella clinica, PACS, laboratorio, database', 'la zona più protetta; accesso solo dai client autorizzati'],
         ['Postazioni del personale', 'PC di reparto, ambulatori, amministrazione', 'si possono dividere ulteriormente per area'],

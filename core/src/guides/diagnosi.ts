@@ -54,6 +54,7 @@ export const diagnosi: Guide[] = [
     tags: ['ipconfig', 'ping', 'tracert', 'pathping', 'nslookup', 'resolve-dnsname', 'test-netconnection', 'netsh', 'wlan', 'wlanreport', 'arp', 'route', 'netstat', 'get-netadapter', 'powershell', 'prompt dei comandi', 'comandi'],
     blocks: [
       { t: 'p', text: 'Windows include strumenti sufficienti per gran parte delle diagnosi. STARNET Polaris ne usa alcuni e altri li sostituisce con misure proprie, ma conoscerli serve a verificare un dato, ad approfondire o a lavorare su un PC dove il programma non c\'è.' },
+      { t: 'video', id: 'percorso-internet' },
       { t: 'table', caption: 'Prompt dei comandi', head: ['Comando', 'A che cosa serve'], rows: [
         ['`ipconfig /all`', 'indirizzi, gateway, DNS, server DHCP, durata della concessione e MAC di ogni scheda'],
         ['`ipconfig /release` e `ipconfig /renew`', 'rilascia l\'indirizzo e lo richiede di nuovo al DHCP'],

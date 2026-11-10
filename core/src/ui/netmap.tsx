@@ -319,9 +319,11 @@ export interface NetMapProps {
   analysis?: Analysis;
   /** Altezza della mappa in pixel (sul telefono si riduce). */
   height?: number;
+  /** Solo la mappa, senza comandi, filtri e note (per le videoguide). */
+  compact?: boolean;
 }
 
-export function NetMap({ scan, analysis, height = 620 }: NetMapProps) {
+export function NetMap({ scan, analysis, height = 620, compact = false }: NetMapProps) {
   const map = useMemo(() => buildNetworkMap(scan, analysis), [scan, analysis]);
   const reduce = useReducedMotion();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -481,7 +483,8 @@ export function NetMap({ scan, analysis, height = 620 }: NetMapProps) {
   if (!map.nodes.length) return <p className="muted">Nessun dato di rete da disegnare.</p>;
 
   return (
-    <div className="netmap">
+    <div className={`netmap${compact ? ' compact' : ''}`}>
+      {!compact && (
       <div className="nm-toolbar" role="toolbar" aria-label="Comandi della mappa">
         <label className="nm-search">
           <Search size={15} aria-hidden />
@@ -506,7 +509,9 @@ export function NetMap({ scan, analysis, height = 620 }: NetMapProps) {
           <List size={15} aria-hidden /> Elenco
         </button>
       </div>
+      )}
 
+      {!compact && (
       <div className="nm-chips" role="group" aria-label="Tipi di dispositivo">
         {kinds.map((k) => {
           const Icon = KIND_ICON[k];
@@ -524,6 +529,7 @@ export function NetMap({ scan, analysis, height = 620 }: NetMapProps) {
           );
         })}
       </div>
+      )}
 
       {list ? (
         <NetMapList map={map} />
@@ -617,11 +623,11 @@ export function NetMap({ scan, analysis, height = 620 }: NetMapProps) {
               </m.aside>
             )}
           </AnimatePresence>
-          <p className="nm-hint faint">Trascina per spostarti · Ctrl + rotella o due dita per lo zoom · tocca un dispositivo per i dettagli</p>
+          {!compact && <p className="nm-hint faint">Trascina per spostarti · Ctrl + rotella o due dita per lo zoom · tocca un dispositivo per i dettagli</p>}
         </div>
       )}
 
-      {!list && flows.length > 0 && (
+      {!list && !compact && flows.length > 0 && (
         <div className="nm-flows" role="group" aria-label="Percorsi del traffico di questo PC">
           <span className="nm-flows-title">
             <Waypoints size={15} aria-hidden /> Percorsi del traffico
@@ -644,7 +650,7 @@ export function NetMap({ scan, analysis, height = 620 }: NetMapProps) {
           ))}
         </div>
       )}
-      {!list && !sel && (
+      {!list && !sel && !compact && (
         <p className="nm-flow-note" aria-live="polite">
           {(() => {
             const f = flows.find((x) => x.id === activeFlow);
@@ -652,12 +658,13 @@ export function NetMap({ scan, analysis, height = 620 }: NetMapProps) {
           })()}
         </p>
       )}
-      <Legend />
-      {map.notes.map((n) => (
-        <p key={n} className="faint nm-note">
-          {n}
-        </p>
-      ))}
+      {!compact && <Legend />}
+      {!compact &&
+        map.notes.map((n) => (
+          <p key={n} className="faint nm-note">
+            {n}
+          </p>
+        ))}
     </div>
   );
 }

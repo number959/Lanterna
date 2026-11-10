@@ -195,3 +195,5 @@ export { classifyHost, KIND_GROUP, KIND_LABEL, KIND_ORDER, KIND_PLURAL, nearBssi
 export type { ClassifyContext, Confidence, DeviceGuess, DeviceKind, KindGroup } from './devicetype';
 export { buildNetworkMap, CELL_H, CELL_W, cidrText, inCidr, ipNum, layoutMap, parseCidr, privateKind, ZONE_BUS } from './topology';
 export type { Cidr, FlowKind, LinkKind, MapFlow, MapLink, MapNode, MapSegment, NetworkMap, SegmentKind } from './topology';
+export { analyzeDiscovery, discoveredNets, netLabel, netsWithoutTargets, segmentationTargets, switchPort } from './discovery';
+export type { DiscoveredNet, SwitchPort } from './discovery';

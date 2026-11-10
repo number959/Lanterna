@@ -13,14 +13,14 @@ import { uso } from './uso';
 export type * from './types';
 
 export const CHAPTERS: Chapter[] = [
-  { id: 'uso', title: 'Usare STARNET Polaris', summary: 'Primi passi, le sezioni del programma, piano d\'azione ed esportazioni, strumenti avanzati, riga di comando e domande frequenti.' },
+  { id: 'uso', title: 'Usare STARNET Polaris', summary: 'Primi passi, le sezioni del programma, la mappa della rete, piano d\'azione ed esportazioni, strumenti avanzati, riga di comando e domande frequenti.' },
   { id: 'pc', title: 'Il computer', summary: 'Come funziona un PC, dischi HDD e SSD e la loro salute, cosa occupa spazio e come liberarlo, test di velocità, memoria, avvio, aggiornamenti, registro eventi, schermate blu e minidump, batteria e il metodo per un PC lento.' },
   { id: 'fondamenti', title: 'Fondamenti', summary: 'Come funziona una rete: livelli, indirizzi, DHCP, DNS, instradamento, porte, IPv6 e le misure di qualità.' },
   { id: 'wifi', title: 'Wi-Fi', summary: 'Segnale, bande e canali, standard, sicurezza, progettazione, roaming, più access point, interferenze e misure stanza per stanza.' },
   { id: 'cablata', title: 'Rete cablata', summary: 'Cavi e fibra, switch e VLAN, anelli e ridondanza, PoE, architettura di una rete aziendale.' },
   { id: 'servizi', title: 'Servizi di rete', summary: 'Firewall, VPN, QoS, gestione e monitoraggio, linea Internet, telefonia, stampa e dominio.' },
   { id: 'sicurezza', title: 'Sicurezza', summary: 'Principi, segmentazione, credenziali e aggiornamenti, certificati dei servizi interni, minacce comuni, log e backup.' },
-  { id: 'complesse', title: 'Reti complesse e sanità', summary: 'La rete di una clinica: dispositivi medicali, DICOM e HL7, Wi-Fi sanitario, norme, continuità, inventario e analisi su larga scala.' },
+  { id: 'complesse', title: 'Reti complesse e sanità', summary: 'La rete di una clinica: dispositivi medicali, DICOM e HL7, Wi-Fi sanitario, norme, continuità, inventario, scoperta delle VLAN e analisi su larga scala.' },
   { id: 'diagnosi', title: 'Diagnosi', summary: 'Il metodo, gli strumenti di Windows, i problemi tipici con le loro cause e il test di velocità di Internet.' },
 ];
 
@@ -114,6 +114,11 @@ export function blockTexts(b: Block): string[] {
       return [...(b.caption ? [b.caption] : []), ...b.head, ...b.rows.flat()];
     case 'diagram':
       return [b.caption];
+    case 'video': {
+      // I testi della videoguida contano per la ricerca e per i collegamenti.
+      const v = videoById(b.id);
+      return v ? [v.title, v.summary, ...v.scenes.flatMap((s) => [s.title, ...s.narration])] : [];
+    }
   }
 }
 
@@ -244,3 +249,5 @@ export function search(query: string, limit = 30): SearchHit[] {
   }
   return hits.sort((a, b) => b.score - a.score).slice(0, limit);
 }
+export { VIDEOS, videoById } from './video';
+import { videoById } from './video';

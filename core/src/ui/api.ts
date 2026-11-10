@@ -1,5 +1,5 @@
 import type { CertData, CertTarget, CpuBench, DefenderInfo, DiskBench, Inventory, RamTest, ReachData, ReachTarget, Scan, SpaceReport, SpeedServer, SpeedTest, SurveySample, Threat } from '../engine';
-import type { CrashData } from '../engine';
+import type { ADSubnets, CrashData, L2Discovery, SnmpResult } from '../engine';
 
 // Comunicazione con l'agente locale (Polaris.exe serve / finestra).
 // L'interfaccia è servita dallo stesso agente, quindi i percorsi sono relativi.
@@ -120,8 +120,11 @@ export const inventoryStatus = () => getJson<InventoryProgress>('api/inventory')
  * fine riportando l'avanzamento reale. `resume` riprende un inventario già
  * in corso senza avviarne un altro.
  */
-export async function runInventory(onProgress: (p: InventoryProgress) => void, opts: { resume?: boolean; signal?: AbortSignal } = {}): Promise<Inventory> {
-  if (!opts.resume) await postJson<{ started: boolean }>('api/inventory', { authorized: true });
+export async function runInventory(
+  onProgress: (p: InventoryProgress) => void,
+  opts: { resume?: boolean; signal?: AbortSignal; subnet?: string } = {},
+): Promise<Inventory> {
+  if (!opts.resume) await postJson<{ started: boolean }>('api/inventory', { authorized: true, ...(opts.subnet ? { subnet: opts.subnet } : {}) });
   for (;;) {
     await new Promise((r) => setTimeout(r, 500));
     if (opts.signal?.aborted) throw new DOMException('interrotto', 'AbortError');
@@ -136,6 +139,95 @@ export async function runInventory(onProgress: (p: InventoryProgress) => void, o
 }
 
 export const runReach = (targets: ReachTarget[]) => postJson<ReachData>('api/reach', { targets });
+
+// ---- Scoperta delle reti e delle VLAN: su richiesta esplicita dell'utente.
+
+export type DiscoverKind = 'l2' | 'ad' | 'snmp';
+
+export interface DiscoverState<T> {
+  running: boolean;
+  startedAt?: string;
+  /** Durata prevista dell'ascolto, in secondi. */
+  seconds?: number;
+  /** Secondi trascorsi dall'avvio. */
+  elapsed?: number;
+  target?: string;
+  /** Passo in corso della lettura SNMP. */
+  step?: string;
+  error?: string;
+  /** Tipo di errore SNMP: invalid, notPrivate, timeout, auth, refused, unreachable, deadline, canceled, protocol. */
+  errorKind?: string;
+  result?: T;
+  results?: T[];
+}
+
+export const discoverStatus = <T>(kind: DiscoverKind) => getJson<DiscoverState<T>>(`api/discover/${kind}`);
+
+async function runDiscover<T>(kind: DiscoverKind, body: unknown, onProgress: (st: DiscoverState<T>) => void, resume?: boolean): Promise<DiscoverState<T>> {
+  if (!resume) await postJson<{ started: boolean }>(`api/discover/${kind}`, body);
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 500));
+    const st = await discoverStatus<T>(kind);
+    onProgress(st);
+    if (!st.running) return st;
+  }
+}
+
+/**
+ * Ascolta per circa un minuto gli annunci che lo switch manda alla porta del
+ * PC (LLDP, CDP, DTP, Spanning Tree). Polaris non trasmette nulla; serve
+ * l'avvio come amministratore e una scheda cablata collegata.
+ */
+export async function listenSwitch(seconds: number, onProgress: (st: DiscoverState<L2Discovery>) => void, opts: { resume?: boolean } = {}): Promise<L2Discovery> {
+  const st = await runDiscover<L2Discovery>('l2', { seconds }, onProgress, opts.resume);
+  if (st.error) throw new Error(st.error);
+  if (!st.result) throw new Error('Ascolto terminato senza risultato');
+  return st.result;
+}
+
+/** Interrompe l'ascolto in corso. */
+export async function stopListen(): Promise<void> {
+  const r = await fetch('api/discover/l2', { method: 'DELETE', cache: 'no-store' });
+  if (!r.ok) throw await errorOf(r);
+}
+
+/** Legge le sottoreti definite in Active Directory (solo PC in un dominio). */
+export async function readADSubnets(onProgress: (st: DiscoverState<ADSubnets>) => void = () => undefined): Promise<ADSubnets> {
+  const st = await runDiscover<ADSubnets>('ad', {}, onProgress);
+  if (st.error) throw new Error(st.error);
+  if (!st.result) throw new Error('Lettura terminata senza risultato');
+  return st.result;
+}
+
+/** Credenziali SNMP: restano solo in memoria per la durata della richiesta. */
+export interface SnmpCreds {
+  version: '2c' | '3';
+  community?: string;
+  user?: string;
+  auth?: string;
+  authPass?: string;
+  priv?: string;
+  privPass?: string;
+}
+
+/**
+ * Legge in sola lettura un router o uno switch della rete interna con le
+ * credenziali del tecnico. Le credenziali viaggiano solo verso l'agente
+ * locale e non vengono salvate; l'esito non le contiene.
+ */
+export async function readSnmp(target: string, creds: SnmpCreds, onProgress: (st: DiscoverState<SnmpResult>) => void = () => undefined): Promise<SnmpResult> {
+  const st = await runDiscover<SnmpResult>('snmp', { target, authorized: true, creds }, onProgress);
+  if (st.error) throw new Error(st.error);
+  const r = (st.results ?? []).find((x) => x.target === target.trim());
+  if (!r) throw new Error('Lettura terminata senza risultato');
+  return r;
+}
+
+/** Interrompe la lettura SNMP in corso. */
+export async function stopSnmp(): Promise<void> {
+  const r = await fetch('api/discover/snmp', { method: 'DELETE', cache: 'no-store' });
+  if (!r.ok) throw await errorOf(r);
+}
 
 /**
  * Legge i certificati TLS dei servizi indicati (al massimo 20, solo indirizzi

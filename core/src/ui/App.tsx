@@ -308,7 +308,11 @@ function Shell() {
     else delete infra.assessment;
     return { ...scan, infra };
   }, [scan, answers, fileAssessment]);
-  const setInfra = useCallback((patch: Partial<InfraData>) => setScan((s) => (s ? { ...s, infra: { ...s.infra, ...patch } } : s)), []);
+  const setInfra = useCallback(
+    (patch: Partial<InfraData> | ((infra: InfraData) => Partial<InfraData>)) =>
+      setScan((s) => (s ? { ...s, infra: { ...s.infra, ...(typeof patch === 'function' ? patch(s.infra ?? {}) : patch) } } : s)),
+    [],
+  );
   // Rapporto e origine mostrati, letti da riferimenti perché chi aggiunge un
   // risultato può essere rimasto da una scheda già smontata.
   const scanRef = useRef(scan);

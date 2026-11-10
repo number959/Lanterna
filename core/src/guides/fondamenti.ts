@@ -47,6 +47,7 @@ export const fondamenti: Guide[] = [
     tags: ['ip', 'ipv4', 'cidr', 'maschera', 'subnet mask', 'sottorete', 'rfc 1918', 'apipa', '169.254', 'broadcast'],
     blocks: [
       { t: 'p', text: 'Un indirizzo **IPv4** è un numero di 32 bit scritto come quattro numeri da 0 a 255 separati da punti, per esempio `192.168.1.20`. Una parte dell\'indirizzo identifica la **rete**, il resto identifica il **dispositivo** dentro quella rete. Quanto è lunga la parte di rete lo dice la **maschera** (subnet mask), scritta per esteso (`255.255.255.0`) o in forma compatta **CIDR** (`/24`, cioè i primi 24 bit indicano la rete).' },
+      { t: 'video', id: 'indirizzi-dhcp' },
       { t: 'diagram', id: 'subnet', caption: 'Lo stesso indirizzo letto con maschere diverse: scegli la maschera e guarda quale parte identifica la rete e quanti dispositivi ci stanno.' },
       { t: 'h', text: 'Leggere un indirizzo CIDR' },
       { t: 'p', text: 'In `192.168.1.20/24` la rete è `192.168.1.0`, i dispositivi possono usare da `192.168.1.1` a `192.168.1.254`, e `192.168.1.255` è l\'indirizzo di **broadcast** (raggiunge tutti). Due dispositivi si parlano direttamente solo se sono nella stessa sottorete; altrimenti passano dal **gateway**, cioè il router (vedi [[gateway-routing-nat]]).' },
@@ -116,6 +117,7 @@ export const fondamenti: Guide[] = [
     tags: ['dhcp', 'dora', 'lease', 'prenotazione', 'reservation', 'relay', 'helper', 'rogue dhcp', 'opzioni'],
     blocks: [
       { t: 'p', text: 'Il **DHCP** assegna automaticamente a ogni dispositivo indirizzo IP, maschera, gateway, server DNS e altre impostazioni. Senza DHCP ogni dispositivo andrebbe configurato a mano, con il rischio di errori e conflitti.' },
+      { t: 'video', id: 'indirizzi-dhcp' },
       { t: 'diagram', id: 'dhcp', caption: 'Lo scambio DORA: il client cerca un server, riceve un\'offerta, la richiede e ottiene la conferma.' },
       { t: 'h', text: 'Il dialogo DORA' },
       { t: 'list', ordered: true, items: [
@@ -248,6 +250,7 @@ export const fondamenti: Guide[] = [
       { t: 'p', text: 'Una porta **aperta** accetta connessioni: c\'è un servizio in ascolto. Una porta **chiusa** risponde con un rifiuto: il dispositivo c\'è, il servizio no. Una porta **filtrata** non risponde affatto: un firewall scarta le richieste. STARNET Polaris controlla le porte di gestione più comuni solo sul gateway della rete a cui sei collegato.' },
       { t: 'h', text: 'ICMP: ping e traceroute' },
       { t: 'p', text: '**ICMP** trasporta messaggi di servizio. Il **ping** invia una richiesta di eco e misura il tempo di risposta; il **traceroute** invia pacchetti con un tempo di vita crescente per farsi rispondere da ogni router lungo il percorso. Molti apparati danno bassa priorità alle risposte ICMP o le bloccano: un nodo che "non risponde" a metà percorso non è necessariamente guasto se quelli dopo rispondono. Quando l\'ICMP è filtrato, STARNET Polaris misura la latenza con connessioni TCP.' },
+      { t: 'diagram', id: 'traceroute', caption: 'Il traceroute manda pacchetti con TTL 1, 2, 3 e così via: ognuno scade a un router più lontano, che risponde «tempo scaduto». Così si costruisce l\'elenco dei router, con tempi di risposta che crescono con la distanza.' },
       { t: 'code', caption: 'Verificare una porta da Windows', text: 'Test-NetConnection pacs.clinica.local -Port 104\nTest-NetConnection 192.168.1.1 -Port 443' },
     ],
   },
@@ -299,6 +302,7 @@ export const fondamenti: Guide[] = [
         '**Jitter**: quanto varia la latenza da un pacchetto al successivo. Le applicazioni in tempo reale lo compensano con un buffer, ma oltre una certa soglia la voce si spezza.',
         '**Banda**: quanti dati al secondo il collegamento può trasportare (capacità). Il **throughput** è quanti ne passano davvero in un certo momento.',
       ] },
+      { t: 'video', id: 'percorso-internet' },
       { t: 'table', caption: 'Valori di riferimento', head: ['Uso', 'Latenza', 'Jitter', 'Perdite', 'Banda per utente'], rows: [
         ['Voce (VoIP, VoWiFi)', '< 150 ms (ideale < 50)', '< 30 ms', '< 1 %', '0,1 Mbit/s'],
         ['Videochiamata, televisita', '< 150 ms', '< 30 ms', '< 1 %', '1,5-4 Mbit/s'],

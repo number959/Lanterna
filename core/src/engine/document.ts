@@ -9,6 +9,7 @@ import { failedUpdates, wuErrorText } from './maint';
 import { isRealPrinter, printerText } from './printing';
 import { USB_KIND, USB_STATUS, usbDeviceLabel, usbNodes, usbSlow, usbSpeedText, usbWhere } from './usb';
 import { fmt, num, thousands } from './fmt';
+import { discoveredNets, netLabel, switchPort } from './discovery';
 import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
 import { dateIt } from './pc';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
@@ -565,6 +566,29 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
         })
         .join('')}</tbody></table><p class="pd-muted pd-small">Controllo del ${esc(dateIt(scan.infra?.certs?.checkedAt ?? ''))}. Attendibilità valutata da Windows su questo PC, senza controllo della revoca.</p></section>`,
     );
+
+  // Reti e VLAN scoperte, con le fonti: solo se c'è stata almeno una lettura
+  // su richiesta (annunci dello switch, Active Directory, SNMP, inventari).
+  const disc = scan.infra?.discovery;
+  if (disc?.l2?.read === 'ok' || disc?.ad?.read === 'ok' || disc?.snmp?.length || scan.infra?.remote?.length) {
+    const nets = discoveredNets(scan);
+    const sw = switchPort(scan);
+    out.push(
+      `<section><h2>Reti e VLAN</h2>${
+        sw
+          ? `<p>Porta dello switch: <b>${t(sw.name)}</b>${sw.port ? `, porta ${t(sw.port)}` : ''}${sw.vlan ? `, VLAN ${sw.vlan}` : ''}${sw.voiceVlan ? `, VLAN della voce ${sw.voiceVlan}` : ''} (annunci ${sw.protocol}).</p>`
+          : ''
+      }<table class="pd-table"><thead><tr><th>Rete</th><th>Indirizzi</th><th>Fonti</th><th>Dispositivi noti</th></tr></thead><tbody>${nets
+        .map(
+          (n) =>
+            `<tr><td><b>${t(n.vlan || n.name ? netLabel(n) : (n.prefix ?? 'Rete'))}</b>${n.local ? '<br><span class="pd-small">rete di questo PC</span>' : ''}${n.site ? `<br><span class="pd-small">sito ${t(n.site)}</span>` : ''}</td>` +
+            `<td>${esc(n.prefix ?? '—')}${n.contains ? `<br><span class="pd-small">comprende ${n.contains} reti</span>` : n.guessed ? '<br><span class="pd-small">/24 presunta</span>' : ''}</td>` +
+            `<td class="pd-small">${t(n.sources.join(', '))}</td>` +
+            `<td>${n.hosts.length + n.servers.length || '—'}</td></tr>`,
+        )
+        .join('')}</tbody></table><p class="pd-muted pd-small">Reti note senza scansioni a tappeto: rotte del PC, annunci dello switch ascoltati senza trasmettere, Active Directory, letture SNMP in sola lettura con le credenziali del tecnico (mai salvate) e inventari attraverso il router fatti su richiesta. Descrizioni delle porte e numeri di serie non si leggono.</p></section>`,
+    );
+  }
 
   // Mappa del Wi-Fi per stanza: nomi delle stanze scelti dall'utente, access
   // point come "AP A", "AP B" (mai i BSSID), delle reti vicine solo i numeri.

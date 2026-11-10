@@ -48,6 +48,7 @@ export const cablata: Guide[] = [
     title: 'Switch gestiti e VLAN',
     summary: 'Come una VLAN divide uno switch in reti separate, che cosa sono porte access e trunk e come si instrada tra le VLAN.',
     level: 'intermedio',
+    metrics: ['lan.vlan1', 'lan.dtp'],
     actions: ['separate-iot'],
     tags: ['vlan', '802.1q', 'trunk', 'access', 'tag', 'native vlan', 'switch gestito', 'livello 3', 'inter-vlan', 'voice vlan'],
     blocks: [
@@ -62,6 +63,7 @@ export const cablata: Guide[] = [
       ] },
       { t: 'h', text: 'Instradare tra VLAN' },
       { t: 'p', text: 'Le VLAN non si parlano finché un router, un firewall o uno switch di **livello 3** non instrada tra di esse. Questo punto è prezioso: è dove si applicano le regole che stabiliscono chi può parlare con chi. Uno switch di livello 3 instrada velocemente ma filtra in modo semplice (liste di accesso); un firewall filtra in modo completo e registra il traffico (vedi [[firewall]] e [[segmentazione]]).' },
+      { t: 'diagram', id: 'intervlan', caption: 'Il firewall, o lo switch di livello 3, instrada tra le VLAN e applica le regole: dagli Uffici ai Server sì, dagli Ospiti ai Medicali no. Il relay DHCP porta la richiesta di un PC della VLAN 30 al server DHCP della VLAN 10.' },
       { t: 'h', text: 'Errori tipici' },
       { t: 'list', items: [
         '**VLAN non consentita sul trunk**: i dispositivi di quella VLAN funzionano su uno switch ma non sull\'altro.',
@@ -69,7 +71,7 @@ export const cablata: Guide[] = [
         '**Porta nella VLAN sbagliata** dopo uno spostamento: il dispositivo riceve un indirizzo di un\'altra rete o nessun indirizzo.',
         '**Tutto nella VLAN 1**: la configurazione di fabbrica. Comoda, ma significa nessuna separazione.',
       ] },
-      { t: 'note', kind: 'tip', title: 'Che cosa vede STARNET Polaris', text: 'Da un PC le VLAN non si vedono: le etichette vengono tolte dallo switch prima di arrivare alla scheda. Si vede però la sottorete in cui ci si trova, il gateway e quali altre reti sono raggiungibili: il test di segmentazione verifica che le VLAN che non devono parlarsi siano davvero isolate.' },
+      { t: 'note', kind: 'tip', title: 'Che cosa vede STARNET Polaris', text: 'Da un PC le altre VLAN non si vedono: su una porta access le etichette vengono tolte dallo switch prima di arrivare alla scheda. Si vede però la sottorete in cui ci si trova, il gateway e quali altre reti sono raggiungibili, e si può scoprire che le altre VLAN esistono ascoltando gli annunci dello switch o interrogando il router in sola lettura (vedi [[scoprire-vlan]]). Il test di segmentazione verifica poi che le VLAN che non devono parlarsi siano davvero isolate.' },
     ],
   },
   {
@@ -78,6 +80,7 @@ export const cablata: Guide[] = [
     title: 'Loop, Spanning Tree e aggregazione dei collegamenti',
     summary: 'Perché un cavo collegato al posto sbagliato può bloccare un edificio, come lo previene lo Spanning Tree e come si ottiene ridondanza.',
     level: 'avanzato',
+    metrics: ['lan.stp'],
     tags: ['loop', 'stp', 'rstp', 'mstp', 'spanning tree', 'broadcast storm', 'bpdu guard', 'lacp', 'link aggregation', 'ridondanza'],
     blocks: [
       { t: 'p', text: 'Se due switch sono collegati con due cavi, o se qualcuno collega tra loro due prese a muro, si crea un **anello**. Ethernet non ha un tempo di vita dei frame: un broadcast entra nell\'anello e gira all\'infinito, moltiplicandosi a ogni passaggio. In pochi secondi la rete satura (**broadcast storm**): tutte le spie lampeggiano, nulla funziona, a volte si bloccano anche gli switch.' },

@@ -455,8 +455,19 @@ export interface Neighbor {
   mac?: string;
 }
 
+/** Rotta IPv4 verso un'altra rete privata, dalla tabella di instradamento del PC. */
+export interface RouteEntry {
+  prefix: string;
+  nextHop?: string;
+  metric?: number;
+  /** manuale | dhcp | rete collegata | altro */
+  origin?: string;
+}
+
 export interface LanData {
   neighbors: Neighbor[];
+  /** Rotte verso le reti private (tabella di instradamento); assenti se non lette (fino alla 0.12.0 non c'erano). */
+  routes?: RouteEntry[];
 }
 
 export interface FirewallProfile {
@@ -611,11 +622,228 @@ export interface CertData {
 
 export interface InfraData {
   inventory?: Inventory;
+  /**
+   * Inventari di altre sottoreti private (per esempio VLAN scoperte),
+   * esaminate attraverso il router su richiesta: solo ping, DNS inverso e
+   * NetBIOS, senza MAC (la tabella ARP non arriva oltre il router).
+   */
+  remote?: Inventory[];
   reach?: ReachData;
   /** Certificati TLS dei servizi indicati dall'utente (su richiesta). */
   certs?: CertData;
   /** Autovalutazione delle misure organizzative: dichiarata dall'utente, non misurata. */
   assessment?: AssessmentData;
+  /** Scoperta delle altre reti e delle VLAN (su richiesta). */
+  discovery?: DiscoveryData;
+}
+
+// ---------- Scoperta delle reti e delle VLAN (su richiesta) ----------
+
+export interface DiscoveryData {
+  /** Annunci che lo switch manda alla porta del PC (ascolto passivo). */
+  l2?: L2Discovery;
+  /** Sottoreti definite in Active Directory (Siti e servizi). */
+  ad?: ADSubnets;
+  /** Letture SNMP in sola lettura, una per dispositivo, la più recente prima. */
+  snmp?: SnmpResult[];
+}
+
+/**
+ * Esito dell'ascolto: ok (almeno un annuncio), none (nessun annuncio),
+ * nowired (nessuna scheda cablata collegata), admin (serve l'avvio come
+ * amministratore), unsupported (cattura non disponibile), error.
+ */
+export type L2Read = 'ok' | 'none' | 'nowired' | 'admin' | 'unsupported' | 'error';
+
+export interface L2Discovery {
+  read: L2Read;
+  seconds: number;
+  frames: number;
+  counts: { lldp: number; cdp: number; dtp: number; stp: number; vtp: number; eapol: number; other: number };
+  /** Schede cablate in ascolto. */
+  adapters?: string[];
+  lldp?: LldpNeighbor[];
+  cdp?: CdpNeighbor[];
+  dtp?: DtpInfo[];
+  stp?: StpInfo[];
+  error?: string;
+}
+
+export interface VlanName {
+  id: number;
+  name?: string;
+}
+
+/** Politica di rete LLDP-MED (ANSI/TIA-1057). */
+export interface MedPolicy {
+  /** voice | voice-signaling | guest-voice | softphone-voice | video-conferencing | streaming-video | video-signaling... */
+  app: string;
+  unknown?: boolean;
+  tagged: boolean;
+  vlan?: number;
+  priority: number;
+  dscp: number;
+}
+
+/**
+ * Switch annunciato con LLDP. Descrizioni delle porte e alias scritti dagli
+ * amministratori non si leggono (possono contenere nomi di persone): un
+ * portId di tipo interface-alias arriva vuoto.
+ */
+export interface LldpNeighbor {
+  adapter?: string;
+  chassisId: string;
+  chassisIdType: string;
+  portId: string;
+  portIdType: string;
+  ttl: number;
+  systemName?: string;
+  /** Prima riga della descrizione di sistema (modello e software). */
+  systemDescription?: string;
+  /** Funzioni attive: bridge, router, wlan-ap, telephone, station... */
+  capabilities?: string[];
+  capabilitiesSupported?: string[];
+  managementAddresses?: string[];
+  /** VLAN non etichettata della porta (PVID). */
+  portVlanId?: number;
+  protocolVlans?: { id: number; supported: boolean; enabled: boolean }[];
+  /** VLAN con nome annunciate sulla porta. */
+  vlans?: VlanName[];
+  voiceVlan?: number;
+  policies?: MedPolicy[];
+  medClass?: string;
+  medCapabilities?: string[];
+  manufacturer?: string;
+  model?: string;
+  autoneg?: string;
+  mauType?: number;
+  mau?: string;
+  speedMbps?: number;
+  duplex?: string;
+  frames: number;
+}
+
+export interface CdpNeighbor {
+  adapter?: string;
+  version: number;
+  ttl: number;
+  deviceId: string;
+  portId?: string;
+  platform?: string;
+  software?: string;
+  /** router, bridge, switch, host, igmp, repeater, phone, remote-managed... */
+  capabilities?: string[];
+  addresses?: string[];
+  managementAddresses?: string[];
+  nativeVlan?: number;
+  voiceVlan?: number;
+  vtpDomain?: string;
+  duplex?: string;
+  systemName?: string;
+  frames: number;
+}
+
+/** Negoziazione del trunk (DTP, Cisco) annunciata dalla porta del PC. */
+export interface DtpInfo {
+  adapter?: string;
+  version: number;
+  domain?: string;
+  /** access | trunk */
+  operStatus?: string;
+  /** on | off | desirable | auto | unknown */
+  adminStatus?: string;
+  operType?: string;
+  adminType?: string;
+  rawStatus?: string;
+  rawType?: string;
+  neighbor?: string;
+  frames: number;
+}
+
+/** BPDU dello Spanning Tree: una voce per bridge, porta e VLAN (PVST+). */
+export interface StpInfo {
+  adapter?: string;
+  format: 'ieee' | 'pvst';
+  protocol: string;
+  vlan?: number;
+  rootPriority: number;
+  rootSysIdExt: number;
+  rootMac: string;
+  rootPathCost: number;
+  bridgePriority: number;
+  bridgeSysIdExt: number;
+  bridgeMac: string;
+  portPriority: number;
+  portNumber: number;
+  portRole?: string;
+  topologyChange?: boolean;
+  messageAge: number;
+  maxAge: number;
+  helloTime: number;
+  forwardDelay: number;
+  frames: number;
+}
+
+/** Sottoreti di Active Directory: ok | nodomain | unreachable | denied | error. */
+export interface ADSubnets {
+  read: 'ok' | 'nodomain' | 'unreachable' | 'denied' | 'error';
+  subnets?: { prefix: string; site?: string }[];
+  error?: string;
+}
+
+/** Stato di una sezione della lettura SNMP. */
+export interface SnmpStatus {
+  state: 'ok' | 'partial' | 'absent' | 'error' | 'skipped' | '';
+  rows: number;
+  source?: string;
+  note?: string;
+}
+
+/**
+ * Lettura SNMP in sola lettura di uno switch o di un router. Le credenziali
+ * non fanno mai parte del risultato; sysContact e sysLocation non si leggono.
+ */
+export interface SnmpResult {
+  target: string;
+  version: '2c' | '3';
+  startedAt: string;
+  durationMs: number;
+  requests: number;
+  stopped?: string;
+  warnings?: string[];
+  /** Il tecnico ha usato una community predefinita ("public" o "private"). */
+  defaultCommunity?: boolean;
+  system?: { descr?: string; objectId?: string; name?: string; uptimeSec?: number; chassisId?: string };
+  interfaces: {
+    index: number;
+    name?: string;
+    descr?: string;
+    type?: number;
+    vlanId?: number;
+    ips: { ip: string; mask?: string; prefix: number; subnet?: string }[];
+  }[];
+  vlans: { id: number; name?: string; state?: string }[];
+  lldpNeighbors: {
+    localPortNum: number;
+    localPort?: string;
+    chassisId?: string;
+    chassisIdType?: string;
+    portId?: string;
+    portIdType?: string;
+    sysName?: string;
+    capsEnabled?: string[];
+    mgmtIp?: string;
+  }[];
+  arp: { ifIndex: number; ip: string; mac: string }[];
+  fdb: { mac: string; port?: string; bridgePort: number; ifIndex?: number; fdbId?: number }[];
+  sections: {
+    system: SnmpStatus;
+    interfaces: SnmpStatus;
+    vlans: SnmpStatus;
+    lldp: SnmpStatus;
+    arp: SnmpStatus;
+    fdb: SnmpStatus;
+  };
 }
 
 // ---------- Computer ----------

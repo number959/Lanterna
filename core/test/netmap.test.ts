@@ -3,6 +3,7 @@ import { analyze, buildNetworkMap, classifyHost, nearBssid } from '../src/engine
 import { labelKind, vlanIn } from '../src/engine/devicetype';
 import type { InventoryHost, Scan } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
+import { simulatedL2 } from '../src/demo/discovery';
 import { demoScan } from '../src/demo/sample';
 
 // Mappa della rete: riconoscimento del tipo dei dispositivi, zone (sottoreti,
@@ -55,7 +56,14 @@ describe('mappa della rete', () => {
     expect(m.counts).toMatchObject({ firewall: 1, ap: 2, printer: 2, pc: 11 });
     const local = m.segments.find((s) => s.kind === 'local')!;
     expect(local).toMatchObject({ subnet: '10.20.30.0/24', vlan: 30 });
-    expect(m.segments.find((s) => s.vlan === 60)?.label).toBe('VLAN 60 · 10.20.60.0/24');
+    // Nomi delle VLAN letti via SNMP, sito di Active Directory, niente zona per l'aggregato /16.
+    expect(m.segments.find((s) => s.vlan === 60)?.label).toBe('VLAN 60 MEDICALI · 10.20.60.0/24');
+    expect(local.label).toBe('Rete di questo PC · AMBULATORI');
+    expect(m.segments.find((s) => s.subnet === '10.30.0.0/16')?.label).toBe('Sito Poliambulatorio-Nord · 10.30.0.0/16');
+    expect(m.segments.some((s) => s.subnet === '10.20.0.0/16')).toBe(false);
+    // Dispositivi dalla tabella ARP del firewall: gli switch di piano riconosciuti dai vicini LLDP.
+    expect(m.nodes.find((n) => n.ip === '10.0.0.11')).toMatchObject({ kind: 'switch', label: 'SW-PIANO1' });
+    expect(m.nodes.filter((n) => n.ip === '10.20.60.16').length).toBe(1);
     expect(m.segments.filter((s) => s.kind === 'wifi').map((s) => s.label).sort()).toEqual(['Rete Wi-Fi nascosta', 'Wi-Fi «Clinica-Ospiti»']);
     const inet = m.flows.find((f) => f.kind === 'internet')!;
     expect(inet.path).toEqual(['ip:10.20.30.57', 'ip:10.20.30.202', 'ip:10.20.30.1', 'internet']);
@@ -63,6 +71,22 @@ describe('mappa della rete', () => {
     expect(blocked.find((f) => f.label === 'Gestione switch (SSH)')?.sev).toBe('crit');
     expect(blocked.find((f) => f.label.startsWith('Pompe'))?.sev).toBe('ok');
     expect(m.nodes.find((n) => n.ip === '10.20.60.15')?.kind).toBe('medical');
+  });
+
+  it('clinica con il cavo: lo switch annunciato sta tra il PC e il gateway', () => {
+    const s: Scan = clone(clinicScan);
+    s.adapters = s.adapters.map((a) =>
+      a.kind === 'ethernet' ? { ...a, up: true, ipv4: ['10.20.30.57/24'], gateways: ['10.20.30.1'], dns: ['10.10.10.10', '10.10.10.11'], dhcpServer: '10.10.10.10' } : { ...a, up: false, ipv4: [], gateways: [] },
+    );
+    delete s.wifi!.connected;
+    s.infra!.discovery = { ...s.infra!.discovery, l2: simulatedL2(s) };
+    const m = buildNetworkMap(s, analyze(s));
+    const sw = m.nodes.find((n) => n.id === 'sw:SW-PIANO1.clinica.local')!;
+    expect(sw).toMatchObject({ kind: 'switch', label: 'SW-PIANO1', ip: '10.0.0.11', segment: 'seg:local' });
+    expect(sw.roles).toContain('porta Gi1/0/12');
+    expect(m.nodes.filter((n) => n.ip === '10.0.0.11').length).toBe(1);
+    expect(m.flows.find((f) => f.kind === 'internet')?.path).toEqual(['ip:10.20.30.57', sw.id, 'ip:10.20.30.1', 'internet']);
+    expect(m.links.find((l) => l.from === 'ip:10.20.30.57' && l.to === sw.id)).toMatchObject({ kind: 'cable', label: 'Gi1/0/12' });
   });
 
   it('casa: router con il Wi-Fi, operatore con indirizzi privati, nessun secondo router', () => {

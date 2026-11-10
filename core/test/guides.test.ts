@@ -174,3 +174,58 @@ describe('due test di velocità: del PC e di Internet', () => {
     expect(privacy && privacy.t === 'note' && privacy.text).toContain('indirizzo IP pubblico');
   });
 });
+
+describe('disegni nelle guide', () => {
+  const diagramBlocks = GUIDES.flatMap((g) => g.blocks.flatMap((b) => (b.t === 'diagram' ? [{ g: g.id, id: b.id, caption: b.caption }] : [])));
+
+  it('ogni disegno ha una didascalia breve', () => {
+    for (const d of diagramBlocks) {
+      expect(d.caption.trim().length, `${d.g}: ${d.id}`).toBeGreaterThan(30);
+      expect(d.caption.length, `${d.g}: ${d.id}`).toBeLessThanOrEqual(320);
+    }
+  });
+
+  it('non ripete lo stesso disegno in molte guide né due volte nella stessa', () => {
+    const byId = new Map<string, string[]>();
+    for (const d of diagramBlocks) byId.set(d.id, [...(byId.get(d.id) ?? []), d.g]);
+    for (const [id, gs] of byId) {
+      expect(gs.length, `${id}: ${gs.join(', ')}`).toBeLessThanOrEqual(2);
+      expect(new Set(gs).size, id).toBe(gs.length);
+    }
+  });
+});
+
+describe('mappa della rete e scoperta delle VLAN', () => {
+  const text = (id: string) => allTexts(id).map(plainText).join(' ');
+
+  it('le due guide nuove stanno nei capitoli giusti', () => {
+    expect(guideById('mappa-della-rete')?.chapter).toBe('uso');
+    expect(guideById('scoprire-vlan')?.chapter).toBe('complesse');
+  });
+
+  it('la mappa spiega zone, confidenza, indizi, comandi e limiti', () => {
+    const t = text('mappa-della-rete');
+    for (const w of ['alta', 'media', 'bassa', 'punto interrogativo', 'tratteggiato', 'segnale di stop', 'in rosso', 'IEEE', 'mDNS', 'UPnP', 'NetBIOS', 'TTL', 'MAC casuale', 'BSSID', 'Ctrl', 'due dita', 'Elenco', 'senza scansioni delle porte', 'non quello degli altri dispositivi']) {
+      expect(t, w).toContain(w);
+    }
+  });
+
+  it('la scoperta delle VLAN copre ascolto, ciò che il PC sa, Active Directory, SNMP e i divieti', () => {
+    const t = text('scoprire-vlan');
+    for (const w of ['LLDP', 'LLDP-MED', 'CDP', 'DTP', 'Spanning Tree', 'non trasmette nulla', 'come amministratore', '121 e 249', 'relay DHCP', 'Siti e servizi', 'SNMPv2c', 'SNMPv3', 'sola lettura', '10.0.0.0/8', 'switch spoofing', 'double tagging', 'VLAN della scheda di rete', 'test di segmentazione', 'Reti e VLAN', 'Ascolta lo switch', 'Leggi Active Directory', 'Leggi via SNMP', 'Usa nel test di segmentazione', 'Inventario di questa rete', 'numeri di serie', 'sysContact', 'Come Polaris giudica ciò che trova']) {
+      expect(t, w).toContain(w);
+    }
+  });
+
+  it('la scoperta delle VLAN è la guida delle misure e delle azioni sulle reti scoperte', () => {
+    const g = guideById('scoprire-vlan')!;
+    for (const m of ['infra.seg', 'lan.vlans', 'lan.switchport', 'lan.dtp', 'lan.vlan1', 'lan.stp', 'lan.snmp']) expect(g.metrics, m).toContain(m);
+    for (const a of ['plan-segmentation', 'segment-network', 'test-segmentation', 'check-duplex', 'disable-dtp', 'move-off-vlan1', 'stp-root', 'snmp-harden']) expect(g.actions, a).toContain(a);
+  });
+
+  it('le guide che descrivono l\'inventario citano gli annunci mDNS e UPnP', () => {
+    for (const id of ['inventario-documentazione', 'dispositivi-medicali-in-rete', 'strumenti-avanzati', 'mappa-della-rete']) {
+      expect(text(id), id).toMatch(/mDNS e UPnP/);
+    }
+  });
+});

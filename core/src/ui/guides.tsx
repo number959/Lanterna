@@ -19,25 +19,11 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ACTIONS, CATEGORY_LABELS, METRIC_LIST, stepLine, stepsText } from '../engine';
 import type { Analysis, Category, Finding } from '../engine';
-import {
-  CHAPTERS,
-  GLOSSARY,
-  GUIDES,
-  chapterOf,
-  fold,
-  guideById,
-  guidesForAction,
-  guidesForMetric,
-  guidesOf,
-  headingsOf,
-  neighbours,
-  parseInline,
-  readingMinutes,
-  search,
-} from '../guides';
+import { CHAPTERS, GLOSSARY, GUIDES, VIDEOS, chapterOf, fold, guideById, guidesForAction, guidesForMetric, guidesOf, headingsOf, neighbours, parseInline, readingMinutes, search } from '../guides';
 import type { Block, Guide, GlossaryTerm, Level, NoteKind, SearchHit } from '../guides';
 import { Segmented, SevIcon, TableWrap, spotHandlers, useToast } from './components';
 import { Diagram } from './diagrams';
+import { VideoBlock } from './videoguide';
 import { useLocalState } from './hooks';
 import { ease, spring } from './motion';
 import type { ViewProps } from './views';
@@ -238,6 +224,8 @@ function BlockView({ b, sec, onOpen }: { b: Block; sec?: number; onOpen: (id: st
       return <CodeBlock text={b.text} caption={b.caption} />;
     case 'diagram':
       return <Diagram id={b.id} caption={b.caption} />;
+    case 'video':
+      return <VideoBlock id={b.id} />;
   }
 }
 
@@ -315,6 +303,19 @@ function LibraryHome({ read, last, onOpen }: { read: string[]; last?: string; on
           </span>
         </div>
       </section>
+      {VIDEOS.length > 0 && (
+        <section className="chapter">
+          <h2 className="section-title">Videoguide</h2>
+          <p className="muted chapter-sum">
+            Spiegazioni animate con la voce italiana di Windows (Microsoft Elsa), lette sul PC senza collegarsi a Internet, con sottotitoli e testo completo.
+          </p>
+          <div className="vg-list">
+            {VIDEOS.map((v) => (
+              <VideoBlock key={v.id} id={v.id} />
+            ))}
+          </div>
+        </section>
+      )}
       {CHAPTERS.map((c, i) => (
         <section key={c.id} className="chapter">
           <h2 className="section-title">

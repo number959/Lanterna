@@ -19,12 +19,15 @@ import {
 import { AnimatePresence, m } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import { ASSESS_QUESTIONS, scoreAssessment } from '../engine';
-import type { AnswerValue, AssessAreaId, Inventory, InventoryHost, ReachExpect, ReachResult, ReachTarget, Scan, Severity } from '../engine';
+import { ASSESS_QUESTIONS, classifyHost, inCidr, KIND_LABEL, parseCidr, primaryAdapter, scoreAssessment } from '../engine';
+import type { AnswerValue, AssessAreaId, ClassifyContext, Inventory, InventoryHost, ReachExpect, ReachResult, ReachTarget, Scan, Severity } from '../engine';
 import { simulatedInventory, simulatedReach } from '../demo/simulate';
 import { guideById } from '../guides';
 import { download, inventoryStatus, runInventory, runReach } from './api';
 import { CertsCard } from './certs';
+import { DiscoveryCard } from './discovery';
+import { onReachProposal } from './reachbus';
+import { KIND_ICON, kindColor } from './netmap';
 import type { InventoryProgress } from './api';
 import { FindingList, SevIcon, Stat, TableWrap, fmtNum, sevColor, useOpenGuide, useToast } from './components';
 import { useLocalState } from './hooks';
@@ -100,6 +103,10 @@ export function InfraView(props: ViewProps) {
         <InventoryCard {...props} />
       </Section>
 
+      <Section title="Reti e VLAN">
+        <DiscoveryCard {...props} />
+      </Section>
+
       <Section title="Segmentazione e servizi critici">
         <ReachCard {...props} />
       </Section>
@@ -166,11 +173,45 @@ function hostNote(h: InventoryHost): string {
     .join(' · ');
 }
 
-function inventoryCsv(inv: Inventory): string {
+function inventoryCsv(inv: Inventory, scan: Scan): string {
+  const ctx = classifyContext(scan);
   return toCsv([
-    ['ip', 'nome_dns', 'netbios', 'mac', 'mac_casuale', 'ping_ms', 'note'],
-    ...inv.hosts.map((h) => [h.ip, h.name, h.netbios, h.mac, h.randomMac ? 'sì' : '', h.rttMs, hostNote(h)]),
+    ['ip', 'nome_dns', 'netbios', 'mac', 'produttore', 'tipo', 'mac_casuale', 'ping_ms', 'note'],
+    ...inv.hosts.map((h) => [h.ip, h.name, h.netbios, h.mac, h.vendor, KIND_LABEL[classifyHost(h, ctx).kind], h.randomMac ? 'sì' : '', h.rttMs, hostNote(h)]),
   ]);
+}
+
+/** Contesto per riconoscere il tipo di dispositivo, come nella mappa della rete. */
+function classifyContext(scan: Scan): ClassifyContext {
+  const primary = primaryAdapter(scan);
+  return {
+    gatewayIp: scan.gateway?.ip ?? primary?.gateways[0],
+    dnsServers: primary?.dns ?? [],
+    dhcpServer: primary?.dhcpServer,
+    bssids: (scan.wifi?.networks ?? []).map((n) => n.bssid),
+  };
+}
+
+/** Tipo riconosciuto del dispositivo, con la sua icona e il motivo nel suggerimento. */
+function KindCell({ h, ctx, self, laptop }: { h: InventoryHost; ctx: ClassifyContext; self?: boolean; laptop: boolean }) {
+  const g = classifyHost(h, ctx);
+  const kind = self ? (laptop ? 'laptop' : 'pc') : g.kind;
+  const Icon = KIND_ICON[kind];
+  const why = self ? 'è il PC su cui gira Polaris' : g.reasons.join('; ');
+  return (
+    <span className="kind-cell" title={why ? `${KIND_LABEL[kind]}: ${why}` : KIND_LABEL[kind]}>
+      <Icon size={15} aria-hidden style={{ color: kindColor(kind) }} />
+      <span>{KIND_LABEL[kind]}</span>
+      {!self && g.confidence === 'bassa' && kind !== 'unknown' && <span className="faint">?</span>}
+    </span>
+  );
+}
+
+/** Il risultato è l'inventario della rete del PC (e non di un'altra sottorete esaminata attraverso il router)? */
+function isLocalInventory(inv: Inventory, scan: Scan): boolean {
+  const ip = primaryAdapter(scan)?.ipv4[0]?.split('/')[0];
+  const c = parseCidr(inv.subnet);
+  return !ip || !c || inCidr(ip, c);
 }
 
 function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
@@ -190,6 +231,12 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
   }, []);
 
   const done = (r: Inventory) => {
+    // Un inventario ripreso può essere quello di un'altra sottorete, avviato da "Reti e VLAN".
+    if (!isLocalInventory(r, scan)) {
+      setInfra((i) => ({ remote: [r, ...(i.remote ?? []).filter((x) => x.subnet !== r.subnet)].slice(0, 16) }));
+      toast(`Inventario di ${r.subnet} completato`, 'ok', 'complete');
+      return;
+    }
     setInfra({ inventory: r });
     toast(`Inventario completato · ${r.hosts.filter((h) => !h.self).length} dispositivi`, 'ok', 'complete');
   };
@@ -224,7 +271,7 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
     if (filter === 'unnamed' && (h.name || h.netbios || h.self)) return false;
     if (filter === 'random' && !h.randomMac) return false;
     if (filter === 'arp' && (h.rttMs !== undefined || h.self)) return false;
-    return !q || [h.ip, h.name, h.netbios, h.mac].some((v) => v?.toLowerCase().includes(q));
+    return !q || [h.ip, h.name, h.netbios, h.mac, h.vendor].some((v) => v?.toLowerCase().includes(q));
   });
   const counts = {
     ping: others.filter((h) => h.rttMs !== undefined).length,
@@ -233,6 +280,7 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
     random: others.filter((h) => h.randomMac).length,
   };
   const pct = phase && phase.total ? Math.min(1, phase.done / phase.total) : 0;
+  const ctx = useMemo(() => classifyContext(scan), [scan]);
 
   return (
     <m.section variants={rise} className="card">
@@ -249,7 +297,7 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
         {inv && (
           <button
             className="btn small"
-            onClick={() => download(`polaris-inventario-${inv.subnet.replace(/[/.]/g, '-')}.csv`, inventoryCsv(inv), 'text/csv;charset=utf-8')}
+            onClick={() => download(`polaris-inventario-${inv.subnet.replace(/[/.]/g, '-')}.csv`, inventoryCsv(inv, scan), 'text/csv;charset=utf-8')}
           >
             <FileSpreadsheet size={15} aria-hidden /> Esporta CSV
           </button>
@@ -348,7 +396,7 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
             <input
               className="field"
               type="search"
-              placeholder="Filtra per indirizzo, nome o MAC"
+              placeholder="Filtra per indirizzo, nome, MAC o produttore"
               aria-label="Filtra i dispositivi"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -373,9 +421,11 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
               <thead>
                 <tr>
                   <th>Indirizzo</th>
+                  <th>Tipo</th>
                   <th>Nome DNS</th>
                   <th>NetBIOS</th>
                   <th>MAC</th>
+                  <th>Produttore</th>
                   <th>Ping</th>
                   <th>Note</th>
                 </tr>
@@ -384,16 +434,20 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
                 {rows.map((h) => (
                   <tr key={h.ip} className={h.self ? 'mine' : ''}>
                     <td className="mono">{h.ip}</td>
+                    <td>
+                      <KindCell h={h} ctx={ctx} self={h.self} laptop={!!scan.pc?.battery} />
+                    </td>
                     <td>{h.name ?? <span className="faint">—</span>}</td>
                     <td className="mono">{h.netbios ?? <span className="faint">—</span>}</td>
                     <td className="mono faint">{h.mac ?? '—'}</td>
+                    <td>{h.vendor ?? <span className="faint">—</span>}</td>
                     <td className="mono">{h.rttMs !== undefined ? fmtMs(h.rttMs) : <span className="faint">—</span>}</td>
                     <td className="faint wrap">{hostNote(h)}</td>
                   </tr>
                 ))}
                 {!rows.length && (
                   <tr>
-                    <td colSpan={6} className="faint" style={{ textAlign: 'center', padding: 20 }}>
+                    <td colSpan={8} className="faint" style={{ textAlign: 'center', padding: 20 }}>
                       Nessun dispositivo corrisponde al filtro.
                     </td>
                   </tr>
@@ -489,6 +543,30 @@ function ReachCard({ scan, live, source, setInfra }: ViewProps) {
     );
   };
   const update = (key: number, patch: Partial<Row>) => setRows(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+  // Destinazioni proposte dalla scheda "Reti e VLAN": si aggiungono a quelle
+  // presenti, senza doppioni, e la scheda si porta in vista.
+  const cardRef = useRef<HTMLElement>(null);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  useEffect(
+    () =>
+      onReachProposal((ts) => {
+        const cur = rowsRef.current;
+        const key = (h: string, p: string | number | undefined) => `${h.trim()}:${p ?? ''}`;
+        const have = new Set(cur.map((r) => key(r.host, r.port)));
+        const add = toRows(ts.filter((t) => !have.has(key(t.host, t.port ? String(t.port) : ''))));
+        const next = [...cur, ...add].slice(0, MAX_TARGETS);
+        setRows(next);
+        toast(
+          add.length ? `${add.length === 1 ? 'Una destinazione aggiunta' : `${add.length} destinazioni aggiunte`} al test: rivedile prima di avviare` : 'Le destinazioni proposte erano già nel test',
+          add.length ? 'ok' : undefined,
+        );
+        requestAnimationFrame(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   const errors = rows.map(rowError);
   const invalid = errors.some(Boolean);
   const canRun = rows.length > 0 && rows.length <= MAX_TARGETS && !invalid && !busy;
@@ -523,7 +601,7 @@ function ReachCard({ scan, live, source, setInfra }: ViewProps) {
 
   const okCount = reach?.results.filter((r) => r.ok).length ?? 0;
   return (
-    <m.section variants={rise} className="card">
+    <m.section variants={rise} className="card" ref={cardRef} id="reach-card">
       <div className="card-head">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           <ShieldCheck size={19} aria-hidden /> Che cosa deve rispondere da questa rete

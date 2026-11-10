@@ -136,6 +136,7 @@ export const servizi: Guide[] = [
     title: 'Servizi di gestione: ora esatta, log e monitoraggio',
     summary: 'NTP, Syslog, SNMP, flussi di traffico e salvataggio delle configurazioni: i servizi che permettono di capire che cosa è successo e di accorgersi in tempo dei guasti.',
     level: 'avanzato',
+    metrics: ['lan.snmp'],
     tags: ['ntp', 'ora', 'orologio', 'syslog', 'log', 'snmp', 'snmpv3', 'community', 'monitoraggio', 'netflow', 'ipfix', 'sflow', 'backup configurazioni', 'zabbix', 'librenms', 'w32tm', 'inrim', 'kerberos'],
     blocks: [
       { t: 'p', text: 'Una rete che funziona ma che nessuno osserva è una rete in cui i guasti si scoprono dalle telefonate degli utenti. I servizi di gestione rispondono a tre domande: **che ore sono** (per mettere in ordine gli eventi), **che cosa è successo** (i log) e **come sta adesso** (il monitoraggio).' },

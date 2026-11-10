@@ -39,6 +39,7 @@ export const wifi: Guide[] = [
     tags: ['dbm', 'rssi', 'snr', 'rumore', 'noise floor', 'attenuazione', 'muri', 'segnale', 'copertura'],
     blocks: [
       { t: 'p', text: 'La potenza del segnale si misura in **dBm**: decibel riferiti a 1 milliwatt. 0 dBm = 1 mW; i segnali Wi-Fi ricevuti sono molto più deboli, quindi negativi: -50 dBm è un segnale forte, -80 dBm è debole. La scala è logaritmica: **3 dB in meno = metà della potenza**, 10 dB in meno = un decimo, 20 dB in meno = un centesimo.' },
+      { t: 'video', id: 'wifi-segnale-canali' },
       { t: 'table', caption: 'Come leggere il segnale', head: ['Segnale', 'Giudizio', 'Che cosa permette'], rows: [
         ['-30 / -55 dBm', 'eccellente', 'velocità massima'],
         ['-56 / -67 dBm', 'buono', 'voce su Wi-Fi, video, applicazioni cliniche'],
@@ -90,6 +91,7 @@ export const wifi: Guide[] = [
         ['Dispositivi supportati', 'tutti', 'quasi tutti', 'solo Wi-Fi 6E e 7'],
         ['Sicurezza richiesta', '-', '-', 'WPA3 o OWE obbligatori'],
       ] },
+      { t: 'video', id: 'wifi-segnale-canali' },
       { t: 'diagram', id: 'channels24', caption: 'A 2,4 GHz ogni canale è largo circa 20 MHz ma i canali distano solo 5 MHz: due reti su canali vicini si disturbano a vicenda. Solo 1, 6 e 11 non si sovrappongono.' },
       { t: 'h', text: 'Canali sovrapposti e canali condivisi' },
       { t: 'p', text: 'Due reti sullo **stesso canale** si dividono il tempo d\'aria in modo ordinato: si sentono e fanno i turni (interferenza co-canale). Due reti su **canali parzialmente sovrapposti** (per esempio 3 e 6) non si capiscono: per ciascuna l\'altra è solo rumore, che fa fallire trasmissioni e aumenta le ritrasmissioni. Per questo a 2,4 GHz è meglio condividere il canale 6 con un vicino che stare sul 4.' },
