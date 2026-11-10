@@ -26,7 +26,7 @@ export const VIDEOS: VideoGuide[] = [
         narration: [
           'La mappa della rete disegna ciò che Polaris ha trovato intorno a questo PC.',
           'In alto c\'è Internet, poi la rete dell\'operatore e il router.',
-          'Sotto il router ci sono i dispositivi della rete, ognuno con l\'icona del suo tipo.',
+          'Davanti al router ci sono le zone della rete, con i dispositivi disegnati secondo il loro tipo.',
         ],
       },
       {
@@ -45,14 +45,14 @@ export const VIDEOS: VideoGuide[] = [
         narration: [
           'Ogni riconoscimento ha una confidenza: alta, media o bassa.',
           'Il punto interrogativo segna un\'ipotesi con pochi indizi, da verificare di persona.',
-          'L\'ombra tratteggiata sotto il disegno indica un dispositivo dedotto, che non ha risposto direttamente.',
+          'L\'ellisse tratteggiata a terra, sotto il disegno, indica un dispositivo dedotto, che non ha risposto direttamente.',
         ],
       },
       {
         title: 'Le zone',
         map: 'clinica',
         narration: [
-          'I riquadri sono le zone: la rete di questo PC, le altre sottoreti e le reti Wi-Fi separate.',
+          'Le piattaforme sono le zone: la rete di questo PC, le altre sottoreti e le reti Wi-Fi separate.',
           'In una struttura sanitaria ogni zona è di solito una rete virtuale, chiamata VLAN.',
           'Le zone sono collegate al firewall, che decide quale traffico può passare.',
         ],
@@ -61,7 +61,7 @@ export const VIDEOS: VideoGuide[] = [
         title: 'Da dove passa il traffico',
         map: 'clinica',
         narration: [
-          'I pallini che scorrono mostrano il percorso del traffico di questo PC.',
+          'I pacchetti che scorrono, con l\'etichetta del protocollo, mostrano il percorso del traffico di questo PC: una corsia per l\'andata e una per il ritorno.',
           'Scegli un percorso sotto la mappa: verso Internet, verso il server dei nomi o verso un servizio.',
           'Un segnale di stop indica un collegamento bloccato come previsto.',
           'In rosso c\'è un collegamento che passa anche se dovrebbe essere bloccato.',

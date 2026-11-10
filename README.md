@@ -22,7 +22,7 @@ La **cassetta degli attrezzi** apre gli strumenti di Windows e **CrystalDiskInfo
 pacchetto**; CPU-Z, HWiNFO, Autoruns e gli altri programmi che non si possono ridistribuire li **scarica dal sito ufficiale**, solo
 su richiesta, e li avvia solo con la firma digitale del produttore. Per i PC senza Internet prepara un **kit** da portare su una
 chiavetta. Un **documento stampabile** riassume lo stato del PC, da consegnare o salvare in PDF.
-Della **rete** misura Wi-Fi, router, Internet e DNS e disegna la **mappa della rete**: un grafico interattivo, in una console blu notte, con il disegno a linee di ogni
+Della **rete** misura Wi-Fi, router, Internet e DNS e disegna la **mappa della rete**: un grafico interattivo in prospettiva isometrica, in una console blu notte, con il disegno a linee di ogni
 dispositivo, riconosciuto da solo (router, switch, access point, PC, stampanti, NAS, telecamere, dispositivi medicali...), e i
 percorsi animati del traffico; sotto la mappa **il traffico passo passo** ricostruisce i pacchetti di un sito web, del DHCP, di un
 ping, del traceroute e dei servizi verificati con gli indirizzi, i tempi e gli esiti dell'analisi. Su richiesta **scopre le altre reti e le VLAN** senza doverle scrivere (annunci dello switch,
@@ -290,10 +290,12 @@ e **senza scansioni di porte**.
   filtrabile ed esportabile in CSV con tipo e produttore; segnala i dispositivi senza nome, i MAC casuali e la sottorete quasi
   piena. Oltre /22 si esamina solo il blocco /24 del PC.
 - **Mappa della rete** (sezione Rete locale, dalla 0.13.0): le zone sono la rete del PC, le altre VLAN con il loro nome e le reti
-  Wi-Fi trasmesse dagli stessi access point; ogni dispositivo è disegnato a linee in una console blu notte e i pacchetti animati,
-  con l'etichetta del protocollo (HTTPS, DNS, TCP con la porta), mostrano da dove passa il traffico di questo PC verso Internet,
-  il DNS e i servizi verificati, e si fermano dove le regole bloccano come previsto. Zoom, spostamento, filtri per tipo, ricerca,
-  dettagli di ogni dispositivo ed elenco testuale accessibile.
+  Wi-Fi trasmesse dagli stessi access point. In prospettiva isometrica, in una console blu notte: le zone sono piattaforme, ogni
+  dispositivo è disegnato a linee secondo il suo tipo e all'apertura la mappa parte vicina a questo PC e si allarga mentre entrano
+  zone e dispositivi. I pacchetti animati, con l'etichetta del protocollo (HTTPS, DNS, TCP con la porta), viaggiano su due corsie
+  (andata e ritorno) e mostrano da dove passa il traffico di questo PC verso Internet, il DNS e i servizi verificati, e si fermano
+  dove le regole bloccano come previsto. Zoom e spostamento morbidi, filtri per tipo, ricerca, dettagli di ogni dispositivo ed
+  elenco testuale accessibile; con "riduci movimento" niente si anima.
 - **Il traffico passo passo** (sotto la mappa, dalla 0.13.0): per sei azioni comuni (aprire un sito, ricevere l'indirizzo dal
   DHCP, un ping al router, il percorso verso Internet, i servizi verificati e le zone isolate, una stampa) i pacchetti che il
   protocollo prevede, con gli indirizzi, i tempi e gli esiti misurati dall'analisi (dove l'analisi ha visto un guasto, il
