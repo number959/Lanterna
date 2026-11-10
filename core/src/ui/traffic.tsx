@@ -1,22 +1,52 @@
 import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, ChevronLeft, ChevronRight, Info, Pause, Play, RotateCcw, Waypoints, X } from 'lucide-react';
 import { useReducedMotion } from 'motion/react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { buildNetworkMap, KIND_LABEL, packetTime, trafficScenarios, trafficSize } from '../engine';
-import type { Analysis, MapNode, NetworkMap, PacketProto, Scan, TrafficPacket, TrafficScenario, TrafficStep } from '../engine';
+import type { Analysis, DeviceKind, MapNode, NetworkMap, PacketProto, Scan, TrafficPacket, TrafficScenario, TrafficStep } from '../engine';
 import { BrandSymbol } from './brand';
 import { DeviceArt } from './deviceart';
 import { useWidth } from './hooks';
-import { advance, along, breachNode, briefOf, CHAR_W, clip, packetNote, progressOf, reachOf, route, stageLayout, timeline, trailOf } from './trafficlayout';
-import type { Entry, Pt, StageLayout } from './trafficlayout';
+import { IsoDevice, isoTop } from './isoart';
+import {
+  advance,
+  along,
+  breachNode,
+  briefOf,
+  bubbleBox,
+  bubbleW,
+  CAM_MS,
+  CHAR_W,
+  clip,
+  frameScene,
+  groundLines,
+  isoScene,
+  lanes,
+  lerpCamera,
+  NARROW_BELOW,
+  packetNote,
+  progressOf,
+  reachOf,
+  revealed,
+  sceneCamera,
+  stageHeight,
+  timeline,
+  toScreen,
+  trailOf,
+  typedTarget,
+} from './trafficlayout';
+import type { Camera, Entry, IsoInfo, IsoScene, Pt } from './trafficlayout';
 import './traffic.css';
 
 // "Il traffico passo passo": le scene ricostruite dal motore (traffic.ts) con
-// gli indirizzi e i tempi di questa analisi. Vista della rete con i
-// dispositivi disegnati a linee e i pacchetti che viaggiano con la loro
-// etichetta, vista a sequenza, dettagli del passo e tabella dei pacchetti come
-// in un analizzatore di rete. Con "riduci movimento" i pacchetti non si
-// muovono: compaiono già arrivati. Nessun pacchetto viene davvero inviato.
+// gli indirizzi e i tempi di questa analisi. Vista della rete in prospettiva
+// isometrica: all'inizio c'è solo il PC, i dispositivi compaiono quando il
+// primo pacchetto va verso di loro e la telecamera allarga l'inquadratura; i
+// pacchetti viaggiano sulle corsie (andata e ritorno) con la loro etichetta.
+// Poi la vista a sequenza, i dettagli del passo e la tabella dei pacchetti
+// come in un analizzatore di rete. Con "riduci movimento" niente si muove:
+// la telecamera salta e i pacchetti compaiono già arrivati. Nessun pacchetto
+// viene davvero inviato.
 
 /** Colori dei protocolli: chiari, con il testo scuro sopra (contrasto ≥ 7:1). */
 export const PROTO_COLOR: Record<PacketProto, string> = {
@@ -58,7 +88,10 @@ function Explorer({ map, scenarios }: { map: NetworkMap; scenarios: TrafficScena
   const listRef = useRef<HTMLUListElement>(null);
 
   const entries = useMemo<Entry[]>(() => (sc ? timeline(sc) : []), [sc]);
-  const layout = useMemo(() => (sc ? stageLayout(sc, (id) => byId.has(id), stageW) : undefined), [sc, byId, stageW]);
+  const w = Math.max(300, Math.floor(stageW) || 0);
+  const narrow = w < NARROW_BELOW;
+  const scene = useMemo(() => (sc ? isoScene(sc, (id) => byId.has(id), entries, narrow) : undefined), [sc, byId, entries, narrow]);
+  const h = scene ? stageHeight(scene, w) : 300;
 
   // Riproduzione: un fotogramma alla volta. La posizione corrente sta anche in
   // un riferimento, così il ciclo non riparte a ogni render.
@@ -121,12 +154,15 @@ function Explorer({ map, scenarios }: { map: NetworkMap; scenarios: TrafficScena
     if (ended && sc && seen.indexOf(sc.id) < 0) setSeen((v) => [...v, sc.id]);
   }, [ended, sc, seen]);
 
-  if (!sc || !layout) return <p className="muted">Servono i dati di un'analisi della rete per ricostruire il traffico.</p>;
+  if (!sc || !scene) return <p className="muted">Servono i dati di un'analisi della rete per ricostruire il traffico.</p>;
 
   const step = sc.steps[stepIdx];
   const prog = reduce ? (pkt ? 1 : 0) : progressOf(entry, cur.t);
   const started = cur.i > 0 || cur.t > 0;
   const node = (id: string) => byId.get(id);
+  // All'inizio della scena del browser l'indirizzo del sito si scrive nel fumetto sopra il PC.
+  const site = stepIdx === 0 ? typedTarget(sc) : undefined;
+  const typed = reduce || cur.i > 0 || (!playing && cur.t === 0) ? 1 : Math.min(1, cur.t * 1.6);
 
   const pick = (id: string) => {
     setSid(id);
@@ -263,11 +299,11 @@ function Explorer({ map, scenarios }: { map: NetworkMap; scenarios: TrafficScena
               {pkt ? `${packetTime(pkt.t)} · ${pkt.no}/${packets.length}` : `${sentUpTo}/${packets.length}`}
             </span>
           </div>
-          <div className="tx-canvas" ref={stageRef}>
+          <div className={`tx-canvas${view === 'rete' ? ' iso' : ''}`} ref={stageRef}>
             {view === 'rete' ? (
-              <NetworkView sc={sc} layout={layout} node={node} pkt={pkt} prog={prog} packets={packets} />
+              <IsoView sc={sc} scene={scene} node={node} entries={entries} at={Math.min(cur.i, entries.length - 1)} pkt={pkt} prog={prog} w={w} h={h} site={site} typed={typed} reduce={!!reduce} />
             ) : (
-              <SequenceView step={step} pkt={pkt} prog={prog} node={node} width={layout.w} />
+              <SequenceView step={step} pkt={pkt} prog={prog} node={node} width={w} />
             )}
           </div>
           <div className="tx-controls">
@@ -430,94 +466,229 @@ function subOf(n: MapNode): string {
 }
 
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+const pathD = (pts: Pt[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
 
-function NetworkView({ sc, layout, node, pkt, prog, packets }: { sc: TrafficScenario; layout: StageLayout; node: (id: string) => MapNode | undefined; pkt?: TrafficPacket; prog: number; packets: TrafficPacket[] }) {
-  const { w, h, slots, vertical } = layout;
-  // Collegamenti: ogni coppia di nodi vicini in almeno un pacchetto della scena,
-  // orientata dal nodo più vicino al PC (così i rami partono dalla linea comune).
-  const edges = new Map<string, [string, string]>();
-  for (const p of packets) {
+/** Il disegno non cambia mentre la telecamera si muove: si ridisegna solo se cambia il tipo. */
+const IsoGlyph = memo(function IsoGlyph({ kind }: { kind: DeviceKind }) {
+  return <IsoDevice kind={kind} />;
+});
+
+/**
+ * La telecamera va verso l'inquadratura voluta in CAM_MS, con partenza e
+ * arrivo morbidi; se l'inquadratura cambia a metà riparte da dove si trova.
+ * Con "riduci movimento", e quando cambia la scena, salta subito.
+ */
+function useCamera(target: Camera, w: number, h: number, reduce: boolean, reset: string): Camera {
+  const [cam, setCam] = useState(target);
+  const now = useRef(target);
+  const last = useRef(reset);
+  const stale = last.current !== reset;
+  useEffect(() => {
+    const from = now.current;
+    const jump = reduce || last.current !== reset;
+    last.current = reset;
+    if (jump || (Math.abs(from.k - target.k) < 1e-3 && Math.hypot(from.x - target.x, from.y - target.y) < 0.5)) {
+      now.current = target;
+      setCam(target);
+      return;
+    }
+    const t0 = performance.now();
+    let raf = 0;
+    const tick = (t: number) => {
+      const f = Math.min(1, (t - t0) / CAM_MS);
+      const c = lerpCamera(from, target, w, h, f);
+      now.current = c;
+      setCam(c);
+      if (f < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, w, h, reduce, reset]);
+  return reduce || stale ? target : cam;
+}
+
+function IsoView({
+  sc,
+  scene,
+  node,
+  entries,
+  at,
+  pkt,
+  prog,
+  w,
+  h,
+  site,
+  typed,
+  reduce,
+}: {
+  sc: TrafficScenario;
+  scene: IsoScene;
+  node: (id: string) => MapNode | undefined;
+  entries: Entry[];
+  at: number;
+  pkt?: TrafficPacket;
+  prog: number;
+  w: number;
+  h: number;
+  site?: string;
+  typed: number;
+  reduce: boolean;
+}) {
+  const end = pkt ? reachOf(pkt) : -1;
+  const hopAt = pkt ? prog * Math.max(1, end) : 0;
+  // In scena: i nodi già raggiunti e quelli verso cui va il pacchetto in corso, nell'ordine della disposizione.
+  const ids = [...scene.places.keys()].filter((id) => node(id) && revealed(scene, id, at, hopAt));
+  const info = (id: string): IsoInfo => {
+    const n = node(id)!;
+    return { name: n.self ? 'Questo PC' : n.label, sub: subOf(n), top: isoTop(n.kind) };
+  };
+  const bubble = site && scene.root && ids.indexOf(scene.root) >= 0 ? { id: scene.root, text: site } : undefined;
+  const key = `${ids.join(',')}|${bubble ? bubble.text : ''}`;
+  // L'inquadratura cambia solo quando compare (o sparisce) qualcosa.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const target = useMemo(() => sceneCamera(scene, ids, info, w, h, bubble), [scene, key, w, h]);
+  const cam = useCamera(target, w, h, reduce, sc.id);
+  const placed = frameScene(scene, ids, info, cam);
+  const s = cam.k * 0.95;
+
+  // Collegamenti: le coppie di nodi vicini nei pacchetti fin qui, orientate dal nodo più vicino al PC.
+  const pairs = new Map<string, [string, string]>();
+  for (const e of entries.slice(0, at + 1)) {
+    const p = e.p;
+    if (!p) continue;
     for (let i = 1; i < p.hops.length; i++) {
       const a = p.hops[i - 1];
       const b = p.hops[i];
-      if (a === b || !slots.has(a) || !slots.has(b)) continue;
+      if (a === b || !placed.has(a) || !placed.has(b)) continue;
       const k = pairKey(a, b);
-      if (!edges.has(k)) edges.set(k, layout.parent.get(a) === b ? [b, a] : [a, b]);
+      if (!pairs.has(k)) pairs.set(k, scene.parent.get(a) === b ? [b, a] : [a, b]);
     }
   }
-  // Tratti già percorsi dal pacchetto in corso e nodi raggiunti.
-  const end = pkt ? reachOf(pkt) : -1;
-  const at = pkt ? prog * Math.max(1, end) : -1;
-  const traveled = new Set<string>();
+  const off = Math.max(3, 5.5 * cam.k);
+  const shrink = 36 * s + 4;
+  const lift = (p: Pt): Pt => ({ x: p.x, y: p.y - 3 * s });
+  const geo = new Map<string, { a: string; b: string; out: Pt[]; back: Pt[] }>();
+  for (const [k, [a, b]] of pairs) {
+    const mid = (scene.via.get(`${a}>${b}`) ?? []).map((q) => lift(toScreen(cam, q)));
+    geo.set(k, { a, b, ...lanes([lift(placed.get(a)!.p), ...mid, lift(placed.get(b)!.p)], off, shrink, shrink) });
+  }
+  /** La corsia per andare da a a b. */
+  const laneFor = (a: string, b: string): Pt[] | undefined => {
+    const g = geo.get(pairKey(a, b));
+    return g ? (g.a === a ? g.out : g.back) : undefined;
+  };
+
+  // Tratti già percorsi (o in corso) dal pacchetto e nodi già raggiunti.
+  const active = new Set<string>();
   const reached = new Set<string>();
+  const routes: Pt[][] = [];
   if (pkt) {
     reached.add(pkt.hops[0]);
     for (let i = 1; i <= end; i++) {
-      if (at > i - 1 || (i === 1 && at >= 0)) traveled.add(pairKey(pkt.hops[i - 1], pkt.hops[i]));
-      if (at >= i - 1e-6) reached.add(pkt.hops[i]);
+      const r = laneFor(pkt.hops[i - 1], pkt.hops[i]);
+      if (r) routes.push(r);
+      if (hopAt > i - 1 || (i === 1 && hopAt >= 0)) active.add(`${pkt.hops[i - 1]}>${pkt.hops[i]}`);
+      if (hopAt >= i - 1e-6) reached.add(pkt.hops[i]);
     }
   }
   const color = pkt ? PROTO_COLOR[pkt.proto] : undefined;
-  const pathD = (pts: Pt[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const showPacket = !!pkt && end > 0 && routes.length === end;
   const names = sc.lanes
     .map((l) => node(l))
     .filter((n): n is MapNode => !!n)
     .map((n) => (n.self ? 'questo PC' : n.label));
-  const list = [...edges.entries()].sort(([a], [b]) => Number(traveled.has(a)) - Number(traveled.has(b)));
+  const byDepth = [...placed.entries()].sort((x, y) => x[1].p.y - y[1].p.y);
+  const arrow = (pts: Pt[], cls: string, style?: CSSProperties) => {
+    const p0 = pts[pts.length - 2];
+    const p1 = pts[pts.length - 1];
+    const len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+    const ux = (p1.x - p0.x) / len;
+    const uy = (p1.y - p0.y) / len;
+    const a = 7;
+    return (
+      <path
+        d={`M${p1.x.toFixed(1)} ${p1.y.toFixed(1)} L${(p1.x - ux * a - uy * a * 0.55).toFixed(1)} ${(p1.y - uy * a + ux * a * 0.55).toFixed(1)} L${(p1.x - ux * a + uy * a * 0.55).toFixed(1)} ${(p1.y - uy * a - ux * a * 0.55).toFixed(1)} Z`}
+        className={cls}
+        style={style}
+      />
+    );
+  };
+
   return (
     <svg className="tx-svg" viewBox={`0 0 ${w} ${h}`} width={w} height={h} role="img" aria-label={`Rete della scena «${sc.title}»: ${names.join(', ')}`}>
-      {list.map(([k, [a, b]]) => {
-        const on = traveled.has(k);
-        return <path key={k} d={pathD(route(layout, a, b))} className={`tx-edge${on ? ' on' : ''}`} style={on ? { stroke: color } : undefined} />;
-      })}
-      {sc.lanes.map((id) => {
-        const n = node(id);
-        const s = slots.get(id);
-        if (!n || !s) return null;
-        const on = reached.has(id);
-        const name = clip(n.self ? 'Questo PC' : n.label, s.chars);
-        const sub = clip(subOf(n), s.chars);
-        const tx = s.x + 32 * (s.s / 0.74) + 2;
+      <g className="tx-ground" aria-hidden>
+        {groundLines(cam, w, h).map(([a, b], i) => (
+          <line key={i} x1={a.x.toFixed(1)} y1={a.y.toFixed(1)} x2={b.x.toFixed(1)} y2={b.y.toFixed(1)} />
+        ))}
+      </g>
+      {[...geo.entries()].map(([k, g]) => {
+        const onOut = active.has(`${g.a}>${g.b}`);
+        const onBack = active.has(`${g.b}>${g.a}`);
+        const line = (on: boolean) => (on ? { stroke: color } : undefined);
+        const head = (on: boolean) => (on ? { fill: color } : undefined);
         return (
-          <g key={id} className={`tx-node${on ? ' on' : ''}${n.self ? ' self' : ''}`}>
-            <g className="tx-glyph">
-              <DeviceArt kind={n.kind} x={s.x} y={s.right ? s.y : s.y - 6} scale={s.s} />
-            </g>
-            {s.right ? (
-              <>
-                <text x={tx} y={s.y - 1} className="tx-node-name">
-                  {name}
-                </text>
-                {sub && (
-                  <text x={tx} y={s.y + 13} className="tx-node-ip">
-                    {sub}
-                  </text>
-                )}
-              </>
-            ) : (
-              <>
-                <text x={s.x} y={s.y + 36} textAnchor="middle" className="tx-node-name">
-                  {name}
-                </text>
-                {sub && (
-                  <text x={s.x} y={s.y + 50} textAnchor="middle" className="tx-node-ip">
-                    {sub}
-                  </text>
-                )}
-              </>
-            )}
+          <g key={k} className="tx-lanes">
+            <path d={pathD(g.out)} className={`tx-lane${onOut ? ' on' : ''}`} style={line(onOut)} />
+            {arrow(g.out, `tx-arrow${onOut ? ' on' : ''}`, head(onOut))}
+            <path d={pathD(g.back)} className={`tx-lane${onBack ? ' on' : ''}`} style={line(onBack)} />
+            {arrow(g.back, `tx-arrow${onBack ? ' on' : ''}`, head(onBack))}
           </g>
         );
       })}
-      {pkt && <PacketMark pkt={pkt} layout={layout} prog={prog} vertical={vertical} />}
+      {byDepth.map(([id, pl]) => {
+        const n = node(id)!;
+        const nf = info(id);
+        const L = pl.label;
+        const anchor = pl.side === 'left' ? 'end' : pl.side === 'right' ? 'start' : 'middle';
+        const tx = (pl.side === 'left' ? L.x1 : pl.side === 'right' ? L.x0 : pl.p.x) - pl.p.x;
+        const ty = L.y0 - pl.p.y;
+        const sub = clip(nf.sub, pl.chars);
+        return (
+          <g key={id} transform={`translate(${pl.p.x.toFixed(1)} ${pl.p.y.toFixed(1)})`} className={`tx-node${reached.has(id) ? ' on' : ''}${n.self ? ' self' : ''}`}>
+            <g className="tx-in">
+              <g className="tx-glyph" transform={`scale(${pl.s.toFixed(3)})`}>
+                <IsoGlyph kind={n.kind} />
+              </g>
+              <text x={tx} y={ty + 11} textAnchor={anchor} className="tx-node-name">
+                {clip(nf.name, pl.chars)}
+              </text>
+              {sub && (
+                <text x={tx} y={ty + 25} textAnchor={anchor} className="tx-node-ip">
+                  {sub}
+                </text>
+              )}
+            </g>
+          </g>
+        );
+      })}
+      {bubble && placed.get(bubble.id) && <TypingBubble p={placed.get(bubble.id)!.p} s={s} top={info(bubble.id).top} text={bubble.text} typed={typed} />}
+      {showPacket && pkt && <PacketMark pkt={pkt} routes={routes} prog={prog} w={w} placed={placed} />}
     </svg>
   );
 }
 
-function PacketMark({ pkt, layout, prog, vertical }: { pkt: TrafficPacket; layout: StageLayout; prog: number; vertical: boolean }) {
+/** Il fumetto sopra il PC, con il globo e l'indirizzo che si scrive lettera per lettera. */
+function TypingBubble({ p, s, top, text, typed }: { p: Pt; s: number; top: number; text: string; typed: number }) {
+  const b = bubbleBox(p, s, top, text);
+  const shown = text.slice(0, Math.ceil(text.length * typed));
+  const gx = b.x0 + 14;
+  const gy = (b.y0 + b.y1) / 2;
+  return (
+    <g className="tx-bubble" aria-hidden>
+      <line x1={b.x0 + bubbleW(text) / 2 + 18} y1={b.y1} x2={p.x} y2={b.y1 + 9} className="tx-bubble-l" />
+      <rect x={b.x0} y={b.y0} width={b.x1 - b.x0} height={b.y1 - b.y0} rx={3} className="tx-bubble-r" />
+      <circle cx={gx} cy={gy} r={5.5} className="tx-bubble-g" />
+      <path d={`M${gx - 5.5} ${gy} H${gx + 5.5} M${gx} ${gy - 5.5} Q${gx - 3.5} ${gy} ${gx} ${gy + 5.5} Q${gx + 3.5} ${gy} ${gx} ${gy - 5.5}`} className="tx-bubble-g" />
+      <text x={b.x0 + 26} y={b.y0 + 16} className="tx-bubble-t">
+        {shown}
+        {typed < 1 && <tspan className="tx-caret">▌</tspan>}
+      </text>
+    </g>
+  );
+}
+
+function PacketMark({ pkt, routes, prog, w, placed }: { pkt: TrafficPacket; routes: Pt[][]; prog: number; w: number; placed: Map<string, { p: Pt; s: number }> }) {
   const end = reachOf(pkt);
-  const routes: Pt[][] = [];
-  for (let i = 1; i <= end; i++) routes.push(route(layout, pkt.hops[i - 1], pkt.hops[i]));
   const p = along(routes, prog);
   const trail = trailOf(routes, prog);
   const color = PROTO_COLOR[pkt.proto];
@@ -526,32 +697,35 @@ function PacketMark({ pkt, layout, prog, vertical }: { pkt: TrafficPacket; layou
   const lw = pkt.label.length * 7.2 + 14;
   const bw = brief.length * 6.4 + 14;
   const cw = Math.max(lw, bw);
-  const stopAt = prog >= 1 && pkt.stopAt !== undefined ? layout.slots.get(pkt.hops[end]) : undefined;
+  const mark = (id: string) => {
+    const q = placed.get(id);
+    return q ? { x: q.p.x - 34 * q.s - 6, y: q.p.y - 14 * q.s } : undefined;
+  };
+  const stopAt = prog >= 1 && pkt.stopAt !== undefined ? mark(pkt.hops[end]) : undefined;
   // Passato da una zona che doveva essere isolata: un segnale rosso sul dispositivo isolato.
-  const alarm = prog >= 1 && pkt.breach ? layout.slots.get(breachNode(pkt)) : undefined;
-  // Sopra il pacchetto; sullo schermo stretto, a destra.
-  const cx = vertical ? Math.min(layout.w - cw - 4, p.x + 22) : Math.min(layout.w - cw - 6, Math.max(6, p.x - lw / 2));
-  const cy = vertical ? p.y - 44 : p.y - 62;
+  const alarm = prog >= 1 && pkt.breach ? mark(breachNode(pkt)) : undefined;
+  const cx = Math.min(w - cw - 6, Math.max(6, p.x - lw / 2));
+  const cy = Math.max(4, p.y - 58);
   const sev = pkt.sev ?? 'warn';
-  const pathD = trail.map((q, i) => `${i ? 'L' : 'M'}${q.x.toFixed(1)} ${q.y.toFixed(1)}`).join(' ');
   return (
     <g className="tx-packet" pointerEvents="none">
-      {trail.length > 1 && <path d={pathD} className="tx-trail" style={{ stroke: color }} />}
+      {trail.length > 1 && <path d={pathD(trail)} className="tx-trail" style={{ stroke: color }} />}
       {stopAt && (
-        <g className={`tx-x ${sev}`} transform={`translate(${stopAt.x - 30} ${stopAt.y + (stopAt.right ? 16 : 10)})`}>
+        <g className={`tx-x ${sev}`} transform={`translate(${stopAt.x.toFixed(1)} ${stopAt.y.toFixed(1)})`}>
           <circle r="11" />
           <path d="M-4.5 -4.5 L4.5 4.5 M4.5 -4.5 L-4.5 4.5" />
         </g>
       )}
       {alarm && (
-        <g className="tx-x crit" transform={`translate(${alarm.x - 30} ${alarm.y + (alarm.right ? 16 : 10)})`}>
+        <g className="tx-x crit" transform={`translate(${alarm.x.toFixed(1)} ${alarm.y.toFixed(1)})`}>
           <circle r="11" />
           <path d="M0 -5.5 V1.5 M0 5 V5.2" />
         </g>
       )}
       <circle cx={p.x} cy={p.y} r={10} fill={color} opacity={0.2} />
       <circle cx={p.x} cy={p.y} r={4.8} fill={color} />
-      <g transform={`translate(${cx} ${cy})`}>
+      <line x1={p.x} y1={p.y - 6} x2={p.x} y2={cy + 37} className="tx-chip-l" style={{ stroke: color }} />
+      <g transform={`translate(${cx.toFixed(1)} ${cy.toFixed(1)})`}>
         <rect width={lw} height={18} rx={3} fill={color} />
         <text x={lw / 2} y={12.8} textAnchor="middle" className="tx-chip-t">
           {pkt.label}

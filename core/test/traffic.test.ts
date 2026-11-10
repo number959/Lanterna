@@ -3,11 +3,35 @@ import { analyze, buildNetworkMap, trafficScenarios } from '../src/engine';
 import type { Scan, TrafficScenario } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
-import { advance, briefOf, CHAR_W, entryMs, HOLD_MS, HOLD_STOP_MS, packetNote, progressOf, route, SEG_MS, stageLayout, timeline, trailOf, VERTICAL_BELOW } from '../src/ui/trafficlayout';
+import { isoTop } from '../src/ui/isoart';
+import {
+  advance,
+  briefOf,
+  entryMs,
+  frameScene,
+  glyphBox,
+  HOLD_MS,
+  HOLD_STOP_MS,
+  isoScene,
+  K_MAX,
+  lanes,
+  lerpCamera,
+  NARROW_BELOW,
+  packetNote,
+  progressOf,
+  revealed,
+  sceneCamera,
+  SEG_MS,
+  stageHeight,
+  timeline,
+  trailOf,
+  typedTarget,
+} from '../src/ui/trafficlayout';
+import type { Box, IsoInfo } from '../src/ui/trafficlayout';
 
 // "Il traffico passo passo": scene ricostruite con gli indirizzi e i tempi
-// dell'analisi, pacchetti scartati dove il firewall blocca, disposizione dei
-// nodi senza sovrapposizioni su schermo largo e stretto, linea del tempo.
+// dell'analisi, pacchetti scartati dove il firewall blocca, scena isometrica
+// senza sovrapposizioni su schermo largo e stretto, telecamera, linea del tempo.
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 const scenes = (scan: Scan) => {
@@ -318,108 +342,149 @@ describe('esiti veri dell\'analisi (revisione)', () => {
   });
 });
 
-describe('disposizione dei nodi', () => {
-  const labelBox = (s: ReturnType<typeof stageLayout>['slots'] extends Map<string, infer T> ? T : never, len: number) => {
-    const n = Math.min(len, s.chars) * CHAR_W;
-    return s.right
-      ? [{ x0: s.x - 30 * (s.s / 0.74), x1: s.x + 30 * (s.s / 0.74) + 2 + n, y0: s.y - 24, y1: s.y + 16 }]
-      : [{ x0: s.x - Math.max(29, n / 2), x1: s.x + Math.max(29, n / 2), y0: s.y - 31, y1: s.y + 53 }];
-  };
-  const overlap = (a: { x0: number; x1: number; y0: number; y1: number }, b: { x0: number; x1: number; y0: number; y1: number }) =>
-    a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
-
-  it('largo e stretto: tutti i nodi dentro il palco, etichette senza sovrapposizioni', () => {
-    for (const scan of [demoScan, clinicScan]) {
-      const { map, list } = scenes(scan);
-      const nodes = new Map(map.nodes.map((n) => [n.id, n]));
-      for (const width of [1100, 760, 600, 390, 320]) {
-        for (const sc of list) {
-          const L = stageLayout(sc, (id) => nodes.has(id), width);
-          if (width < VERTICAL_BELOW) expect(L.vertical).toBe(true);
-          if (width >= 760) expect(L.vertical).toBe(false);
-          // Gli indirizzi stanno interi nelle etichette.
-          for (const id of sc.lanes) {
-            const ip = nodes.get(id)!.ip;
-            if (ip) expect(L.slots.get(id)!.chars, `${sc.id} ${id} a ${width}px`).toBeGreaterThanOrEqual(ip.length);
-          }
-          const boxes: { id: string; b: { x0: number; x1: number; y0: number; y1: number } }[] = [];
-          for (const id of sc.lanes) {
-            const s = L.slots.get(id)!;
-            expect(s, `${sc.id} ${id} ${width}`).toBeDefined();
-            const n = nodes.get(id)!;
-            const len = Math.max((n.self ? 'Questo PC' : n.label).length, (n.ip ?? '').length);
-            for (const b of labelBox(s, len)) {
-              expect(b.x0, `${sc.id} ${id} a ${width}px`).toBeGreaterThanOrEqual(0);
-              expect(b.x1, `${sc.id} ${id} a ${width}px`).toBeLessThanOrEqual(L.w + 1);
-              expect(b.y0).toBeGreaterThanOrEqual(0);
-              expect(b.y1).toBeLessThanOrEqual(L.h + 1);
-              boxes.push({ id, b });
-            }
-          }
-          for (let i = 0; i < boxes.length; i++)
-            for (let j = i + 1; j < boxes.length; j++) expect(overlap(boxes[i].b, boxes[j].b), `${sc.id}: ${boxes[i].id} e ${boxes[j].id} a ${width}px`).toBe(false);
-        }
-      }
-    }
-  });
-
-  it('elenco anche a metà strada (verifiche nella rete del PC e in altre reti): etichette leggibili e senza sovrapposizioni', () => {
-    const scan = clone(clinicScan);
-    for (const ip of ['10.20.30.10', '10.20.30.12', '10.20.30.15'])
-      scan.infra!.reach!.results.push({ label: `Locale ${ip}`, host: ip, ip, port: 9100, expect: 'reachable', status: 'open', ok: true, rttMs: 3 });
+describe('scena isometrica', () => {
+  const hit = (a: Box, b: Box) => a.x0 < b.x1 - 0.5 && b.x0 < a.x1 - 0.5 && a.y0 < b.y1 - 0.5 && b.y0 < a.y1 - 0.5;
+  const setup = (scan: Scan) => {
     const { map, list } = scenes(scan);
     const nodes = new Map(map.nodes.map((n) => [n.id, n]));
-    const svc = byId(list, 'services');
-    for (const width of [560, 600, 760, 1100]) {
-      const L = stageLayout(svc, (id) => nodes.has(id), width);
-      const boxes = svc.lanes.map((id) => {
-        const s = L.slots.get(id)!;
-        const n = nodes.get(id)!;
-        const len = Math.min(Math.max((n.self ? 'Questo PC' : n.label).length, (n.ip ?? '').length), s.chars) * CHAR_W;
-        return s.right ? { id, x0: s.x - 22, x1: s.x + 28 + len, y0: s.y - 24, y1: s.y + 16, s } : { id, x0: s.x - Math.max(29, len / 2), x1: s.x + Math.max(29, len / 2), y0: s.y - 31, y1: s.y + 53, s };
-      });
-      for (const b of boxes) {
-        expect(b.x1, `${b.id} a ${width}px`).toBeLessThanOrEqual(L.w + 1);
-        expect(b.s.chars, `${b.id} a ${width}px`).toBeGreaterThanOrEqual(nodes.get(b.id)!.ip?.length ?? 6);
-      }
-      for (let i = 0; i < boxes.length; i++)
-        for (let j = i + 1; j < boxes.length; j++) {
-          const a = boxes[i];
-          const b = boxes[j];
-          expect(a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1, `${a.id} e ${b.id} a ${width}px`).toBe(false);
+    const info = (id: string): IsoInfo => {
+      const n = nodes.get(id)!;
+      return { name: n.self ? 'Questo PC' : n.label, sub: n.ip ?? '', top: isoTop(n.kind) };
+    };
+    return { map, list, nodes, info, has: (id: string) => nodes.has(id) };
+  };
+
+  it('tutti i nodi della scena hanno un posto e nessun disegno sta sopra un altro', () => {
+    for (const scan of [demoScan, clinicScan]) {
+      const { list, info, has } = setup(scan);
+      for (const narrow of [false, true])
+        for (const sc of list) {
+          const scene = isoScene(sc, has, timeline(sc), narrow);
+          for (const id of sc.lanes) expect(scene.places.has(id), `${sc.id} ${id}`).toBe(true);
+          const boxes = [...scene.places].map(([id, p]) => ({ id, b: glyphBox(p, 0.95, info(id).top) }));
+          for (let i = 0; i < boxes.length; i++)
+            for (let j = i + 1; j < boxes.length; j++) expect(hit(boxes[i].b, boxes[j].b), `${sc.id} ${narrow ? 'stretto' : 'largo'}: ${boxes[i].id} e ${boxes[j].id}`).toBe(false);
         }
     }
   });
 
-  it('i servizi della clinica in elenco, raggiunti da una linea comune', () => {
-    const { map, list } = scenes(clinicScan);
-    const nodes = new Map(map.nodes.map((n) => [n.id, n]));
-    const svc = byId(list, 'services');
-    const fw = map.nodes.find((n) => n.gateway)!.id;
-    const target = svc.lanes[svc.lanes.length - 1];
-    const wide = stageLayout(svc, (id) => nodes.has(id), 1000);
-    expect(wide.slots.get(target)!.right).toBe(true);
-    const r = route(wide, fw, target);
-    expect(r).toHaveLength(4);
-    expect(r[1].x).toBe(r[2].x);
-    expect(route(wide, target, fw)).toEqual([...r].reverse());
-    const narrow = stageLayout(svc, (id) => nodes.has(id), 360);
-    expect(route(narrow, fw, target)).toHaveLength(3);
-    // Il resto della strada è dritto.
-    const ap = svc.lanes[1];
-    expect(route(wide, svc.lanes[0], ap)).toHaveLength(2);
+  it('alla fine della scena: tutto dentro il palco, etichette senza sovrapposizioni, indirizzi interi', () => {
+    for (const scan of [demoScan, clinicScan]) {
+      const { list, info, has } = setup(scan);
+      for (const w of [1100, 692, 600, 520, 340, 300]) {
+        for (const sc of list) {
+          const es = timeline(sc);
+          const scene = isoScene(sc, has, es, w < NARROW_BELOW);
+          const h = stageHeight(scene, w);
+          const ids = [...scene.places.keys()].filter((id) => revealed(scene, id, es.length - 1, Infinity));
+          expect(ids.length, sc.id).toBe(scene.places.size);
+          const cam = sceneCamera(scene, ids, info, w, h);
+          const placed = frameScene(scene, ids, info, cam);
+          const where = (id: string) => `${sc.id} ${id} a ${w}px`;
+          for (const [id, pl] of placed) {
+            for (const b of [pl.glyph, pl.label]) {
+              expect(b.x0, where(id)).toBeGreaterThanOrEqual(-0.5);
+              expect(b.y0, where(id)).toBeGreaterThanOrEqual(-0.5);
+              expect(b.x1, where(id)).toBeLessThanOrEqual(w + 0.5);
+              expect(b.y1, where(id)).toBeLessThanOrEqual(h + 0.5);
+            }
+            const ip = info(id).sub;
+            if (ip) expect(pl.chars, where(id)).toBeGreaterThanOrEqual(ip.length);
+          }
+          const all = [...placed];
+          for (let i = 0; i < all.length; i++)
+            for (let j = 0; j < all.length; j++) {
+              if (i === j) continue;
+              const [a, pa] = all[i];
+              const [b, pb] = all[j];
+              if (i < j) expect(hit(pa.label, pb.label), `${sc.id}: etichette di ${a} e ${b} a ${w}px`).toBe(false);
+              expect(hit(pa.label, pb.glyph), `${sc.id}: etichetta di ${a} sul disegno di ${b} a ${w}px`).toBe(false);
+            }
+          // Disegni leggibili: mai più piccoli di un terzo.
+          expect(cam.k, `${sc.id} a ${w}px`).toBeGreaterThan(0.33);
+          expect(h, `${sc.id} a ${w}px`).toBeLessThanOrEqual(760);
+        }
+      }
+    }
   });
 
-  it('la strada principale è quella verso Internet', () => {
-    const { map, list } = scenes(clinicScan);
-    const nodes = new Map(map.nodes.map((n) => [n.id, n]));
-    const L = stageLayout(byId(list, 'web'), (id) => nodes.has(id), 1000);
-    const pc = L.slots.get(map.nodes.find((n) => n.self)!.id)!;
-    const inet = L.slots.get('internet')!;
-    const dc = L.slots.get(map.nodes.find((n) => n.ip === '10.10.10.10')!.id)!;
-    expect(inet.x).toBe(dc.x);
-    expect(inet.x).toBeGreaterThan(pc.x);
-    expect(inet.y).not.toBe(dc.y);
+  it('all\'inizio c\'è solo il PC, grande, con il sito che si scrive; poi compare chi riceve il pacchetto', () => {
+    const { list, info, has, map } = setup(demoScan);
+    const web = byId(list, 'web');
+    const es = timeline(web);
+    const scene = isoScene(web, has, es);
+    const pc = map.nodes.find((n) => n.self)!.id;
+    expect(scene.root).toBe(pc);
+    const at0 = [...scene.places.keys()].filter((id) => revealed(scene, id, 0, 0));
+    expect(at0).toEqual([pc]);
+    const site = typedTarget(web)!;
+    expect(site).toBe('www.google.com');
+    const cam0 = sceneCamera(scene, at0, info, 692, 346, { id: pc, text: site });
+    expect(cam0.k).toBe(K_MAX);
+    // Il primo pacchetto (la domanda DNS) fa comparire il router appena parte.
+    const i1 = es.findIndex((e) => e.p);
+    const gw = es[i1].p!.hops[1];
+    expect(revealed(scene, gw, i1, 0)).toBe(true);
+    expect(revealed(scene, 'internet', i1, 0)).toBe(false);
+    const all = [...scene.places.keys()].filter((id) => revealed(scene, id, es.length - 1, Infinity));
+    expect(sceneCamera(scene, all, info, 692, 346).k).toBeLessThan(cam0.k);
+    expect(typedTarget(byId(list, 'ping'))).toBeUndefined();
+  });
+
+  it('la strada verso Internet va a zig-zag: in alto a destra, poi in basso a destra', () => {
+    const { list, has, map } = setup(clinicScan);
+    const web = byId(list, 'web');
+    const scene = isoScene(web, has, timeline(web));
+    const main = web.steps.flatMap((s) => s.packets).find((p) => p.hops[p.hops.length - 1] === 'internet')!.hops;
+    expect(main[0]).toBe(map.nodes.find((n) => n.self)!.id);
+    const P = main.map((id) => scene.places.get(id)!);
+    for (let i = 1; i < P.length; i++) {
+      expect(P[i].x, main[i]).toBeGreaterThan(P[i - 1].x);
+      expect(Math.sign(P[i].y - P[i - 1].y), main[i]).toBe(i % 2 ? -1 : 1);
+    }
+    // Sullo schermo stretto scende.
+    const narrow = isoScene(web, has, timeline(web), true);
+    const Q = main.map((id) => narrow.places.get(id)!);
+    for (let i = 1; i < Q.length; i++) expect(Q[i].y).toBeGreaterThan(Q[i - 1].y);
+    for (const id of main) expect(narrow.sides.get(id)).toBe('right');
+  });
+
+  it('servizi della clinica: in colonna, raggiunti da una dorsale comune, etichette a destra', () => {
+    const { list, has, map } = setup(clinicScan);
+    const svc = byId(list, 'services');
+    const scene = isoScene(svc, has, timeline(svc));
+    const fw = map.nodes.find((n) => n.gateway)!.id;
+    const col = [...scene.parent].filter(([, pa]) => pa === fw).map(([c]) => c);
+    expect(col.length).toBeGreaterThanOrEqual(3);
+    const xs = new Set(col.map((c) => scene.places.get(c)!.x));
+    expect(xs.size).toBe(1);
+    const bus = col.map((c) => scene.via.get(`${fw}>${c}`)![0]);
+    expect(new Set(bus.map((b) => `${b.x},${b.y}`)).size).toBe(1);
+    for (const c of col) expect(scene.sides.get(c)).toBe('right');
+  });
+
+  it('corsie: andata e ritorno ai due lati della strada, accorciate alle estremità', () => {
+    const r = lanes([{ x: 0, y: 0 }, { x: 100, y: 0 }], 5, 20, 10);
+    expect(r.out).toEqual([{ x: 20, y: 5 }, { x: 90, y: 5 }]);
+    expect(r.back).toEqual([{ x: 90, y: -5 }, { x: 20, y: -5 }]);
+    // Spezzata ad angolo retto: il giunto resta alla stessa distanza dai due tratti.
+    const e = lanes([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], 4, 0, 0);
+    expect(e.out[1].x).toBeCloseTo(96);
+    expect(e.out[1].y).toBeCloseTo(4);
+    expect(e.back[1].x).toBeCloseTo(104);
+    expect(e.back[1].y).toBeCloseTo(-4);
+  });
+
+  it('telecamera: parte e arriva dove deve, lo zoom cambia senza scatti', () => {
+    const a = { k: 2, x: 100, y: 50 };
+    const b = { k: 0.5, x: 300, y: 120 };
+    expect(lerpCamera(a, b, 600, 300, 0)).toEqual(a);
+    const end = lerpCamera(a, b, 600, 300, 1);
+    expect(end.k).toBeCloseTo(b.k);
+    expect(end.x).toBeCloseTo(b.x);
+    expect(end.y).toBeCloseTo(b.y);
+    const mid = lerpCamera(a, b, 600, 300, 0.5);
+    expect(mid.k).toBeCloseTo(1);
   });
 });
 

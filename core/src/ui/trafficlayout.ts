@@ -1,38 +1,14 @@
 import type { TrafficPacket, TrafficScenario } from '../engine';
 
 // Disposizione e tempi di "Il traffico passo passo", senza React: i nodi della
-// scena in colonne per distanza dal PC (in righe sullo schermo stretto), le
-// strade tra i nodi e la linea del tempo della riproduzione.
+// scena su una griglia isometrica, la telecamera che inquadra i nodi già
+// comparsi, le corsie tra i nodi, le etichette che non si sovrappongono e la
+// linea del tempo della riproduzione.
 
 export type Pt = { x: number; y: number };
 
-export interface Slot {
-  x: number;
-  y: number;
-  /** Scala del disegno del dispositivo. */
-  s: number;
-  /** Etichetta a destra del disegno (elenchi) invece che sotto. */
-  right: boolean;
-  /** Caratteri che stanno nell'etichetta. */
-  chars: number;
-  /** Ascissa (o, in verticale, ordinata non usata) della linea comune da cui parte il ramo. */
-  trunk?: number;
-}
-
-export interface StageLayout {
-  w: number;
-  h: number;
-  vertical: boolean;
-  slots: Map<string, Slot>;
-  parent: Map<string, string>;
-}
-
 /** Larghezza di un carattere delle etichette (monospaziato a 11,5 px). */
 export const CHAR_W = 7;
-/** Sotto questa larghezza la scena si dispone dall'alto in basso. */
-export const VERTICAL_BELOW = 540;
-/** Da quanti nodi alla stessa distanza si passa all'elenco con le etichette a destra. */
-const FAN = 3;
 
 /** I nodi attraversati, sempre nel verso che si allontana dal PC. */
 export function outwardPaths(sc: TrafficScenario, has: (id: string) => boolean): string[][] {
@@ -40,152 +16,6 @@ export function outwardPaths(sc: TrafficScenario, has: (id: string) => boolean):
     .flatMap((s) => s.packets)
     .map((p) => (p.dir === 'response' ? [...p.hops].reverse() : p.hops).filter(has))
     .filter((h) => h.length > 0);
-}
-
-/** Caratteri che servono almeno nelle etichette: un indirizzo IPv4 intero. */
-const MIN_CHARS = 15;
-
-export function stageLayout(sc: TrafficScenario, has: (id: string) => boolean, width: number): StageLayout {
-  const w = Math.max(300, Math.floor(width) || 0);
-  if (w >= VERTICAL_BELOW) {
-    const L = layoutOf(sc, has, w, false);
-    // Tra 540 e 760 px, se le etichette non contengono un indirizzo intero, meglio dall'alto in basso.
-    if (w >= 760 || Math.min(...[...L.slots.values()].map((sl) => sl.chars)) >= MIN_CHARS) return L;
-  }
-  return layoutOf(sc, has, w, true);
-}
-
-function layoutOf(sc: TrafficScenario, has: (id: string) => boolean, w: number, vertical: boolean): StageLayout {
-  const paths = outwardPaths(sc, has);
-  // La strada principale: quella verso Internet, altrimenti la più lunga.
-  const main = paths.find((h) => h[h.length - 1] === 'internet') ?? paths.reduce<string[]>((a, b) => (b.length > a.length ? b : a), []);
-  const depth = new Map<string, number>();
-  const parent = new Map<string, string>();
-  const order: string[] = [];
-  const visit = (id: string, d: number, from?: string) => {
-    if (depth.has(id)) return;
-    depth.set(id, d);
-    order.push(id);
-    if (from) parent.set(id, from);
-  };
-  for (const h of [main, ...paths]) {
-    if (!h.length) continue;
-    visit(h[0], 0);
-    for (let i = 1; i < h.length; i++) visit(h[i], depth.get(h[i - 1])! + 1, h[i - 1]);
-  }
-  for (const id of sc.lanes) if (has(id)) visit(id, 0);
-  const levels: string[][] = [];
-  for (const id of order) {
-    const d = depth.get(id)!;
-    (levels[d] = levels[d] || []).push(id);
-  }
-  // Il nodo della strada principale sta in mezzo agli altri della sua colonna.
-  const onMain = new Set(main);
-  for (const lv of levels) {
-    const mi = lv.findIndex((id) => onMain.has(id));
-    if (mi < 0 || lv.length < 2) continue;
-    const [m] = lv.splice(mi, 1);
-    lv.splice(Math.floor(lv.length / 2), 0, m);
-  }
-  const slots = new Map<string, Slot>();
-
-  if (!vertical) {
-    const SP = 96;
-    const SPF = 56;
-    const TOP = 112;
-    const BOTTOM = 60;
-    const MX = 60;
-    const fan = (lv: string[]) => lv.length >= FAN;
-    const n = levels.length;
-    const lastFan = n > 0 && fan(levels[n - 1]);
-    const xr = lastFan ? w - 190 : w - MX;
-    // Le colonne con un elenco hanno bisogno di più spazio, per le etichette a destra.
-    const need: number[] = levels.map((lv, c) => (c < n - 1 ? (fan(lv) ? 250 : 120) : 0));
-    const total = need.reduce((a, b) => a + b, 0);
-    const k = total > 0 ? (xr - MX) / total : 0;
-    const xs: number[] = [];
-    levels.forEach((_, c) => xs.push(n === 1 ? w / 2 : c === 0 ? MX : xs[c - 1] + need[c - 1] * k));
-    const span = (lv: string[]) => (lv.length - 1) * (fan(lv) ? SPF : SP);
-    const inner = Math.max(0, ...levels.map(span));
-    const h = Math.max(300, TOP + inner + BOTTOM);
-    const cy = TOP + (h - TOP - BOTTOM) / 2;
-    // Come in uno schema: i nodi da soli nella loro colonna salgono e scendono un poco.
-    const WAVE = [16, -14, 12, -18, 14, -10];
-    const big = w >= 700 ? 1 : 0.9;
-    levels.forEach((lv, c) => {
-      const x = xs[c];
-      const f = fan(lv);
-      const gap = f ? SPF : SP;
-      const dy = lv.length === 1 && n > 2 ? WAVE[c % WAVE.length] : 0;
-      const left = c > 0 ? x - xs[c - 1] : 2 * x;
-      const right = c < n - 1 ? xs[c + 1] - x : 2 * (w - x);
-      // Etichette a destra fino alla colonna dopo; sotto il disegno, centrate tra le vicine e dentro il bordo.
-      const room = f ? (c === n - 1 ? w - x - 36 : right - 80) : Math.min(left, right) - 14;
-      lv.forEach((id, j) => {
-        const trunk = f && parent.has(id) ? x - 46 : undefined;
-        slots.set(id, { x, y: cy + dy + (j - (lv.length - 1) / 2) * gap, s: f ? 0.6 : big, right: f, chars: Math.max(6, Math.floor(room / CHAR_W)), trunk });
-      });
-    });
-    return { w, h, vertical, slots, parent };
-  }
-
-  // Schermo stretto: un albero dall'alto in basso, le etichette a destra. Un
-  // solo figlio continua sotto il padre; più figli diventano un elenco
-  // rientrato, collegato da una linea comune che scende dal padre.
-  const kids = new Map<string, string[]>();
-  for (const id of order) {
-    const pa = parent.get(id);
-    if (!pa) continue;
-    const l = kids.get(pa);
-    if (l) l.push(id);
-    else kids.set(pa, [id]);
-  }
-  const X0 = 50;
-  const IND = 62;
-  let y = 66;
-  const place = (id: string, x: number, trunk: number | undefined, sc: number) => {
-    slots.set(id, { x, y, s: sc, right: true, chars: Math.max(6, Math.floor((w - x - 32 * (sc / 0.74) - 10) / CHAR_W)), trunk });
-    y += trunk === undefined ? 86 : 60;
-    const ch = kids.get(id) ?? [];
-    if (ch.length === 1) place(ch[0], x, undefined, sc);
-    else if (ch.length) {
-      for (const c of ch) place(c, x + IND, x, 0.58);
-      y += 18;
-    }
-  };
-  for (const id of order) if (!parent.has(id) && !slots.has(id)) place(id, X0, undefined, 0.74);
-  const last = Math.max(0, ...[...slots.values()].map((sl) => sl.y));
-  return { w, h: Math.max(240, last + 44), vertical, slots, parent };
-}
-
-/** Strada tra due nodi vicini, nel verso da a verso b. */
-export function route(L: StageLayout, a: string, b: string): Pt[] {
-  const sa = L.slots.get(a);
-  const sb = L.slots.get(b);
-  if (!sa || !sb) return [];
-  // Sempre disegnata dal padre al figlio, poi rovesciata se serve.
-  if (L.parent.get(a) === b && L.parent.get(b) !== a) return route(L, b, a).reverse();
-  const pts: Pt[] = [{ x: sa.x, y: sa.y }];
-  let y0 = sa.y;
-  // Da un nodo con l'etichetta a destra la linea esce dal basso, sotto l'etichetta.
-  if (!L.vertical && sa.right && sb.x > sa.x + 30) {
-    y0 = sa.y + 26;
-    pts.push({ x: sa.x, y: y0 });
-  }
-  if (L.parent.get(b) === a && sb.trunk !== undefined) {
-    if (L.vertical) {
-      if (Math.abs(sa.x - sb.trunk) <= 1) {
-        pts.push({ x: sb.trunk, y: sb.y }, { x: sb.x, y: sb.y });
-        return pts;
-      }
-    } else if (sb.trunk - sa.x >= 30) {
-      pts.push({ x: sb.trunk, y: y0 }, { x: sb.trunk, y: sb.y }, { x: sb.x, y: sb.y });
-      return pts;
-    }
-  }
-  if (y0 !== sa.y) pts.push({ x: sb.x - 34, y: y0 });
-  pts.push({ x: sb.x, y: sb.y });
-  return pts;
 }
 
 /** Punto a una frazione f (0..1) di una spezzata, in proporzione alla lunghezza. */
@@ -328,4 +158,407 @@ export function trailOf(routes: Pt[][], t: number): Pt[] {
     break;
   }
   return pts;
+}
+
+
+// ---------------------------------------------------------------- scena isometrica
+
+/** Passo della griglia isometrica, in pixel della scena (a zoom 1). */
+export const ISO_G = 84;
+const IC = Math.cos(Math.PI / 6);
+/** Scala dei disegni rispetto allo zoom della telecamera. */
+export const GLYPH = 0.95;
+/** Zoom massimo: con il solo PC in scena il portatile è grande, come all'inizio di un racconto. */
+export const K_MAX = 2;
+/** Durata di un movimento della telecamera. */
+export const CAM_MS = 850;
+/** Sotto questa larghezza la strada scende a zig-zag invece di andare verso destra. */
+export const NARROW_BELOW = 540;
+
+export type Box = { x0: number; y0: number; x1: number; y1: number };
+export type Side = 'left' | 'right' | 'below';
+
+export interface IsoScene {
+  /** Posizione di ogni nodo sulla scena (prima della telecamera), sul punto a terra del disegno. */
+  places: Map<string, Pt>;
+  parent: Map<string, string>;
+  /** Punti intermedi della corsia tra un nodo e il figlio ("genitore>figlio"): la dorsale delle colonne. */
+  via: Map<string, Pt[]>;
+  /** Da che parte scrivere l'etichetta di ogni nodo (fissata per tutta la scena, così non salta). */
+  sides: Map<string, Side>;
+  /** Per ogni nodo, il primo pacchetto della linea del tempo che lo raggiunge e a quale salto. */
+  first: Map<string, { entry: number; hop: number }>;
+  root?: string;
+}
+
+const isoPt = (gx: number, gy: number): Pt => ({ x: (gx - gy) * IC * ISO_G, y: (gx + gy) * 0.5 * ISO_G });
+const plus = (a: Pt, b: Pt, m = 1): Pt => ({ x: a.x + b.x * m, y: a.y + b.y * m });
+/** Distanza verticale tra i nodi di una colonna. */
+const COL_GAP = 80;
+
+/**
+ * Disposizione come in uno schema isometrico. La strada principale (verso
+ * Internet, altrimenti la più lunga) procede a zig-zag lungo le diagonali: in
+ * alto a destra e in basso a destra sullo schermo largo; sullo schermo stretto
+ * scende, un mezzo passo a destra e uno a sinistra, con le etichette tutte a
+ * destra. Con due figli il secondo prende l'altra diagonale; con tre o più
+ * (sullo schermo stretto già con due) i figli stanno in colonna, raggiunti da
+ * una dorsale comune, con le etichette a destra. Un nodo non va mai sopra un
+ * altro.
+ */
+export function isoScene(sc: TrafficScenario, has: (id: string) => boolean, entries: Entry[], narrow = false): IsoScene {
+  const paths = outwardPaths(sc, has);
+  const main = paths.find((h) => h[h.length - 1] === 'internet') ?? paths.reduce<string[]>((a, b) => (b.length > a.length ? b : a), []);
+  const parent = new Map<string, string>();
+  const order: string[] = [];
+  const seen = new Set<string>();
+  const visit = (id: string, from?: string) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    order.push(id);
+    if (from) parent.set(id, from);
+  };
+  for (const h of [main, ...paths]) {
+    if (!h.length) continue;
+    visit(h[0]);
+    for (let i = 1; i < h.length; i++) visit(h[i], h[i - 1]);
+  }
+  const onMain = new Set(main);
+  const kids = new Map<string, string[]>();
+  for (const id of order) {
+    const pa = parent.get(id);
+    if (!pa) continue;
+    const l = kids.get(pa) ?? [];
+    l.push(id);
+    kids.set(pa, l);
+  }
+  for (const l of kids.values()) l.sort((a, b) => Number(onMain.has(b)) - Number(onMain.has(a)));
+
+  const STEPS: Pt[] = narrow ? [isoPt(2, 1), isoPt(1, 2)] : [isoPt(0, -2), isoPt(2, 0)];
+  const pos = new Map<string, Pt>();
+  const via = new Map<string, Pt[]>();
+  const column = new Set<string>();
+  const taken = (p: Pt) => [...pos.values()].some((q) => Math.abs(q.x - p.x) < 110 && Math.abs(q.y - p.y) < 58);
+  const firstFree = (base: Pt, cands: Pt[]): Pt => {
+    for (const c of cands) {
+      const p = plus(base, c);
+      if (!taken(p)) return p;
+    }
+    for (let m = 2; m < 16; m++) {
+      const p = plus(base, cands[0], m);
+      if (!taken(p)) return p;
+    }
+    return plus(base, cands[0]);
+  };
+  const place = (id: string, p: Pt, turn: number) => {
+    pos.set(id, p);
+    const ch = kids.get(id) ?? [];
+    if (!ch.length) return;
+    const dir = STEPS[turn % 2];
+    const other = STEPS[(turn + 1) % 2];
+    if (ch.length === 1 || (ch.length === 2 && !narrow)) {
+      place(ch[0], firstFree(p, [dir, other, plus(dir, other)]), turn + 1);
+      if (ch[1]) place(ch[1], firstFree(p, [other, plus(dir, other), plus(other, other)]), turn);
+      return;
+    }
+    // Colonna: a destra (largo) o sotto, rientrata (stretto, già da due figli:
+    // con le etichette tutte a destra due nodi affiancati si toccherebbero).
+    // La si sposta finché è libera.
+    const n = ch.length;
+    const at = (j: number, shift: number): Pt =>
+      narrow ? { x: p.x + 92, y: p.y + 118 + shift + j * COL_GAP } : { x: p.x + 300 + shift, y: p.y + (j - (n - 1) / 2) * COL_GAP };
+    let shift = 0;
+    while (shift < 2000 && ch.some((_, j) => taken(at(j, shift)))) shift += narrow ? COL_GAP : 150;
+    ch.forEach((c, j) => {
+      const q = at(j, shift);
+      via.set(`${id}>${c}`, [narrow ? { x: p.x, y: q.y } : { x: q.x - 96, y: p.y }]);
+      column.add(c);
+    });
+    ch.forEach((c, j) => place(c, at(j, shift), turn + 1));
+  };
+  const root = main[0] ?? sc.lanes.find(has);
+  if (root) place(root, { x: 0, y: 0 }, 0);
+  for (const id of sc.lanes) if (has(id) && !pos.has(id)) place(id, firstFree({ x: 0, y: 0 }, [isoPt(2, 2), isoPt(3, 3), isoPt(-2, 0)]), 0);
+
+  // Lato delle etichette: a destra sullo schermo stretto e nelle colonne; altrove il più lontano dalle corsie.
+  const adj = new Map<string, Pt[]>();
+  const toward = (a: string, b: string): Pt | undefined => {
+    const v = via.get(`${a}>${b}`);
+    if (v?.length) return v[0];
+    const w = via.get(`${b}>${a}`);
+    if (w?.length) return w[w.length - 1];
+    return pos.get(b);
+  };
+  for (const h of paths)
+    for (let i = 1; i < h.length; i++) {
+      const [a, b] = [h[i - 1], h[i]];
+      if (a === b) continue;
+      for (const [x, y] of [
+        [a, b],
+        [b, a],
+      ]) {
+        const t = toward(x, y);
+        if (!t) continue;
+        const l = adj.get(x) ?? [];
+        l.push(t);
+        adj.set(x, l);
+      }
+    }
+  const sides = new Map<string, Side>();
+  for (const [id, p] of pos) sides.set(id, narrow || column.has(id) ? 'right' : sideAway(p, adj.get(id) ?? []));
+
+  // Quando compare ogni nodo: al primo pacchetto che va verso di lui. I nodi
+  // oltre il punto in cui il pacchetto si ferma compaiono all'ultimo tratto.
+  const first = new Map<string, { entry: number; hop: number }>();
+  if (root) first.set(root, { entry: 0, hop: 0 });
+  entries.forEach((e, i) => {
+    if (!e.p) return;
+    const end = reachOf(e.p);
+    e.p.hops.forEach((h, k) => {
+      if (!first.has(h)) first.set(h, { entry: i, hop: Math.min(k, end) });
+    });
+  });
+  return { places: pos, parent, via, sides, first, root };
+}
+
+/** Il lato (sinistra, sotto, destra) più lontano dalle direzioni delle corsie; a parità, in quest'ordine. */
+function sideAway(p: Pt, toward: Pt[]): Side {
+  const angles = toward.map((q) => Math.atan2(q.y - p.y, q.x - p.x));
+  const SIDES: [Side, number][] = [
+    ['left', Math.PI],
+    ['below', Math.PI / 2],
+    ['right', 0],
+  ];
+  const gap = (a: number, b: number) => {
+    const d = Math.abs(a - b) % (2 * Math.PI);
+    return d > Math.PI ? 2 * Math.PI - d : d;
+  };
+  let best: Side = 'left';
+  let score = -1;
+  for (const [side, a] of SIDES) {
+    const sc = angles.length ? Math.min(...angles.map((b) => gap(a, b))) : Math.PI;
+    if (sc > score + 1e-6) {
+      best = side;
+      score = sc;
+    }
+  }
+  return best;
+}
+
+/** Il nodo è in scena: raggiunto da un pacchetto precedente, o il pacchetto in corso sta andando verso di lui. */
+export function revealed(scene: IsoScene, id: string, entryIdx: number, hopAt: number): boolean {
+  const f = scene.first.get(id);
+  if (!f) return false;
+  return f.entry < entryIdx || (f.entry === entryIdx && hopAt >= f.hop - 1);
+}
+
+export interface Camera {
+  /** Zoom. */
+  k: number;
+  /** Spostamento: punto sullo schermo = punto della scena × k + (x, y). */
+  x: number;
+  y: number;
+}
+
+export const toScreen = (c: Camera, p: Pt): Pt => ({ x: p.x * c.k + c.x, y: p.y * c.k + c.y });
+
+/** Inquadratura che contiene i riquadri dati (in coordinate della scena) nel palco w × h. */
+export function fitCamera(boxes: Box[], w: number, h: number, kMax = K_MAX, pad = 18): Camera {
+  if (!boxes.length) return { k: 1, x: w / 2, y: h / 2 };
+  const x0 = Math.min(...boxes.map((b) => b.x0));
+  const y0 = Math.min(...boxes.map((b) => b.y0));
+  const x1 = Math.max(...boxes.map((b) => b.x1));
+  const y1 = Math.max(...boxes.map((b) => b.y1));
+  const k = Math.max(0.2, Math.min(kMax, (w - 2 * pad) / Math.max(1, x1 - x0), (h - 2 * pad) / Math.max(1, y1 - y0)));
+  return { k, x: w / 2 - ((x0 + x1) / 2) * k, y: h / 2 - ((y0 + y1) / 2) * k };
+}
+
+/** Quello che serve sapere di un nodo per metterlo in scena. */
+export interface IsoInfo {
+  name: string;
+  sub: string;
+  /** Altezza del disegno sopra il punto a terra, a scala 1. */
+  top: number;
+}
+
+/** Fumetto con l'indirizzo che si scrive, sopra il PC. */
+export const bubbleW = (text: string) => 34 + text.length * 7.2;
+export const BUBBLE_H = 24;
+
+const LABEL_H = 30;
+const LABEL_MAX = 22;
+
+/** Riquadro del disegno sullo schermo, attorno al punto a terra p con scala s. */
+export function glyphBox(p: Pt, s: number, top: number): Box {
+  return { x0: p.x - 46 * s, x1: p.x + 46 * s, y0: p.y - top * s, y1: p.y + 22 * s };
+}
+
+/** Riquadro dell'etichetta sullo schermo, con n caratteri. */
+export function labelBox(p: Pt, s: number, side: Side, n: number): Box {
+  const w = n * CHAR_W;
+  if (side === 'left') return { x0: p.x - 40 * s - 8 - w, x1: p.x - 40 * s - 8, y0: p.y - 9, y1: p.y - 9 + LABEL_H };
+  if (side === 'right') return { x0: p.x + 40 * s + 8, x1: p.x + 40 * s + 8 + w, y0: p.y - 9, y1: p.y - 9 + LABEL_H };
+  return { x0: p.x - w / 2, x1: p.x + w / 2, y0: p.y + 22 * s + 4, y1: p.y + 22 * s + 4 + LABEL_H };
+}
+
+/** Riquadro del fumetto sopra il disegno. */
+export function bubbleBox(p: Pt, s: number, top: number, text: string): Box {
+  const w = bubbleW(text);
+  const y1 = p.y - top * s - 14;
+  return { x0: p.x - w / 2 - 18, x1: p.x + w / 2 - 18, y0: y1 - BUBBLE_H, y1 };
+}
+
+/**
+ * Altezza del palco. Sullo schermo largo segue la larghezza; su quello
+ * stretto cresce con la scena (le colonne lunghe), perché a fine scena i
+ * disegni restino ad almeno metà grandezza e le etichette non si tocchino.
+ */
+export function stageHeight(scene: IsoScene, w: number): number {
+  if (w >= NARROW_BELOW) return Math.min(440, Math.max(300, Math.round(w * 0.5)));
+  const ys = [...scene.places.values()].map((p) => p.y);
+  const span = ys.length ? Math.max(...ys) - Math.min(...ys) + 120 : 0;
+  return Math.min(760, Math.max(380, Math.round(w * 1.2), Math.round(span * 0.5 + 76)));
+}
+
+/** Inquadratura dei nodi dati, con i disegni, le etichette intere e il fumetto dentro il palco. */
+export function sceneCamera(scene: IsoScene, ids: string[], info: (id: string) => IsoInfo, w: number, h: number, bubble?: { id: string; text: string }): Camera {
+  let k = K_MAX;
+  let cam: Camera = { k, x: 0, y: 0 };
+  for (let it = 0; it < 5; it++) {
+    const s = k * GLYPH;
+    const boxes: Box[] = [];
+    for (const id of ids) {
+      const p = scene.places.get(id);
+      if (!p) continue;
+      const nf = info(id);
+      // Sullo schermo con il punto a terra nell'origine, poi riportati alla scena.
+      const o = { x: 0, y: 0 };
+      const n = Math.min(LABEL_MAX, Math.max(nf.name.length, nf.sub.length));
+      const parts = [glyphBox(o, s, nf.top), labelBox(o, s, scene.sides.get(id) ?? 'left', n)];
+      if (bubble?.id === id) parts.push(bubbleBox(o, s, nf.top, bubble.text));
+      for (const b of parts) boxes.push({ x0: p.x + b.x0 / k, x1: p.x + b.x1 / k, y0: p.y + b.y0 / k, y1: p.y + b.y1 / k });
+    }
+    cam = fitCamera(boxes, w, h);
+    if (Math.abs(cam.k - k) < 1e-3) break;
+    k = cam.k;
+  }
+  return cam;
+}
+
+export interface Placed {
+  p: Pt;
+  s: number;
+  side: Side;
+  /** Caratteri dell'etichetta che stanno senza toccare i vicini. */
+  chars: number;
+  glyph: Box;
+  label: Box;
+}
+
+const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+/**
+ * I nodi sullo schermo con la telecamera data. Le etichette si accorciano
+ * (con i puntini) se toccherebbero un altro disegno o un'altra etichetta, ma
+ * gli indirizzi restano interi.
+ */
+export function frameScene(scene: IsoScene, ids: string[], info: (id: string) => IsoInfo, cam: Camera): Map<string, Placed> {
+  const s = cam.k * GLYPH;
+  const out = new Map<string, Placed>();
+  const glyphs = new Map<string, Box>();
+  for (const id of ids) {
+    const q = scene.places.get(id);
+    if (q) glyphs.set(id, glyphBox(toScreen(cam, q), s, info(id).top));
+  }
+  const labels: Box[] = [];
+  for (const id of ids) {
+    const q = scene.places.get(id);
+    const g = glyphs.get(id);
+    if (!q || !g) continue;
+    const p = toScreen(cam, q);
+    const nf = info(id);
+    const side = scene.sides.get(id) ?? 'left';
+    const full = Math.min(LABEL_MAX, Math.max(nf.name.length, nf.sub.length));
+    const least = Math.min(full, Math.max(8, nf.sub.length));
+    let chars = full;
+    let box = labelBox(p, s, side, chars);
+    const clash = (b: Box) => labels.some((l) => hit(l, b)) || [...glyphs].some(([o, gb]) => o !== id && hit(gb, b));
+    while (chars > least && clash(box)) box = labelBox(p, s, side, --chars);
+    labels.push(box);
+    out.set(id, { p, s, side, chars, glyph: g, label: box });
+  }
+  return out;
+}
+
+/** La spezzata spostata di off di lato (a destra del verso di percorrenza, sullo schermo), con i giunti ad angolo. */
+export function offsetLine(pts: Pt[], off: number): Pt[] {
+  const n = pts.length;
+  const nor = (a: Pt, b: Pt): Pt => {
+    const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return { x: -(b.y - a.y) / l, y: (b.x - a.x) / l };
+  };
+  return pts.map((p, i) => {
+    const n1 = i > 0 ? nor(pts[i - 1], p) : nor(p, pts[1]);
+    const n2 = i < n - 1 ? nor(p, pts[i + 1]) : n1;
+    const m = { x: n1.x + n2.x, y: n1.y + n2.y };
+    const ml = Math.hypot(m.x, m.y) || 1;
+    const u = { x: m.x / ml, y: m.y / ml };
+    const k = Math.min(3, 1 / Math.max(0.2, u.x * n1.x + u.y * n1.y));
+    return { x: p.x + u.x * off * k, y: p.y + u.y * off * k };
+  });
+}
+
+/**
+ * Due corsie tratteggiate lungo la spezzata da a a b: l'andata (a → b) da un
+ * lato e il ritorno (b → a) dall'altro, accorciate alle estremità per non
+ * entrare nei disegni.
+ */
+export function lanes(pts: Pt[], off: number, shrinkA: number, shrinkB: number): { out: Pt[]; back: Pt[] } {
+  const q = pts.map((p) => ({ ...p }));
+  const cut = (i: number, j: number, by: number) => {
+    const l = Math.hypot(q[j].x - q[i].x, q[j].y - q[i].y) || 1;
+    const d = Math.min(by, l * 0.4);
+    q[i] = { x: q[i].x + ((q[j].x - q[i].x) / l) * d, y: q[i].y + ((q[j].y - q[i].y) / l) * d };
+  };
+  if (q.length >= 2) {
+    cut(0, 1, shrinkA);
+    cut(q.length - 1, q.length - 2, shrinkB);
+  }
+  return { out: offsetLine(q, off), back: offsetLine(q, -off).reverse() };
+}
+
+/** Indirizzo da scrivere nel fumetto all'inizio della scena: il sito, per la scena del browser. */
+export function typedTarget(sc: TrafficScenario): string | undefined {
+  if (sc.id !== 'web') return undefined;
+  return sc.steps[0]?.fields.find((f) => f.k === 'Destinazione')?.v;
+}
+
+/** Telecamera a metà strada tra due inquadrature: centro in linea retta, zoom in scala logaritmica. */
+export function lerpCamera(a: Camera, b: Camera, w: number, h: number, f: number): Camera {
+  const e = f < 0.5 ? 4 * f * f * f : 1 - Math.pow(-2 * f + 2, 3) / 2;
+  const ca = { x: (w / 2 - a.x) / a.k, y: (h / 2 - a.y) / a.k };
+  const cb = { x: (w / 2 - b.x) / b.k, y: (h / 2 - b.y) / b.k };
+  const k = Math.exp(Math.log(a.k) + (Math.log(b.k) - Math.log(a.k)) * e);
+  const cx = ca.x + (cb.x - ca.x) * e;
+  const cy = ca.y + (cb.y - ca.y) * e;
+  return { k, x: w / 2 - cx * k, y: h / 2 - cy * k };
+}
+
+/** Righe della griglia a terra visibili nel palco, già sullo schermo. */
+export function groundLines(cam: Camera, w: number, h: number): [Pt, Pt][] {
+  const inv = (x: number, y: number) => {
+    const sx = (x - cam.x) / cam.k / (IC * ISO_G);
+    const sy = (y - cam.y) / cam.k / (0.5 * ISO_G);
+    return { gx: (sx + sy) / 2, gy: (sy - sx) / 2 };
+  };
+  const cs = [inv(0, 0), inv(w, 0), inv(0, h), inv(w, h)];
+  const gx0 = Math.floor(Math.min(...cs.map((c) => c.gx)));
+  const gx1 = Math.ceil(Math.max(...cs.map((c) => c.gx)));
+  const gy0 = Math.floor(Math.min(...cs.map((c) => c.gy)));
+  const gy1 = Math.ceil(Math.max(...cs.map((c) => c.gy)));
+  if ((gx1 - gx0) * (gy1 - gy0) > 4000) return [];
+  const out: [Pt, Pt][] = [];
+  for (let gx = gx0; gx <= gx1; gx++) out.push([toScreen(cam, isoPt(gx, gy0)), toScreen(cam, isoPt(gx, gy1))]);
+  for (let gy = gy0; gy <= gy1; gy++) out.push([toScreen(cam, isoPt(gx0, gy)), toScreen(cam, isoPt(gx1, gy))]);
+  return out;
 }
