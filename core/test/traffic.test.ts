@@ -343,6 +343,10 @@ describe('esiti veri dell\'analisi (revisione)', () => {
 });
 
 describe('scena isometrica', () => {
+  // Casa con il DNS su un dispositivo della rete (un Pi-hole): il PC ha due figli, il router e il DNS.
+  const piholeScan: Scan = clone(demoScan);
+  piholeScan.adapters[0].dns = ['192.168.1.27'];
+  piholeScan.dns!.system = [{ server: '192.168.1.27', label: 'Pi-hole', ok: true, timeMs: 12 }];
   const hit = (a: Box, b: Box) => a.x0 < b.x1 - 0.5 && b.x0 < a.x1 - 0.5 && a.y0 < b.y1 - 0.5 && b.y0 < a.y1 - 0.5;
   const setup = (scan: Scan) => {
     const { map, list } = scenes(scan);
@@ -355,7 +359,7 @@ describe('scena isometrica', () => {
   };
 
   it('tutti i nodi della scena hanno un posto e nessun disegno sta sopra un altro', () => {
-    for (const scan of [demoScan, clinicScan]) {
+    for (const scan of [demoScan, clinicScan, piholeScan]) {
       const { list, info, has } = setup(scan);
       for (const narrow of [false, true])
         for (const sc of list) {
@@ -369,9 +373,9 @@ describe('scena isometrica', () => {
   });
 
   it('alla fine della scena: tutto dentro il palco, etichette senza sovrapposizioni, indirizzi interi', () => {
-    for (const scan of [demoScan, clinicScan]) {
+    for (const scan of [demoScan, clinicScan, piholeScan]) {
       const { list, info, has } = setup(scan);
-      for (const w of [1100, 692, 600, 520, 340, 300]) {
+      for (const w of [1100, 692, 620, 600, 596, 560, 540, 520, 400, 340, 300]) {
         for (const sc of list) {
           const es = timeline(sc);
           const scene = isoScene(sc, has, es, w < NARROW_BELOW);
@@ -461,6 +465,50 @@ describe('scena isometrica', () => {
     const bus = col.map((c) => scene.via.get(`${fw}>${c}`)![0]);
     expect(new Set(bus.map((b) => `${b.x},${b.y}`)).size).toBe(1);
     for (const c of col) expect(scene.sides.get(c)).toBe('right');
+    // Dorsale vera: un tratto verticale comune lungo la colonna, poi un tratto dritto fino a ogni servizio.
+    for (const c of col) {
+      const v = scene.via.get(`${fw}>${c}`)!;
+      expect(v).toHaveLength(2);
+      expect(v[1].x).toBe(v[0].x);
+      expect(v[1].y).toBe(scene.places.get(c)!.y);
+    }
+  });
+
+  it('il pacchetto si vede su tutto il viaggio: ogni tratto ha i suoi nodi in scena prima che il pacchetto ci arrivi', () => {
+    for (const scan of [demoScan, clinicScan, piholeScan]) {
+      const { list, has } = setup(scan);
+      for (const narrow of [false, true])
+        for (const sc of list) {
+          const es = timeline(sc);
+          const scene = isoScene(sc, has, es, narrow);
+          es.forEach((e, i) => {
+            if (!e.p) return;
+            const end = e.p.stopAt ?? e.p.hops.length - 1;
+            for (const h of e.p.hops.slice(0, end + 1)) expect(scene.places.has(h), `${sc.id} #${e.p.no} ${h}`).toBe(true);
+            // Mentre percorre il tratto k (hopAt in [k-1, k)) i due capi sono già in scena.
+            for (let k = 1; k <= end; k++)
+              for (const at of [k - 1, k - 0.5, k - 0.01])
+                for (const h of [e.p.hops[k - 1], e.p.hops[k]]) expect(revealed(scene, h, i, at), `${sc.id} #${e.p.no} tratto ${k} ${h}`).toBe(true);
+          });
+        }
+    }
+  });
+
+  it('schermo stretto, due figli: il seguito della strada principale scende sotto la colonna, senza toccare il DNS', () => {
+    const { list, has, map } = setup(piholeScan);
+    const web = byId(list, 'web');
+    const scene = isoScene(web, has, timeline(web), true);
+    const pc = map.nodes.find((n) => n.self)!.id;
+    const dns = map.nodes.find((n) => n.ip === '192.168.1.27')!.id;
+    const gw = map.nodes.find((n) => n.gateway)!.id;
+    expect(scene.parent.get(dns)).toBe(pc);
+    expect(scene.parent.get(gw)).toBe(pc);
+    const [P, D, G] = [pc, dns, gw].map((id) => scene.places.get(id)!);
+    expect(D.y).toBeLessThan(G.y);
+    expect(G.x).toBe(D.x);
+    // Tutto ciò che segue il router sta più in basso del router.
+    for (const [id, q] of scene.places) if (id !== pc && id !== dns && id !== gw) expect(q.y, id).toBeGreaterThan(G.y);
+    expect(P.y).toBeLessThan(D.y);
   });
 
   it('corsie: andata e ritorno ai due lati della strada, accorciate alle estremità', () => {

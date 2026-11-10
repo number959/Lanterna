@@ -119,7 +119,7 @@ export function Generic({ mark = '?' }: { mark?: string }) {
 }
 
 const ART: Partial<Record<DeviceKind, IsoArt>> = {
-  laptop: { draw: Laptop, top: 44 },
+  laptop: { draw: Laptop, top: 52 },
   router: { draw: Router, top: 46 },
   server: { draw: () => <ServerStack />, top: 48 },
   internet: { draw: Cloud, top: 56 },

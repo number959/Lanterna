@@ -173,7 +173,7 @@ export const K_MAX = 2;
 /** Durata di un movimento della telecamera. */
 export const CAM_MS = 850;
 /** Sotto questa larghezza la strada scende a zig-zag invece di andare verso destra. */
-export const NARROW_BELOW = 540;
+export const NARROW_BELOW = 600;
 
 export type Box = { x0: number; y0: number; x1: number; y1: number };
 export type Side = 'left' | 'right' | 'below';
@@ -269,12 +269,18 @@ export function isoScene(sc: TrafficScenario, has: (id: string) => boolean, entr
       narrow ? { x: p.x + 92, y: p.y + 118 + shift + j * COL_GAP } : { x: p.x + 300 + shift, y: p.y + (j - (n - 1) / 2) * COL_GAP };
     let shift = 0;
     while (shift < 2000 && ch.some((_, j) => taken(at(j, shift)))) shift += narrow ? COL_GAP : 150;
-    ch.forEach((c, j) => {
+    // Sullo schermo stretto il figlio della strada principale va in fondo: il
+    // suo seguito scende sotto la colonna invece di attraversarla.
+    const col = narrow && onMain.has(ch[0]) && kids.get(ch[0])?.length ? [...ch.slice(1), ch[0]] : ch;
+    col.forEach((c, j) => {
       const q = at(j, shift);
-      via.set(`${id}>${c}`, [narrow ? { x: p.x, y: q.y } : { x: q.x - 96, y: p.y }]);
+      // La dorsale: in verticale lungo la colonna, poi un tratto dritto fino al nodo.
+      via.set(`${id}>${c}`, narrow ? [{ x: p.x, y: q.y }] : [{ x: q.x - 96, y: p.y }, { x: q.x - 96, y: q.y }]);
       column.add(c);
+      // Posti riservati prima di scendere nei sottoalberi.
+      pos.set(c, q);
     });
-    ch.forEach((c, j) => place(c, at(j, shift), turn + 1));
+    col.forEach((c, j) => place(c, at(j, shift), turn + 1));
   };
   const root = main[0] ?? sc.lanes.find(has);
   if (root) place(root, { x: 0, y: 0 }, 0);
@@ -345,11 +351,15 @@ function sideAway(p: Pt, toward: Pt[]): Side {
   return best;
 }
 
-/** Il nodo è in scena: raggiunto da un pacchetto precedente, o il pacchetto in corso sta andando verso di lui. */
+/**
+ * Il nodo è in scena: raggiunto da un pacchetto precedente, o il pacchetto in
+ * corso gli arriverà entro due tratti. Così la telecamera allarga
+ * l'inquadratura con un tratto di anticipo e arriva prima del pacchetto.
+ */
 export function revealed(scene: IsoScene, id: string, entryIdx: number, hopAt: number): boolean {
   const f = scene.first.get(id);
   if (!f) return false;
-  return f.entry < entryIdx || (f.entry === entryIdx && hopAt >= f.hop - 1);
+  return f.entry < entryIdx || (f.entry === entryIdx && hopAt >= f.hop - 2);
 }
 
 export interface Camera {
@@ -386,8 +396,7 @@ export const bubbleW = (text: string) => 34 + text.length * 7.2;
 export const BUBBLE_H = 24;
 
 const LABEL_H = 30;
-/** Caratteri delle etichette considerati per l'inquadratura; sullo schermo possono essere di più, se c'è spazio. */
-const LABEL_MAX = 22;
+/** Caratteri al massimo nelle etichette: l'inquadratura li fa stare, sullo schermo si accorciano solo se toccherebbero altro. */
 const LABEL_LONG = 30;
 
 /** Riquadro del disegno sullo schermo, attorno al punto a terra p con scala s. */
@@ -435,7 +444,7 @@ export function sceneCamera(scene: IsoScene, ids: string[], info: (id: string) =
       const nf = info(id);
       // Sullo schermo con il punto a terra nell'origine, poi riportati alla scena.
       const o = { x: 0, y: 0 };
-      const n = Math.min(LABEL_MAX, Math.max(nf.name.length, nf.sub.length));
+      const n = Math.min(LABEL_LONG, Math.max(nf.name.length, nf.sub.length));
       const parts = [glyphBox(o, s, nf.top), labelBox(o, s, scene.sides.get(id) ?? 'left', n)];
       if (bubble?.id === id) parts.push(bubbleBox(o, s, nf.top, bubble.text));
       for (const b of parts) boxes.push({ x0: p.x + b.x0 / k, x1: p.x + b.x1 / k, y0: p.y + b.y0 / k, y1: p.y + b.y1 / k });

@@ -298,9 +298,9 @@ function Explorer({ map, scenarios }: { map: NetworkMap; scenarios: TrafficScena
               {pkt ? `${packetTime(pkt.t)} · ${pkt.no}/${packets.length}` : `${sentUpTo}/${packets.length}`}
             </span>
           </div>
-          <div className={`tx-canvas${view === 'rete' ? ' iso' : ''}`} ref={stageRef}>
+          <div className={`tx-canvas${view === 'rete' ? ' iso' : ''}${playing ? ' playing' : ''}`} ref={stageRef}>
             {view === 'rete' ? (
-              <IsoView sc={sc} scene={scene} node={node} entries={entries} at={Math.min(cur.i, entries.length - 1)} pkt={pkt} prog={prog} w={w} h={h} site={site} typed={typed} reduce={!!reduce} />
+              <IsoView sc={sc} scene={scene} node={node} entries={entries} at={Math.min(cur.i, entries.length - 1)} pkt={pkt} prog={prog} w={w} h={h} site={site} typed={typed} reduce={!!reduce} speed={speed} />
             ) : (
               <SequenceView step={step} pkt={pkt} prog={prog} node={node} width={w} />
             )}
@@ -465,6 +465,8 @@ function subOf(n: MapNode): string {
 }
 
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+/** Raggio del disegno verso le corsie, a scala 1: il portatile ha lo schermo che sporge verso destra. */
+const SHRINK: Partial<Record<DeviceKind, number>> = { laptop: 50, pc: 40, switch: 40, tv: 40, printer: 40 };
 const pathD = (pts: Pt[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
 
 /** Il disegno non cambia mentre la telecamera si muove: si ridisegna solo se cambia il tipo. */
@@ -475,9 +477,10 @@ const IsoGlyph = memo(function IsoGlyph({ kind }: { kind: DeviceKind }) {
 /**
  * La telecamera va verso l'inquadratura voluta in CAM_MS, con partenza e
  * arrivo morbidi; se l'inquadratura cambia a metà riparte da dove si trova.
- * Con "riduci movimento", e quando cambia la scena, salta subito.
+ * Con "riduci movimento", quando cambia la scena e quando cambiano le misure
+ * del palco (anche alla prima misura, dopo l'apertura) salta subito.
  */
-function useCamera(target: Camera, w: number, h: number, reduce: boolean, reset: string): Camera {
+function useCamera(target: Camera, w: number, h: number, reduce: boolean, reset: string, ms = CAM_MS): Camera {
   const [cam, setCam] = useState(target);
   const now = useRef(target);
   const last = useRef(reset);
@@ -494,7 +497,7 @@ function useCamera(target: Camera, w: number, h: number, reduce: boolean, reset:
     const t0 = performance.now();
     let raf = 0;
     const tick = (t: number) => {
-      const f = Math.min(1, (t - t0) / CAM_MS);
+      const f = Math.min(1, (t - t0) / ms);
       const c = lerpCamera(from, target, w, h, f);
       now.current = c;
       setCam(c);
@@ -502,7 +505,7 @@ function useCamera(target: Camera, w: number, h: number, reduce: boolean, reset:
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [target, w, h, reduce, reset]);
+  }, [target, w, h, reduce, reset, ms]);
   return reduce || stale ? target : cam;
 }
 
@@ -519,6 +522,7 @@ function IsoView({
   site,
   typed,
   reduce,
+  speed,
 }: {
   sc: TrafficScenario;
   scene: IsoScene;
@@ -532,6 +536,7 @@ function IsoView({
   site?: string;
   typed: number;
   reduce: boolean;
+  speed: number;
 }) {
   const end = pkt ? reachOf(pkt) : -1;
   const hopAt = pkt ? prog * Math.max(1, end) : 0;
@@ -546,7 +551,8 @@ function IsoView({
   // L'inquadratura cambia solo quando compare (o sparisce) qualcosa.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const target = useMemo(() => sceneCamera(scene, ids, info, w, h, bubble), [scene, key, w, h]);
-  const cam = useCamera(target, w, h, reduce, sc.id);
+  // A 2× la telecamera è più rapida, così arriva prima del pacchetto.
+  const cam = useCamera(target, w, h, reduce, `${sc.id}|${w}x${h}`, CAM_MS / Math.max(1, speed));
   const placed = frameScene(scene, ids, info, cam, w);
   const s = cam.k * 0.95;
 
@@ -564,34 +570,63 @@ function IsoView({
     }
   }
   const off = Math.max(3, 5.5 * cam.k);
-  const shrink = 36 * s + 4;
   const lift = (p: Pt): Pt => ({ x: p.x, y: p.y - 3 * s });
+  /** Dove sta un nodo sullo schermo, anche se non è ancora comparso. */
+  const screenOf = (id: string): Pt | undefined => {
+    const pl = placed.get(id);
+    if (pl) return pl.p;
+    const q = scene.places.get(id);
+    return q ? toScreen(cam, q) : undefined;
+  };
+  /** Quanto accorciare le corsie vicino a un nodo, secondo la sagoma del disegno. */
+  const shrinkOf = (id: string) => (SHRINK[node(id)?.kind ?? 'unknown'] ?? 36) * s + 4;
+  const laneGeo = (a: string, b: string) => {
+    const pa = screenOf(a);
+    const pb = screenOf(b);
+    if (!pa || !pb) return undefined;
+    const mid = (scene.via.get(`${a}>${b}`) ?? []).map((q) => lift(toScreen(cam, q)));
+    return { a, b, ...lanes([lift(pa), ...mid, lift(pb)], off, shrinkOf(a), shrinkOf(b)) };
+  };
+  const orient = (a: string, b: string): [string, string] => (scene.parent.get(a) === b ? [b, a] : [a, b]);
   const geo = new Map<string, { a: string; b: string; out: Pt[]; back: Pt[] }>();
   for (const [k, [a, b]] of pairs) {
-    const mid = (scene.via.get(`${a}>${b}`) ?? []).map((q) => lift(toScreen(cam, q)));
-    geo.set(k, { a, b, ...lanes([lift(placed.get(a)!.p), ...mid, lift(placed.get(b)!.p)], off, shrink, shrink) });
+    const g = laneGeo(a, b);
+    if (g) geo.set(k, g);
   }
-  /** La corsia per andare da a a b. */
+  /** La corsia per andare da a a b (calcolata anche se non è ancora disegnata). */
   const laneFor = (a: string, b: string): Pt[] | undefined => {
-    const g = geo.get(pairKey(a, b));
+    const g = geo.get(pairKey(a, b)) ?? laneGeo(...orient(a, b));
     return g ? (g.a === a ? g.out : g.back) : undefined;
   };
 
-  // Tratti già percorsi (o in corso) dal pacchetto e nodi già raggiunti.
+  // Tratti già percorsi (o in corso) dal pacchetto e nodi già raggiunti. La
+  // strada del pacchetto passa dentro i nodi intermedi (sotto il disegno),
+  // così il punto non salta da una corsia all'altra.
   const active = new Set<string>();
   const reached = new Set<string>();
   const routes: Pt[][] = [];
+  let whole = !!pkt && end > 0;
   if (pkt) {
     reached.add(pkt.hops[0]);
     for (let i = 1; i <= end; i++) {
-      const r = laneFor(pkt.hops[i - 1], pkt.hops[i]);
-      if (r) routes.push(r);
-      if (hopAt > i - 1 || (i === 1 && hopAt >= 0)) active.add(`${pkt.hops[i - 1]}>${pkt.hops[i]}`);
-      if (hopAt >= i - 1e-6) reached.add(pkt.hops[i]);
+      const [a, b] = [pkt.hops[i - 1], pkt.hops[i]];
+      const r = laneFor(a, b);
+      if (!r) {
+        whole = false;
+        break;
+      }
+      const seg = [...r];
+      const pa = i > 1 ? screenOf(a) : undefined;
+      const pb = i < end ? screenOf(b) : undefined;
+      if (pa) seg.unshift(lift(pa));
+      if (pb) seg.push(lift(pb));
+      routes.push(seg);
+      if (hopAt > i - 1 || (i === 1 && hopAt >= 0)) active.add(`${a}>${b}`);
+      if (hopAt >= i - 1e-6) reached.add(b);
     }
   }
   const color = pkt ? PROTO_COLOR[pkt.proto] : undefined;
-  const showPacket = !!pkt && end > 0 && routes.length === end;
+  const showPacket = whole && routes.length === end;
   const names = sc.lanes
     .map((l) => node(l))
     .filter((n): n is MapNode => !!n)
@@ -634,6 +669,7 @@ function IsoView({
           </g>
         );
       })}
+      {showPacket && pkt && <PacketBody pkt={pkt} routes={routes} prog={prog} />}
       {byDepth.map(([id, pl]) => {
         const n = node(id)!;
         const nf = info(id);
@@ -686,10 +722,26 @@ function TypingBubble({ p, s, top, text, typed }: { p: Pt; s: number; top: numbe
   );
 }
 
+/** La scia e il punto del pacchetto: sotto i disegni, così dentro un nodo il pacchetto passa dietro al dispositivo. */
+function PacketBody({ pkt, routes, prog }: { pkt: TrafficPacket; routes: Pt[][]; prog: number }) {
+  const p = along(routes, prog);
+  const trail = trailOf(routes, prog);
+  const color = PROTO_COLOR[pkt.proto];
+  return (
+    <g className="tx-packet" pointerEvents="none">
+      {trail.length > 1 && <path d={pathD(trail)} className="tx-trail" style={{ stroke: color }} />}
+      <circle cx={p.x} cy={p.y} r={10} fill={color} opacity={0.2} />
+      <circle cx={p.x} cy={p.y} r={4.8} fill={color} />
+    </g>
+  );
+}
+
+const CHIP_H = 37;
+
+/** Etichetta del pacchetto e segni di arrivo (stop, allarme), sopra i disegni. */
 function PacketMark({ pkt, routes, prog, w, h, placed }: { pkt: TrafficPacket; routes: Pt[][]; prog: number; w: number; h: number; placed: Map<string, Placed> }) {
   const end = reachOf(pkt);
   const p = along(routes, prog);
-  const trail = trailOf(routes, prog);
   const color = PROTO_COLOR[pkt.proto];
   // Etichetta del protocollo e, sotto, la riga breve del pacchetto ("A? www.esempio.it").
   const brief = briefOf(pkt);
@@ -703,25 +755,43 @@ function PacketMark({ pkt, routes, prog, w, h, placed }: { pkt: TrafficPacket; r
   const stopAt = prog >= 1 && pkt.stopAt !== undefined ? mark(pkt.hops[end]) : undefined;
   // Passato da una zona che doveva essere isolata: un segnale rosso sul dispositivo isolato.
   const alarm = prog >= 1 && pkt.breach ? mark(breachNode(pkt)) : undefined;
-  const chipX = (q: Pt) => Math.min(w - cw - 6, Math.max(6, q.x - lw / 2));
-  const upY = (q: Pt) => Math.max(4, q.y - 58);
-  const downY = (q: Pt) => Math.min(h - 41, q.y + 18);
-  // Sopra il pacchetto, o sotto se all'arrivo sopra coprirebbe di più i nomi e
-  // i disegni: deciso una volta per pacchetto, così l'etichetta non salta.
-  const cover = (x: number, y: number) => {
+  // Sopra, a destra, a sinistra o sotto il pacchetto: il lato che all'arrivo
+  // copre meno nomi e disegni (quello del dispositivo d'arrivo non conta).
+  // Deciso una volta per pacchetto, così l'etichetta non salta.
+  const SIDES = [
+    (q: Pt) => ({ x: q.x - lw / 2, y: q.y - 58 }),
+    (q: Pt) => ({ x: q.x + 16, y: q.y - CHIP_H / 2 }),
+    (q: Pt) => ({ x: q.x - cw - 16, y: q.y - CHIP_H / 2 }),
+    (q: Pt) => ({ x: q.x - lw / 2, y: q.y + 18 }),
+  ];
+  const at = (side: number, q: Pt) => {
+    const c = SIDES[side](q);
+    return { x: Math.min(w - cw - 6, Math.max(6, c.x)), y: Math.min(h - CHIP_H - 4, Math.max(4, c.y)) };
+  };
+  const arrival = pkt.hops[end];
+  const cover = (c: { x: number; y: number }) => {
     let a = 0;
-    for (const pl of placed.values())
-      for (const b of [pl.label, pl.glyph]) a += Math.max(0, Math.min(x + cw, b.x1) - Math.max(x, b.x0)) * Math.max(0, Math.min(y + 37, b.y1) - Math.max(y, b.y0));
+    for (const [id, pl] of placed)
+      for (const b of id === arrival ? [pl.label] : [pl.label, pl.glyph]) a += Math.max(0, Math.min(c.x + cw, b.x1) - Math.max(c.x, b.x0)) * Math.max(0, Math.min(c.y + CHIP_H, b.y1) - Math.max(c.y, b.y0));
     return a;
   };
   const last = along(routes, 1);
-  const below = cover(chipX(last), downY(last)) < cover(chipX(last), upY(last)) * 0.6;
-  const cx = chipX(p);
-  const cy = below ? downY(p) : upY(p);
+  let side = 0;
+  let best = Infinity;
+  SIDES.forEach((_, i) => {
+    const v = cover(at(i, last)) + i;
+    if (v < best) {
+      best = v;
+      side = i;
+    }
+  });
+  const { x: cx, y: cy } = at(side, p);
+  // Il filo dal punto al bordo più vicino dell'etichetta.
+  const fx = Math.min(cx + cw, Math.max(cx, p.x));
+  const fy = Math.min(cy + CHIP_H, Math.max(cy, p.y));
   const sev = pkt.sev ?? 'warn';
   return (
     <g className="tx-packet" pointerEvents="none">
-      {trail.length > 1 && <path d={pathD(trail)} className="tx-trail" style={{ stroke: color }} />}
       {stopAt && (
         <g className={`tx-x ${sev}`} transform={`translate(${stopAt.x.toFixed(1)} ${stopAt.y.toFixed(1)})`}>
           <circle r="11" />
@@ -734,9 +804,7 @@ function PacketMark({ pkt, routes, prog, w, h, placed }: { pkt: TrafficPacket; r
           <path d="M0 -5.5 V1.5 M0 5 V5.2" />
         </g>
       )}
-      <circle cx={p.x} cy={p.y} r={10} fill={color} opacity={0.2} />
-      <circle cx={p.x} cy={p.y} r={4.8} fill={color} />
-      <line x1={p.x} y1={below ? p.y + 6 : p.y - 6} x2={p.x} y2={below ? cy : cy + 37} className="tx-chip-l" style={{ stroke: color }} />
+      {Math.hypot(fx - p.x, fy - p.y) > 7 && <line x1={p.x} y1={p.y} x2={fx} y2={fy} className="tx-chip-l" style={{ stroke: color }} />}
       <g transform={`translate(${cx.toFixed(1)} ${cy.toFixed(1)})`}>
         <rect width={lw} height={18} rx={3} fill={color} />
         <text x={lw / 2} y={12.8} textAnchor="middle" className="tx-chip-t">
