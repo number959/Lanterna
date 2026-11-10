@@ -1518,6 +1518,37 @@ con la videoguida della mappa; casa e clinica, temi scuro e chiaro, 1366 e 390 p
 orizzontale. Run 96 della CI (commit f48e9fb) verde su Linux e su Windows reale. La bozza della release v0.13.0 qui sopra è stata
 costruita prima di queste modifiche e non le contiene.
 
+**Mappa e traffico in prospettiva isometrica** (dopo, su richiesta: "guarda come è dinamica, l'angolazione"). I dispositivi
+sono disegnati in prospettiva a 30° (`isoprims.tsx`, `isoart*.tsx`: 20 tipi, tre toni per le facce e il contorno nel colore
+corrente); i vecchi disegni piatti (`deviceart.tsx`) sono stati tolti. **Traffico passo passo**: all'inizio c'è solo il PC, grande,
+con l'indirizzo del sito che si scrive nel fumetto; ogni dispositivo compare un tratto prima che il pacchetto ci arrivi e una
+telecamera (zoom logaritmico, 850 ms, più rapida a 2×) allarga l'inquadratura; due corsie per collegamento con le frecce, la strada
+del pacchetto passa dentro i nodi intermedi, servizi in colonna con una dorsale, sotto i 600 px la strada scende a zig-zag con le
+etichette a destra e il palco cresce. **Mappa**: la disposizione del motore proiettata sul piano isometrico, zone come piattaforme,
+percorso scelto su due corsie, entrata con la telecamera che parte vicina al PC e si allontana, telecamera morbida scritta nel
+gruppo SVG senza ridisegnare React, ordine di tabulazione di lettura. Con "riduci movimento" niente entra né scorre, in tutte e due.
+
+Due revisioni indipendenti, ognuna con tre revisori (correttezza; movimento, accessibilità e prestazioni; aspetto e schermi stretti)
+e un verificatore per revisore che ha provato a smentire ogni segnalazione riproducendola. Traffico: 18 segnalazioni, 14 confermate
+(12 difetti distinti, tutti corretti: pacchetto invisibile nel primo viaggio verso dispositivi nuovi e nei passi scelti a mano,
+salti tra le corsie ai nodi intermedi, telecamera che scivolava all'apertura, sovrapposizioni sullo schermo stretto con il DNS su un
+dispositivo della rete, ventaglio al posto della dorsale, corsie accese che marciavano anche da fermi, telecamera in ritardo sul
+pacchetto, etichetta del pacchetto sopra i nomi, corsie dentro il portatile, nomi lunghi tagliati, fumetto attaccato al portatile,
+soglia dello schermo stretto), 4 smentite come scelte volute. Mappa: 24 segnalazioni, 19 confermate (16 difetti distinti, tutti
+corretti, tra cui il tasto 0 che apriva la Guida, il Tab su dispositivi coperti dal pannello, la scelta azzerata da ogni nuova analisi
+della stessa rete, il trascinamento da un dispositivo, la videoguida compatta senza zone e senza pausa delle animazioni, andata e
+ritorno sovrapposti verso le altre VLAN, animazioni attive a mappa fuori vista, il problema di un dispositivo non detto al lettore
+di schermo), 5 smentite. Un secondo verificatore ha rilanciato le riproduzioni dei revisori dopo le correzioni: 16 su 16 risolti e
+una regressione (un filtro di un altro tipo toglieva la scelta di un dispositivo attenuato dalla ricerca), corretta.
+
+Test: 543 vitest (33 per il traffico, 21 per la mappa isometrica), compresi pacchetto visibile su ogni tratto, nessuna sovrapposizione
+di disegni ed etichette a fine scena da 300 a 1100 px con le due demo e con il DNS su un Pi-hole, corsie di andata e ritorno mai
+sovrapposte in tutti i percorsi delle due demo, firma della rete, titoli delle zone. axe-core: 0 violazioni sulle scene del traffico
+(casa e clinica a 1366, 1920 e 390 px) e sulla mappa (30 stati: temi scuro e chiaro, 1440, 390 e 320 px, scelta, filtri e ricerca,
+elenco), nessuno scorrimento orizzontale. Fluidità misurata in Chromium senza scheda grafica: traffico, mediana 16,7 ms tra i
+fotogrammi nella scena più carica; mappa, 60 fps a riposo e durante il trascinamento, 37-56 fps durante l'entrata; con la mappa
+fuori vista il lavoro a riposo scende da circa 240 a circa 80 ms al secondo.
+
 **Avvertenze: cosa resta da provare.**
 - **Ascolto degli annunci con uno switch vero** (Cisco, HPE Aruba, altri): provato con trame costruite, su milioni di trame
   casuali e su macchine virtuali che non ricevono annunci. Alcune schede di rete con un agente LLDP nel firmware trattengono
@@ -1534,6 +1565,8 @@ costruita prima di queste modifiche e non le contiene.
   italiana in WebView2 su un Windows in italiano no.
 - **Annunci mDNS e SSDP su reti vere**: provati con risposte costruite; il riconoscimento può sbagliare e ogni tipo mostra il
   perché e quanto è sicuro.
+- **Fluidità della prospettiva isometrica su un PC vero**: misurata solo in Chromium senza scheda grafica, non in WebView2 su
+  Windows con la scheda grafica; l'apertura della mappa della clinica crea circa 2400 elementi SVG in un'unica attività da 60-80 ms.
 - **Il traffico passo passo** è una ricostruzione didattica, non una cattura: tempi e indirizzi vengono dall'analisi, ma
   sequenza e dimensioni dei pacchetti sono quelle tipiche dei protocolli (per esempio TLS 1.3 con il messaggio di
   compatibilità Change Cipher Spec) e non sono state confrontate con catture di questi PC.
