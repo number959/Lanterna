@@ -27,8 +27,8 @@ export interface StageLayout {
   parent: Map<string, string>;
 }
 
-/** Larghezza media di un carattere dell'etichetta a 12 px. */
-export const CHAR_W = 6.8;
+/** Larghezza di un carattere delle etichette (monospaziato a 11,5 px). */
+export const CHAR_W = 7;
 /** Sotto questa larghezza la scena si dispone dall'alto in basso. */
 export const VERTICAL_BELOW = 540;
 /** Da quanti nodi alla stessa distanza si passa all'elenco con le etichette a destra. */
@@ -92,7 +92,7 @@ function layoutOf(sc: TrafficScenario, has: (id: string) => boolean, w: number, 
   if (!vertical) {
     const SP = 96;
     const SPF = 56;
-    const TOP = 96;
+    const TOP = 112;
     const BOTTOM = 60;
     const MX = 60;
     const fan = (lv: string[]) => lv.length >= FAN;
@@ -109,17 +109,21 @@ function layoutOf(sc: TrafficScenario, has: (id: string) => boolean, w: number, 
     const inner = Math.max(0, ...levels.map(span));
     const h = Math.max(300, TOP + inner + BOTTOM);
     const cy = TOP + (h - TOP - BOTTOM) / 2;
+    // Come in uno schema: i nodi da soli nella loro colonna salgono e scendono un poco.
+    const WAVE = [16, -14, 12, -18, 14, -10];
+    const big = w >= 700 ? 1 : 0.9;
     levels.forEach((lv, c) => {
       const x = xs[c];
       const f = fan(lv);
       const gap = f ? SPF : SP;
+      const dy = lv.length === 1 && n > 2 ? WAVE[c % WAVE.length] : 0;
       const left = c > 0 ? x - xs[c - 1] : 2 * x;
       const right = c < n - 1 ? xs[c + 1] - x : 2 * (w - x);
       // Etichette a destra fino alla colonna dopo; sotto il disegno, centrate tra le vicine e dentro il bordo.
       const room = f ? (c === n - 1 ? w - x - 36 : right - 80) : Math.min(left, right) - 14;
       lv.forEach((id, j) => {
         const trunk = f && parent.has(id) ? x - 46 : undefined;
-        slots.set(id, { x, y: cy + (j - (lv.length - 1) / 2) * gap, s: f ? 0.6 : 0.9, right: f, chars: Math.max(6, Math.floor(room / CHAR_W)), trunk });
+        slots.set(id, { x, y: cy + dy + (j - (lv.length - 1) / 2) * gap, s: f ? 0.6 : big, right: f, chars: Math.max(6, Math.floor(room / CHAR_W)), trunk });
       });
     });
     return { w, h, vertical, slots, parent };
@@ -268,3 +272,60 @@ export function packetNote(p: TrafficPacket): { text: string; sev: 'ok' | 'warn'
 
 /** Il nodo dove segnalare un pacchetto passato da una zona che doveva essere isolata: il dispositivo isolato. */
 export const breachNode = (p: TrafficPacket) => (p.dir === 'response' ? p.hops[0] : p.hops[reachOf(p)]);
+
+/** Riga breve sotto l'etichetta del pacchetto in viaggio ("A? www.esempio.it", "→ 443"). */
+export function briefOf(p: TrafficPacket): string {
+  const i = p.info;
+  let m: RegExpExecArray | null;
+  if ((m = /^Standard query response A (.+)$/.exec(i))) return `A ${m[1]}`;
+  if ((m = /^Standard query A (.+)$/.exec(i))) return `A? ${m[1]}`;
+  if ((m = /SNI=([^)]+)\)/.exec(i))) return `SNI=${m[1]}`;
+  if ((m = /\(GET ([^)]+)\)/.exec(i))) return `GET ${m[1]}`;
+  if ((m = /^Application Data \((.+)\)$/.exec(i))) return m[1];
+  if ((m = /^(?:\[Ritrasmissione\] )?(\S+) → (\S+) \[([^\]]+)\]/.exec(i))) return `${m[1]} → ${m[2]}${i.startsWith('[') ? ' (di nuovo)' : ''}`;
+  if ((m = /TTL=(\d+)/.exec(i))) return `TTL=${m[1]}`;
+  if ((m = /seq=(\d+)/.exec(i))) return `seq=${m[1]}`;
+  if (/^Time-to-live exceeded/.test(i)) return `da ${p.src}`;
+  if (/^Echo \(ping\) reply/.test(i)) return `da ${p.src}`;
+  if (/^Echo \(ping\) request/.test(i)) return `a ${p.dst}`;
+  if ((m = /^DHCP (Discover|Request)/.exec(i))) return '0.0.0.0 → tutti';
+  if ((m = /^DHCP (?:Offer|ACK) (.+)$/.exec(i))) return m[1];
+  if (/^IPP successful-ok/.test(i)) return 'successful-ok';
+  if (/Print-Job/.test(i)) return 'Print-Job';
+  if (/^Alert/.test(i)) return 'Alert';
+  return clip(i, 24);
+}
+
+/** La parte di strada già percorsa (per la scia del pacchetto), fino alla frazione t. */
+export function trailOf(routes: Pt[][], t: number): Pt[] {
+  const n = routes.length;
+  if (!n || t <= 0) return [];
+  const d = Math.min(n, t * n);
+  const k = Math.min(n - 1, Math.floor(d));
+  const pts: Pt[] = [];
+  for (let i = 0; i < k; i++) for (const q of routes[i]) if (!pts.length || pts[pts.length - 1].x !== q.x || pts[pts.length - 1].y !== q.y) pts.push(q);
+  const r = routes[k];
+  const f = d - k;
+  if (!r.length) return pts;
+  // Fino al punto raggiunto sulla spezzata del tratto in corso.
+  const seg: number[] = [];
+  let total = 0;
+  for (let i = 1; i < r.length; i++) {
+    const l = Math.hypot(r[i].x - r[i - 1].x, r[i].y - r[i - 1].y);
+    seg.push(l);
+    total += l;
+  }
+  let left = f * total;
+  if (!pts.length || pts[pts.length - 1].x !== r[0].x || pts[pts.length - 1].y !== r[0].y) pts.push(r[0]);
+  for (let i = 0; i < seg.length; i++) {
+    if (left >= seg[i]) {
+      pts.push(r[i + 1]);
+      left -= seg[i];
+      continue;
+    }
+    const q = seg[i] ? left / seg[i] : 0;
+    pts.push({ x: r[i].x + (r[i + 1].x - r[i].x) * q, y: r[i].y + (r[i + 1].y - r[i].y) * q });
+    break;
+  }
+  return pts;
+}

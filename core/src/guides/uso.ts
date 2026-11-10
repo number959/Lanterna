@@ -96,15 +96,15 @@ export const uso: Guide[] = [
     actions: ['identify-devices'],
     tags: ['mappa', 'mappa della rete', 'topologia', 'schema', 'zone', 'sottorete', 'vlan', 'wi-fi', 'dispositivi', 'icone', 'tipo di dispositivo', 'riconoscimento', 'confidenza', 'punto interrogativo', 'tratteggiato', 'dedotto', 'percorsi', 'traffico', 'pacchetti', 'traffico passo passo', 'sequenza', 'tabella dei pacchetti', 'analizzatore di rete', 'handshake', 'stop', 'bloccato', 'produttore', 'mac', 'oui', 'ieee', 'mdns', 'bonjour', 'upnp', 'ssdp', 'netbios', 'ttl', 'mac casuale', 'bssid', 'filtri', 'cerca', 'zoom', 'elenco', 'legenda', 'inventario'],
     blocks: [
-      { t: 'p', text: 'Nella sezione **Rete locale** la mappa disegna ciò che Polaris ha trovato intorno al PC: in alto Internet e la rete dell\'operatore, poi il router o il firewall, sotto le zone della rete con i dispositivi, ognuno con l\'icona del suo tipo. I pacchetti che scorrono sulle linee mostrano da dove passa il traffico di questo PC.' },
+      { t: 'p', text: 'Nella sezione **Rete locale** la mappa disegna ciò che Polaris ha trovato intorno al PC: in alto Internet e la rete dell\'operatore, poi il router o il firewall, sotto le zone della rete con i dispositivi, ognuno disegnato a linee secondo il suo tipo. I pacchetti che scorrono sulle linee, con l\'etichetta del protocollo (HTTPS, DNS, TCP con la porta), mostrano da dove passa il traffico di questo PC.' },
       { t: 'video', id: 'mappa-della-rete' },
       { t: 'diagram', id: 'netmap', caption: 'Una piccola rete d\'ufficio come la disegna la mappa: il traffico di questo PC verso Internet passa dallo switch e dal router. L\'access point con il bordo tratteggiato è dedotto, la telecamera con il punto interrogativo è un\'ipotesi da verificare.' },
       { t: 'h', text: 'Che cosa mostra' },
       { t: 'table', head: ['Elemento', 'Che cosa significa'], rows: [
         ['zona', 'un riquadro per ogni rete: quella del PC, con la VLAN quando è nota; le altre sottoreti scoperte dalle rotte del PC, dai server DNS e DHCP e dai servizi verificati; le reti Wi-Fi trasmesse dagli stessi access point, di solito VLAN separate'],
-        ['icona', 'il tipo riconosciuto: router, firewall, switch, access point, PC, portatile, server, NAS, stampante, telefono, telecamera, TV, domotica, dispositivo medicale; chi non si presenta resta "dispositivo sconosciuto"'],
+        ['disegno', 'il tipo riconosciuto: router, firewall, switch, access point, PC, portatile, server, NAS, stampante, telefono, telecamera, TV, domotica, dispositivo medicale; chi non si presenta resta "dispositivo sconosciuto"'],
         ['punto interrogativo', 'confidenza bassa: il tipo è un\'ipotesi con pochi indizi, da verificare di persona'],
-        ['bordo tratteggiato', 'dispositivo dedotto: non ha risposto direttamente, Polaris lo ricava da altri indizi, come l\'access point a cui è collegato il PC'],
+        ['ombra tratteggiata', 'sotto il disegno: dispositivo dedotto, che non ha risposto direttamente; Polaris lo ricava da altri indizi, come l\'access point a cui è collegato il PC'],
         ['pallino o linea gialla o rossa', 'un avviso o un problema dell\'analisi in quel punto, per esempio il Wi-Fi debole tra il PC e l\'access point o un servizio verificato che non risponde'],
         ['linee', 'cavo, Wi-Fi, traffico tra reti attraverso il router o il firewall, collegamento dedotto: la Legenda sotto la mappa le riassume'],
       ] },

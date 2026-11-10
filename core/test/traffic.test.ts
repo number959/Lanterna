@@ -3,7 +3,7 @@ import { analyze, buildNetworkMap, trafficScenarios } from '../src/engine';
 import type { Scan, TrafficScenario } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
-import { advance, CHAR_W, entryMs, HOLD_MS, HOLD_STOP_MS, packetNote, progressOf, route, SEG_MS, stageLayout, timeline, VERTICAL_BELOW } from '../src/ui/trafficlayout';
+import { advance, briefOf, CHAR_W, entryMs, HOLD_MS, HOLD_STOP_MS, packetNote, progressOf, route, SEG_MS, stageLayout, timeline, trailOf, VERTICAL_BELOW } from '../src/ui/trafficlayout';
 
 // "Il traffico passo passo": scene ricostruite con gli indirizzi e i tempi
 // dell'analisi, pacchetti scartati dove il firewall blocca, disposizione dei
@@ -420,6 +420,38 @@ describe('disposizione dei nodi', () => {
     expect(inet.x).toBe(dc.x);
     expect(inet.x).toBeGreaterThan(pc.x);
     expect(inet.y).not.toBe(dc.y);
+  });
+});
+
+describe('etichette dei pacchetti e scia', () => {
+  it('ogni pacchetto ha una riga breve sotto l\'etichetta, come "A? www.google.com"', () => {
+    for (const scan of [demoScan, clinicScan]) {
+      for (const sc of scenes(scan).list) {
+        for (const p of sc.steps.flatMap((s) => s.packets)) {
+          const b = briefOf(p);
+          expect(b.length, `${sc.id} ${p.label} ${p.info}`).toBeGreaterThan(0);
+          expect(b.length, `${sc.id} ${p.label} ${p.info}`).toBeLessThanOrEqual(30);
+        }
+      }
+    }
+    const web = byId(scenes(demoScan).list, 'web');
+    const all = web.steps.flatMap((s) => s.packets);
+    expect(briefOf(all.find((p) => p.label === 'DNS QUERY')!)).toBe('A? www.google.com');
+    expect(briefOf(all.find((p) => p.label === 'SYN')!)).toBe('52411 → 443');
+    expect(briefOf(all.find((p) => p.label === 'CLIENT HELLO')!)).toBe('SNI=www.google.com');
+    expect(briefOf(all.find((p) => p.label === 'GET')!)).toBe('GET /generate_204');
+  });
+
+  it('la scia va dal mittente al punto raggiunto', () => {
+    const routes = [
+      [{ x: 0, y: 0 }, { x: 100, y: 0 }],
+      [{ x: 100, y: 0 }, { x: 100, y: 50 }, { x: 200, y: 50 }],
+    ];
+    expect(trailOf(routes, 0)).toEqual([]);
+    expect(trailOf(routes, 0.25)).toEqual([{ x: 0, y: 0 }, { x: 50, y: 0 }]);
+    expect(trailOf(routes, 1)).toEqual([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 200, y: 50 }]);
+    const mid = trailOf(routes, 0.75);
+    expect(mid[mid.length - 1]).toEqual({ x: 125, y: 50 });
   });
 });
 

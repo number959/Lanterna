@@ -1503,6 +1503,20 @@ come bozza il 10/11/2026 dal workflow Release (run 3, che rifà test e build in 
 `b987fcfb80b8fc894a97b920beda830b8286343424f1859e88ec4eebbf715a8a` (anche nel file `.sha256` allegato). Resta una bozza,
 visibile solo a chi gestisce il repository: la pubblicazione spetta a STARNET, come per la 0.11.0 e la 0.12.0.
 
+**Mappa e traffico nello stile dell'esempio di STARNET** (dopo la bozza della release, su richiesta: "il grafico come
+quello"). La mappa della rete diventa una console blu notte in entrambi i temi, con i colori della pagina ridefiniti al suo
+interno (pulsanti, filtri, pannello dei dettagli ed elenco scuri da soli): dispositivi disegnati a linee (gli stessi disegni del
+traffico passo passo, con una tinta chiara per gruppo, contrasto ≥ 7:1), zone e collegamenti tratteggiati, scritte
+monospaziate, pacchetti con l'etichetta del protocollo (HTTPS, DNS QUERY, TCP con la porta, PING) sul percorso scelto e
+puntini sugli altri; dispositivo dedotto con un'ombra tratteggiata sotto il disegno. Il traffico passo passo prende
+l'intestazione con la scena in corso e le scene viste, i filtri delle scene (Rete, Applicazioni, Sicurezza), i passi sotto la
+scena scelta, dispositivi più grandi disposti come in uno schema, la riga breve sotto l'etichetta del pacchetto ("A?
+www.google.com", "52411 → 443") e una scia tratteggiata che avanza nel verso del viaggio (ferma con "riduci movimento"). Test:
+28 prove per la vista (517 vitest in tutto), comprese la riga breve di ogni pacchetto delle due demo e la scia; axe-core di
+nuovo sull'anteprima (16 stati: temi scuro e chiaro, 1440 e 390 px) e sull'applicazione (Rete locale, Infrastruttura, guida
+con la videoguida della mappa; casa e clinica, temi scuro e chiaro, 1366 e 390 px): 0 violazioni, nessuno scorrimento
+orizzontale. La bozza della release v0.13.0 qui sopra è stata costruita prima di queste modifiche e non le contiene.
+
 **Avvertenze: cosa resta da provare.**
 - **Ascolto degli annunci con uno switch vero** (Cisco, HPE Aruba, altri): provato con trame costruite, su milioni di trame
   casuali e su macchine virtuali che non ricevono annunci. Alcune schede di rete con un agente LLDP nel firmware trattengono

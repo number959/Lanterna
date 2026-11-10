@@ -1821,6 +1821,99 @@ a.btn { text-decoration: none; }
   .nm-flows-title { flex: none; }
 }
 
+/* Mappa della rete come console blu notte, in entrambi i temi, con i disegni a
+   linee dei dispositivi e i pacchetti con l'etichetta del protocollo (stessa
+   tavolozza del traffico passo passo). I colori della pagina si ridefiniscono
+   qui dentro: pulsanti, filtri, pannello ed elenco diventano scuri da soli. */
+.netmap.console {
+  --bg: #050f22;
+  --bg-2: #050f22;
+  --surface: #0a1830;
+  --surface-2: #0e2040;
+  --surface-3: #142a52;
+  --line: rgba(120, 180, 255, 0.14);
+  --line-strong: rgba(120, 180, 255, 0.28);
+  --edge: rgba(255, 255, 255, 0.05);
+  --text: #e8f1ff;
+  --text-2: #b4c6e2;
+  --text-3: #93a9cb;
+  --accent: #3fd0ff;
+  --accent-2: #0a8bdb;
+  --accent-ink: #04101f;
+  --accent-text: #6fdcff;
+  --glow: rgba(63, 208, 255, 0.22);
+  --primary-a: #3fd0ff;
+  --primary-b: #1aa8e0;
+  --primary-ink: #04101f;
+  --ok: #5fe3a8;
+  --warn: #ffc85c;
+  --crit: #ff8080;
+  --info: #9fb6ff;
+  --unknown: #93a9cb;
+  --p0: #7aa2ff; --p1: #3ddc97; --p2: #c792ea; --p3: #ff7eb6; --p4: #ffb86b;
+  --p5: #e6d36a; --p6: #9ccc65; --p7: #f78c6c; --p8: #a8b4ff; --p9: #4db6ac;
+  --c-https: #4fd6ee;
+  --c-dns: #7cb0ff;
+  --c-tcp: #5fe3a8;
+  --c-blocked: #c9adff;
+  --c-warn: #ffc85c;
+  --c-crit: #ff8080;
+  --tx-fill: #0c1c38;
+  --tx-fill-2: #08152b;
+  --logo-main: #ffffff;
+  --logo-accent: #ffffff;
+  color-scheme: dark;
+  color: var(--text);
+  background: radial-gradient(900px 380px at 50% 0%, rgba(0, 185, 254, 0.08), transparent 70%), var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 12px;
+  font-family: var(--mono);
+}
+.netmap.console.compact { padding: 0; border: 0; background: transparent; }
+.netmap.console .nm-stage {
+  border-color: var(--line-strong);
+  background-color: var(--bg);
+  background-image: linear-gradient(rgba(120, 180, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(120, 180, 255, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.netmap.console .nm-grid-dot { fill: transparent; }
+.netmap.console .nm-chip, .netmap.console .btn, .netmap.console .nm-search input { font-family: var(--mono); }
+.netmap.console .nm-chip { font-size: 12px; }
+.netmap.console .nm-zone-title { font: 650 12px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; fill: var(--text); }
+.netmap.console .nm-zone-sub { font: 500 11px var(--mono); fill: var(--text-3); }
+.netmap.console .nm-zone rect { stroke-dasharray: 5 6; }
+.netmap.console .nm-link { stroke: rgba(150, 185, 230, 0.55); stroke-width: 1.6; }
+.netmap.console .nm-link.nm-internet { stroke: rgba(79, 214, 238, 0.6); stroke-width: 2.2; stroke-dasharray: 6 6; }
+.netmap.console .nm-link.nm-backbone { stroke: rgba(63, 208, 255, 0.5); stroke-width: 2; }
+.netmap.console .nm-bus { stroke: rgba(150, 185, 230, 0.4); stroke-width: 1.6; stroke-dasharray: 2 5; }
+.netmap.console .nm-drop { stroke: rgba(150, 185, 230, 0.32); stroke-dasharray: 3 4; }
+.netmap.console .nm-link-label { font: 600 10.5px var(--mono); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
+.netmap.console .nm-flow-line { stroke-dasharray: 5 6; opacity: 0.45; stroke-width: 1.8; }
+.netmap.console .nm-flow.active .nm-flow-line { opacity: 0.9; stroke-width: 2.4; filter: none; }
+.netmap.console .nm-canvas.live .nm-flow.active .nm-flow-line { animation: nm-march 0.9s linear infinite; }
+@keyframes nm-march { to { stroke-dashoffset: -22; } }
+.netmap.console .nm-packet { fill: currentColor; filter: none; }
+.nm-pkt-t { font: 700 10.5px var(--mono); fill: #04101f; letter-spacing: 0.02em; }
+.netmap.console .nm-node .nm-hit { fill: transparent; stroke: none; }
+.netmap.console .nm-node:hover .nm-hit { fill: rgba(120, 180, 255, 0.06); }
+.netmap.console .nm-node:focus-visible .nm-hit { stroke: var(--accent); stroke-width: 2; fill: rgba(63, 208, 255, 0.06); }
+.netmap.console .nm-node.self .nm-glyph { color: #b9e9ff !important; }
+.netmap.console .nm-sel-ring { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 4 4; }
+.netmap.console .nm-inferred { fill: none; stroke: rgba(150, 185, 230, 0.6); stroke-width: 1.4; stroke-dasharray: 3 4; }
+.netmap.console .nm-label { font: 600 11px var(--mono); fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+.netmap.console .nm-ip { font: 500 10px var(--mono); fill: var(--text-3); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
+.netmap.console .nm-you { font: 700 10px var(--mono); fill: var(--accent-text); letter-spacing: 0.08em; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
+.netmap.console .nm-halo { stroke: var(--accent); stroke-width: 1.6; }
+.netmap.console .nm-stop circle { fill: var(--bg); stroke: var(--c-blocked); }
+.netmap.console .nm-stop path { stroke: var(--c-blocked); }
+.netmap.console .nm-panel { background: rgba(10, 24, 48, 0.97); border-color: var(--line-strong); backdrop-filter: none; }
+.netmap.console .nm-panel b { font-family: var(--mono); }
+.netmap.console .nm-why, .netmap.console .nm-signals, .netmap.console .nm-path, .netmap.console .nm-kv { font-family: var(--font); }
+.netmap.console .nm-flow-note, .netmap.console .nm-note, .netmap.console .nm-legend { font-family: var(--font); }
+.netmap.console .nm-flows-title { font-family: var(--mono); }
+.netmap.console .table-wrap { background: var(--bg); }
+
 /* ---------------------------------------------------------------- Videoguide */
 .vg { display: grid; gap: 10px; padding: 14px; border-radius: var(--radius); border: 1px solid var(--line-strong); background: var(--surface); outline: none; margin: 14px 0; }
 .vg:focus-visible { box-shadow: 0 0 0 3px var(--glow); }

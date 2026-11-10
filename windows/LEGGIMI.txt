@@ -70,7 +70,7 @@ COSA FA
   sottorete, verifica la separazione tra le zone e i servizi critici e guida
   un'autovalutazione delle misure organizzative.
   Dalla versione 0.13.0 la sezione Rete locale disegna la mappa della rete:
-  ogni dispositivo con la sua icona (router, switch, access point, PC,
+  ogni dispositivo disegnato a linee (router, switch, access point, PC,
   stampanti, NAS, telecamere, dispositivi medicali...), riconosciuto da solo
   con il perche', le zone (la rete del PC, le altre VLAN, le reti Wi-Fi degli
   stessi access point) e i percorsi animati del traffico di questo PC.

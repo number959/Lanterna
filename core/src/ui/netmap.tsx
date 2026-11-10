@@ -37,6 +37,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 import { buildNetworkMap, CELL_H, CELL_W, KIND_GROUP, KIND_LABEL, KIND_ORDER, KIND_PLURAL, ZONE_BUS } from '../engine';
 import type { Analysis, DeviceKind, MapFlow, MapNode, MapSegment, NetworkMap, Scan, Severity } from '../engine';
 import { TableWrap } from './components';
+import { DeviceArt } from './deviceart';
 
 // Mappa della rete interattiva: zone per sottorete, VLAN e rete Wi-Fi; un'icona
 // per tipo di dispositivo; i percorsi del traffico di questo PC animati come
@@ -80,6 +81,28 @@ const KIND_COLOR: Partial<Record<DeviceKind, string>> = {
 };
 const GROUP_COLOR = { rete: 'var(--accent)', server: 'var(--p2)', postazioni: 'var(--p0)', periferiche: 'var(--p4)', altro: 'var(--text-3)' } as const;
 export const kindColor = (k: DeviceKind) => KIND_COLOR[k] ?? GROUP_COLOR[KIND_GROUP[k]];
+
+// Colori dei disegni nella console blu notte (mappa e traffico passo passo):
+// tinte chiare per gruppo, contrasto ≥ 7:1 sul fondo.
+const CONSOLE_KIND: Partial<Record<DeviceKind, string>> = { medical: '#ffadc4', camera: '#ffbf9a', voip: '#8fe3d1', iot: '#a8e6a1' };
+const CONSOLE_GROUP = { rete: '#9fd8ff', server: '#cbb5ff', postazioni: '#c6d3e8', periferiche: '#ffd59a', altro: '#a9b9d3' } as const;
+export const consoleColor = (k: DeviceKind) => CONSOLE_KIND[k] ?? CONSOLE_GROUP[KIND_GROUP[k]];
+
+/** Etichetta e colore dei pacchetti di un percorso, come nel traffico passo passo. */
+function flowTag(f: MapFlow): string {
+  if (f.kind === 'internet') return 'HTTPS';
+  if (f.kind === 'dns') return 'DNS QUERY';
+  const port = Number(f.id.split(':').pop());
+  return port ? `TCP ${port}` : 'PING';
+}
+function flowColor(f: MapFlow): string {
+  if (f.sev === 'crit') return 'var(--c-crit)';
+  if (f.sev === 'warn') return 'var(--c-warn)';
+  if (f.kind === 'blocked') return 'var(--c-blocked)';
+  if (f.kind === 'dns') return 'var(--c-dns)';
+  if (f.kind === 'service') return 'var(--c-tcp)';
+  return 'var(--c-https)';
+}
 
 const SEV_COLOR: Record<Severity, string> = { ok: 'var(--ok)', info: 'var(--info)', warn: 'var(--warn)', crit: 'var(--crit)', unknown: 'var(--text-3)' };
 const CONF_TEXT = { alta: 'riconosciuto con certezza', media: 'riconosciuto con buona probabilità', bassa: 'ipotesi da verificare' } as const;
@@ -229,10 +252,10 @@ function Zone({ s, count }: { s: MapSegment; count: number }) {
 }
 
 function NodeGlyph({ n, dim, selected, playing, onPick }: { n: MapNode; dim: boolean; selected: boolean; playing: boolean; onPick: (n: MapNode) => void }) {
-  const Icon = KIND_ICON[n.kind];
-  const color = kindColor(n.kind);
   const big = n.kind === 'internet' || n.gateway;
-  const r = big ? R + 6 : R;
+  // Disegno a linee del dispositivo, come nel traffico passo passo.
+  const sc = big ? 0.95 : 0.8;
+  const r = 27 * sc;
   const onKey = (e: ReactKeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -246,7 +269,7 @@ function NodeGlyph({ n, dim, selected, playing, onPick }: { n: MapNode; dim: boo
       transform={`translate(${n.x.toFixed(1)} ${n.y.toFixed(1)})`}
       tabIndex={0}
       role="button"
-      aria-label={`${KIND_LABEL[n.kind]}: ${label}${n.self ? ' (questo PC)' : ''}${n.ip ? `, ${n.ip}` : ''}${n.confidence === 'bassa' ? ', tipo da verificare' : ''}`}
+      aria-label={`${KIND_LABEL[n.kind]}: ${label}${n.self ? ' (questo PC)' : ''}${n.ip ? `, ${n.ip}` : ''}${n.confidence === 'bassa' ? ', tipo da verificare' : ''}${n.inferred ? ', dedotto' : ''}`}
       aria-pressed={selected}
       onClick={(e) => {
         e.stopPropagation();
@@ -255,29 +278,32 @@ function NodeGlyph({ n, dim, selected, playing, onPick }: { n: MapNode; dim: boo
       onKeyDown={onKey}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {n.self && <circle r={r + 9} className={`nm-halo${playing ? ' live' : ''}`} />}
+      <rect x={-38} y={-r - 8} width={76} height={r + 8 + 44} rx={10} className="nm-hit" />
+      {n.self && <circle r={r + 10} className={`nm-halo${playing ? ' live' : ''}`} />}
       {n.self && (
         <text y={-r - 14} textAnchor="middle" className="nm-you">
           questo PC
         </text>
       )}
-      {selected && <circle r={r + 6} className="nm-sel-ring" />}
-      <circle r={r} className="nm-disc" style={{ stroke: color }} strokeDasharray={n.inferred ? '4 4' : undefined} />
-      <Icon x={-(big ? 14 : 12)} y={-(big ? 14 : 12)} width={big ? 28 : 24} height={big ? 28 : 24} color={color} strokeWidth={1.9} aria-hidden />
-      {n.sev && (n.sev === 'warn' || n.sev === 'crit') && <circle cx={r * 0.72} cy={-r * 0.72} r={6} style={{ fill: SEV_COLOR[n.sev] }} className="nm-dot" />}
+      {selected && <rect x={-36} y={-r - 6} width={72} height={2 * r + 10} rx={10} className="nm-sel-ring" />}
+      {n.inferred && <ellipse cx={0} cy={r - 4} rx={30} ry={8} className="nm-inferred" />}
+      <g className="nm-glyph" style={{ color: consoleColor(n.kind) }}>
+        <DeviceArt kind={n.kind} x={0} y={-2} scale={sc} />
+      </g>
+      {n.sev && (n.sev === 'warn' || n.sev === 'crit') && <circle cx={r * 0.95} cy={-r * 0.7} r={6} style={{ fill: SEV_COLOR[n.sev] }} className="nm-dot" />}
       {n.confidence === 'bassa' && !n.self && (
-        <g transform={`translate(${r * 0.72} ${r * 0.72})`} className="nm-doubt">
+        <g transform={`translate(${r * 0.95} ${r * 0.45})`} className="nm-doubt">
           <circle r={7.5} />
           <text y={3.6} textAnchor="middle">
             ?
           </text>
         </g>
       )}
-      <text y={r + 16} textAnchor="middle" className="nm-label">
-        {ellipsis(label, 16)}
+      <text y={r + 15} textAnchor="middle" className="nm-label">
+        {ellipsis(label, 15)}
       </text>
       {n.ip && (
-        <text y={r + 30} textAnchor="middle" className="nm-ip">
+        <text y={r + 28} textAnchor="middle" className="nm-ip">
           {n.ip}
         </text>
       )}
@@ -285,23 +311,43 @@ function NodeGlyph({ n, dim, selected, playing, onPick }: { n: MapNode; dim: boo
   );
 }
 
-function FlowPath({ pts, color, active, playing, blocked, speed }: { pts: Pt[]; color: string; active: boolean; playing: boolean; blocked: boolean; speed: number }) {
+function FlowPath({ pts, color, active, playing, blocked, speed, tag }: { pts: Pt[]; color: string; active: boolean; playing: boolean; blocked: boolean; speed: number; tag?: string }) {
   if (pts.length < 2) return null;
   const d = pathD(pts);
   const len = polyLength(pts);
-  const dur = clamp(len / speed, 1.2, 9);
+  const dur = clamp(len / speed, 1.6, 9);
   const end = pts[pts.length - 1];
+  // Pacchetti con l'etichetta del protocollo sul percorso scelto, puntini sugli altri.
+  const chip = active && tag ? tag : '';
+  const cw = chip.length * 6.9 + 14;
+  const n = chip ? 2 : 3;
+  const Chip = () =>
+    chip ? (
+      <>
+        <rect x={-cw / 2} y={-32} width={cw} height={17} rx={4} fill="currentColor" />
+        <text y={-19.6} textAnchor="middle" className="nm-pkt-t">
+          {chip}
+        </text>
+      </>
+    ) : null;
   return (
     <g className={`nm-flow${active ? ' active' : ''}`} style={{ color }}>
       <path d={d} className="nm-flow-line" />
       {playing &&
-        [0, 1, 2].map((i) => (
-          <circle key={i} r={active ? 5 : 3.5} className="nm-packet" opacity={0}>
-            <animateMotion dur={`${dur.toFixed(2)}s`} begin={`${((dur / 3) * i).toFixed(2)}s`} repeatCount="indefinite" path={d} keyPoints="0;1" keyTimes="0;1" calcMode="linear" />
-            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.1;0.85;1" dur={`${dur.toFixed(2)}s`} begin={`${((dur / 3) * i).toFixed(2)}s`} repeatCount="indefinite" />
-          </circle>
+        Array.from({ length: n }, (_, i) => (
+          <g key={i} opacity={0} className="nm-pkt">
+            <Chip />
+            <circle r={active ? 5 : 3.5} className="nm-packet" />
+            <animateMotion dur={`${dur.toFixed(2)}s`} begin={`${((dur / n) * i).toFixed(2)}s`} repeatCount="indefinite" path={d} keyPoints="0;1" keyTimes="0;1" calcMode="linear" />
+            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.88;1" dur={`${dur.toFixed(2)}s`} begin={`${((dur / n) * i).toFixed(2)}s`} repeatCount="indefinite" />
+          </g>
         ))}
-      {!playing && active && <circle cx={end[0]} cy={end[1]} r={5} className="nm-packet" />}
+      {!playing && active && (
+        <g transform={`translate(${end[0].toFixed(1)} ${end[1].toFixed(1)})`} className="nm-pkt">
+          <Chip />
+          <circle r={5} className="nm-packet" />
+        </g>
+      )}
       {blocked && (
         <g transform={`translate(${end[0].toFixed(1)} ${end[1].toFixed(1)})`} className="nm-stop">
           <circle r={11} />
@@ -483,7 +529,7 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
   if (!map.nodes.length) return <p className="muted">Nessun dato di rete da disegnare.</p>;
 
   return (
-    <div className={`netmap${compact ? ' compact' : ''}`}>
+    <div className={`netmap console${compact ? ' compact' : ''}`}>
       {!compact && (
       <div className="nm-toolbar" role="toolbar" aria-label="Comandi della mappa">
         <label className="nm-search">
@@ -524,7 +570,7 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
               onClick={() => setHidden((h) => (off ? h.filter((x) => x !== k) : [...h, k]))}
               title={off ? `Mostra ${KIND_PLURAL[k].toLowerCase()}` : `Nascondi ${KIND_PLURAL[k].toLowerCase()}`}
             >
-              <Icon size={14} color={kindColor(k)} aria-hidden /> {KIND_PLURAL[k]} <b>{map.counts[k]}</b>
+              <Icon size={14} color={consoleColor(k)} aria-hidden /> {KIND_PLURAL[k]} <b>{map.counts[k]}</b>
             </button>
           );
         })}
@@ -594,15 +640,16 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
                   <FlowPath
                     key={f.id}
                     pts={blocked && f.sev === 'ok' ? truncate(pts, 0.82) : pts}
-                    color={f.sev === 'crit' ? 'var(--crit)' : f.sev === 'warn' ? 'var(--warn)' : blocked ? 'var(--p2)' : 'var(--accent)'}
+                    color={flowColor(f)}
                     active={active}
                     playing={live}
                     blocked={blocked && f.sev === 'ok'}
-                    speed={f.rttMs ? clamp(380 - f.rttMs * 3, 120, 380) : 300}
+                    speed={f.rttMs ? clamp(300 - f.rttMs * 3, 110, 300) : 240}
+                    tag={flowTag(f)}
                   />
                 );
               })}
-              {sel && selPath.length > 1 && <FlowPath pts={routePoints(map, selPath)} color="var(--accent)" active playing={live} blocked={false} speed={300} />}
+              {sel && selPath.length > 1 && <FlowPath pts={routePoints(map, selPath)} color="var(--c-https)" active playing={live} blocked={false} speed={240} tag="PERCORSO" />}
               {map.nodes.filter(visible).map((n) => (
                 <NodeGlyph key={n.id} n={n} dim={!matches(n)} selected={n.id === selected} playing={live} onPick={pick} />
               ))}
@@ -643,7 +690,7 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
               }}
               title={f.note}
             >
-              <i className="nm-flow-dot" style={{ background: f.sev === 'crit' ? 'var(--crit)' : f.sev === 'warn' ? 'var(--warn)' : f.kind === 'blocked' ? 'var(--p2)' : 'var(--accent)' }} aria-hidden />
+              <i className="nm-flow-dot" style={{ background: flowColor(f) }} aria-hidden />
               {f.label}
               {f.kind === 'blocked' && <span className="faint"> · bloccato{f.sev === 'ok' ? ' (giusto)' : ' NO'}</span>}
             </button>
@@ -675,7 +722,7 @@ function NodeDetails({ map, n, path, onClose }: { map: NetworkMap; n: MapNode; p
   return (
     <>
       <div className="nm-panel-head">
-        <span className="nm-panel-icon" style={{ color: kindColor(n.kind) }}>
+        <span className="nm-panel-icon" style={{ color: consoleColor(n.kind) }}>
           <Icon size={22} aria-hidden />
         </span>
         <div>
@@ -795,7 +842,7 @@ function Legend() {
           <span className="nm-legend-dot" style={{ background: 'var(--crit)' }} /> problema
         </li>
         <li>
-          <span className="nm-legend-q">?</span> tipo riconosciuto con pochi indizi: da verificare · bordo tratteggiato: dispositivo dedotto
+          <span className="nm-legend-q">?</span> tipo riconosciuto con pochi indizi: da verificare · ombra tratteggiata sotto il disegno: dispositivo dedotto · etichetta sul pacchetto: il protocollo (HTTPS, DNS, TCP con la porta, PING)
         </li>
       </ul>
     </details>

@@ -45,7 +45,7 @@ export const VIDEOS: VideoGuide[] = [
         narration: [
           'Ogni riconoscimento ha una confidenza: alta, media o bassa.',
           'Il punto interrogativo segna un\'ipotesi con pochi indizi, da verificare di persona.',
-          'Il bordo tratteggiato indica un dispositivo dedotto, che non ha risposto direttamente.',
+          'L\'ombra tratteggiata sotto il disegno indica un dispositivo dedotto, che non ha risposto direttamente.',
         ],
       },
       {

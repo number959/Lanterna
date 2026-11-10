@@ -1,12 +1,13 @@
-import { AlertTriangle, ArrowLeftRight, Check, ChevronLeft, ChevronRight, Info, Pause, Play, RotateCcw, Waypoints, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, ChevronLeft, ChevronRight, Info, Pause, Play, RotateCcw, Waypoints, X } from 'lucide-react';
 import { useReducedMotion } from 'motion/react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { buildNetworkMap, KIND_LABEL, packetTime, trafficScenarios, trafficSize } from '../engine';
 import type { Analysis, MapNode, NetworkMap, PacketProto, Scan, TrafficPacket, TrafficScenario, TrafficStep } from '../engine';
+import { BrandSymbol } from './brand';
 import { DeviceArt } from './deviceart';
 import { useWidth } from './hooks';
-import { advance, along, breachNode, CHAR_W, clip, packetNote, progressOf, reachOf, route, stageLayout, timeline } from './trafficlayout';
+import { advance, along, breachNode, briefOf, CHAR_W, clip, packetNote, progressOf, reachOf, route, stageLayout, timeline, trailOf } from './trafficlayout';
 import type { Entry, Pt, StageLayout } from './trafficlayout';
 import './traffic.css';
 
@@ -28,6 +29,11 @@ export const PROTO_COLOR: Record<PacketProto, string> = {
   IPP: '#ffb766',
 };
 
+/** Gruppi delle scene, per i filtri sopra l'elenco. */
+const CAT_OF: Record<string, 'rete' | 'app' | 'sicurezza'> = { web: 'app', print: 'app', dhcp: 'rete', ping: 'rete', trace: 'rete', services: 'sicurezza' };
+const CAT_LABEL = { tutte: 'Tutte', rete: 'Rete', app: 'Applicazioni', sicurezza: 'Sicurezza' } as const;
+type Cat = keyof typeof CAT_LABEL;
+
 export function TrafficExplorer({ scan, analysis }: { scan: Scan; analysis: Analysis }) {
   const map = useMemo(() => buildNetworkMap(scan, analysis), [scan, analysis]);
   const scenarios = useMemo(() => trafficScenarios(map, scan), [map, scan]);
@@ -45,9 +51,11 @@ function Explorer({ map, scenarios }: { map: NetworkMap; scenarios: TrafficScena
   const [speed, setSpeed] = useState(1);
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState({ i: 0, t: 0 });
+  const [cat, setCat] = useState<Cat>('tutte');
+  const [seen, setSeen] = useState<string[]>([]);
   const [stageRef, stageW] = useWidth<HTMLDivElement>();
   const tableRef = useRef<HTMLDivElement>(null);
-  const stepsRef = useRef<HTMLOListElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   const entries = useMemo<Entry[]>(() => (sc ? timeline(sc) : []), [sc]);
   const layout = useMemo(() => (sc ? stageLayout(sc, (id) => byId.has(id), stageW) : undefined), [sc, byId, stageW]);
@@ -97,9 +105,9 @@ function Explorer({ map, scenarios }: { map: NetworkMap; scenarios: TrafficScena
     else if (row.offsetTop < wrap.scrollTop + 30) wrap.scrollTop = Math.max(0, row.offsetTop - 30);
   }, [sentUpTo]);
 
-  // Anche il passo in corso resta visibile nell'elenco dei passi, che scorre da solo.
+  // Anche il passo in corso resta visibile nell'elenco, che scorre da solo.
   useEffect(() => {
-    const list = stepsRef.current;
+    const list = listRef.current;
     const btn = list?.querySelector<HTMLElement>('.tx-step.on');
     if (!list || !btn || list.scrollHeight <= list.clientHeight) return;
     const top = btn.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
@@ -107,11 +115,16 @@ function Explorer({ map, scenarios }: { map: NetworkMap; scenarios: TrafficScena
     else if (top < list.scrollTop) list.scrollTop = Math.max(0, top - 4);
   }, [stepIdx, sid]);
 
+  const ended = cur.i >= entries.length - 1 && cur.t >= 1;
+  // Le scene viste fino in fondo, per l'avanzamento in alto.
+  useEffect(() => {
+    if (ended && sc && seen.indexOf(sc.id) < 0) setSeen((v) => [...v, sc.id]);
+  }, [ended, sc, seen]);
+
   if (!sc || !layout) return <p className="muted">Servono i dati di un'analisi della rete per ricostruire il traffico.</p>;
 
   const step = sc.steps[stepIdx];
   const prog = reduce ? (pkt ? 1 : 0) : progressOf(entry, cur.t);
-  const ended = cur.i >= entries.length - 1 && cur.t >= 1;
   const started = cur.i > 0 || cur.t > 0;
   const node = (id: string) => byId.get(id);
 
@@ -149,43 +162,90 @@ function Explorer({ map, scenarios }: { map: NetworkMap; scenarios: TrafficScena
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {`${sc.title}, passo ${stepIdx + 1} di ${sc.steps.length}: ${step.title}`}
       </p>
+      <div className="tx-top">
+        <div className="tx-brand">
+          <BrandSymbol size={26} />
+          <span>
+            <b>Polaris</b>
+            <span>traffico passo passo</span>
+          </span>
+        </div>
+        <div className="tx-now">
+          <span className="tx-h">In corso</span>
+          <b>{sc.title}</b>
+          <span>
+            Passo {stepIdx + 1}/{sc.steps.length} · {step.title}
+          </span>
+        </div>
+        <div className="tx-prog">
+          <span className="tx-prog-h">
+            <span className="tx-h">Scene viste</span>
+            <b>
+              {seen.length}/{scenarios.length}
+            </b>
+          </span>
+          <span className="tx-bar" aria-hidden>
+            <i style={{ width: `${(100 * seen.length) / scenarios.length}%` }} />
+          </span>
+        </div>
+      </div>
       <div className="tx-grid">
         {/* Scene e passi */}
         <div className="tx-side">
           <div className="tx-h" id={`${uid}-scenes`}>
             Scene
           </div>
-          <ul className="tx-scenes" aria-labelledby={`${uid}-scenes`}>
-            {scenarios.map((s) => (
-              <li key={s.id}>
-                <button type="button" className={`tx-scene${s.id === sc.id ? ' on' : ''}`} aria-pressed={s.id === sc.id} onClick={() => pick(s.id)}>
-                  <span className="tx-scene-t">{s.title}</span>
-                  <span className="tx-scene-s">{s.subtitle}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="tx-h tx-steps-h" id={`${uid}-steps`}>
-            Passi
-          </div>
-          <ol className="tx-steps" ref={stepsRef} aria-labelledby={`${uid}-steps`}>
-            {sc.steps.map((st, i) => {
-              const done = i < stepIdx || (ended && i === stepIdx);
+          <div className="tx-cats" role="group" aria-label="Tipo di scena">
+            {(['tutte', 'rete', 'app', 'sicurezza'] as const).map((c) => {
+              const n = c === 'tutte' ? scenarios.length : scenarios.filter((x) => CAT_OF[x.id] === c).length;
+              if (!n) return null;
               return (
-                <li key={st.id}>
-                  <button type="button" className={`tx-step${i === stepIdx ? ' on' : ''}`} onClick={() => goStep(i)} aria-current={i === stepIdx ? 'step' : undefined}>
-                    <span className={`tx-dot${done ? ' done' : i === stepIdx ? ' cur' : ''}`} aria-hidden>
-                      {done ? <Check size={11} strokeWidth={3} /> : i + 1}
-                    </span>
-                    <span className="tx-step-txt">
-                      <span className="tx-step-t">{st.title}</span>
-                      <span className="tx-step-s">{st.subtitle}</span>
-                    </span>
-                  </button>
-                </li>
+                <button type="button" key={c} aria-pressed={cat === c} className={cat === c ? 'on' : ''} onClick={() => setCat(c)}>
+                  {CAT_LABEL[c]} <b>{n}</b>
+                </button>
               );
             })}
-          </ol>
+          </div>
+          <ul className="tx-scenes" ref={listRef} aria-labelledby={`${uid}-scenes`}>
+            {scenarios
+              .filter((x) => cat === 'tutte' || CAT_OF[x.id] === cat)
+              .map((s) => {
+                const on = s.id === sc.id;
+                const done = seen.indexOf(s.id) >= 0;
+                return (
+                  <li key={s.id}>
+                    <button type="button" className={`tx-scene${on ? ' on' : ''}`} aria-expanded={on} aria-current={on ? 'true' : undefined} onClick={() => pick(s.id)}>
+                      <span className={`tx-sdot${done ? ' done' : on ? ' cur' : ''}`} aria-hidden />
+                      <span className="tx-scene-txt">
+                        <span className="tx-scene-t">{s.title}</span>
+                        <span className="tx-scene-s">{s.subtitle}</span>
+                      </span>
+                      {on ? <ChevronDown size={15} aria-hidden /> : <ChevronRight size={15} aria-hidden />}
+                    </button>
+                    {on && (
+                      <ol className="tx-steps" aria-label={`Passi di «${s.title}»`}>
+                        {s.steps.map((st, i) => {
+                          const sdone = i < stepIdx || (ended && i === stepIdx);
+                          return (
+                            <li key={st.id}>
+                              <button type="button" className={`tx-step${i === stepIdx ? ' on' : ''}`} onClick={() => goStep(i)} aria-current={i === stepIdx ? 'step' : undefined}>
+                                <span className={`tx-dot${sdone ? ' done' : i === stepIdx ? ' cur' : ''}`} aria-hidden>
+                                  {sdone ? <Check size={11} strokeWidth={3} /> : i + 1}
+                                </span>
+                                <span className="tx-step-txt">
+                                  <span className="tx-step-t">{st.title}</span>
+                                  <span className="tx-step-s">{st.subtitle}</span>
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    )}
+                  </li>
+                );
+              })}
+          </ul>
         </div>
 
         {/* Palco */}
@@ -459,17 +519,24 @@ function PacketMark({ pkt, layout, prog, vertical }: { pkt: TrafficPacket; layou
   const routes: Pt[][] = [];
   for (let i = 1; i <= end; i++) routes.push(route(layout, pkt.hops[i - 1], pkt.hops[i]));
   const p = along(routes, prog);
+  const trail = trailOf(routes, prog);
   const color = PROTO_COLOR[pkt.proto];
-  const cw = pkt.label.length * 7.2 + 16;
+  // Etichetta del protocollo e, sotto, la riga breve del pacchetto ("A? www.esempio.it").
+  const brief = briefOf(pkt);
+  const lw = pkt.label.length * 7.2 + 14;
+  const bw = brief.length * 6.4 + 14;
+  const cw = Math.max(lw, bw);
   const stopAt = prog >= 1 && pkt.stopAt !== undefined ? layout.slots.get(pkt.hops[end]) : undefined;
   // Passato da una zona che doveva essere isolata: un segnale rosso sul dispositivo isolato.
   const alarm = prog >= 1 && pkt.breach ? layout.slots.get(breachNode(pkt)) : undefined;
-  // Etichetta sopra il pacchetto; sullo schermo stretto, a destra.
-  const cx = vertical ? Math.min(layout.w - cw - 4, p.x + 22) : Math.min(layout.w - cw - 6, Math.max(6, p.x - cw / 2));
-  const cy = vertical ? p.y - 36 : p.y - 44;
+  // Sopra il pacchetto; sullo schermo stretto, a destra.
+  const cx = vertical ? Math.min(layout.w - cw - 4, p.x + 22) : Math.min(layout.w - cw - 6, Math.max(6, p.x - lw / 2));
+  const cy = vertical ? p.y - 44 : p.y - 62;
   const sev = pkt.sev ?? 'warn';
+  const pathD = trail.map((q, i) => `${i ? 'L' : 'M'}${q.x.toFixed(1)} ${q.y.toFixed(1)}`).join(' ');
   return (
     <g className="tx-packet" pointerEvents="none">
+      {trail.length > 1 && <path d={pathD} className="tx-trail" style={{ stroke: color }} />}
       {stopAt && (
         <g className={`tx-x ${sev}`} transform={`translate(${stopAt.x - 30} ${stopAt.y + (stopAt.right ? 16 : 10)})`}>
           <circle r="11" />
@@ -485,9 +552,13 @@ function PacketMark({ pkt, layout, prog, vertical }: { pkt: TrafficPacket; layou
       <circle cx={p.x} cy={p.y} r={10} fill={color} opacity={0.2} />
       <circle cx={p.x} cy={p.y} r={4.8} fill={color} />
       <g transform={`translate(${cx} ${cy})`}>
-        <rect width={cw} height={18} rx={4} fill={color} />
-        <text x={cw / 2} y={12.8} textAnchor="middle" className="tx-chip-t">
+        <rect width={lw} height={18} rx={3} fill={color} />
+        <text x={lw / 2} y={12.8} textAnchor="middle" className="tx-chip-t">
           {pkt.label}
+        </text>
+        <rect y={20} width={bw} height={17} rx={3} className="tx-chip-b" style={{ stroke: color }} />
+        <text x={7} y={32} className="tx-chip-i">
+          {brief}
         </text>
       </g>
     </g>
