@@ -210,6 +210,15 @@ func (s *Server) discoverRoutes(mux *http.ServeMux) {
 				}()
 				res = s.ListenL2(ctx, time.Duration(secs)*time.Second)
 			}()
+			// Un ascolto interrotto da chi lo ha avviato non sostituisce
+			// l'esito precedente: resta solo il messaggio.
+			if err == nil && errors.Is(ctx.Err(), context.Canceled) {
+				msg := res.Error
+				if msg == "" {
+					msg = "ascolto interrotto"
+				}
+				err = errors.New(msg)
+			}
 			d.l2.end(err, "", func() {
 				if err == nil {
 					d.l2Last = &res

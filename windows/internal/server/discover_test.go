@@ -83,8 +83,8 @@ func TestDiscoverL2(t *testing.T) {
 		t.Fatalf("interruzione: %d %s", r.Code, r.Body)
 	}
 	s.WaitDiscover()
-	if st, body := discStatus(t, h, "/api/discover/l2"); st.Running || !strings.Contains(body, `"read":"error"`) {
-		t.Fatalf("dopo l'interruzione: %s", body)
+	if st, body := discStatus(t, h, "/api/discover/l2"); st.Running || st.Error != "ascolto interrotto" || !strings.Contains(body, `"portVlanId":20`) {
+		t.Fatalf("dopo l'interruzione resta l'esito precedente con il messaggio: %s", body)
 	}
 }
 
