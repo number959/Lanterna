@@ -166,12 +166,13 @@ type System struct {
 }
 
 // Iface è un'interfaccia con indirizzi IPv4 o che ha l'aspetto di
-// un'interfaccia VLAN; le porte di accesso non si elencano.
+// un'interfaccia VLAN; le porte di accesso non si elencano. Nomi e
+// descrizioni sono quelli generati dal dispositivo: ifAlias, la descrizione
+// scritta dall'amministratore, non si legge.
 type Iface struct {
 	Index  int       `json:"index"`            // ifIndex
 	Name   string    `json:"name,omitempty"`   // ifName (Vl10, Gi1/0/1)
-	Alias  string    `json:"alias,omitempty"`  // ifAlias: descrizione scritta dall'amministratore
-	Descr  string    `json:"descr,omitempty"`  // ifDescr
+	Descr  string    `json:"descr,omitempty"`  // ifDescr (Vlan10, GigabitEthernet1/0/1)
 	Type   int       `json:"type,omitempty"`   // ifType IANA: 136 l3ipvlan, 135 l2vlan, 53 propVirtual, 24 softwareLoopback
 	VlanID int       `json:"vlanId,omitempty"` // VLAN dedotta dal nome (Vlan10, Vl10, Vlanif10)
 	IPs    []IfaceIP `json:"ips"`
@@ -194,15 +195,17 @@ type Vlan struct {
 	State string `json:"state,omitempty"`
 }
 
-// Neighbor è un vicino annunciato con LLDP su una porta del dispositivo.
+// Neighbor è un vicino annunciato con LLDP su una porta del dispositivo. La
+// descrizione della porta (lldpRemPortDesc) non si legge: è il testo che
+// l'amministratore del vicino ha scritto sull'interfaccia. Gli identificativi
+// che sono alias scritti a mano restano vuoti; il tipo dice quale era.
 type Neighbor struct {
 	LocalPortNum  int      `json:"localPortNum"`            // lldpRemLocalPortNum
-	LocalPort     string   `json:"localPort,omitempty"`     // nome della porta locale (lldpLocPortTable)
+	LocalPort     string   `json:"localPort,omitempty"`     // porta locale, da lldpLocPortId (Gi1/0/1, 3)
 	ChassisID     string   `json:"chassisId,omitempty"`     // identificativo del vicino
 	ChassisIDType string   `json:"chassisIdType,omitempty"` // macAddress, networkAddress, interfaceName, local...
 	PortID        string   `json:"portId,omitempty"`        // porta del vicino
 	PortIDType    string   `json:"portIdType,omitempty"`    // interfaceName, macAddress, local...
-	PortDescr     string   `json:"portDescr,omitempty"`
 	SysName       string   `json:"sysName,omitempty"`
 	CapsEnabled   []string `json:"capsEnabled,omitempty"` // bridge, router, wlanAccessPoint, telephone...
 	MgmtIP        string   `json:"mgmtIp,omitempty"`      // indirizzo di gestione IPv4 annunciato

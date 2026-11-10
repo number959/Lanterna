@@ -169,6 +169,34 @@ func (s *session) get(oids []string) (map[string]gosnmp.SnmpPDU, error) {
 	return out, nil
 }
 
+// getNext chiede, per ogni OID, l'oggetto che lo segue (GETNEXT), al massimo
+// maxOidsPerGet per richiesta. La mappa ha per chiave l'OID chiesto; mancano
+// gli OID dopo i quali il dispositivo non ha altro.
+func (s *session) getNext(oids []string) (map[string]gosnmp.SnmpPDU, error) {
+	out := make(map[string]gosnmp.SnmpPDU, len(oids))
+	for i := 0; i < len(oids); i += maxOidsPerGet {
+		batch := oids[i:min(i+maxOidsPerGet, len(oids))]
+		resp, err := s.do(func() (*gosnmp.SnmpPacket, error) { return s.g.GetNext(batch) })
+		if err != nil {
+			return out, err
+		}
+		switch resp.Error {
+		case gosnmp.NoError:
+		case gosnmp.NoSuchName: // agenti in stile SNMPv1: fine della vista
+			continue
+		default:
+			return out, tableErr("errore SNMP " + resp.Error.String())
+		}
+		// Le risposte sono nello stesso ordine delle richieste (RFC 3416).
+		for j, v := range resp.Variables[:min(len(resp.Variables), len(batch))] {
+			if v.Type != gosnmp.EndOfMibView && v.Type != gosnmp.NoSuchObject && v.Type != gosnmp.NoSuchInstance {
+				out[batch[j]] = v
+			}
+		}
+	}
+	return out, nil
+}
+
 // walk legge il sottoalbero root (di solito una colonna di una tabella) con
 // GETBULK, una richiesta alla volta, fino alla fine del sottoalbero o a
 // limit righe. fn riceve l'indice della riga (gli identificatori dopo root)

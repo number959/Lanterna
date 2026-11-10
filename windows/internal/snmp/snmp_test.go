@@ -21,13 +21,32 @@ import (
 // fast è il ritmo dei test: stesse regole di Prudent, tempi brevi.
 var fast = Options{Timeout: 500 * time.Millisecond, Retries: 0, Interval: 3 * time.Millisecond, MaxRepetitions: 4, MaxRows: 4096, Deadline: 10 * time.Second}
 
-const (
-	oidSysContact  = ".1.3.6.1.2.1.1.4.0"
-	oidSysLocation = ".1.3.6.1.2.1.1.6.0"
-	community      = "Clinica-RO-2026"
-)
+const community = "Clinica-RO-2026"
 
 var v2c = Creds{Version: "2c", Community: community}
+
+// Testo libero scritto dagli amministratori, che può contenere nomi di
+// persone: i finti dispositivi lo hanno, come quelli veri, ma Collect non
+// deve né chiederlo né riceverlo.
+const (
+	oidSysContact      = ".1.3.6.1.2.1.1.4"
+	oidSysLocation     = ".1.3.6.1.2.1.1.6"
+	oidIfAlias         = ".1.3.6.1.2.1.31.1.1.1.18"
+	oidLldpRemPortDesc = ".1.0.8802.1.1.2.1.4.1.1.8"
+	oidLldpLocPortDesc = ".1.0.8802.1.1.2.1.3.7.1.4"
+)
+
+// forbiddenIn restituisce il primo OID che sta sotto uno degli oggetti vietati.
+func forbiddenIn(oids []string) string {
+	for _, o := range oids {
+		for _, f := range []string{oidSysContact, oidSysLocation, oidIfAlias, oidLldpRemPortDesc, oidLldpLocPortDesc} {
+			if o == f || strings.HasPrefix(o, f+".") {
+				return o
+			}
+		}
+	}
+	return ""
+}
 
 // coreSwitch è uno switch Cisco di livello 3 con tre VLAN, due vicini LLDP,
 // tabella ARP e tabella degli indirizzi MAC. Contiene anche colonne che
@@ -39,9 +58,9 @@ func coreSwitch() []gosnmp.SnmpPDU {
 		str(oidSysDescr, descr),
 		{Name: oidSysObjectID, Type: gosnmp.ObjectIdentifier, Value: ".1.3.6.1.4.1.9.1.1208"},
 		{Name: oidSysUpTime, Type: gosnmp.TimeTicks, Value: uint32(123456789)},
-		str(oidSysContact, "Mario Rossi, 333 1234567"),
+		str(oidSysContact+".0", "Mario Rossi, 333 1234567"),
 		str(oidSysName, "core-sw1.clinica.local"),
-		str(oidSysLocation, "Studio dott.ssa Bianchi"),
+		str(oidSysLocation+".0", "Studio dott.ssa Bianchi"),
 		num(".1.3.6.1.2.1.1.7.0", 6), // sysServices
 		num(oidLldpLocChassisIDSubtype, 4),
 		raw(oidLldpLocChassisID, 0x00, 0x1b, 0x54, 0xaa, 0xbb, 0xcc),
@@ -54,16 +73,18 @@ func coreSwitch() []gosnmp.SnmpPDU {
 		{1, "GigabitEthernet1/0/1", "Gi1/0/1", "Uplink router", 6},
 		{2, "GigabitEthernet1/0/2", "Gi1/0/2", "PC dott. Rossi", 6},
 		{3, "GigabitEthernet1/0/3", "Gi1/0/3", "", 6},
-		{10, "Vlan10", "Vl10", "Segreteria", 53},
-		{20, "Vlan20", "Vl20", "Ambulatori", 136},
+		{10, "Vlan10", "Vl10", "Rete della segreteria", 53},
+		{20, "Vlan20", "Vl20", "Rete degli ambulatori", 136},
 		{30, "Vlan30", "Vl30", "", 53},
-		{100, "Loopback0", "Lo0", "gestione", 24},
+		{100, "Loopback0", "Lo0", "gestione Bianchi", 24},
 		{101, "Null0", "Nu0", "", 1},
 		{102, "lo", "lo", "", 24},
 	} {
 		s := "." + strconv.Itoa(f.idx)
 		d = append(d, num(".1.3.6.1.2.1.2.2.1.1"+s, f.idx), str(oidIfDescr+s, f.descr), num(oidIfType+s, f.typ),
-			num(".1.3.6.1.2.1.2.2.1.4"+s, 1500), str(oidIfName+s, f.name), str(oidIfAlias+s, f.alias))
+			num(".1.3.6.1.2.1.2.2.1.4"+s, 1500), str(oidIfName+s, f.name),
+			gosnmp.SnmpPDU{Name: ".1.3.6.1.2.1.31.1.1.1.2" + s, Type: gosnmp.Counter32, Value: uint32(7)}, // ifInMulticastPkts
+			str(oidIfAlias+s, f.alias))
 	}
 	for _, a := range []struct {
 		ip, mask string
@@ -114,7 +135,7 @@ func coreSwitch() []gosnmp.SnmpPDU {
 		caps                      byte
 	}{
 		{"0.1.1", 4, 5, []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55}, []byte("ge-0/0/1"), "uplink verso core", "router-1", "192.168.10.254", 0x28},
-		{"1234.3.7", 5, 3, []byte{1, 192, 168, 10, 20}, []byte{0x00, 0x1b, 0x54, 0x01, 0x02, 0x03}, "Port 1", "SEP001B54010203", "192.168.10.20", 0x24},
+		{"1234.3.7", 5, 3, []byte{1, 192, 168, 10, 20}, []byte{0x00, 0x1b, 0x54, 0x01, 0x02, 0x03}, "Telefono di Mario Rossi", "SEP001B54010203", "192.168.10.20", 0x24},
 	} {
 		s := "." + n.idx
 		d = append(d,
@@ -130,7 +151,7 @@ func coreSwitch() []gosnmp.SnmpPDU {
 		sub      int
 		id, desc string
 	}{
-		{1, 5, "Gi1/0/1", "GigabitEthernet1/0/1"}, {2, 5, "Gi1/0/2", "GigabitEthernet1/0/2"}, {3, 7, "3", "GigabitEthernet1/0/3"},
+		{1, 5, "Gi1/0/1", "Uplink router"}, {2, 5, "Gi1/0/2", "PC dott. Rossi"}, {3, 7, "3", "Telefono sala d'attesa"},
 	} {
 		s := "." + strconv.Itoa(p.num)
 		d = append(d, num(oidLldpLocPortIDSubtype+s, p.sub), str(oidLldpLocPortID+s, p.id), str(oidLldpLocPortDesc+s, p.desc))
@@ -175,12 +196,12 @@ func TestCollectCoreSwitch(t *testing.T) {
 	}
 
 	wantIf := []Iface{
-		{Index: 10, Name: "Vl10", Alias: "Segreteria", Descr: "Vlan10", Type: 53, VlanID: 10,
+		{Index: 10, Name: "Vl10", Descr: "Vlan10", Type: 53, VlanID: 10,
 			IPs: []IfaceIP{{IP: "192.168.10.1", Mask: "255.255.255.0", Prefix: 24, Subnet: "192.168.10.0/24"}}},
-		{Index: 20, Name: "Vl20", Alias: "Ambulatori", Descr: "Vlan20", Type: 136, VlanID: 20,
+		{Index: 20, Name: "Vl20", Descr: "Vlan20", Type: 136, VlanID: 20,
 			IPs: []IfaceIP{{IP: "10.20.0.1", Mask: "255.255.254.0", Prefix: 23, Subnet: "10.20.0.0/23"}, {IP: "10.20.5.1", Mask: "255.255.255.0", Prefix: 24, Subnet: "10.20.5.0/24"}}},
 		{Index: 30, Name: "Vl30", Descr: "Vlan30", Type: 53, VlanID: 30, IPs: []IfaceIP{}},
-		{Index: 100, Name: "Lo0", Alias: "gestione", Descr: "Loopback0", Type: 24,
+		{Index: 100, Name: "Lo0", Descr: "Loopback0", Type: 24,
 			IPs: []IfaceIP{{IP: "10.255.255.1", Mask: "255.255.255.255", Prefix: 32, Subnet: "10.255.255.1/32"}}},
 	}
 	if !reflect.DeepEqual(res.Interfaces, wantIf) {
@@ -194,9 +215,9 @@ func TestCollectCoreSwitch(t *testing.T) {
 
 	wantNb := []Neighbor{
 		{LocalPortNum: 1, LocalPort: "Gi1/0/1", ChassisID: "00:11:22:33:44:55", ChassisIDType: "macAddress", PortID: "ge-0/0/1", PortIDType: "interfaceName",
-			PortDescr: "uplink verso core", SysName: "router-1", CapsEnabled: []string{"bridge", "router"}, MgmtIP: "192.168.10.254"},
-		{LocalPortNum: 3, LocalPort: "GigabitEthernet1/0/3", ChassisID: "192.168.10.20", ChassisIDType: "networkAddress", PortID: "00:1b:54:01:02:03", PortIDType: "macAddress",
-			PortDescr: "Port 1", SysName: "SEP001B54010203", CapsEnabled: []string{"bridge", "telephone"}, MgmtIP: "192.168.10.20"},
+			SysName: "router-1", CapsEnabled: []string{"bridge", "router"}, MgmtIP: "192.168.10.254"},
+		{LocalPortNum: 3, LocalPort: "3", ChassisID: "192.168.10.20", ChassisIDType: "networkAddress", PortID: "00:1b:54:01:02:03", PortIDType: "macAddress",
+			SysName: "SEP001B54010203", CapsEnabled: []string{"bridge", "telephone"}, MgmtIP: "192.168.10.20"},
 	}
 	if !reflect.DeepEqual(res.LldpNeighbors, wantNb) {
 		t.Fatalf("vicini LLDP:\n%+v\natteso:\n%+v", res.LldpNeighbors, wantNb)
@@ -233,17 +254,10 @@ func TestCollectCoreSwitch(t *testing.T) {
 	if requests != res.Requests {
 		t.Fatalf("richieste: l'agente ne ha ricevute %d, Collect ne conta %d", requests, res.Requests)
 	}
-	// Privacy: mai sysContact e sysLocation, né chiesti né restituiti; ifAlias
-	// solo per le interfacce mostrate (non per la porta del "PC dott. Rossi").
-	for _, o := range append(asked, returned...) {
-		if strings.HasPrefix(o, oidSysContact) || strings.HasPrefix(o, oidSysLocation) {
-			t.Fatalf("oggetto vietato coinvolto: %s", o)
-		}
-	}
-	for _, o := range asked {
-		if o == oidIfAlias+".2" || o == oidIfAlias {
-			t.Fatalf("ifAlias chiesto per una porta di accesso: %s", o)
-		}
+	// Privacy: il testo libero scritto dagli amministratori non si chiede e
+	// non arriva nemmeno in coda a un GETBULK.
+	if o := forbiddenIn(append(asked, returned...)); o != "" {
+		t.Fatalf("oggetto vietato chiesto o ricevuto: %s", o)
 	}
 	if len(communities) != 1 || communities[community] != requests {
 		t.Fatalf("community usate: %v", communities)
@@ -257,8 +271,62 @@ func TestCollectCoreSwitch(t *testing.T) {
 	}
 
 	b, err := json.Marshal(res)
-	if err != nil || !strings.Contains(string(b), `"lldpNeighbors":[{"localPortNum":1,`) || strings.Contains(string(b), community) {
+	if err != nil || !strings.Contains(string(b), `"lldpNeighbors":[{"localPortNum":1,`) {
 		t.Fatalf("JSON: %v %s", err, b)
+	}
+	for _, s := range []string{community, "Rossi", "Bianchi", "Uplink router", "uplink verso core", "Rete della", "sala d'attesa", `"alias"`, `"portDescr"`} {
+		if strings.Contains(string(b), s) {
+			t.Fatalf("il risultato contiene %q: %s", s, b)
+		}
+	}
+}
+
+// TestCollectLldpAliases: gli identificativi LLDP che sono alias scritti a
+// mano (ifAlias, entPhysicalAlias) non si chiedono e non si mostrano; il
+// tipo resta, così l'interfaccia sa perché l'identificativo manca.
+func TestCollectLldpAliases(t *testing.T) {
+	d := []gosnmp.SnmpPDU{
+		str(oidSysDescr, "switch"), str(oidSysName, "sw-piano2"),
+		num(oidLldpLocChassisIDSubtype, 1), str(oidLldpLocChassisID, "Armadio dott. Verdi"), // chassisComponent
+		num(oidLldpLocPortIDSubtype+".5", 1), str(oidLldpLocPortID+".5", "Porta dott. Neri"), // interfaceAlias
+		num(oidLldpLocPortIDSubtype+".6", 5), str(oidLldpLocPortID+".6", "Gi1/0/6"),
+		str(oidLldpLocPortDesc+".5", "Porta dott. Neri"), str(oidLldpLocPortDesc+".6", "Presa 12 Bianchi"),
+		num(oidLldpRemChassisIDSubtype+".0.5.1", 2), str(oidLldpRemChassisID+".0.5.1", "Ufficio Rossi"), // interfaceAlias
+		num(oidLldpRemPortIDSubtype+".0.5.1", 1), str(oidLldpRemPortID+".0.5.1", "PC Rossi"), // interfaceAlias
+		str(oidLldpRemPortDesc+".0.5.1", "PC Rossi"), str(oidLldpRemSysName+".0.5.1", "ws-12"),
+		num(oidLldpRemChassisIDSubtype+".0.6.1", 4), raw(oidLldpRemChassisID+".0.6.1", 0x00, 0x11, 0x22, 0x33, 0x44, 0x66),
+		num(oidLldpRemPortIDSubtype+".0.6.1", 2), str(oidLldpRemPortID+".0.6.1", "Presa 12 Bianchi"), // portComponent
+		str(oidLldpRemSysName+".0.6.1", "ap-12"),
+	}
+	a := newAgent(t, community, d)
+	a.start(t)
+	res, err := Collect(context.Background(), "127.0.0.1", v2c, fast, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Neighbor{
+		{LocalPortNum: 5, ChassisIDType: "interfaceAlias", PortIDType: "interfaceAlias", SysName: "ws-12"},
+		{LocalPortNum: 6, LocalPort: "Gi1/0/6", ChassisID: "00:11:22:33:44:66", ChassisIDType: "macAddress", PortIDType: "portComponent", SysName: "ap-12"},
+	}
+	if !reflect.DeepEqual(res.LldpNeighbors, want) || res.System.ChassisID != "" || res.Sections.Lldp.State != StateOK {
+		t.Fatalf("vicini LLDP: %+v %+v %+v", res.LldpNeighbors, res.System, res.Sections.Lldp)
+	}
+	_, asked, _, _, _, _ := a.stats()
+	for _, o := range asked {
+		for _, alias := range []string{oidLldpLocChassisID, oidLldpLocPortID + ".5", oidLldpRemChassisID + ".0.5.1", oidLldpRemPortID + ".0.5.1", oidLldpRemPortID + ".0.6.1"} {
+			if o == alias {
+				t.Fatalf("alias chiesto: %s", o)
+			}
+		}
+	}
+	if o := forbiddenIn(asked); o != "" {
+		t.Fatalf("oggetto vietato chiesto: %s", o)
+	}
+	b, _ := json.Marshal(res)
+	for _, s := range []string{"Verdi", "Neri", "Rossi", "Bianchi"} {
+		if strings.Contains(string(b), s) {
+			t.Fatalf("il risultato contiene %q: %s", s, b)
+		}
 	}
 }
 
@@ -812,22 +880,23 @@ func TestDecodeID(t *testing.T) {
 		{"networkAddress", []byte{1, 10, 0, 0, 1}, "10.0.0.1"},
 		{"networkAddress", append([]byte{2, 0xfd}, make([]byte, 15)...), "fd00::"},
 		{"interfaceName", []byte("ge-0/0/1\x00"), "ge-0/0/1"},
+		{"local", []byte("3"), "3"},
 		{"local", []byte{0x01, 0x02, 0xff}, "01:02:ff"},
 		{"agentCircuitId", []byte("abc"), "61:62:63"},
 		{"", nil, ""},
+		// Alias scritti a mano dagli amministratori: mai mostrati.
+		{"interfaceAlias", []byte("PC Rossi"), ""},
+		{"chassisComponent", []byte("Armadio Verdi"), ""},
+		{"portComponent", []byte("Presa 12"), ""},
 	} {
 		if got := decodeID(tc.kind, tc.b); got != tc.want {
 			t.Fatalf("%s % x: %q", tc.kind, tc.b, got)
 		}
 	}
-	if got := localPortName(7, []byte("3"), "GigabitEthernet1/0/3"); got != "GigabitEthernet1/0/3" {
-		t.Fatal(got)
-	}
-	if got := localPortName(5, []byte("Gi1/0/3"), "GigabitEthernet1/0/3"); got != "Gi1/0/3" {
-		t.Fatal(got)
-	}
-	if got := localPortName(7, []byte("3"), ""); got != "3" {
-		t.Fatal(got)
+	for kind, alias := range map[string]bool{"interfaceAlias": true, "chassisComponent": true, "portComponent": true, "interfaceName": false, "macAddress": false, "local": false, "": false} {
+		if aliasID(kind) != alias {
+			t.Fatalf("aliasID(%q)", kind)
+		}
 	}
 }
 
@@ -914,16 +983,21 @@ func TestOIDs(t *testing.T) {
 			t.Fatalf("%q accettato", bad)
 		}
 	}
-	// Ogni OID usato è valido e nessuno sta sotto sysContact o sysLocation.
-	for _, o := range []string{oidSysDescr, oidSysObjectID, oidSysUpTime, oidSysName, oidIfDescr, oidIfType, oidIfName, oidIfAlias,
+	// Ogni OID usato è valido e nessuno sta sotto il testo libero scritto
+	// dagli amministratori (sysContact, sysLocation, ifAlias, descrizioni LLDP).
+	used := []string{oidSysDescr, oidSysObjectID, oidSysUpTime, oidSysName, oidIfDescr, oidIfType, oidIfName,
 		oidIPAdEntIfIndex, oidIPAdEntNetMask, oidIPNetToMediaPhysAddress, oidDot1dBasePortIfIndex, oidDot1dTpFdbPort,
 		oidDot1qTpFdbPort, oidDot1qVlanStaticName, oidVtpVlanState, oidVtpVlanName, oidLldpLocChassisIDSubtype,
-		oidLldpLocChassisID, oidLldpLocPortIDSubtype, oidLldpLocPortID, oidLldpLocPortDesc, oidLldpRemChassisIDSubtype,
-		oidLldpRemChassisID, oidLldpRemPortIDSubtype, oidLldpRemPortID, oidLldpRemPortDesc, oidLldpRemSysName,
-		oidLldpRemSysCapEnabled, oidLldpRemManAddrIfSubtype} {
-		if _, ok := parseOID(o); !ok || strings.HasPrefix(o+".", ".1.3.6.1.2.1.1.4.") || strings.HasPrefix(o+".", ".1.3.6.1.2.1.1.6.") {
+		oidLldpLocChassisID, oidLldpLocPortIDSubtype, oidLldpLocPortID, oidLldpRemChassisIDSubtype,
+		oidLldpRemChassisID, oidLldpRemPortIDSubtype, oidLldpRemPortID, oidLldpRemSysName,
+		oidLldpRemSysCapEnabled, oidLldpRemManAddrIfSubtype}
+	for _, o := range used {
+		if _, ok := parseOID(o); !ok {
 			t.Fatalf("OID: %s", o)
 		}
+	}
+	if o := forbiddenIn(used); o != "" {
+		t.Fatalf("OID vietato tra quelli usati: %s", o)
 	}
 }
 

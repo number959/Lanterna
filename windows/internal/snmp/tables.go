@@ -21,10 +21,13 @@ import (
 
 // Oggetti letti, controllati sui testi delle MIB. Sono gli unici che Collect
 // chiede: il resto di ciò che un GETBULK restituisce oltre la fine di una
-// tabella si scarta senza leggerlo.
+// colonna si scarta senza esaminarlo. Il testo libero scritto dagli
+// amministratori non si chiede: sysContact (1.3.6.1.2.1.1.4), sysLocation
+// (1.3.6.1.2.1.1.6), ifAlias (1.3.6.1.2.1.31.1.1.1.18), lldpRemPortDesc
+// (1.0.8802.1.1.2.1.4.1.1.8) e lldpLocPortDesc (1.0.8802.1.1.2.1.3.7.1.4).
+// Le colonne lette con GETBULK non sono seguite da nessuno di questi.
 const (
-	// SNMPv2-MIB (RFC 3418): system = mib-2.1 = 1.3.6.1.2.1.1. Mai sysContact
-	// (system.4) né sysLocation (system.6): possono contenere nomi di persone.
+	// SNMPv2-MIB (RFC 3418): system = mib-2.1 = 1.3.6.1.2.1.1.
 	oidSysDescr    = ".1.3.6.1.2.1.1.1.0"
 	oidSysObjectID = ".1.3.6.1.2.1.1.2.0"
 	oidSysUpTime   = ".1.3.6.1.2.1.1.3.0" // TimeTicks, centesimi di secondo
@@ -35,7 +38,6 @@ const (
 	oidIfDescr = ".1.3.6.1.2.1.2.2.1.2"
 	oidIfType  = ".1.3.6.1.2.1.2.2.1.3"
 	oidIfName  = ".1.3.6.1.2.1.31.1.1.1.1"
-	oidIfAlias = ".1.3.6.1.2.1.31.1.1.1.18"
 
 	// IP-MIB (RFC 4293, già in RFC 1213; deprecate ma diffusissime):
 	// ipAddrEntry = 1.3.6.1.2.1.4.20.1, indice ipAdEntAddr (a.b.c.d);
@@ -66,17 +68,17 @@ const (
 	// .7.1, indice lldpLocPortNum); lldpRemEntry = .1.4.1.1, indice
 	// lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex; lldpRemManAddrEntry
 	// = .1.4.2.1, con in più lldpRemManAddrSubtype e lldpRemManAddr
-	// (stringa di lunghezza variabile, preceduta dalla lunghezza).
+	// (stringa di lunghezza variabile, preceduta dalla lunghezza). Con
+	// GETBULK si legge solo lldpRemChassisIdSubtype, seguito da
+	// lldpRemChassisId; le altre colonne si chiedono riga per riga.
 	oidLldpLocChassisIDSubtype = ".1.0.8802.1.1.2.1.3.1.0"
 	oidLldpLocChassisID        = ".1.0.8802.1.1.2.1.3.2.0"
 	oidLldpLocPortIDSubtype    = ".1.0.8802.1.1.2.1.3.7.1.2"
 	oidLldpLocPortID           = ".1.0.8802.1.1.2.1.3.7.1.3"
-	oidLldpLocPortDesc         = ".1.0.8802.1.1.2.1.3.7.1.4"
 	oidLldpRemChassisIDSubtype = ".1.0.8802.1.1.2.1.4.1.1.4"
 	oidLldpRemChassisID        = ".1.0.8802.1.1.2.1.4.1.1.5"
 	oidLldpRemPortIDSubtype    = ".1.0.8802.1.1.2.1.4.1.1.6"
 	oidLldpRemPortID           = ".1.0.8802.1.1.2.1.4.1.1.7"
-	oidLldpRemPortDesc         = ".1.0.8802.1.1.2.1.4.1.1.8"
 	oidLldpRemSysName          = ".1.0.8802.1.1.2.1.4.1.1.9"
 	oidLldpRemSysCapEnabled    = ".1.0.8802.1.1.2.1.4.1.1.12"
 	oidLldpRemManAddrIfSubtype = ".1.0.8802.1.1.2.1.4.2.1.3"
@@ -89,7 +91,6 @@ const (
 const (
 	maxDescr = 200 // sysDescr
 	maxText  = 128 // nomi e descrizioni
-	maxAlias = 64  // ifAlias: DisplayString (SIZE(0..64))
 )
 
 // Valori IANAifType (IANAifType-MIB).
@@ -112,6 +113,30 @@ type collector struct {
 type column struct {
 	obj, oid string
 	fn       func(idx []uint32, v gosnmp.SnmpPDU)
+}
+
+// want è un oggetto da chiedere con GET e cosa farne del valore.
+type want struct {
+	oid string
+	set func(v gosnmp.SnmpPDU)
+}
+
+// fetch chiede gli oggetti indicati con GET, a gruppi, e registra l'esito.
+func (c *collector) fetch(o *outcome, obj string, ws []want) *Error {
+	if len(ws) == 0 {
+		return nil
+	}
+	oids := make([]string, len(ws))
+	for i, w := range ws {
+		oids[i] = w.oid
+	}
+	vals, err := c.s.get(oids)
+	for _, w := range ws {
+		if v, ok := vals[w.oid]; ok {
+			w.set(v)
+		}
+	}
+	return o.add(obj, false, err)
 }
 
 // outcome raccoglie come sono andate le letture di una sezione.
@@ -239,15 +264,15 @@ func usableIP(ip netip.Addr) bool {
 	return ip.Is4() && !ip.IsLoopback() && !ip.IsUnspecified()
 }
 
-// interfaces legge interfacce e indirizzi IPv4. ifAlias si chiede solo per
-// le interfacce mostrate: quello delle porte di accesso può contenere nomi
-// di persone ("PC dott. Rossi").
+// interfaces legge interfacce e indirizzi IPv4. Di ogni interfaccia si
+// leggono solo nome, descrizione e tipo generati dal dispositivo: ifAlias, la
+// descrizione scritta dall'amministratore, può contenere nomi di persone
+// ("PC dott. Rossi") e non si chiede.
 func (c *collector) interfaces() *Error {
 	o := outcome{max: c.max}
 	types := map[int]int{}
 	ifOf := map[netip.Addr]int{}      // indirizzo → ifIndex
 	maskOf := map[netip.Addr]string{} // indirizzo → maschera
-	alias := map[int]string{}
 	// shown elenca, in ordine, le interfacce da mostrare: quelle con un
 	// indirizzo IPv4 e quelle che hanno l'aspetto di interfacce VLAN.
 	shown := func() []int {
@@ -288,7 +313,7 @@ func (c *collector) interfaces() *Error {
 		list := []Iface{}
 		for _, i := range shown() {
 			_, vid := vlanLike(c.names[i], c.descr[i], types[i])
-			f := Iface{Index: i, Name: c.names[i], Alias: alias[i], Descr: c.descr[i], Type: types[i], VlanID: vid, IPs: []IfaceIP{}}
+			f := Iface{Index: i, Name: c.names[i], Descr: c.descr[i], Type: types[i], VlanID: vid, IPs: []IfaceIP{}}
 			slices.SortFunc(ips[i], netip.Addr.Compare)
 			for _, ip := range ips[i] {
 				f.IPs = append(f.IPs, ifaceIP(ip, maskOf[ip]))
@@ -337,18 +362,7 @@ func (c *collector) interfaces() *Error {
 			return fe
 		}
 	}
-	idxs := shown()
-	oids := make([]string, len(idxs))
-	for k, i := range idxs {
-		oids[k] = oidIfAlias + "." + strconv.Itoa(i)
-	}
-	vals, err := c.s.get(oids)
-	for k, i := range idxs {
-		if v, ok := vals[oids[k]]; ok {
-			alias[i] = text(v.Value, maxAlias)
-		}
-	}
-	return o.add("ifAlias", false, err)
+	return nil
 }
 
 // ifaceIP descrive un indirizzo con la sua maschera.
@@ -470,34 +484,37 @@ func caps(b []byte) []string {
 	return out
 }
 
+// aliasID dice se un identificativo LLDP è un alias scritto a mano
+// dall'amministratore (ifAlias o entPhysicalAlias, secondo LLDP-MIB): come
+// ifAlias può contenere nomi di persone, quindi non si chiede.
+func aliasID(kind string) bool {
+	return kind == "interfaceAlias" || kind == "chassisComponent" || kind == "portComponent"
+}
+
 // nbRow è un vicino in lettura: gli identificativi si decodificano alla fine,
 // quando si conoscono i sottotipi.
 type nbRow struct {
+	sfx                 string // indice della riga: .lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex
 	port, rem           uint32
 	chassisSub, portSub int
 	chassis, portID     []byte
 	n                   Neighbor
 }
 
-// lldp legge i vicini LLDP, il loro indirizzo di gestione e il nome delle
-// porte locali su cui sono annunciati.
+// lldp legge i vicini LLDP, il loro indirizzo di gestione e la porta locale
+// su cui sono annunciati. Con GETBULK si legge solo la colonna che elenca i
+// vicini; le altre si chiedono riga per riga, così la lettura non passa mai
+// da lldpRemPortDesc, la descrizione scritta dall'amministratore del vicino.
 func (c *collector) lldp() *Error {
 	o := outcome{max: c.max}
 	present := false
 	type key struct{ port, rem uint32 }
 	rows := map[key]*nbRow{}
+	var list []*nbRow // le righe in ordine di porta e di indice
 	locals := map[uint32]string{}
 	defer func() {
-		list := []Neighbor{}
-		keys := make([]key, 0, len(rows))
-		for k := range rows {
-			keys = append(keys, k)
-		}
-		slices.SortFunc(keys, func(a, b key) int {
-			return cmp.Or(cmp.Compare(a.port, b.port), cmp.Compare(a.rem, b.rem))
-		})
-		for _, k := range keys {
-			r := rows[k]
+		out := []Neighbor{}
+		for _, r := range list {
 			n := r.n
 			n.LocalPortNum = int(r.port)
 			n.LocalPort = locals[r.port]
@@ -505,46 +522,47 @@ func (c *collector) lldp() *Error {
 			n.ChassisID = decodeID(n.ChassisIDType, r.chassis)
 			n.PortIDType = portIDTypes[r.portSub]
 			n.PortID = decodeID(n.PortIDType, r.portID)
-			list = append(list, n)
+			out = append(out, n)
 		}
-		c.res.LldpNeighbors = list
+		c.res.LldpNeighbors = out
 		empty := "LLDP-MIB assente: LLDP spento o non consultabile via SNMP"
 		if present {
 			empty = "nessun vicino LLDP"
 		}
-		o.set(&c.res.Sections.Lldp, len(list), present, "LLDP-MIB", empty)
+		o.set(&c.res.Sections.Lldp, len(out), present, "LLDP-MIB", empty)
 	}()
 
-	// L'identificativo LLDP del dispositivo dice anche se LLDP-MIB c'è.
-	vals, err := c.s.get([]string{oidLldpLocChassisIDSubtype, oidLldpLocChassisID})
-	if fe := o.add("lldpLocChassisId", false, err); fe != nil {
+	// Il sottotipo dell'identificativo del dispositivo dice se LLDP-MIB c'è;
+	// l'identificativo si chiede solo se non è un alias scritto a mano.
+	sub := 0
+	if fe := c.fetch(&o, "lldpLocChassisIdSubtype", []want{{oidLldpLocChassisIDSubtype, func(v gosnmp.SnmpPDU) {
+		present = true
+		sub, _ = intOf(v.Value)
+	}}}); fe != nil {
 		return fe
 	}
-	if v, ok := vals[oidLldpLocChassisID]; ok {
-		present = true
-		sub, _ := intOf(vals[oidLldpLocChassisIDSubtype].Value)
-		if c.res.System != nil {
-			c.res.System.ChassisID = decodeID(chassisIDTypes[sub], bytesOf(v.Value))
+	if kind := chassisIDTypes[sub]; present && !aliasID(kind) && c.res.System != nil {
+		sys := c.res.System
+		if fe := c.fetch(&o, "lldpLocChassisId", []want{{oidLldpLocChassisID, func(v gosnmp.SnmpPDU) {
+			sys.ChassisID = decodeID(kind, bytesOf(v.Value))
+		}}}); fe != nil {
+			return fe
 		}
 	}
 
-	row := func(idx []uint32, create bool) *nbRow {
-		if len(idx) < 3 {
-			return nil
+	// Vicini: l'indice di ogni riga viene dal sottotipo del loro identificativo.
+	n, full, err := c.s.walk(oidLldpRemChassisIDSubtype, c.max, func(idx []uint32, v gosnmp.SnmpPDU) {
+		if len(idx) != 3 {
+			return
 		}
 		k := key{idx[1], idx[2]} // lldpRemTimeMark (idx[0]) cambia a ogni modifica: non identifica il vicino
 		r := rows[k]
-		if r == nil && create && len(idx) == 3 && len(rows) < c.max {
+		if r == nil {
 			r = &nbRow{port: k.port, rem: k.rem}
 			rows[k] = r
 		}
-		return r
-	}
-	// Prima il sottotipo dell'identificativo: senza righe non serve altro.
-	n, full, err := c.s.walk(oidLldpRemChassisIDSubtype, c.max, func(idx []uint32, v gosnmp.SnmpPDU) {
-		if r := row(idx, true); r != nil {
-			r.chassisSub, _ = intOf(v.Value)
-		}
+		r.sfx = formatOID(idx)
+		r.chassisSub, _ = intOf(v.Value)
 	})
 	if fe := o.add("lldpRemChassisIdSubtype", full, err); fe != nil {
 		return fe
@@ -553,86 +571,84 @@ func (c *collector) lldp() *Error {
 		return nil
 	}
 	present = true
-	cols := []column{
-		{"lldpRemChassisId", oidLldpRemChassisID, func(idx []uint32, v gosnmp.SnmpPDU) {
-			if r := row(idx, true); r != nil {
-				r.chassis = bytesOf(v.Value)
-			}
-		}},
-		{"lldpRemPortIdSubtype", oidLldpRemPortIDSubtype, func(idx []uint32, v gosnmp.SnmpPDU) {
-			if r := row(idx, true); r != nil {
-				r.portSub, _ = intOf(v.Value)
-			}
-		}},
-		{"lldpRemPortId", oidLldpRemPortID, func(idx []uint32, v gosnmp.SnmpPDU) {
-			if r := row(idx, true); r != nil {
-				r.portID = bytesOf(v.Value)
-			}
-		}},
-		{"lldpRemPortDesc", oidLldpRemPortDesc, func(idx []uint32, v gosnmp.SnmpPDU) {
-			if r := row(idx, true); r != nil {
-				r.n.PortDescr = text(v.Value, maxText)
-			}
-		}},
-		{"lldpRemSysName", oidLldpRemSysName, func(idx []uint32, v gosnmp.SnmpPDU) {
-			if r := row(idx, true); r != nil {
-				r.n.SysName = text(v.Value, maxText)
-			}
-		}},
-		{"lldpRemSysCapEnabled", oidLldpRemSysCapEnabled, func(idx []uint32, v gosnmp.SnmpPDU) {
-			if r := row(idx, true); r != nil {
-				r.n.CapsEnabled = caps(bytesOf(v.Value))
-			}
-		}},
-		{"lldpRemManAddrIfSubtype", oidLldpRemManAddrIfSubtype, func(idx []uint32, v gosnmp.SnmpPDU) {
-			if r := row(idx, false); r != nil && r.n.MgmtIP == "" {
-				r.n.MgmtIP = manAddrIPv4(idx[3:])
-			}
-		}},
+	for _, r := range rows {
+		list = append(list, r)
 	}
-	for _, col := range cols {
-		_, full, err := c.s.walk(col.oid, c.max, col.fn)
-		if fe := o.add(col.obj, full, err); fe != nil {
-			return fe
+	slices.SortFunc(list, func(a, b *nbRow) int {
+		return cmp.Or(cmp.Compare(a.port, b.port), cmp.Compare(a.rem, b.rem))
+	})
+
+	var ws []want
+	for _, r := range list {
+		ws = append(ws,
+			want{oidLldpRemPortIDSubtype + r.sfx, func(v gosnmp.SnmpPDU) { r.portSub, _ = intOf(v.Value) }},
+			want{oidLldpRemSysName + r.sfx, func(v gosnmp.SnmpPDU) { r.n.SysName = text(v.Value, maxText) }},
+			want{oidLldpRemSysCapEnabled + r.sfx, func(v gosnmp.SnmpPDU) { r.n.CapsEnabled = caps(bytesOf(v.Value)) }})
+	}
+	if fe := c.fetch(&o, "lldpRemTable", ws); fe != nil {
+		return fe
+	}
+	// Identificativi del vicino e della sua porta, se non sono alias scritti a mano.
+	ws = nil
+	for _, r := range list {
+		if !aliasID(chassisIDTypes[r.chassisSub]) {
+			ws = append(ws, want{oidLldpRemChassisID + r.sfx, func(v gosnmp.SnmpPDU) { r.chassis = bytesOf(v.Value) }})
+		}
+		if !aliasID(portIDTypes[r.portSub]) {
+			ws = append(ws, want{oidLldpRemPortID + r.sfx, func(v gosnmp.SnmpPDU) { r.portID = bytesOf(v.Value) }})
 		}
 	}
+	if fe := c.fetch(&o, "lldpRemTable", ws); fe != nil {
+		return fe
+	}
 
-	// Nomi delle sole porte locali che hanno vicini.
+	// Indirizzo di gestione: il primo annunciato da ogni vicino (gli IPv4
+	// vengono prima degli altri), con un GETNEXT per vicino.
+	prefixes := make([]string, len(list))
+	for i, r := range list {
+		prefixes[i] = oidLldpRemManAddrIfSubtype + r.sfx
+	}
+	next, err := c.s.getNext(prefixes)
+	for i, r := range list {
+		pre, _ := parseOID(prefixes[i])
+		if v, ok := next[prefixes[i]]; ok {
+			if oid, ok := parseOID(v.Name); ok && len(oid) > len(pre) && hasPrefix(oid, pre) {
+				r.n.MgmtIP = manAddrIPv4(oid[len(pre):])
+			}
+		}
+	}
+	if fe := o.add("lldpRemManAddrTable", false, err); fe != nil {
+		return fe
+	}
+
+	// Porte locali con vicini: il nome viene dal loro identificativo
+	// (lldpLocPortId), se non è un alias scritto a mano. lldpLocPortDesc non
+	// si chiede: molti switch vi mettono la descrizione dell'amministratore.
 	seen := map[uint32]bool{}
 	var ports []uint32
-	for k := range rows {
-		if !seen[k.port] {
-			seen[k.port] = true
-			ports = append(ports, k.port)
+	for _, r := range list {
+		if !seen[r.port] {
+			seen[r.port] = true
+			ports = append(ports, r.port)
 		}
 	}
-	slices.Sort(ports)
-	var oids []string
+	subs := map[uint32]int{}
+	ws = nil
 	for _, p := range ports {
 		sfx := "." + strconv.FormatUint(uint64(p), 10)
-		oids = append(oids, oidLldpLocPortIDSubtype+sfx, oidLldpLocPortID+sfx, oidLldpLocPortDesc+sfx)
+		ws = append(ws, want{oidLldpLocPortIDSubtype + sfx, func(v gosnmp.SnmpPDU) { subs[p], _ = intOf(v.Value) }})
 	}
-	vals, err = c.s.get(oids)
+	if fe := c.fetch(&o, "lldpLocPortIdSubtype", ws); fe != nil {
+		return fe
+	}
+	ws = nil
 	for _, p := range ports {
-		sfx := "." + strconv.FormatUint(uint64(p), 10)
-		sub, _ := intOf(vals[oidLldpLocPortIDSubtype+sfx].Value)
-		locals[p] = localPortName(sub, bytesOf(vals[oidLldpLocPortID+sfx].Value), text(vals[oidLldpLocPortDesc+sfx].Value, maxText))
-	}
-	return o.add("lldpLocPortTable", false, err)
-}
-
-// localPortName sceglie il nome più leggibile della porta locale: il nome
-// dell'interfaccia (come ifName), poi la descrizione, poi l'identificativo.
-func localPortName(sub int, id []byte, desc string) string {
-	if portIDTypes[sub] == "interfaceName" {
-		if s := decodeID("interfaceName", id); s != "" {
-			return s
+		if kind := portIDTypes[subs[p]]; !aliasID(kind) {
+			sfx := "." + strconv.FormatUint(uint64(p), 10)
+			ws = append(ws, want{oidLldpLocPortID + sfx, func(v gosnmp.SnmpPDU) { locals[p] = decodeID(kind, bytesOf(v.Value)) }})
 		}
 	}
-	if desc != "" {
-		return desc
-	}
-	return decodeID(portIDTypes[sub], id)
+	return c.fetch(&o, "lldpLocPortId", ws)
 }
 
 // manAddrIPv4 legge l'indirizzo dall'indice di lldpRemManAddrTable dopo
@@ -653,21 +669,19 @@ func manAddrIPv4(x []uint32) string {
 	return ""
 }
 
-// decodeID rende leggibile un identificativo LLDP secondo il sottotipo.
+// decodeID rende leggibile un identificativo LLDP secondo il sottotipo. Gli
+// alias scritti a mano non si chiedono e, se arrivassero, non si mostrano.
 func decodeID(kind string, b []byte) string {
-	switch kind {
-	case "macAddress":
-		if len(b) == 6 {
-			return net.HardwareAddr(b).String()
-		}
-	case "networkAddress": // primo byte: famiglia IANA (1 = IPv4, 2 = IPv6)
-		if len(b) == 5 && b[0] == 1 {
-			return netip.AddrFrom4([4]byte(b[1:5])).String()
-		}
-		if len(b) == 17 && b[0] == 2 {
-			return netip.AddrFrom16([16]byte(b[1:17])).String()
-		}
-	case "agentCircuitId":
+	switch {
+	case aliasID(kind):
+		return ""
+	case kind == "macAddress" && len(b) == 6:
+		return net.HardwareAddr(b).String()
+	case kind == "networkAddress" && len(b) == 5 && b[0] == 1: // primo byte: famiglia IANA (1 = IPv4, 2 = IPv6)
+		return netip.AddrFrom4([4]byte(b[1:5])).String()
+	case kind == "networkAddress" && len(b) == 17 && b[0] == 2:
+		return netip.AddrFrom16([16]byte(b[1:17])).String()
+	case kind == "agentCircuitId":
 		return hexBytes(b)
 	}
 	if s := strings.TrimRight(string(b), "\x00"); s != "" && utf8.ValidString(s) && !strings.ContainsFunc(s, unicode.IsControl) {
