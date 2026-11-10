@@ -46,7 +46,7 @@ import {
   STRONG_NEIGHBOUR_DBM,
 } from './wifi';
 
-export const ENGINE_VERSION = '1.6.0';
+export const ENGINE_VERSION = '1.7.0';
 
 const SEV_RANK: Record<Severity, number> = { unknown: 0, ok: 1, info: 2, warn: 3, crit: 4 };
 const SEV_POINTS: Record<Severity, number | null> = { ok: 100, info: 95, warn: 55, crit: 10, unknown: null };

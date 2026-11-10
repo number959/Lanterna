@@ -216,6 +216,10 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
     for (const n of disc.l2.cdp ?? []) for (const ip of n.managementAddresses ?? []) if (n.capabilities?.length && !neighborCaps[ip]) neighborCaps[ip] = n.capabilities;
   }
 
+  // Nome della VLAN di ogni dispositivo noto in un'altra rete: un indizio del tipo.
+  const zones: Record<string, string> = {};
+  for (const n of nets) if (n.name && !n.local) for (const ip of n.hosts) zones[ip] = n.name;
+
   // Dispositivi: inventario, poi quelli visti dal PC (tabella ARP).
   const hosts = new Map<string, InventoryHost>();
   for (const h of inv?.hosts ?? []) hosts.set(h.ip, { ...h });
@@ -235,7 +239,7 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
   const nodes: MapNode[] = [];
   const byIp = new Map<string, MapNode>();
   const nodeOf = (h: InventoryHost, segment: string): MapNode => {
-    const g = classifyHost(h, { gatewayIp: gwIp, gatewayFirewall, dnsServers, dhcpServer, bssids, roles, labels, neighborCaps });
+    const g = classifyHost(h, { gatewayIp: gwIp, gatewayFirewall, dnsServers, dhcpServer, bssids, roles, labels, neighborCaps, zones });
     let kind = g.kind;
     let reasons = g.reasons;
     let confidence = g.confidence;
@@ -492,8 +496,8 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
   // router (con nomi e tempi) e dalla tabella ARP letta via SNMP (con il MAC).
   const remoteInv = new Map<string, InventoryHost>();
   for (const i of scan.infra?.remote ?? []) for (const h of i.hosts) if (!h.self) remoteInv.set(h.ip, h);
-  const arpMac = new Map<string, string>();
-  for (const r of disc?.snmp ?? []) for (const a of r.arp) if (!arpMac.has(a.ip)) arpMac.set(a.ip, a.mac);
+  const arpMac = new Map<string, { mac: string; vendor?: string }>();
+  for (const r of disc?.snmp ?? []) for (const a of r.arp) if (!arpMac.has(a.ip)) arpMac.set(a.ip, { mac: a.mac, vendor: a.vendor });
   let hidden = 0;
   for (const n of nets) {
     if (n.local || !n.prefix) continue;
@@ -502,10 +506,12 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
     const fresh = n.hosts.filter((ip) => !hosts.has(ip));
     for (const ip of fresh.slice(0, MAX_DISCOVERED)) {
       const known = remoteInv.get(ip);
-      const mac = known?.mac ?? arpMac.get(ip);
+      const arp = arpMac.get(ip);
+      const mac = known?.mac ?? arp?.mac;
       const h: InventoryHost = {
         ...(known ?? { ip }),
         ...(mac ? { mac, randomMac: /^.[26ae]/i.test(mac) } : {}),
+        ...(!known?.vendor && arp?.vendor ? { vendor: arp.vendor } : {}),
         ...(!known?.name && neighborNames[ip] ? { name: neighborNames[ip] } : {}),
       };
       hosts.set(ip, h);

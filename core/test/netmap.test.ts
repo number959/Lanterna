@@ -53,7 +53,10 @@ describe('mappa della rete', () => {
   it('clinica: zone, VLAN, reti Wi-Fi degli stessi access point e percorsi', () => {
     const m = buildNetworkMap(clinicScan, analyze(clinicScan));
     expect(m.fromInventory).toBe(true);
-    expect(m.counts).toMatchObject({ firewall: 1, ap: 2, printer: 2, pc: 11 });
+    // Anche i dispositivi delle altre VLAN, visti via SNMP, hanno un tipo: produttore dal MAC e nome della VLAN.
+    expect(m.counts).toMatchObject({ firewall: 1, ap: 2, printer: 3, pc: 13, camera: 2, voip: 2, medical: 7 });
+    expect(m.counts.unknown ?? 0).toBeLessThanOrEqual(1);
+    expect(m.nodes.find((n) => n.ip === '10.20.100.21')?.reasons).toContain('sta nella VLAN «VOCE»');
     const local = m.segments.find((s) => s.kind === 'local')!;
     expect(local).toMatchObject({ subnet: '10.20.30.0/24', vlan: 30 });
     // Nomi delle VLAN letti via SNMP, sito di Active Directory, niente zona per l'aggregato /16.

@@ -22,13 +22,16 @@ La **cassetta degli attrezzi** apre gli strumenti di Windows e **CrystalDiskInfo
 pacchetto**; CPU-Z, HWiNFO, Autoruns e gli altri programmi che non si possono ridistribuire li **scarica dal sito ufficiale**, solo
 su richiesta, e li avvia solo con la firma digitale del produttore. Per i PC senza Internet prepara un **kit** da portare su una
 chiavetta. Un **documento stampabile** riassume lo stato del PC, da consegnare o salvare in PDF.
-Della **rete** misura Wi-Fi, router, Internet e DNS; su richiesta disegna la **mappa del Wi-Fi stanza per stanza**, controlla i
-**certificati dei servizi interni** e, con il tuo consenso ogni volta, misura la **velocità di Internet** con Measurement Lab.
+Della **rete** misura Wi-Fi, router, Internet e DNS e disegna la **mappa della rete**: un grafico interattivo con l'icona di ogni
+dispositivo, riconosciuto da solo (router, switch, access point, PC, stampanti, NAS, telecamere, dispositivi medicali...), e i
+percorsi animati del traffico. Su richiesta **scopre le altre reti e le VLAN** senza doverle scrivere (annunci dello switch,
+Active Directory, SNMP in sola lettura), disegna la **mappa del Wi-Fi stanza per stanza**, controlla i **certificati dei
+servizi interni** e, con il tuo consenso ogni volta, misura la **velocità di Internet** con Measurement Lab.
 
 Funziona in casa come in uno studio, in un'azienda o in una **struttura sanitaria**: riconosce le reti con più access point e
 con dominio, censisce la sottorete, verifica la separazione tra le zone e i servizi critici e guida un'autovalutazione delle
-misure organizzative. Una biblioteca di **77 guide** in italiano spiega come usare il programma, il computer e la rete, dalle
-basi alle reti cliniche.
+misure organizzative. Una biblioteca di **79 guide** in italiano, con schemi animati e **videoguide narrate dalla voce
+italiana di Windows**, spiega come usare il programma, il computer e la rete, dalle basi alle reti cliniche.
 
 Il nome nasce dal marchio STARNET: Polaris è la stella polare, quella che indica la direzione. Qui indica cosa sistemare per primo.
 
@@ -280,8 +283,22 @@ con l'ingegneria clinica dove ci sono dispositivi medicali), si rivolgono **solo
 e **senza scansioni di porte**.
 
 - **Inventario della sottorete**: un ping a ogni indirizzo (circa 30 al secondo, 8 alla volta), poi la tabella ARP, che rivela
-  anche i dispositivi che ignorano il ping, e i nomi da DNS inverso e NetBIOS. Elenco filtrabile ed esportabile in CSV; segnala i
-  dispositivi senza nome, i MAC casuali e la sottorete quasi piena. Oltre /22 si esamina solo il blocco /24 del PC.
+  anche i dispositivi che ignorano il ping, e i nomi da DNS inverso e NetBIOS. Durante il ping Polaris ascolta anche gli annunci
+  mDNS e SSDP (stampanti, TV, NAS e telecamere si presentano da soli), legge i ruoli NetBIOS e il TTL e ricava il produttore dal
+  MAC con l'elenco pubblico IEEE incorporato: così riconosce il **tipo di ogni dispositivo**, con l'icona e il perché. Elenco
+  filtrabile ed esportabile in CSV con tipo e produttore; segnala i dispositivi senza nome, i MAC casuali e la sottorete quasi
+  piena. Oltre /22 si esamina solo il blocco /24 del PC.
+- **Mappa della rete** (sezione Rete locale, dalla 0.13.0): le zone sono la rete del PC, le altre VLAN con il loro nome e le reti
+  Wi-Fi trasmesse dagli stessi access point; i pacchetti animati mostrano da dove passa il traffico di questo PC verso Internet,
+  il DNS e i servizi verificati, e si fermano dove le regole bloccano come previsto. Zoom, spostamento, filtri per tipo, ricerca,
+  dettagli di ogni dispositivo ed elenco testuale accessibile.
+- **Reti e VLAN** (dalla 0.13.0): le altre reti senza doverle scrivere, ognuna con la fonte da cui risulta. Oltre alle rotte del
+  PC (anche quelle ricevute dal DHCP) e ai server DNS e DHCP in altre reti: l'**ascolto degli annunci dello switch** per circa un
+  minuto (LLDP, LLDP-MED, CDP, DTP, Spanning Tree e PVST+), senza trasmettere nulla, che dice switch, porta, VLAN della porta e
+  della voce; le **sottoreti di Active Directory** per i PC in un dominio; la **lettura SNMP in sola lettura** di router e switch
+  con le credenziali del tecnico (SNMPv3 o v2c), che restano in memoria solo per la lettura; l'**inventario di un'altra rete**
+  attraverso il router. Un pulsante porta le reti scoperte nel **test di segmentazione**. Giudizi su duplex e velocità della
+  porta, DTP attivo (VLAN hopping), postazioni nella VLAN 1, radice dello Spanning Tree e configurazione SNMP.
 - **Test di segmentazione e servizi critici**: si indicano le destinazioni che da questa zona devono rispondere (cartella
   clinica, PACS, HL7, DNS, controller di dominio…) e quelle che devono restare isolate (dispositivi medicali, gestione degli
   apparati, telecamere, ospiti). Per ognuna una connessione TCP alla porta indicata o due ping; le destinazioni si ricordano per
@@ -307,15 +324,18 @@ Senza agente, le due reti dimostrative (*Casa* e *Clinica*) mostrano tutte le fu
 
 ![Guide](docs/img/guide.webp)
 
-77 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
-complesse e sanità, diagnosi), un glossario di 230 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
+79 guide in nove capitoli (usare STARNET Polaris, il computer, fondamenti, Wi-Fi, rete cablata, servizi, sicurezza, reti
+complesse e sanità, diagnosi), un glossario di 235 voci e la ricerca unificata su guide, glossario, misure e azioni. La guida
 d'uso parte dai primi passi e arriva alla riga di comando e alla cassetta degli attrezzi; il capitolo sul computer spiega
 componenti, scheda tecnica, sensori in tempo reale, dischi HDD e SSD, attributi SMART, cosa occupa spazio e come liberarlo, test di velocità, memoria, avvio, aggiornamenti, antivirus e
 Microsoft Defender, registro eventi, file delle schermate blu, batteria e il metodo per un PC lento; quelli sulla rete anche la
 misura del Wi-Fi stanza per stanza, i certificati dei servizi interni e che cosa dice (e non dice) un test di velocità. Le date di supporto di
 Windows citate sono quelle note a metà 2026 e vanno verificate sul sito Microsoft. Ogni valore misurato e ogni azione del piano rimandano
-alla guida che li spiega; sette diagrammi animati illustrano livelli, sottoreti, DHCP, canali, roaming, VLAN e zone di una rete
-sanitaria. I riferimenti normativi citati (GDPR, NIS2, dispositivi medicali) sono una sintesi da verificare sui testi ufficiali,
+alla guida che li spiega; diciassette schemi animati illustrano livelli, sottoreti, DHCP, canali, roaming, VLAN, zone di una rete
+sanitaria, mappa della rete, annunci LLDP, instradamento tra VLAN, SNMP, traceroute, velocità USB, test della RAM, fasi
+dell'avvio, percorso di stampa e Memtest86+ su chiavetta. **Nove videoguide** (dalla 0.13.0) uniscono scene animate e una
+narrazione letta dalla voce italiana di Windows (Elsa, se installata), con sottotitoli, capitoli, velocità e trascrizione: si
+usano solo le voci del PC, quindi il testo non esce dal computer, e senza voce italiana restano i sottotitoli. I riferimenti normativi citati (GDPR, NIS2, dispositivi medicali) sono una sintesi da verificare sui testi ufficiali,
 non una consulenza legale.
 
 ## Piattaforme
@@ -418,8 +438,16 @@ PC con scheda Wi-Fi: [docs/VERIFICHE.md](docs/VERIFICHE.md).
 - Il server locale ascolta solo su `127.0.0.1`, rifiuta host diversi (DNS rebinding) e richieste da altre origini.
 - Il controllo dei servizi esposti riguarda **esclusivamente il gateway** della rete a cui si è collegati, senza autenticarsi.
 - Inventario e verifiche partono solo su richiesta, solo verso indirizzi privati (RFC 1918 e ULA IPv6) e senza scansioni di
-  porte: l'inventario contatta i dispositivi della sola sottorete del PC, le verifiche solo le destinazioni indicate
-  dall'utente. Le API locali rifiutano richieste senza conferma, con destinazioni non valide o pubbliche.
+  porte: l'inventario contatta i dispositivi della sottorete del PC, o di un'altra sottorete privata indicata dall'utente
+  attraverso il router, le verifiche solo le destinazioni indicate dall'utente. Le API locali rifiutano richieste senza
+  conferma, con destinazioni non valide o pubbliche. Durante l'inventario una domanda mDNS e una ricerca SSDP restano nella
+  rete del PC (indirizzi multicast locali); dei servizi annunciati si tengono solo i tipi, mai i nomi dei dispositivi.
+- **Scoperta delle reti**: l'ascolto degli annunci dello switch non trasmette nulla e conserva solo le trame degli annunci;
+  la lettura SNMP interroga solo l'indirizzo privato indicato, una richiesta alla volta, e solo con la conferma di essere
+  autorizzati. Le credenziali SNMP non vengono salvate, non compaiono nei rapporti né nei messaggi di errore; non si leggono
+  contatto e posizione degli apparati, le descrizioni delle porte e gli alias scritti dagli amministratori (possono
+  contenere nomi di persone), e i numeri di serie si scartano. Il produttore dal MAC si ricava dall'elenco incorporato, senza
+  collegarsi a Internet.
 - Per le misure vengono contattati: il router, i resolver pubblici 1.1.1.1, 8.8.8.8 e 9.9.9.9, `www.google.com/generate_204` e
   `cp.cloudflare.com/generate_204`; solo per il test di velocità, `locate.measurementlab.net` e il server di M-Lab che indica.
 - I dati del computer si leggono senza modificare nulla; i test di velocità partono solo su richiesta, quello del disco con una

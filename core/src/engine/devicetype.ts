@@ -132,6 +132,8 @@ export interface ClassifyContext {
   neighborCaps?: Record<string, string[]>;
   /** Nomi dati dall'utente alle verifiche (segmentazione, servizi critici), per indirizzo. */
   labels?: Record<string, string>;
+  /** Nome della VLAN o della zona in cui sta il dispositivo ("TELECAMERE", "VOCE"), per indirizzo. */
+  zones?: Record<string, string>;
 }
 
 type Score = { kind: DeviceKind; pts: number; why: string };
@@ -228,6 +230,21 @@ const LABEL_RULES: { re: RegExp; kind: DeviceKind }[] = [
   { re: /(\bnas\b|archivio)/i, kind: 'nas' },
 ];
 
+/** Nomi tipici delle VLAN che dicono che cosa contengono, oltre a quelli di LABEL_RULES. */
+const ZONE_RULES: { re: RegExp; kind: DeviceKind }[] = [
+  { re: /(voce|voice|voip|telefon)/i, kind: 'voip' },
+  { re: /(diagnostic|radiolog|imaging|medic|sanitar|clinic)/i, kind: 'medical' },
+  { re: /(amministraz|uffic|ambulator|postazion|client|utent|segreter|accettaz|office|staff)/i, kind: 'pc' },
+];
+
+/** Tipo suggerito dal nome della VLAN in cui sta il dispositivo, se ne contiene uno. */
+export function zoneKind(zone?: string): DeviceKind | undefined {
+  if (!zone) return undefined;
+  for (const r of ZONE_RULES) if (r.re.test(zone)) return r.kind;
+  const k = labelKind(zone);
+  return k === 'ap' || k === 'router' || k === 'firewall' ? undefined : k;
+}
+
 /** Tipo suggerito dal nome che l'utente ha dato a una verifica, se ne contiene uno. */
 export function labelKind(label?: string): DeviceKind | undefined {
   if (!label) return undefined;
@@ -292,6 +309,9 @@ export function classifyHost(h: InventoryHost, ctx: ClassifyContext = {}): Devic
   const hint = ctx.labels?.[h.ip];
   const hk = labelKind(hint);
   if (hint && hk) add(hk, 45, `dal nome dato nella verifica: «${hint}»`);
+  const zone = ctx.zones?.[h.ip];
+  const zk = zoneKind(zone);
+  if (zone && zk) add(zk, 30, `sta nella VLAN «${zone}»`);
   if (ctx.dnsServers && ctx.dnsServers.indexOf(h.ip) >= 0 && !h.gateway) add('server', 55, 'è il server DNS della rete');
   if (ctx.dhcpServer && ctx.dhcpServer === h.ip && !h.gateway) add('server', 45, 'è il server DHCP della rete');
 

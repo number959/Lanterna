@@ -68,8 +68,22 @@ COSA FA
   (802.11k/v/r), gli AP sullo stesso canale e il PC agganciato a un AP lontano;
   riconosce le reti con dominio. La sezione Infrastruttura censisce la
   sottorete, verifica la separazione tra le zone e i servizi critici e guida
-  un'autovalutazione delle misure organizzative. 77 guide spiegano come si
-  usa il programma, il computer e la rete, dalle basi alle reti cliniche.
+  un'autovalutazione delle misure organizzative.
+  Dalla versione 0.13.0 la sezione Rete locale disegna la mappa della rete:
+  ogni dispositivo con la sua icona (router, switch, access point, PC,
+  stampanti, NAS, telecamere, dispositivi medicali...), riconosciuto da solo
+  con il perche', le zone (la rete del PC, le altre VLAN, le reti Wi-Fi degli
+  stessi access point) e i percorsi animati del traffico di questo PC.
+  In Infrastruttura, "Reti e VLAN" trova le altre reti senza doverle
+  scrivere: rotte del PC, annunci dello switch ascoltati per un minuto
+  (LLDP, CDP, DTP, Spanning Tree: switch, porta, VLAN; serve il cavo e
+  l'avvio come amministratore, Polaris non trasmette nulla), sottoreti di
+  Active Directory, lettura SNMP in sola lettura di router e switch con le
+  tue credenziali e inventario di un'altra rete attraverso il router; poi
+  le porta nel test di segmentazione.
+  79 guide, con schemi animati e nove videoguide narrate dalla voce italiana
+  di Windows (Elsa, se installata), spiegano come si usa il programma, il
+  computer e la rete, dalle basi alle reti cliniche.
 
 REQUISITI
   - Windows 10 o 11, 64 bit.
@@ -140,6 +154,23 @@ RIGA DI COMANDO (Prompt dei comandi o PowerShell, nella cartella del programma)
   polaris-cli speedtest --accetto     test di velocita' di Internet con
                                       M-Lab; senza --accetto mostra solo il
                                       testo del consenso, --json
+  polaris-cli discover routes         altre reti private note al PC
+                                      (tabella di instradamento)
+  polaris-cli discover l2             annunci dello switch sulla porta del
+                                      PC: switch, porta, VLAN (cavo e
+                                      Prompt da amministratore; --secondi
+                                      da 10 a 180, predefinito 61)
+  polaris-cli discover ad             sottoreti di Active Directory (PC in
+                                      un dominio)
+  polaris-cli discover snmp IP --autorizzato
+                                      lettura SNMP in sola lettura di un
+                                      router o switch della rete interna;
+                                      --v3 con --auth SHA256 e --priv AES.
+                                      Le credenziali si scrivono quando
+                                      richieste e non si vedono a schermo
+                                      (oppure POLARIS_SNMP_COMMUNITY,
+                                      POLARIS_SNMP_USER, POLARIS_SNMP_AUTH_PASS,
+                                      POLARIS_SNMP_PRIV_PASS); --json
 
 STRUMENTI INCLUSI
   Nella cartella strumenti ci sono CrystalDiskInfo 9.9.2 e CrystalDiskMark
@@ -203,6 +234,16 @@ PRIVACY
   richiesta, solo verso indirizzi privati, con un ritmo prudente e senza
   scansioni di porte. Avviali solo su reti che sei autorizzato ad analizzare
   e, dove ci sono dispositivi medicali, d'accordo con l'ingegneria clinica.
+  Durante l'inventario una domanda mDNS e una ricerca SSDP restano nella
+  rete del PC: dei servizi annunciati si tengono solo i tipi, mai i nomi
+  dei dispositivi. Il produttore si ricava dal MAC con l'elenco pubblico
+  della IEEE incluso nel programma, senza Internet.
+  L'ascolto degli annunci dello switch non trasmette nulla. La lettura SNMP
+  interroga solo l'indirizzo privato che indichi, una richiesta alla volta,
+  dopo la conferma di essere autorizzato; le credenziali non vengono
+  salvate e non compaiono nei rapporti. Non si leggono contatto e posizione
+  degli apparati, le descrizioni delle porte e gli alias scritti dagli
+  amministratori; i numeri di serie si scartano.
   Il controllo dei certificati dei servizi interni si collega solo ai
   servizi che indichi (indirizzi privati), legge il certificato durante la
   negoziazione TLS e chiude senza inviare dati; l'attendibilita' e' quella di

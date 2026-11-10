@@ -17,6 +17,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/gosnmp/gosnmp"
+
+	"lanterna/internal/oui"
 )
 
 // Oggetti letti, controllati sui testi delle MIB. Sono gli unici che Collect
@@ -726,7 +728,7 @@ func (c *collector) arp() *Error {
 		ip, ok := ipFromIndex(idx[1:])
 		mac, ok2 := unicastMAC(bytesOf(v.Value)) // 0 = voce incompleta (RFC 4293)
 		if ok && ok2 {
-			list = append(list, entry{ip, ArpEntry{IfIndex: int(idx[0]), IP: ip.String(), MAC: mac}})
+			list = append(list, entry{ip, ArpEntry{IfIndex: int(idx[0]), IP: ip.String(), MAC: mac, Vendor: oui.Lookup(mac)}})
 		}
 	})
 	return o.add("ipNetToMediaPhysAddress", full, err)

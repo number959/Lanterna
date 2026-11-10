@@ -526,6 +526,74 @@ jobs:
             $st = Invoke-RestMethod "$base/speedtest"
             if ($st.left -ne 10) { throw "un test di velocità è stato consumato" }
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+      - name: Scoperta delle reti e delle VLAN (rotte, annunci dello switch, Active Directory, SNMP)
+        timeout-minutes: 6
+        run: |
+          # Rotte verso altre reti private: il comando non fallisce, anche senza rotte.
+          $r = (./polaris-cli.exe discover routes --json) -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw "discover routes: uscita $LASTEXITCODE" }
+          "Rotte verso reti private: $r"
+          $s = Get-Content scan.json -Raw | ConvertFrom-Json
+          "Rotte nell'analisi: $(@($s.lan.routes).Count)"
+          # Annunci dello switch: il runner è amministratore. In una macchina virtuale di solito non
+          # arriva nulla; conta che l'ascolto parta, finisca entro il tempo, risponda in italiano e
+          # non lasci sessioni di cattura o file temporanei.
+          $t0 = Get-Date
+          $o = (./polaris-cli.exe discover l2 --secondi 10 --json 2>&1) -join "`n"
+          $code = $LASTEXITCODE
+          "discover l2: uscita $code in $([math]::Round(((Get-Date) - $t0).TotalSeconds, 1)) s"
+          $o
+          if ($o -match 'panic|goroutine') { throw "errore interno nell'ascolto" }
+          $d = $o.Substring($o.IndexOf('{')) | ConvertFrom-Json
+          "Esito dell'ascolto: $($d.read), $($d.frames) trame, schede: $($d.adapters -join ', ') $($d.error)"
+          if ($d.read -notin @('ok', 'none', 'nowired', 'unsupported', 'error')) { throw "stato dell'ascolto inatteso: $($d.read)" }
+          $left = Get-NetEventSession -ErrorAction SilentlyContinue | Where-Object Name -like 'Polaris-L2-*'
+          if ($left) { throw "sessione di cattura rimasta aperta: $($left.Name -join ', ')" }
+          $tmp = Get-ChildItem -Path $env:TEMP -Filter 'polaris-l2-*' -ErrorAction SilentlyContinue
+          if ($tmp) { throw "file temporanei dell'ascolto non cancellati: $($tmp.Name -join ', ')" }
+          # Active Directory: il runner non è in un dominio.
+          $ad = ./polaris-cli.exe discover ad --json | ConvertFrom-Json
+          "Active Directory: $($ad.read) $($ad.error)"
+          if ($ad.read -ne 'nodomain') { throw "atteso nodomain, ottenuto $($ad.read)" }
+          # SNMP: senza autorizzazione e verso un indirizzo pubblico non parte nulla; la community
+          # non compare mai nei messaggi.
+          $env:POLARIS_SNMP_COMMUNITY = 'segreta-di-prova'
+          $n0 = (./polaris-cli.exe discover snmp 10.255.255.1 2>&1) -join "`n"
+          if ($LASTEXITCODE -eq 0 -or $n0 -notmatch 'autorizzato') { throw "SNMP senza autorizzazione accettato: $n0" }
+          $n1 = (./polaris-cli.exe discover snmp 8.8.8.8 --autorizzato 2>&1) -join "`n"
+          if ($LASTEXITCODE -eq 0 -or $n1 -notmatch 'privat') { throw "SNMP verso un indirizzo pubblico accettato: $n1" }
+          if ("$n0 $n1" -match 'segreta-di-prova') { throw "community nell'output" }
+          "SNMP rifiutato come previsto: $n1"
+          # API: richieste non valide rifiutate, stato iniziale vuoto, Active Directory via API.
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve', '--port', '8739' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $base = 'http://127.0.0.1:8739/api/discover'
+            foreach ($case in @(@{ u = "$base/l2"; b = '{"seconds":5}'; code = 400 }, @{ u = "$base/snmp"; b = '{"target":"10.0.0.2","creds":{"version":"2c","community":"x"}}'; code = 400 })) {
+              try {
+                Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $case.b $case.u | Out-Null
+                throw "accettato: $($case.u) $($case.b)"
+              } catch {
+                if ($_.Exception.Response.StatusCode.value__ -ne $case.code) { throw "atteso $($case.code) per $($case.u) $($case.b): $($_.Exception.Message)" }
+              }
+            }
+            $st = Invoke-RestMethod "$base/snmp"
+            if ($st.running -or @($st.results).Count -ne 0) { throw "stato SNMP iniziale inatteso" }
+            Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{}' "$base/ad" | Out-Null
+            $t = 0
+            do { Start-Sleep 1; $t++; $a = Invoke-RestMethod "$base/ad" } while ($a.running -and $t -lt 40)
+            "Active Directory via API: $($a.result.read)"
+            if ($a.result.read -ne 'nodomain') { throw "Active Directory via API: atteso nodomain" }
+          } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+      - name: Voci italiane per le videoguide (informativo)
+        continue-on-error: true
+        run: |
+          # Le videoguide usano le voci locali di Windows (Elsa per l'italiano), se installate:
+          # i runner sono in inglese, quindi qui si elencano soltanto.
+          Add-Type -AssemblyName System.Speech
+          $v = (New-Object System.Speech.Synthesis.SpeechSynthesizer).GetInstalledVoices() | ForEach-Object { "$($_.VoiceInfo.Name) [$($_.VoiceInfo.Culture)]" }
+          "Voci SAPI: $($v -join '; ')"
+          Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Speech_OneCore\Voices\Tokens' -ErrorAction SilentlyContinue | ForEach-Object { "Voce OneCore: $($_.PSChildName)" }
       - name: Test di velocità da riga di comando
         run: |
           $c = ./polaris-cli.exe bench cpu --quick --json | ConvertFrom-Json

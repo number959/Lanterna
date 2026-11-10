@@ -85,6 +85,10 @@ func runDiscover(args []string) error {
 		if !*authorized {
 			return errors.New("aggiungi --autorizzato per confermare di essere autorizzato a interrogare questo dispositivo")
 		}
+		// L'indirizzo si controlla prima di chiedere le credenziali.
+		if err := snmp.CheckTarget(pos[0]); err != nil {
+			return err
+		}
 		cr, err := snmpCreds(*v3, *auth, *priv, os.Stdin)
 		if err != nil {
 			return err

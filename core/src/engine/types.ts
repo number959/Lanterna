@@ -834,7 +834,8 @@ export interface SnmpResult {
     capsEnabled?: string[];
     mgmtIp?: string;
   }[];
-  arp: { ifIndex: number; ip: string; mac: string }[];
+  /** Righe della tabella ARP; vendor è il produttore dal prefisso del MAC. */
+  arp: { ifIndex: number; ip: string; mac: string; vendor?: string }[];
   fdb: { mac: string; port?: string; bridgePort: number; ifIndex?: number; fdbId?: number }[];
   sections: {
     system: SnmpStatus;

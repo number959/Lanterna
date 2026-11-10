@@ -23,7 +23,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { m, useReducedMotion } from 'motion/react';
 import type { Variants } from 'motion/react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { DiagramId } from '../guides';
 import { hexPath } from './brand';
@@ -1534,9 +1534,22 @@ export function Diagram({ id, caption }: { id: DiagramId; caption: string }) {
   const reduce = useReducedMotion();
   const [run, setRun] = useState(0);
   const D = DIAGRAMS[id];
+  // Sugli schermi stretti lo schema scorre in orizzontale: allora deve poter
+  // ricevere il focus, per scorrerlo anche con la tastiera.
+  const stage = useRef<HTMLDivElement>(null);
+  const [scrolls, setScrolls] = useState(false);
+  useEffect(() => {
+    const el = stage.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const check = () => setScrolls(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
     <figure className="diagram">
-      <div className="diagram-stage">
+      <div className="diagram-stage" ref={stage} {...(scrolls ? { tabIndex: 0, role: 'group', 'aria-label': `Schema che scorre in orizzontale: ${caption}` } : {})}>
         <D key={run} still={!!reduce} />
       </div>
       <figcaption>

@@ -648,7 +648,7 @@ mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: in
 .lvl { display: inline-flex; align-items: center; font-size: 11px; font-weight: 650; letter-spacing: 0.03em; padding: 2px 8px; border-radius: 999px; border: 1px solid; }
 .lvl.base { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-line); }
 .lvl.intermedio { color: var(--info); background: var(--info-bg); border-color: var(--info-line); }
-.lvl.avanzato { color: var(--signal); background: color-mix(in srgb, var(--signal) 12%, transparent); border-color: color-mix(in srgb, var(--signal) 35%, transparent); }
+.lvl.avanzato { color: var(--signal); background: color-mix(in srgb, var(--signal) 7%, transparent); border-color: color-mix(in srgb, var(--signal) 35%, transparent); }
 
 /* ---------- Guida: lettore ---------- */
 .reader { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 36px; align-items: start; }
@@ -672,7 +672,7 @@ mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: in
 .callout { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; margin: 18px 0; padding: 14px 16px; border-radius: var(--radius); border: 1px solid var(--c-line); background: var(--c-bg); }
 .callout.tip { --c: var(--accent-text); --c-bg: color-mix(in srgb, var(--accent) 7%, transparent); --c-line: color-mix(in srgb, var(--accent) 30%, transparent); }
 .callout.warn { --c: var(--warn); --c-bg: var(--warn-bg); --c-line: var(--warn-line); }
-.callout.clinic { --c: var(--p9); --c-bg: color-mix(in srgb, var(--p9) 9%, transparent); --c-line: color-mix(in srgb, var(--p9) 34%, transparent); }
+.callout.clinic { --c: var(--p9); --c-bg: color-mix(in srgb, var(--p9) 6%, transparent); --c-line: color-mix(in srgb, var(--p9) 34%, transparent); }
 .callout-icon { width: 30px; height: 34px; clip-path: var(--hex-clip); display: grid; place-items: center; background: color-mix(in srgb, var(--c) 18%, transparent); color: var(--c); }
 .callout-title { display: block; color: var(--c); font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 3px; }
 .callout p { margin: 0; }

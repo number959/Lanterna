@@ -23,9 +23,12 @@ nome, che non compare più all'utente.
             │    survey.ts      mappa del Wi-Fi per stanza                                │
             │    speedtest.ts   velocità di Internet (M-Lab ndt7), bufferbloat            │
             │    wifi.ts        canali, spettro, interferenza, AP della rete              │
+            │    devicetype.ts  tipo di ogni dispositivo dai segnali, con le ragioni      │
+            │    topology.ts    mappa della rete: zone, collegamenti, percorsi, posizioni │
+            │    discovery.ts   reti e VLAN scoperte, giudizi, test di segmentazione      │
             │    report.ts      rapporto testuale                                         │
             │    document.ts    documento stampabile: HTML A4 autonomo                    │
-            │  guides/   77 guide come dati tipizzati, glossario, ricerca                 │
+            │  guides/   79 guide come dati tipizzati, glossario, ricerca, videoguide     │
             │  demo/     PC e reti dimostrative Casa e Clinica, simulazioni               │
             │  ui/       interfaccia React (animazioni, suoni, grafici SVG, 10 viste)     │
             └───────────────▲───────────────────────────────▲────────────────────────────┘
@@ -41,6 +44,10 @@ nome, che non compare più all'utente.
    │   wlan/ ie/ netsh/  interpretazione byte per byte, collaudata ovunque   │
    │   probe/   DNS, UPnP/SSDP, porte e pannello del router, HTTPS          │
    │   infra/   inventario e verifiche su richiesta, ritmo prudente          │
+   │   oui/     produttore dal MAC: elenco pubblico IEEE incorporato         │
+   │   netdisc/ rotte verso altre reti, sottoreti di Active Directory        │
+   │   l2disc/  annunci dello switch (LLDP, CDP, DTP, STP), solo ascolto     │
+   │   snmp/    lettura SNMP v2c/v3 in sola lettura, su richiesta            │
    │   certs/   certificati TLS dei servizi interni, su richiesta            │
    │   survey/  mappa del Wi-Fi: un punto per volta, su richiesta           │
    │   speedtest/ client ndt7 di M-Lab, solo con il consenso                │
@@ -264,7 +271,11 @@ rispettati. Le scelte sono state verificate con axe-core: [VERIFICHE.md](VERIFIC
 | Router | connessione TCP alle porte di gestione comuni del **solo gateway**; intestazione e titolo del pannello | nessuna autenticazione |
 | Roaming | IE 54 (Mobility Domain e FT su DS), 70 (RM Enabled Capabilities, Neighbor Report) e 127 (Extended Capabilities, BSS Transition); AKM FT | per ogni rete visibile, dagli stessi beacon |
 | Dominio e DHCP | `GetComputerNameExW(ComputerNameDnsDomain)`; suffisso DNS e `Dhcpv4Server` da `GetAdaptersAddresses` | il server DHCP solo se la struttura restituita lo contiene |
-| Inventario (su richiesta) | `IcmpSendEcho` a ogni indirizzo della sottorete (circa 30 al secondo, 8 in parallelo), poi `GetIpNetTable`, DNS inverso e richiesta NetBIOS *node status* (UDP 137) ai soli dispositivi trovati | solo reti private; oltre /22 solo il blocco /24 del PC; interruzione dopo 4 minuti |
+| Inventario (su richiesta) | `IcmpSendEcho` a ogni indirizzo della sottorete (circa 30 al secondo, 8 in parallelo), poi `GetIpNetTable`, DNS inverso e richiesta NetBIOS *node status* (UDP 137) ai soli dispositivi trovati; durante il ping una domanda mDNS (224.0.0.251) e una ricerca SSDP (239.255.255.250) dalla scheda esaminata, con TTL, ruoli NetBIOS e produttore dal MAC (`internal/oui`, elenco IEEE incorporato) | solo reti private; oltre /22 solo il blocco /24 del PC; interruzione dopo 4 minuti; dei servizi mDNS solo i tipi, mai nomi di istanze o di host; un'altra sottorete si esamina solo con ping, DNS inverso e NetBIOS |
+| Rotte | `GetIpForwardTable2` | solo reti private diverse da quella del PC, con l'origine (DHCP, statica, rete collegata) |
+| Annunci dello switch (su richiesta) | cattura con il modulo NetEventPacketCapture di Windows (`New-NetEventSession`, filtro sui soli indirizzi di destinazione di LLDP, CDP/DTP/VTP e PVST+), lettura degli eventi della cattura e decodifica in Go (`internal/l2disc`) | solo da amministratore e sulle schede cablate; Polaris non trasmette nulla; la sessione e i file temporanei si eliminano sempre, anche dopo un'interruzione; descrizioni delle porte, alias e numeri di serie non si esportano |
+| Active Directory (su richiesta) | PowerShell con ADSI: oggetti `subnet` sotto `CN=Subnets,CN=Sites` della partizione di configurazione | solo per i PC in un dominio; nessuna descrizione degli oggetti |
+| SNMP (su richiesta) | gosnmp v1.47.0, SNMPv2c o v3 (USM): GET e GETBULK su SNMPv2-MIB, IF-MIB, IP-MIB, BRIDGE-MIB, Q-BRIDGE-MIB, CISCO-VTP-MIB e LLDP-MIB | una richiesta alla volta, almeno 50 ms tra una risposta e la successiva, al massimo un minuto; solo indirizzi IPv4 privati; niente sysContact, sysLocation, ifAlias e descrizioni LLDP; chiavi derivate dalle password azzerate dopo la lettura |
 | Verifiche (su richiesta) | connessione TCP alla porta indicata (aperta, chiusa con rifiuto, filtrata) o due ping; nomi risolti prima, preferendo IPv4 | solo destinazioni private, al massimo 64, 4 alla volta |
 | Certificati (su richiesta) | `crypto/tls` di Go con `InsecureSkipVerify` e `VerifyConnection` per leggere la catena senza rifiutarla; seconda negoziazione limitata a TLS 1.0/1.1 (`tls.InsecureCipherSuites`) per sapere se il servizio li accetta ancora; con TLS 1.3 la richiesta di un certificato client si vede da una lettura di un secondo dopo la negoziazione; SMTP con `EHLO` (l'indirizzo IP del PC, mai il nome) e `STARTTLS` sulle porte 25 e 587. Attendibilità con `CertGetCertificateChain` (archivio dell'utente, intermedi della catena in un archivio in memoria, uso `serverAuth`, `CACHE_ONLY_URL_RETRIEVAL`, `DISABLE_AUTH_ROOT_AUTO_UPDATE`: niente download) e stato tradotto in attendibile, radice non riconosciuta, catena incompleta, firma non valida, uso non previsto, revocato o non attendibile per scelta; scadenza calcolata dalle date | solo indirizzi privati, loopback e link-local: un nome deve portare solo a indirizzi privati e si provano, prima gli IPv4, finché uno risponde; al massimo 20 servizi, 4 alla volta, 3 s per collegarsi e 6 s per la negoziazione; si chiude subito, senza inviare dati (per la posta solo `EHLO` e `STARTTLS`) |
 | Computer: sistema | `RtlGetVersion`, registro (`CurrentVersion`, `CentralProcessor`, `HiberbootEnabled`, chiavi dei riavvii in sospeso), `GetTickCount64`, `GlobalMemoryStatusEx`, `GetSystemPowerStatus`, `PowerGetActiveScheme` | Windows 11 riconosciuto dalla build (il registro dice ancora "Windows 10") |
@@ -321,6 +332,13 @@ per la console, comoda negli script.
 | `POST /api/speedtest` | corpo `{"consent": true}` (esattamente `true`): `202` avvia il test con M-Lab; `400` senza consenso, `415` senza JSON, `403` da un'altra origine, `409` se c'è già un test, un'analisi, un test della CPU o del disco o una misura del Wi-Fi, `429` con `Retry-After` per i limiti (un test ogni 2 minuti, 10 al giorno), `501` se non disponibile |
 | `GET /api/speedtest` | test in corso con fase (`locate`, `idle`, `download`, `upload`), Mbit/s e latenza; eventuale errore, esito dell'ultimo (`SpeedTest`, senza IP), secondi di attesa e test rimasti oggi |
 | `DELETE /api/speedtest` | interrompe il test |
+| `POST /api/inventory` con `subnet` | `{"authorized": true, "subnet": "10.20.50.0/24"}`: inventario di un'altra sottorete privata (da /22 a /30) attraverso il router: solo ping, DNS inverso e NetBIOS, senza mDNS, SSDP e MAC |
+| `POST /api/discover/l2` | corpo `{"seconds": 61}` (da 10 a 180): `202` avvia l'ascolto passivo degli annunci dello switch (LLDP, CDP, DTP, Spanning Tree) sulle schede cablate con la cattura di Windows (NetEventPacketCapture); senza privilegi l'esito è `admin`; `400` con durata non valida, `409` se è già in corso |
+| `GET /api/discover/l2` | ascolto in corso (secondi trascorsi e previsti) o esito (`L2Discovery`: switch, porta, VLAN, DTP, Spanning Tree) |
+| `DELETE /api/discover/l2` | interrompe l'ascolto, chiudendo la sessione di cattura |
+| `POST /api/discover/ad` | corpo `{}`: legge le sottoreti di Active Directory (Siti e servizi) con una interrogazione al controller di dominio; `GET` l'esito (`ok`, `nodomain`, `unreachable`, `denied`, `error`) |
+| `POST /api/discover/snmp` | corpo `{"target": "10.0.0.2", "authorized": true, "creds": {"version": "3", "user": "...", "auth": "SHA256", "authPass": "...", "priv": "AES", "privPass": "..."}}` (o `{"version": "2c", "community": "..."}`): lettura in sola lettura, una richiesta alla volta, solo verso un indirizzo IPv4 privato. Le credenziali restano in memoria per la durata della lettura; mai nelle risposte né nei messaggi. `400` senza autorizzazione |
+| `GET /api/discover/snmp` | lettura in corso con il passo, ultimo errore con il tipo (`timeout`, `auth`, `notPrivate`...), esiti delle ultime 16 letture, uno per dispositivo; `defaultCommunity` dice se era stata usata una community predefinita (senza conservarla). `DELETE` interrompe |
 | `POST /api/bench` | corpo `{"kind": "cpu"}`, `{"kind": "disk", "drive": "C:", "confirm": true}` oppure `{"kind": "ram", "preset": "quick", "confirm": true}` (preset `quick`, `standard` o `long`: 3, 10 o 30 minuti): `202` avvia il test; `400` senza conferma, con unità o durata non valida, `422` se l'unità non è un disco locale o rimovibile, `409` se c'è un test, un'analisi, un'analisi dello spazio, una misura del Wi-Fi o il test di velocità di Internet in corso |
 | `GET /api/bench` | test in corso con fase e avanzamento (campioni al secondo per il processore), eventuale errore e ultimi risultati |
 | `DELETE /api/bench` | interrompe il test in corso; il file temporaneo del test del disco viene cancellato |

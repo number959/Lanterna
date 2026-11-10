@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/gosnmp/gosnmp"
+
+	"lanterna/internal/oui"
 )
 
 // fast è il ritmo dei test: stesse regole di Prudent, tempi brevi.
@@ -225,8 +227,11 @@ func TestCollectCoreSwitch(t *testing.T) {
 
 	wantArp := []ArpEntry{
 		{IfIndex: 20, IP: "10.20.0.30", MAC: "aa:bb:cc:00:00:01"},
-		{IfIndex: 10, IP: "192.168.10.7", MAC: "00:1b:a9:12:34:56"},
-		{IfIndex: 10, IP: "192.168.10.50", MAC: "3c:58:c2:11:22:33"},
+		{IfIndex: 10, IP: "192.168.10.7", MAC: "00:1b:a9:12:34:56", Vendor: oui.Lookup("00:1b:a9:12:34:56")},
+		{IfIndex: 10, IP: "192.168.10.50", MAC: "3c:58:c2:11:22:33", Vendor: oui.Lookup("3c:58:c2:11:22:33")},
+	}
+	if wantArp[1].Vendor != "Brother" {
+		t.Fatalf("produttore del MAC della stampante: %q", wantArp[1].Vendor)
 	}
 	if !reflect.DeepEqual(res.Arp, wantArp) {
 		t.Fatalf("ARP: %+v", res.Arp)
@@ -1008,6 +1013,17 @@ func TestPrivateIPv4(t *testing.T) {
 	} {
 		if privateIPv4(netip.MustParseAddr(ip)) != want {
 			t.Fatalf("%s", ip)
+		}
+	}
+}
+
+func TestCheckTargetExported(t *testing.T) {
+	if err := CheckTarget("192.168.1.2"); err != nil {
+		t.Fatalf("indirizzo privato rifiutato: %v", err)
+	}
+	for _, bad := range []string{"8.8.8.8", "", "10.0.0.0/24", "router.local", "192.168.1.255"} {
+		if err := CheckTarget(bad); err == nil {
+			t.Errorf("%q accettato", bad)
 		}
 	}
 }

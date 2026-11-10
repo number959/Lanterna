@@ -216,6 +216,7 @@ type ArpEntry struct {
 	IfIndex int    `json:"ifIndex"`
 	IP      string `json:"ip"`
 	MAC     string `json:"mac"`
+	Vendor  string `json:"vendor,omitempty"` // produttore dal prefisso del MAC (elenco IEEE incorporato)
 }
 
 // FdbEntry dice dietro quale porta lo switch ha visto un indirizzo MAC.
@@ -372,6 +373,15 @@ func Collect(ctx context.Context, target string, cr Creds, opt Options, progress
 		}
 	}
 	return res, nil
+}
+
+// CheckTarget controlla l'indirizzo come Collect, senza inviare nulla: serve
+// a rifiutare un indirizzo prima di chiedere le credenziali.
+func CheckTarget(target string) error {
+	if _, err := checkTarget(target); err != nil {
+		return err
+	}
+	return nil
 }
 
 // allowed decide quali indirizzi si possono interrogare. È una variabile
