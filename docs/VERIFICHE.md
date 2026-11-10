@@ -1300,3 +1300,105 @@ sull'informativa per il test di velocità con Measurement Lab.
   sviluppo non si raggiungono: richiesta rifiutata dal proxy, 403, non aggirata); l'avvio da chiavetta, l'Avvio protetto e la
   scrittura in modalità DD non sono stati provati su un PC.
 - **Etichette di Windows** nei passi nuovi: come per la 0.11.0, da ripercorrere su un Windows italiano.
+
+## 17. Versione 0.13.0: la rete, vista e spiegata
+
+**Cosa è nuovo** (motore 1.7.0, 6 voci nuove nel catalogo delle misure, 6 azioni nuove, 2 guide nuove: 79 in tutto; 10 schemi
+animati nuovi, 17 in tutto; 9 videoguide).
+- **Mappa della rete** (`engine/devicetype.ts`, `engine/topology.ts`, `ui/netmap.tsx`): il tipo di ogni dispositivo è un
+  punteggio tra segnali indipendenti (ruolo di gateway o firewall, capacità annunciate con LLDP o CDP, ruoli dei servizi
+  verificati, DNS e DHCP del PC, vicinanza del MAC al BSSID di una rete Wi-Fi, tipi UPnP, tipi di servizio DNS-SD, ruoli
+  NetBIOS, produttore dal MAC, nome, TTL, MAC casuale, nomi dati alle verifiche, nome della VLAN), con confidenza alta da 75
+  punti, media da 40 e le ragioni di ciascun tipo. Zone: la rete del PC, le altre sottoreti e VLAN (rotte, Active Directory,
+  SNMP, inventari, server del PC, servizi verificati) e le reti Wi-Fi degli stessi access point. Disposizione a dorsale sotto il
+  gateway: nessuna linea attraversa una zona. Pacchetti animati con `animateMotion`, fermi con "riduci movimento".
+- **Segnali dell'inventario** (`infra/mdns.go`, `ssdp.go`, `multicast*.go`, `netbios.go`): una domanda mDNS one-shot da una
+  porta effimera (mai la 5353) a 224.0.0.251, prima la meta-domanda PTR `_services._dns-sd._udp.local` (RFC 6763, 9) poi le
+  domande per i tipi trovati; nomi di istanze e di host restano in memoria il tempo di collegare i servizi agli indirizzi e
+  nell'inventario finiscono solo i tipi (`_ipp._tcp`); i record TXT non si leggono. Ricerca SSDP a 239.255.255.250:1900 con
+  i soli tipi URN e l'intestazione SERVER. TTL della risposta al ping e ruoli dai suffissi dei nomi NetBIOS. Tutto dalla sola
+  scheda esaminata e solo per la rete del PC.
+- **Produttore dal MAC** (`internal/oui`): elenco pubblico della IEEE Registration Authority (MA-L, MA-M, MA-S) scaricato il
+  10/11/2026 da standards-oui.ieee.org (39.906, 6.601 e 7.235 blocchi), incorporato compresso (486 KB) e decompresso al primo
+  uso; esclusi i blocchi "Private" e quelli che la IEEE suddivide; vince il blocco più lungo; MAC casuali, di gruppo e nulli
+  non hanno produttore. Le pagine della IEEE non indicano una licenza per l'elenco: **condizioni d'uso da verificare**
+  (Debian lo ridistribuisce nel pacchetto `ieee-data` con una dichiarazione della IEEE del 2014, riportata in
+  `THIRD_PARTY_NOTICES.md`). Nomi abbreviati con regole scritte qui (forme societarie, alias noti).
+- **Rotte** (`internal/netdisc`): `GetIpForwardTable2` (MIB_IPFORWARD_ROW2 da 104 byte, letta campo per campo), solo reti
+  private da /8 a /30 diverse da quella del PC, con l'origine (DHCP, statica, rete collegata).
+- **Annunci dello switch** (`internal/l2disc`): cattura con il modulo NetEventPacketCapture di Windows, senza driver
+  aggiuntivi: sessione `Polaris-L2-<pid>` con il provider filtrato sui cinque indirizzi di destinazione di LLDP, CDP/DTP/VTP e
+  PVST+, schede cablate in modalità promiscua per la durata dell'ascolto (cambia solo ciò che la scheda accetta, non trasmette
+  nulla), poi lettura degli eventi 1001 del file della cattura e decodifica in Go. La sessione e i file temporanei si eliminano
+  sempre, anche dopo un'interruzione (secondo script di pulizia, cartelle vecchie rimosse all'avvio successivo). Decodificatori
+  per Ethernet II, fino a due etichette 802.1Q, 802.3 LLC/SNAP; LLDP con le estensioni 802.1, 802.3 e LLDP-MED; CDP; DTP; BPDU
+  802.1D, 802.1w, 802.1s e PVST+. Numeri di serie scartati (campi LLDP-MED del numero di serie e dell'asset, campo 0x1001 di
+  CDP, nomi che sono numeri di serie); descrizioni delle porte e identificativi di tipo alias non si esportano (possono
+  contenere nomi di persone).
+- **Active Directory** (`internal/netdisc`): uno script PowerShell con ADSI legge gli oggetti `subnet` di Siti e servizi
+  (prefisso e sito, nessuna descrizione); errori del controller tradotti dai codici HRESULT.
+- **SNMP** (`internal/snmp`): gosnmp v1.47.0 (pubblicato il 23/10/2026, licenza BSD-2-Clause), SNMPv2c o SNMPv3 (USM con
+  SHA-1/SHA-2 o MD5, AES-128 o DES), una richiesta alla volta, almeno 50 ms tra una risposta e la successiva, 16 righe per
+  GETBULK, al massimo 4.096 righe per tabella e un minuto in tutto. Oggetti letti, controllati sui testi delle MIB:
+  SNMPv2-MIB (sysDescr, sysObjectID, sysUpTime, sysName), IF-MIB (ifDescr, ifType, ifName), IP-MIB (ipAddrTable,
+  ipNetToMediaTable), BRIDGE-MIB e Q-BRIDGE-MIB (MAC per porta, nomi delle VLAN), CISCO-VTP-MIB (VLAN), LLDP-MIB (vicini e
+  indirizzi di gestione). Mai sysContact, sysLocation, ifAlias e descrizioni LLDP. Credenziali: nascoste nella stampa e nel
+  JSON delle strutture, cache globale delle chiavi derivate di gosnmp spenta, chiavi azzerate dopo ogni lettura.
+- **API e riga di comando** (`server/discover.go`, `cmd/lanterna/discover.go`): `/api/discover/l2`, `/ad`, `/snmp` con
+  avanzamento e interruzione; SNMP solo con `"authorized": true` e corpo JSON; le ultime 16 letture, una per dispositivo,
+  senza credenziali; `defaultCommunity` segnala che il tecnico ha usato "public" o "private" senza conservarla. `polaris-cli
+  discover routes|l2|ad|snmp`: le credenziali SNMP si chiedono senza eco della console o si leggono da variabili d'ambiente,
+  mai dagli argomenti; l'indirizzo si controlla prima di chiederle. Inventario di un'altra sottorete privata (da /22 a /30)
+  attraverso il router: solo ping, DNS inverso e NetBIOS.
+- **Motore della scoperta** (`engine/discovery.ts`): le fonti si uniscono per prefisso e per numero di VLAN; la VLAN 1
+  annunciata da SNMP conta solo se usata, le VLAN 1002-1005 di servizio Cisco no; un prefisso che contiene altre reti note
+  (una /16 di Active Directory) è un aggregato; la /24 ricavata dall'indirizzo di un server è presunta. Giudizi `lan.vlans`,
+  `lan.switchport`, `lan.dtp`, `lan.vlan1`, `lan.stp`, `lan.snmp` con le soglie scritte nel catalogo. Test di segmentazione
+  precompilato: fino a due dispositivi noti per rete come "deve essere isolata", i server DNS come "deve rispondere" sulla
+  porta 53; mai le interfacce dei router (spesso rispondono anche quando l'isolamento funziona), mai le reti dei server e i
+  servizi già verificati come necessari.
+- **Videoguide** (`guides/video.ts`, `ui/videoguide.tsx`): Web Speech API con le sole voci locali (`localService`) in
+  italiano, Elsa per prima; una frase alla volta, sottotitoli, capitoli, velocità, silenzio e trascrizione; senza voce
+  italiana restano i sottotitoli a tempo (14 caratteri al secondo, almeno 2,4 secondi a frase). Nessun testo esce dal PC.
+- **Guide**: 10 schemi animati nuovi, inseriti accanto al testo che spiegano, e la guida "Scoprire le VLAN e le altre reti",
+  che copre le misure e le azioni nuove; 235 voci di glossario.
+
+**Fonti delle affermazioni nuove.** LLDP: IEEE 802.1AB (intervallo di trasmissione predefinito di 30 secondi) e ANSI/TIA-1057
+per LLDP-MED; CDP ogni 60 secondi è il valore predefinito di Cisco; Spanning Tree: priorità predefinita 32768 e tempi (hello
+2 s, forward delay 15 s, max age 20 s) da IEEE 802.1D; SNMP: RFC 3414 e i testi delle MIB elencate; mDNS e DNS-SD: RFC 6762 e
+6763; Active Directory: struttura di `CN=Subnets,CN=Sites` nella partizione di configurazione. **Da verificare**: il
+significato dei byte di stato e di tipo di DTP, che non ha una specifica pubblica (Polaris segue il dissettore di Wireshark e
+riporta anche i byte originali); l'evento 1001 e i nomi dei campi `Fragment` e `MiniportIfIndex` del provider di cattura,
+ricavati dal codice di etl2pcapng di Microsoft (licenza MIT) e di PSDiscoveryProtocol e non confrontati con il manifest del
+provider su un PC; il significato di `-TruncationLength 0` (pacchetto intero), non documentato da Microsoft; l'offset della
+VLAN nelle BPDU PVST+ (dal dissettore di Wireshark).
+
+**Test automatici.** vitest: 482 test (37 in più della 0.12.0), tra cui unione delle fonti e VLAN della porta, aggregati e
+reti presunte, destinazioni del test di segmentazione (niente router, reti dei server o servizi necessari), giudizi su porta,
+DTP, VLAN 1, Spanning Tree e SNMP (community predefinita, porta in trunk, half duplex), mappa con le zone delle VLAN, i siti di
+Active Directory, lo switch tra PC e gateway e i tipi dei dispositivi visti via SNMP, documento senza credenziali, videoguide
+(voci locali, ripiego sui sottotitoli). Go: tutti i pacchetti, con `go vet` per Linux e per Windows amd64, 386 e arm64 e
+`go test -race`; nei pacchetti nuovi 54 prove per `l2disc` (trame costruite byte per byte, limiti contro le trame artefatte,
+lettura dell'uscita della cattura), 34 per `snmp` contro un dispositivo SNMP simulato su 127.0.0.1 (anche SNMPv3 con
+autenticazione e cifratura vere; il dispositivo finto contiene sysContact, sysLocation, ifAlias e descrizioni LLDP e le prove
+verificano che non vengano mai chiesti né restituiti), 10 per `oui`, le API della scoperta (credenziali mai nelle risposte) e
+la riga di comando. Durante lo sviluppo, una tantum: fuzzing dei decodificatori (60 secondi, circa 2 milioni di trame) e
+dell'uscita della cattura (30 secondi, circa 1,8 milioni), nessun errore. Il motore gira anche in goja con gli stessi giudizi
+(prova nuova con annunci, SNMP, Active Directory e inventario remoto).
+
+**Interfaccia**, Chromium sulla build di produzione, axe-core (WCAG 2.1 A e AA): Rete locale con la mappa, Infrastruttura con
+"Reti e VLAN" dopo l'ascolto simulato e con i dettagli SNMP aperti, guida della mappa con la videoguida aperta, guide con gli
+schemi nuovi a fine animazione; demo di casa e della clinica, temi scuro e chiaro, 1366 e 390 px. Trovati e corretti tre
+problemi: il titolo delle note per la sanità a 4,49:1 e l'etichetta del livello "avanzato" a 4,44:1 nel tema chiaro (sfondo
+schiarito: ora sopra 4,5:1) e gli schemi che su telefono scorrono in orizzontale senza poter ricevere il focus da tastiera
+(ora lo ricevono, solo quando scorrono). Dopo le correzioni: **0 violazioni**, nessuno scorrimento orizzontale della pagina,
+nessun errore della pagina. Dalle schermate: la priorità dello Spanning Tree era mostrata con l'estensione (32798 invece di
+32768 più la VLAN), i dispositivi delle altre VLAN risultavano quasi tutti "sconosciuti" (ora produttore dal MAC anche via SNMP
+e nome della VLAN come indizio: nella demo della clinica da 13 a 1) e il test precompilato proponeva come "da isolare" anche
+server che devono rispondere: corretti.
+
+**Exe sotto Wine 9.0** (pacchetto costruito con `scripts/build-windows.sh`, senza i programmi inclusi). `polaris-cli version`
+dice 0.13.0 con il motore 1.7.0; `report --quick --json` finisce in 13 secondi senza errori nuovi; `discover routes` legge la
+tabella di instradamento (nessuna rete privata oltre a quella del PC); `discover ad` dice `nodomain`; `discover l2 --secondi
+10` finisce con un errore in italiano (Wine non ha la cattura di Windows), senza lasciare file; `discover snmp 8.8.8.8
+--autorizzato` rifiuta l'indirizzo pubblico prima di chiedere la community (prima la chiedeva: corretto).
