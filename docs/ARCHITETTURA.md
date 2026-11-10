@@ -250,6 +250,21 @@ Organizzazione di `core/src/ui/`:
   percentile, massimo con l'ora, perdite, interruzioni di almeno tre ping consecutivi, picchi oltre 2,5 volte il valore tipico) e
   CSV per i fogli di calcolo italiani (`;` e virgola decimale). Tre misure perse di fila suonano un richiamo, il ritorno della
   connessione un segnale di via libera.
+- `isoprims.tsx`, `isoart.tsx`, `isoart-net.tsx`, `isoart-home.tsx` (dalla 0.13.0): i dispositivi in prospettiva isometrica (30°),
+  uno per tipo, disegnati a linee nel colore corrente con tre toni per le facce, appoggiati sul punto a terra del nodo
+  (`IsoDevice`, `isoTop` per l'altezza). Li usano la mappa e il traffico passo passo.
+- `netmap.tsx` e `netmap-iso.ts`: la mappa della rete. La disposizione del motore (`engine/topology.ts`) si proietta sul piano a
+  30° (`spaceMap`, `buildScene`): le zone diventano piattaforme con il titolo in un punto libero, i percorsi seguono gli assi della
+  griglia, il percorso scelto ha due corsie (andata e ritorno) con le frecce e il pacchetto con l'etichetta. All'apertura la
+  telecamera parte vicina a questo PC e si allontana mentre zone e dispositivi entrano in ordine di distanza; la telecamera scrive
+  la trasformazione direttamente nel gruppo SVG dentro `requestAnimationFrame`, senza far ridisegnare React. Con "riduci
+  movimento" niente entra, niente scorre e lo zoom è immediato. Le funzioni pure (proiezione, titoli, corsie, inquadrature,
+  entrata) sono provate in `test/netmap-iso.test.ts`.
+- `traffic.tsx` e `trafficlayout.ts`: il traffico passo passo. Le scene vengono da `engine/traffic.ts`; la vista della rete mette i
+  nodi su una griglia isometrica (`isoScene`: strada principale a zig-zag, servizi in colonna con una dorsale comune, schermo
+  stretto dall'alto in basso) e li mostra quando il primo pacchetto va verso di loro (`revealed`); una telecamera con zoom
+  logaritmico (`sceneCamera`, `lerpCamera`) inquadra quelli già comparsi con le etichette intere. Le etichette si accorciano solo
+  se toccherebbero altro, mai negli indirizzi (`frameScene`); prove in `test/traffic.test.ts`.
 - Autovalutazione e destinazioni delle verifiche restano in `localStorage`, separate per contesto (rete, demo); l'App le unisce
   allo `Scan` prima dell'analisi e delle esportazioni. Il MAC del router di ogni rete è ricordato per segnalare un cambio.
 

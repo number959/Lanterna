@@ -1874,45 +1874,90 @@ a.btn { text-decoration: none; }
 .netmap.console .nm-stage {
   border-color: var(--line-strong);
   background-color: var(--bg);
-  background-image: linear-gradient(rgba(120, 180, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(120, 180, 255, 0.05) 1px, transparent 1px);
-  background-size: 28px 28px;
+  background-image: radial-gradient(120% 90% at 50% 40%, rgba(40, 70, 150, 0.16), transparent 70%);
 }
-.netmap.console .nm-grid-dot { fill: transparent; }
 .netmap.console .nm-chip, .netmap.console .btn, .netmap.console .nm-search input { font-family: var(--mono); }
 .netmap.console .nm-chip { font-size: 12px; }
-.netmap.console .nm-zone-title { font: 650 12px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; fill: var(--text); }
-.netmap.console .nm-zone-sub { font: 500 11px var(--mono); fill: var(--text-3); }
-.netmap.console .nm-zone rect { stroke-dasharray: 5 6; }
-.netmap.console .nm-link { stroke: rgba(150, 185, 230, 0.55); stroke-width: 1.6; }
-.netmap.console .nm-link.nm-internet { stroke: rgba(79, 214, 238, 0.6); stroke-width: 2.2; stroke-dasharray: 6 6; }
-.netmap.console .nm-link.nm-backbone { stroke: rgba(63, 208, 255, 0.5); stroke-width: 2; }
-.netmap.console .nm-bus { stroke: rgba(150, 185, 230, 0.4); stroke-width: 1.6; stroke-dasharray: 2 5; }
-.netmap.console .nm-drop { stroke: rgba(150, 185, 230, 0.32); stroke-dasharray: 3 4; }
-.netmap.console .nm-link-label { font: 600 10.5px var(--mono); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
-.netmap.console .nm-flow-line { stroke-dasharray: 5 6; opacity: 0.45; stroke-width: 1.8; }
-.netmap.console .nm-flow.active .nm-flow-line { opacity: 0.9; stroke-width: 2.4; filter: none; }
-.netmap.console .nm-canvas.live .nm-flow.active .nm-flow-line { animation: nm-march 0.9s linear infinite; }
 @keyframes nm-march { to { stroke-dashoffset: -22; } }
-.netmap.console .nm-packet { fill: currentColor; filter: none; }
 .nm-pkt-t { font: 700 10.5px var(--mono); fill: #04101f; letter-spacing: 0.02em; }
-.netmap.console .nm-node .nm-hit { fill: transparent; stroke: none; }
-.netmap.console .nm-node:hover .nm-hit { fill: rgba(120, 180, 255, 0.06); }
-.netmap.console .nm-node:focus-visible .nm-hit { stroke: var(--accent); stroke-width: 2; fill: rgba(63, 208, 255, 0.06); }
 .netmap.console .nm-node.self .nm-glyph { color: #b9e9ff !important; }
-.netmap.console .nm-sel-ring { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 4 4; }
-.netmap.console .nm-inferred { fill: none; stroke: rgba(150, 185, 230, 0.6); stroke-width: 1.4; stroke-dasharray: 3 4; }
-.netmap.console .nm-label { font: 600 11px var(--mono); fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
-.netmap.console .nm-ip { font: 500 10px var(--mono); fill: var(--text-3); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
 .netmap.console .nm-you { font: 700 10px var(--mono); fill: var(--accent-text); letter-spacing: 0.08em; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
-.netmap.console .nm-halo { stroke: var(--accent); stroke-width: 1.6; }
-.netmap.console .nm-stop circle { fill: var(--bg); stroke: var(--c-blocked); }
-.netmap.console .nm-stop path { stroke: var(--c-blocked); }
 .netmap.console .nm-panel { background: rgba(10, 24, 48, 0.97); border-color: var(--line-strong); backdrop-filter: none; }
 .netmap.console .nm-panel b { font-family: var(--mono); }
 .netmap.console .nm-why, .netmap.console .nm-signals, .netmap.console .nm-path, .netmap.console .nm-kv { font-family: var(--font); }
 .netmap.console .nm-flow-note, .netmap.console .nm-note, .netmap.console .nm-legend { font-family: var(--font); }
 .netmap.console .nm-flows-title { font-family: var(--mono); }
 .netmap.console .table-wrap { background: var(--bg); }
+
+/* Mappa in prospettiva isometrica (30°): zone come piattaforme a terra con lo
+   spessore sui lati davanti, dispositivi a linee in piedi sul loro punto,
+   due corsie tratteggiate per il percorso scelto (andata e ritorno) con le
+   punte di freccia, pacchetto con l'etichetta del protocollo e la
+   destinazione. L'entrata in scena usa solo transform e opacity. */
+.netmap.console .nm-zone { --zt: #7f9cf5; }
+.netmap.console .nm-zone-local { --zt: #3fd0ff; }
+.netmap.console .nm-zone-remote { --zt: #a98bff; }
+.netmap.console .nm-zone-wifi { --zt: #3ddc97; }
+.netmap.console .nm-plat-t { fill: color-mix(in srgb, var(--zt) 7%, #0a1736); stroke: color-mix(in srgb, var(--zt) 62%, transparent); stroke-width: 1.3; stroke-dasharray: 6 5; stroke-linejoin: round; }
+.netmap.console .nm-plat-l { fill: color-mix(in srgb, var(--zt) 22%, #0a1430); stroke: color-mix(in srgb, var(--zt) 45%, transparent); stroke-width: 1; stroke-linejoin: round; }
+.netmap.console .nm-plat-r { fill: color-mix(in srgb, var(--zt) 12%, #070f24); stroke: color-mix(in srgb, var(--zt) 45%, transparent); stroke-width: 1; stroke-linejoin: round; }
+.netmap.console .nm-plat-lat { fill: none; stroke: rgba(150, 180, 255, 0.075); stroke-width: 1; pointer-events: none; }
+.netmap.console .nm-zone-title { font: 700 12px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+.netmap.console .nm-zone-sub { font: 500 11px var(--mono); fill: color-mix(in srgb, var(--zt) 55%, var(--text-2)); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+.netmap.console .nm-zone-note { margin: 0; font: 11px/1.35 var(--mono); color: var(--text-3); text-align: center; }
+.netmap.console .nm-bus { stroke: color-mix(in srgb, var(--zt) 45%, transparent); stroke-width: 1.4; stroke-dasharray: 2 5; stroke-linecap: round; fill: none; }
+.netmap.console .nm-drop { stroke: rgba(150, 185, 230, 0.34); stroke-width: 1.1; stroke-dasharray: 3 4; fill: none; }
+.netmap.console .nm-link { stroke: rgba(150, 185, 230, 0.5); stroke-width: 1.5; }
+.netmap.console .nm-link.nm-backbone { stroke: rgba(63, 208, 255, 0.5); stroke-width: 1.8; stroke-dasharray: 7 5; }
+.netmap.console .nm-link.nm-routed { stroke: rgba(190, 160, 255, 0.55); stroke-dasharray: 7 5; }
+.netmap.console .nm-link.nm-internet { stroke: rgba(79, 214, 238, 0.6); stroke-width: 1.8; stroke-dasharray: 6 6; }
+.netmap.console .nm-link.nm-wifi { stroke: rgba(61, 220, 151, 0.7); stroke-width: 2; stroke-dasharray: 2 7; }
+.netmap.console .nm-link-label { font: 600 10.5px var(--mono); fill: var(--text-2); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+/* Corsie del traffico. I tratteggi che scorrono hanno periodo 11 (nm-march sposta di 22). */
+.netmap.console .nm-flow-line { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-dasharray: 4 6; opacity: 0.4; stroke-linecap: round; stroke-linejoin: round; }
+.netmap.console .nm-lane { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-dasharray: 5 6; opacity: 0.95; stroke-linecap: round; stroke-linejoin: round; }
+.netmap.console .nm-lane.res { opacity: 0.55; stroke-dasharray: 3 8; }
+.netmap.console .nm-arrow { fill: currentColor; stroke: none; }
+.netmap.console .nm-arrow.res { opacity: 0.6; }
+.netmap.console .nm-canvas.live .nm-lane { animation: nm-march 0.9s linear infinite; }
+.netmap.console .nm-canvas.live .nm-lane.res { animation-direction: reverse; animation-duration: 1.2s; }
+.netmap.console .nm-legend-lanes { color: var(--c-https); }
+.netmap.console .nm-packet { fill: currentColor; stroke: var(--bg); stroke-width: 1.5; }
+.netmap.console .nm-packet.res { fill: var(--bg); stroke: currentColor; stroke-width: 1.8; }
+.netmap.console .nm-pkt-stem { stroke: currentColor; stroke-width: 1.2; stroke-dasharray: 2 2; }
+.netmap.console .nm-pkt-box { fill: #071229; stroke: currentColor; stroke-width: 1; }
+.netmap.console .nm-pkt-i { font: 500 9.5px var(--mono); fill: var(--text); }
+.netmap.console .nm-stop circle { fill: var(--bg); stroke: var(--c-blocked); stroke-width: 2.2; }
+.netmap.console .nm-stop path { stroke: var(--c-blocked); stroke-width: 2.4; stroke-linecap: round; }
+.netmap.console .nm-stop .nm-stop-ground { fill: none; stroke: var(--c-blocked); stroke-width: 1.2; stroke-dasharray: 2 3; opacity: 0.8; }
+/* Dispositivi: anelli a terra (ellissi isometriche) e anello del fuoco. */
+.netmap.console .nm-node .nm-hit { fill: transparent; stroke: none; }
+.netmap.console .nm-node:hover .nm-hit { fill: rgba(120, 180, 255, 0.07); }
+.netmap.console .nm-node:focus-visible .nm-hit { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; fill: rgba(63, 208, 255, 0.07); }
+.netmap.console .nm-sel-ring { fill: rgba(63, 208, 255, 0.1); stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 6; }
+.netmap.console .nm-canvas.live .nm-sel-ring { animation: nm-march 1.2s linear infinite; }
+.netmap.console .nm-self-ring { fill: rgba(63, 208, 255, 0.12); stroke: rgba(63, 208, 255, 0.75); stroke-width: 1.4; }
+.netmap.console .nm-halo { fill: none; stroke: var(--accent); stroke-width: 1.6; opacity: 0.7; transform-box: fill-box; transform-origin: center; }
+.netmap.console .nm-halo.live { animation: nm-pulse 2.4s ease-out infinite; }
+.netmap.console .nm-inferred { fill: none; stroke: rgba(150, 185, 230, 0.7); stroke-width: 1.3; stroke-dasharray: 3 4; }
+.netmap.console .nm-label { font: 700 11px var(--mono); fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+.netmap.console .nm-ip { font: 500 10px var(--mono); fill: var(--text-2); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+.netmap.console .nm-node.sel .nm-label { fill: var(--accent-text); }
+/* Entrata in scena: le zone salgono, i dispositivi cadono uno alla volta,
+   i collegamenti si disegnano (maschera), poi compaiono i pacchetti. */
+.netmap.console .nm-enter .nm-zone { animation: nm-rise 0.46s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.netmap.console .nm-enter .nm-node-in { animation: nm-drop 0.38s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.netmap.console .nm-enter .nm-pkts { animation: nm-fade 0.25s ease-out both; animation-delay: var(--pk, 1.2s); }
+.netmap.console .nm-draw { fill: none; stroke: #fff; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: nm-draw 0.52s cubic-bezier(0.33, 1, 0.68, 1) both; }
+.netmap.console .nm-draw.wide { stroke-width: 18; }
+@keyframes nm-rise { from { opacity: 0; transform: translateY(22px); } }
+@keyframes nm-drop { from { opacity: 0; transform: translateY(-24px); } }
+@keyframes nm-fade { from { opacity: 0; } }
+@keyframes nm-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .netmap.console .nm-enter .nm-zone, .netmap.console .nm-enter .nm-node-in, .netmap.console .nm-enter .nm-pkts, .netmap.console .nm-draw { animation: none; stroke-dashoffset: 0; }
+  .netmap.console .nm-canvas.live .nm-lane, .netmap.console .nm-canvas.live .nm-sel-ring, .netmap.console .nm-halo.live { animation: none; }
+}
 
 /* ---------------------------------------------------------------- Videoguide */
 .vg { display: grid; gap: 10px; padding: 14px; border-radius: var(--radius); border: 1px solid var(--line-strong); background: var(--surface); outline: none; margin: 14px 0; }

@@ -196,10 +196,17 @@ export interface SceneNode {
   h: number;
   /** Ingombro del disegno con le etichette. */
   box: Rect;
+  /** Lo stesso, più stretto: il disegno e, sotto, le due righe di testo. */
+  parts: Rect[];
 }
 export interface Scene {
   zones: SceneZone[];
-  /** Dispositivi in ordine di profondità: prima quelli in fondo. */
+  /**
+   * Dispositivi in ordine di lettura, che è anche l'ordine del Tab: prima la
+   * catena verso Internet, poi zona per zona, riga per riga. In questa
+   * proiezione è anche un ordine di disegno corretto: di due dispositivi che si
+   * coprono, quello davanti viene dopo.
+   */
   nodes: SceneNode[];
   bounds: Rect;
 }
@@ -220,17 +227,31 @@ export function ellipsis(s: string, n: number): string {
 export const nodeScale = (n: MapNode) => (n.kind === 'internet' || n.gateway ? BIG_SCALE : NODE_SCALE);
 
 /** Ingombro di un dispositivo: il disegno sopra il punto a terra, nome e IP sotto. */
-export function nodeBox(n: MapNode, p: Pt, h: number): Rect {
+export function nodeParts(n: MapNode, p: Pt, h: number, sc: number): Rect[] {
   const name = ellipsis(n.label, LABEL_CHARS).length * NAME_CH;
   const ip = (n.ip ?? '').length * IP_CH;
-  const hw = Math.max(36, name / 2 + 3, ip / 2 + 3);
-  return { x0: p[0] - hw, x1: p[0] + hw, y0: p[1] - h - (n.self ? 18 : 4), y1: p[1] + 46 };
+  const tw = Math.max(name, ip) / 2 + 3;
+  const gw = 46 * sc;
+  return [
+    { x0: p[0] - gw, x1: p[0] + gw, y0: p[1] - h - (n.self ? 18 : 4), y1: p[1] + 17 },
+    { x0: p[0] - tw, x1: p[0] + tw, y0: p[1] + 17, y1: p[1] + (n.ip ? 45 : 33) },
+  ];
 }
+export const nodeBox = (n: MapNode, p: Pt, h: number, sc = NODE_SCALE): Rect => union(nodeParts(n, p, h, sc));
 
 export function zoneTexts(s: MapSegment, count: number): { title: string; sub: string } {
   const n = s.kind !== 'wifi' ? `${count} ${count === 1 ? 'dispositivo' : 'dispositivi'}` : 'rete Wi-Fi';
   const sub = s.kind === 'local' ? [s.vlan ? `VLAN ${s.vlan}` : '', s.subnet ?? '', n].filter(Boolean).join(' · ') : n;
   return { title: ellipsis(s.label, TITLE_MAX), sub };
+}
+
+/** Reticolo a terra di una zona: linee lungo i due assi isometrici, ogni "step" unità, da bordo a bordo. */
+export function latticePath(s: MapSegment, step = 28): string {
+  const out: string[] = [];
+  const seg = (a: Pt, b: Pt) => out.push(`M${a[0].toFixed(1)} ${a[1].toFixed(1)}L${b[0].toFixed(1)} ${b[1].toFixed(1)}`);
+  for (let x = s.x + step; x < s.x + s.w - 4; x += step) seg(project(x, s.y), project(x, s.y + s.h));
+  for (let y = s.y + step; y < s.y + s.h - 4; y += step) seg(project(s.x, y), project(s.x + s.w, y));
+  return out.join('');
 }
 
 function zoneCorners(s: MapSegment) {
@@ -260,14 +281,17 @@ export type Segment = [Pt, Pt];
 export function buildScene(map: NetworkMap, topOf: (k: DeviceKind) => number, wires: Segment[] = wireSegments(map)): Scene {
   const counts = new Map<string, number>();
   for (const n of map.nodes) counts.set(n.segment, (counts.get(n.segment) ?? 0) + 1);
+  const zoneIndex = new Map(map.segments.map((s, i) => [s.id, i]));
+  const zoneRank = (n: MapNode) => (n.segment === 'core' ? -1 : (zoneIndex.get(n.segment) ?? map.segments.length));
   const nodes: SceneNode[] = map.nodes
     .map((n) => {
       const p = project(n.x, n.y);
       const sc = nodeScale(n);
       const h = topOf(n.kind) * sc;
-      return { n, p, sc, h, box: nodeBox(n, p, h) };
+      const parts = nodeParts(n, p, h, sc);
+      return { n, p, sc, h, box: union(parts), parts };
     })
-    .sort((a, b) => a.p[1] - b.p[1] || a.p[0] - b.p[0]);
+    .sort((a, b) => zoneRank(a.n) - zoneRank(b.n) || a.n.y - b.n.y || a.n.x - b.n.x);
   const corners = map.segments.map((s) => ({ s, ...zoneCorners(s) }));
   const placed: Rect[] = [];
   const zones: SceneZone[] = corners.map((c) => {
@@ -315,10 +339,52 @@ export function buildScene(map: NetworkMap, topOf: (k: DeviceKind) => number, wi
 function labelCost(r: Rect, hulls: Pt[][], nodes: SceneNode[], wires: Segment[], placed: Rect[]): number {
   let cost = 0;
   for (const h of hulls) if (rectPolyOverlap(r, h)) cost += 4;
-  for (const n of nodes) if (rectsOverlap(r, n.box)) cost += 4;
+  for (const n of nodes) if (n.parts.some((b) => rectsOverlap(r, b))) cost += 4;
   for (const p of placed) if (rectsOverlap(r, p)) cost += 8;
   for (const s of wires) if (rectPolyOverlap(r, s)) cost += 1;
   return cost;
+}
+
+/**
+ * Etichetta di un collegamento (tempo di risposta, segnale Wi-Fi): accanto al
+ * tratto più lungo, dal lato in alto, nella prima posizione che non copre un
+ * dispositivo o un titolo.
+ */
+export function placeLinkLabel(pts: Pt[], text: string, obstacles: Rect[]): { x: number; y: number; anchor: 'start' | 'end'; rect: Rect } {
+  let seg = 1;
+  let bl = -1;
+  for (let i = 1; i < pts.length; i++) {
+    const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    if (l > bl) {
+      bl = l;
+      seg = i;
+    }
+  }
+  const a = pts[seg - 1];
+  const b = pts[seg];
+  const l = Math.max(1, bl);
+  const u: Pt = [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+  let up: Pt = [-u[1], u[0]];
+  if (up[1] > 0) up = [-up[0], -up[1]];
+  const w = text.length * 6.4 + 4;
+  const area = (r: Rect) => obstacles.reduce((t, o) => t + Math.max(0, Math.min(r.x1, o.x1) - Math.max(r.x0, o.x0)) * Math.max(0, Math.min(r.y1, o.y1) - Math.max(r.y0, o.y0)), 0);
+  let best: { x: number; y: number; anchor: 'start' | 'end'; rect: Rect } | undefined;
+  let bestArea = Infinity;
+  for (const off of [12, 22])
+    for (const f of [0.5, 0.38, 0.62, 0.26, 0.74])
+      for (const side of [up, [-up[0], -up[1]] as Pt]) {
+        const x = a[0] + (b[0] - a[0]) * f + side[0] * off;
+        const y = a[1] + (b[1] - a[1]) * f + side[1] * off + 4;
+        const anchor = side[0] < 0 ? 'end' : 'start';
+        const rect: Rect = { x0: anchor === 'end' ? x - w : x, x1: anchor === 'end' ? x : x + w, y0: y - 10, y1: y + 3 };
+        const cost = area(rect);
+        if (cost === 0) return { x, y, anchor, rect };
+        if (cost < bestArea) {
+          bestArea = cost;
+          best = { x, y, anchor, rect };
+        }
+      }
+  return best!;
 }
 
 // ---------------------------------------------------------------- geometria
@@ -451,7 +517,7 @@ export function offsetPolyline(input: Pt[], d: number): Pt[] {
       continue;
     }
     const dot = n1[0] * n2[0] + n1[1] * n2[1];
-    if (dot < -0.5) {
+    if (dot < -0.8) {
       out.push([p[0] + n1[0] * d, p[1] + n1[1] * d], [p[0] + n2[0] * d, p[1] + n2[1] * d]);
       continue;
     }
@@ -529,6 +595,32 @@ export function lerpView(a: View, b: View, t: number, w: number, h: number): Vie
 }
 
 export const easeOutCubic = (t: number) => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
+export const easeInOutCubic = (t: number) => {
+  const x = clamp(t, 0, 1);
+  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+};
+
+/** Riquadro di un percorso proiettato con i dispositivi che attraversa. */
+export function routeBounds(map: NetworkMap, scene: Scene, ids: string[]): Rect {
+  const boxes = scene.nodes.filter((s) => ids.includes(s.n.id)).map((s) => s.box);
+  const route = ids.length > 1 ? projectPath(routePoints(map, ids)) : [];
+  return union([...boxes, ...(route.length > 1 ? [hullRect(route)] : [])]);
+}
+
+/**
+ * Inquadra un percorso nell'area data. Se intero diventerebbe illeggibile
+ * (zoom sotto "readable"), inquadra l'ultimo tratto e, al limite, il solo
+ * dispositivo d'arrivo.
+ */
+export function frameRoute(map: NetworkMap, scene: Scene, ids: string[], area: Rect, kMax = 1.15, readable = 0.5): View {
+  const tries = [ids, ids.slice(-2), ids.slice(-1)].filter((t) => t.length > 0);
+  let v: View = { x: 0, y: 0, k: 1 };
+  for (const t of tries) {
+    v = frameView(routeBounds(map, scene, t), area, 0.2, kMax);
+    if (v.k >= readable) return v;
+  }
+  return v;
+}
 
 /** Area della scena che resta visibile accanto al pannello dei dettagli (a destra, o in basso sul telefono). */
 export function visibleArea(w: number, h: number, panel: 'right' | 'bottom' | 'none'): Rect {
@@ -579,13 +671,16 @@ export function entranceSchedule(map: NetworkMap): Entrance {
   zs.forEach((s, i) => zone.set(s.id, Math.round(i * zStep)));
   const node = new Map<string, number>();
   const ns = map.nodes.slice().sort((a, b) => (a.self ? -1 : b.self ? 1 : dist(a.x, a.y) - dist(b.x, b.y)));
-  const start = 160;
-  const lastStart = ENTER.total - ENTER.node - 260;
-  const step = ns.length > 1 ? Math.min(30, (lastStart - start) / (ns.length - 1)) : 0;
-  ns.forEach((n, i) => node.set(n.id, Math.round(start + i * step)));
-  const lastNode = start + Math.max(0, ns.length - 1) * step;
-  const wires = Math.round(Math.max(380, lastNode - 300));
-  const flows = Math.round(Math.min(ENTER.total - ENTER.wire, wires + 220));
-  const packets = flows + ENTER.wire - 120;
-  return { zone, node, wires, flows, packets, end: Math.max(packets + 200, lastNode + ENTER.node, flows + ENTER.wire) };
+  // Questo PC compare subito con la sua zona, poi gli altri a distanza crescente.
+  const start = 110;
+  const lastStart = ENTER.total - ENTER.node;
+  const rest = ns.length - (ns[0]?.self ? 1 : 0);
+  const step = rest > 1 ? Math.min(28, (lastStart - start) / (rest - 1)) : 0;
+  let k = 0;
+  for (const n of ns) node.set(n.id, n.self ? 0 : Math.round(start + k++ * step));
+  const lastNode = Math.max(0, ...node.values());
+  const wires = Math.round(Math.max(360, lastNode - 450));
+  const flows = Math.round(Math.min(ENTER.total - ENTER.wire - 80, wires + 220));
+  const packets = flows + ENTER.wire - 220;
+  return { zone, node, wires, flows, packets, end: Math.max(lastNode + ENTER.node, flows + ENTER.wire, wires + 160 + ENTER.wire, packets + 250) };
 }
