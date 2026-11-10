@@ -1312,6 +1312,16 @@ animati nuovi, 17 in tutto; 9 videoguide).
   punti, media da 40 e le ragioni di ciascun tipo. Zone: la rete del PC, le altre sottoreti e VLAN (rotte, Active Directory,
   SNMP, inventari, server del PC, servizi verificati) e le reti Wi-Fi degli stessi access point. Disposizione a dorsale sotto il
   gateway: nessuna linea attraversa una zona. Pacchetti animati con `animateMotion`, fermi con "riduci movimento".
+- **Il traffico passo passo** (`engine/traffic.ts`, `ui/traffic.tsx`, `ui/trafficlayout.ts`, `ui/deviceart.tsx`): sei scene
+  (sito web, DHCP, ping al gateway, traceroute, servizi verificati e zone isolate, stampa) costruite dai nodi e dai percorsi
+  della mappa e dai valori dell'analisi: tempo di risposta del server DNS, media del ping al gateway e verso Internet, salti
+  del traceroute, durata e stato della verifica HTTPS (sito e pagina presi dall'indirizzo verificato), esiti dei servizi e del
+  test di segmentazione. Ogni pacchetto ha origine, destinazione, protocollo, una riga di informazioni come in un analizzatore
+  di rete e la dimensione tipica; quelli verso una zona isolata che non risponde si fermano al gateway, le risposte da una zona
+  che doveva essere isolata sono segnate. Disposizione per distanza dal PC (la strada principale è quella verso Internet), con
+  un elenco e una linea comune quando tre o più nodi sono alla stessa distanza e dall'alto in basso sotto i 540 px; animazione
+  a fotogrammi, ferma con "riduci movimento" (i pacchetti compaiono già arrivati). Nessun pacchetto viene inviato: è una
+  ricostruzione, dichiarata come tale nella pagina e nella guida.
 - **Segnali dell'inventario** (`infra/mdns.go`, `ssdp.go`, `multicast*.go`, `netbios.go`): una domanda mDNS one-shot da una
   porta effimera (mai la 5353) a 224.0.0.251, prima la meta-domanda PTR `_services._dns-sd._udp.local` (RFC 6763, 9) poi le
   domande per i tipi trovati; nomi di istanze e di host restano in memoria il tempo di collegare i servizi agli indirizzi e
@@ -1402,3 +1412,46 @@ dice 0.13.0 con il motore 1.7.0; `report --quick --json` finisce in 13 secondi s
 tabella di instradamento (nessuna rete privata oltre a quella del PC); `discover ad` dice `nodomain`; `discover l2 --secondi
 10` finisce con un errore in italiano (Wine non ha la cattura di Windows), senza lasciare file; `discover snmp 8.8.8.8
 --autorizzato` rifiuta l'indirizzo pubblico prima di chiedere la community (prima la chiedeva: corretto).
+
+**Windows reale (CI)**, Windows Server 2025 Datacenter 24H2 (build 26100.33674) su una macchina virtuale Azure, come
+amministratore, con il passo nuovo "Scoperta delle reti e delle VLAN" e l'elenco informativo delle voci.
+- Run 88 (commit e9d0555) verde.
+- Run 89 e 90 (dea0eda e 12558e7) rosse nel passo della scoperta: tutte le prove erano riuscite, ma il rifiuto SNMP atteso
+  lasciava 1 come codice d'uscita di PowerShell, che diventava l'esito del passo. Corretto azzerandolo dopo le prove dei
+  rifiuti (commit bd5af85).
+- Run 91 (bd5af85) verde: `polaris-cli version` dice "0.13.0+bd5af85 (motore di analisi 1.7.0)", WebView2 156.0.4314.58.
+  `discover routes` elenca due reti collegate direttamente (10.1.0.0/20 e 172.20.176.0/20, senza router): nell'analisi il
+  motore non ne fa zone, perché non passano da un router della rete del PC. Ascolto degli annunci per 10 secondi sulle schede
+  "Ethernet 3" ed "Ethernet 4": nessuna trama (la macchina virtuale non riceve annunci di switch), finito in 13,4 secondi,
+  nessuna sessione di cattura e nessun file temporaneo rimasti. Active Directory "nodomain" da riga di comando e via API. SNMP
+  rifiutato senza `--autorizzato` e verso 8.8.8.8, la community di prova mai nell'uscita; API della scoperta: richieste non
+  valide rifiutate con 400, nessuna lettura SNMP all'avvio. Voci installate: solo inglesi (David, Zira e Mark, SAPI e
+  OneCore): la voce Elsa non si è potuta provare; su un PC così le videoguide usano i sottotitoli a tempo.
+
+**Revisione indipendente.** Revisori separati dallo sviluppo, senza modificare il codice, hanno cercato difetti nell'agente,
+nel motore, nell'interfaccia e nei testi della 0.13.0 e li hanno riprodotti: 17 segnalazioni, tutte corrette (commit bd5af85).
+- *Dati attribuiti alla rete sbagliata*: i risultati di ascolto, letture SNMP e inventari si univano anche a un rapporto
+  diverso da quello su cui erano partiti (dopo un'altra analisi o l'apertura di un file); ora solo allo stesso rapporto, con
+  lo stesso controllo dei test.
+- *Test di segmentazione*: tra i dispositivi "da isolare" proposti c'erano indirizzi probabili di router (primo o ultimo
+  indirizzo utile della rete, TTL da apparato di rete), che rispondono anche quando l'isolamento funziona: esclusi.
+- *Reti scoperte*: le reti collegate di schede virtuali, VPN o di una seconda scheda e le rotte aggregate diventavano zone
+  della mappa; ora contano solo le rotte che passano da un router della rete del PC. Con più schede cablate conta la scheda
+  principale; i prefissi CIDR si accettano solo interi.
+- *Mappa*: nodi doppi quando un secondo router era anche server DNS o lo switch di livello 3 era anche il gateway: corretti.
+- *Privacy*: i nomi letti via SNMP passano dallo stesso filtro dei numeri di serie degli annunci; dagli annunci LLDP non si
+  esportano più nemmeno gli identificativi di tipo "componente".
+- *Riconoscimento*: i produttori dal MAC si confrontano a parola intera (HP non è più HPE); il tipo dei dispositivi
+  nell'inventario e nel CSV è lo stesso della mappa.
+- *Ascolto dello switch*: il tempo massimo della richiesta non teneva conto della durata della cattura; un ascolto non
+  riuscito o interrotto sostituiva un esito buono precedente: ora lo conserva e mostra il messaggio.
+- *Interfaccia e riga di comando*: il modulo SNMPv3 senza autenticazione restava bloccato; le credenziali passate da una pipe
+  si leggevano solo in parte (ora un solo lettore); nelle videoguide il capitolo della scena corrente non ripartiva, il
+  silenzio non fermava subito la frase e i pulsanti a due stati cambiavano etichetta.
+- *Testi*: scansioni, DTP, VLAN della voce con LLDP-MED (arriva solo ai dispositivi che si presentano come telefoni),
+  grammatica.
+
+Dopo le correzioni: vitest 489 test, Go tutti i pacchetti con `go vet` per Linux e per Windows amd64 e 386 e `go test
+-race`. axe-core ripetuto sulla build con le correzioni (Rete locale, Infrastruttura con Reti e VLAN, guida della mappa con la
+videoguida aperta; casa e clinica, temi scuro e chiaro, 1366 e 390 px): 0 violazioni, nessuno scorrimento orizzontale,
+nessun errore della pagina.
