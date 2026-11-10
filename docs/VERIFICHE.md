@@ -1566,6 +1566,16 @@ transizioni finite su tutte le sezioni (clinica, scuro a 1366 e 390 px, chiaro a
 indipendente con tre agenti, previsto prima della pubblicazione, non è partito per il limite di utilizzo: i controlli qui sopra
 sono stati fatti direttamente, senza un secondo verificatore.
 
+**Esito della pubblicazione** (scritto dopo, sul ramo: il tag `v0.13.0` non contiene questo capoverso). Run 110 della CI verde
+su Linux e su Windows reale per il commit 087d277; poi workflow Release run 4 sullo stesso commit, con `draft` spento: test,
+build e test dell'agente rifatti in un ambiente pulito, tutti i passi riusciti. Controllato su GitHub subito dopo: release
+"STARNET Polaris 0.13.0" pubblicata il 10/11/2026 alle 23:40:24 UTC, non bozza, tag `v0.13.0` sul commit 087d277; allegati
+`STARNET-Polaris-0.13.0-windows-amd64.zip` (31 345 265 byte) e il suo `.sha256`; SHA-256 del pacchetto
+`bed651c46ba1384c429a975a00b2d70fcfec729e93054b589a4e8646085a1192`, uguale nelle note della release e nell'impronta che GitHub
+calcola da sé sul file caricato; la bozza precedente (costruita dal commit 68e33ae) non c'è più; 0.11.0 e 0.12.0 restano bozze.
+Non verificato: lo zip pubblicato non è stato scaricato né avviato su un PC. La CI ha collaudato su Windows reale l'eseguibile
+costruito dallo stesso commit nella run 110, che è un'altra build rispetto a quella del workflow Release.
+
 **Avvertenze: cosa resta da provare.**
 - **Ascolto degli annunci con uno switch vero** (Cisco, HPE Aruba, altri): provato con trame costruite, su milioni di trame
   casuali e su macchine virtuali che non ricevono annunci. Alcune schede di rete con un agente LLDP nel firmware trattengono
