@@ -35,7 +35,7 @@ import {
   trailOf,
   typedTarget,
 } from './trafficlayout';
-import type { Camera, Entry, IsoInfo, IsoScene, Pt } from './trafficlayout';
+import type { Camera, Entry, IsoInfo, IsoScene, Placed, Pt } from './trafficlayout';
 import './traffic.css';
 
 // "Il traffico passo passo": le scene ricostruite dal motore (traffic.ts) con
@@ -662,7 +662,7 @@ function IsoView({
         );
       })}
       {bubble && placed.get(bubble.id) && <TypingBubble p={placed.get(bubble.id)!.p} s={s} top={info(bubble.id).top} text={bubble.text} typed={typed} />}
-      {showPacket && pkt && <PacketMark pkt={pkt} routes={routes} prog={prog} w={w} placed={placed} />}
+      {showPacket && pkt && <PacketMark pkt={pkt} routes={routes} prog={prog} w={w} h={h} placed={placed} />}
     </svg>
   );
 }
@@ -687,7 +687,7 @@ function TypingBubble({ p, s, top, text, typed }: { p: Pt; s: number; top: numbe
   );
 }
 
-function PacketMark({ pkt, routes, prog, w, placed }: { pkt: TrafficPacket; routes: Pt[][]; prog: number; w: number; placed: Map<string, { p: Pt; s: number }> }) {
+function PacketMark({ pkt, routes, prog, w, h, placed }: { pkt: TrafficPacket; routes: Pt[][]; prog: number; w: number; h: number; placed: Map<string, Placed> }) {
   const end = reachOf(pkt);
   const p = along(routes, prog);
   const trail = trailOf(routes, prog);
@@ -704,8 +704,21 @@ function PacketMark({ pkt, routes, prog, w, placed }: { pkt: TrafficPacket; rout
   const stopAt = prog >= 1 && pkt.stopAt !== undefined ? mark(pkt.hops[end]) : undefined;
   // Passato da una zona che doveva essere isolata: un segnale rosso sul dispositivo isolato.
   const alarm = prog >= 1 && pkt.breach ? mark(breachNode(pkt)) : undefined;
-  const cx = Math.min(w - cw - 6, Math.max(6, p.x - lw / 2));
-  const cy = Math.max(4, p.y - 58);
+  const chipX = (q: Pt) => Math.min(w - cw - 6, Math.max(6, q.x - lw / 2));
+  const upY = (q: Pt) => Math.max(4, q.y - 58);
+  const downY = (q: Pt) => Math.min(h - 41, q.y + 18);
+  // Sopra il pacchetto, o sotto se all'arrivo sopra coprirebbe di più i nomi e
+  // i disegni: deciso una volta per pacchetto, così l'etichetta non salta.
+  const cover = (x: number, y: number) => {
+    let a = 0;
+    for (const pl of placed.values())
+      for (const b of [pl.label, pl.glyph]) a += Math.max(0, Math.min(x + cw, b.x1) - Math.max(x, b.x0)) * Math.max(0, Math.min(y + 37, b.y1) - Math.max(y, b.y0));
+    return a;
+  };
+  const last = along(routes, 1);
+  const below = cover(chipX(last), downY(last)) < cover(chipX(last), upY(last)) * 0.6;
+  const cx = chipX(p);
+  const cy = below ? downY(p) : upY(p);
   const sev = pkt.sev ?? 'warn';
   return (
     <g className="tx-packet" pointerEvents="none">
@@ -724,7 +737,7 @@ function PacketMark({ pkt, routes, prog, w, placed }: { pkt: TrafficPacket; rout
       )}
       <circle cx={p.x} cy={p.y} r={10} fill={color} opacity={0.2} />
       <circle cx={p.x} cy={p.y} r={4.8} fill={color} />
-      <line x1={p.x} y1={p.y - 6} x2={p.x} y2={cy + 37} className="tx-chip-l" style={{ stroke: color }} />
+      <line x1={p.x} y1={below ? p.y + 6 : p.y - 6} x2={p.x} y2={below ? cy : cy + 37} className="tx-chip-l" style={{ stroke: color }} />
       <g transform={`translate(${cx.toFixed(1)} ${cy.toFixed(1)})`}>
         <rect width={lw} height={18} rx={3} fill={color} />
         <text x={lw / 2} y={12.8} textAnchor="middle" className="tx-chip-t">
