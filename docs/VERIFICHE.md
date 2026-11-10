@@ -1427,6 +1427,8 @@ amministratore, con il passo nuovo "Scoperta delle reti e delle VLAN" e l'elenco
   rifiutato senza `--autorizzato` e verso 8.8.8.8, la community di prova mai nell'uscita; API della scoperta: richieste non
   valide rifiutate con 400, nessuna lettura SNMP all'avvio. Voci installate: solo inglesi (David, Zira e Mark, SAPI e
   OneCore): la voce Elsa non si è potuta provare; su un PC così le videoguide usano i sottotitoli a tempo.
+- Run 92, 93 e 94 (19cdaad, 2bfd39b e 68e33ae: il traffico passo passo, le verifiche e le correzioni della seconda
+  revisione) verdi su Linux e su Windows reale, con tutti i passi della scoperta delle reti.
 
 **Revisione indipendente.** Revisori separati dallo sviluppo, senza modificare il codice, hanno cercato difetti nell'agente,
 nel motore, nell'interfaccia e nei testi della 0.13.0 e li hanno riprodotti: 17 segnalazioni, tutte corrette (commit bd5af85).
@@ -1494,6 +1496,12 @@ nodi dentro il palco, etichette senza sovrapposizioni e indirizzi interi da 320 
 della clinica a 1366 px in tema scuro e della casa a 1920 px in tema chiaro): 0 violazioni, nessuno scorrimento orizzontale.
 axe lascia "da verificare" il contrasto dei testi dentro i disegni: misurato a mano sulla tavolozza della console, testi da
 6,4:1 a 16,8:1, etichette dei protocolli da 8,6:1, linee dei collegamenti 3,6:1 (alzate da 2,6:1 dopo la misura).
+
+**CI e pacchetto della release.** Run 92, 93 e 94 della CI verdi su Linux e su Windows reale (sopra). Release v0.13.0 creata
+come bozza il 10/11/2026 dal workflow Release (run 3, che rifà test e build in un ambiente pulito):
+`STARNET-Polaris-0.13.0-windows-amd64.zip`, costruito dal commit 68e33ae con la versione `0.13.0`, SHA-256
+`b987fcfb80b8fc894a97b920beda830b8286343424f1859e88ec4eebbf715a8a` (anche nel file `.sha256` allegato). Resta una bozza,
+visibile solo a chi gestisce il repository: la pubblicazione spetta a STARNET, come per la 0.11.0 e la 0.12.0.
 
 **Avvertenze: cosa resta da provare.**
 - **Ascolto degli annunci con uno switch vero** (Cisco, HPE Aruba, altri): provato con trame costruite, su milioni di trame
