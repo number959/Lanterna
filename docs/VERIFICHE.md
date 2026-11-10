@@ -1312,7 +1312,8 @@ animati nuovi, 17 in tutto; 9 videoguide).
   punti, media da 40 e le ragioni di ciascun tipo. Zone: la rete del PC, le altre sottoreti e VLAN (rotte, Active Directory,
   SNMP, inventari, server del PC, servizi verificati) e le reti Wi-Fi degli stessi access point. Disposizione a dorsale sotto il
   gateway: nessuna linea attraversa una zona. Pacchetti animati con `animateMotion`, fermi con "riduci movimento".
-- **Il traffico passo passo** (`engine/traffic.ts`, `ui/traffic.tsx`, `ui/trafficlayout.ts`, `ui/deviceart.tsx`): sei scene
+- **Il traffico passo passo** (`engine/traffic.ts`, `ui/traffic.tsx`, `ui/trafficlayout.ts`, `ui/deviceart.tsx`, poi sostituito
+  dai disegni isometrici, sotto): sei scene
   (sito web, DHCP, ping al gateway, traceroute, servizi verificati e zone isolate, stampa) costruite dai nodi e dai percorsi
   della mappa e dai valori dell'analisi: tempo di risposta del server DNS, media del ping al gateway e verso Internet, salti
   del traceroute, durata e stato della verifica HTTPS (sito e pagina presi dall'indirizzo verificato), esiti dei servizi e del
@@ -1500,8 +1501,8 @@ axe lascia "da verificare" il contrasto dei testi dentro i disegni: misurato a m
 **CI e pacchetto della release.** Run 92, 93 e 94 della CI verdi su Linux e su Windows reale (sopra). Release v0.13.0 creata
 come bozza il 10/11/2026 dal workflow Release (run 3, che rifà test e build in un ambiente pulito):
 `STARNET-Polaris-0.13.0-windows-amd64.zip`, costruito dal commit 68e33ae con la versione `0.13.0`, SHA-256
-`b987fcfb80b8fc894a97b920beda830b8286343424f1859e88ec4eebbf715a8a` (anche nel file `.sha256` allegato). Resta una bozza,
-visibile solo a chi gestisce il repository: la pubblicazione spetta a STARNET, come per la 0.11.0 e la 0.12.0.
+`b987fcfb80b8fc894a97b920beda830b8286343424f1859e88ec4eebbf715a8a` (anche nel file `.sha256` allegato). Quella bozza non è
+mai stata pubblicata ed è stata sostituita dalla release descritta in fondo a questa sezione ("Pubblicazione").
 
 **Mappa e traffico nello stile dell'esempio di STARNET** (dopo la bozza della release, su richiesta: "il grafico come
 quello"). La mappa della rete diventa una console blu notte in entrambi i temi, con i colori della pagina ridefiniti al suo
@@ -1548,7 +1549,22 @@ sovrapposte in tutti i percorsi delle due demo, firma della rete, titoli delle z
 elenco), nessuno scorrimento orizzontale. Fluidità misurata in Chromium senza scheda grafica: traffico, mediana 16,7 ms tra i
 fotogrammi nella scena più carica; mappa, 60 fps a riposo e durante il trascinamento, 37-56 fps durante l'entrata; con la mappa
 fuori vista il lavoro a riposo scende da circa 240 a circa 80 ms al secondo. Run 99-108 della CI verdi su Linux e su Windows reale
-(ultima: run 108, commit e33955f). La bozza della release v0.13.0 non contiene questo lavoro.
+(ultima: run 109, commit e514b5c).
+
+**Pubblicazione.** Su richiesta di STARNET ("Rilasciala", poi la scelta esplicita tra pubblicare e rifare la bozza) la 0.13.0
+viene pubblicata dal workflow Release sul commit che contiene questo testo, cioè quello del tag `v0.13.0`: il workflow rifà test
+e build in un ambiente pulito, sostituisce la bozza precedente della stessa versione (mai pubblicata, costruita prima della
+prospettiva isometrica) e crea la release con il pacchetto e la sua impronta. L'impronta SHA-256 del pacchetto pubblicato è in
+fondo alle note della release su GitHub e nel file `.sha256` allegato; il numero della run e l'impronta sono riportati anche in
+`docs/PIANO.md` del ramo, aggiornato dopo la pubblicazione. Le release 0.11.0 e 0.12.0 restano bozze. Controlli fatti subito
+prima, sul commit e514b5c più i soli testi: versioni allineate (`core/package.json`, `winres.json`: 0.13.0); numeri delle note
+ricontati nel codice (79 guide, 235 voci di glossario, 9 videoguide, sei scene del traffico); programmi inclusi e comandi della
+riga di comando come nelle note; 543 vitest e build verdi; giro dell'applicazione costruita con le due demo, temi scuro e chiaro,
+1366 e 390 px (76 pagine aperte: nessun errore in console, nessuna pagina vuota, nessuno scorrimento orizzontale); scorciatoie
+1-9 e 0 verso le dieci sezioni, nessun cambio di sezione mentre si scrive in un campo o premendo 0 sulla mappa; axe-core a
+transizioni finite su tutte le sezioni (clinica, scuro a 1366 e 390 px, chiaro a 1366 px): 0 violazioni. Un controllo
+indipendente con tre agenti, previsto prima della pubblicazione, non è partito per il limite di utilizzo: i controlli qui sopra
+sono stati fatti direttamente, senza un secondo verificatore.
 
 **Avvertenze: cosa resta da provare.**
 - **Ascolto degli annunci con uno switch vero** (Cisco, HPE Aruba, altri): provato con trame costruite, su milioni di trame

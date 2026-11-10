@@ -4,6 +4,7 @@ name: Release
 # sul commit da cui parte, costruisce il pacchetto per Windows in un ambiente
 # pulito (con i test del motore, dell'interfaccia e dell'agente), calcola
 # l'impronta SHA-256 e crea la release con le note di docs/release/<versione>.md.
+# Se esiste una bozza della stessa versione, mai pubblicata, la sostituisce.
 # Si avvia a mano (Actions > Release > Run workflow), da un commit con la CI
 # verde: il collaudo su Windows reale resta nella CI.
 
@@ -90,6 +91,16 @@ jobs:
             cat "docs/release/$VERSION.md"
             printf '\n## Impronta del pacchetto\n\nSHA-256 di `%s`, costruito da questo workflow sul commit %s:\n\n```\n%s\n```\n' "$(basename "$zip")" "$GITHUB_SHA" "$sum"
           } > note.md
+          # Una bozza precedente della stessa versione viene sostituita: non è mai stata
+          # pubblicata (il tag non esiste, controllato sopra). Una release pubblicata non si tocca.
+          for _ in 1 2 3 4 5; do
+            if [ "$(gh release view "v$VERSION" --json isDraft --jq .isDraft 2>/dev/null)" = "true" ]; then
+              echo "Sostituisco la bozza precedente di v$VERSION"
+              gh release delete "v$VERSION" --yes
+            else
+              break
+            fi
+          done
           flags=()
           if [ "$DRAFT" = "true" ]; then flags+=(--draft); fi
           gh release create "v$VERSION" "$zip" "$zip.sha256" \
