@@ -1,0 +1,33 @@
+/* Dettagli dei dispositivi di rete isometrici (isoart-net.tsx). Ogni classe
+   affina una classe di base di isoart.css (iso-d, iso-port, iso-inset, iso-ant),
+   così il disegno resta leggibile anche senza questo foglio; i selettori doppi
+   vincono sull'ordine di caricamento. Contorni sempre nel colore corrente. */
+
+/* Giunti dei mattoni del firewall. */
+.iso-d.isn-brick { stroke-width: 0.8; opacity: 0.6; }
+
+/* Porte piccole (switch): foro scuro con un contorno sottile. */
+.iso-port.isn-port { stroke-width: 0.6; }
+
+/* Scudo appoggiato sopra il firewall. */
+.iso-inset.isn-emblem { fill: rgba(127, 156, 245, 0.22); stroke-width: 1; stroke-linejoin: round; }
+
+/* Onde radio (Wi-Fi dell'access point, antenne del traliccio). */
+.iso-d.isn-wave { stroke-width: 1.5; opacity: 1; }
+.iso-d.isn-wave.far { opacity: 0.55; }
+
+/* Striscia luminosa curva sul bordo dell'access point. */
+.iso-d.isn-glow { stroke: #9fc0ff; stroke-width: 1.8; opacity: 1; }
+
+/* Macchine virtuali: volumi tratteggiati; le copie dietro traslucide, con gli spigoli nascosti a vista. */
+.iso-t.isn-virt, .iso-l.isn-virt, .iso-r.isn-virt { stroke-dasharray: 3.2 2.2; fill-opacity: 0.55; }
+.iso-t.isn-dash, .iso-l.isn-dash, .iso-r.isn-dash { stroke-dasharray: 3.2 2.2; }
+.iso-d.isn-hidden { stroke-width: 0.9; stroke-dasharray: 2 2.4; }
+.isn-ghost { opacity: 0.6; }
+.isn-ghost.far { opacity: 0.35; }
+
+/* Traliccio dell'operatore: montanti più spessi, controventi sottili. */
+.iso-ant.isn-leg { stroke-width: 1.7; }
+.iso-d.isn-leg.back { stroke-width: 1.3; }
+.iso-d.isn-brace { stroke-width: 0.85; opacity: 0.8; }
+.iso-d.isn-brace.back { opacity: 0.32; }
