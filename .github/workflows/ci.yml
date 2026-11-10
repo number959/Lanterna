@@ -564,6 +564,8 @@ jobs:
           if ($LASTEXITCODE -eq 0 -or $n1 -notmatch 'privat') { throw "SNMP verso un indirizzo pubblico accettato: $n1" }
           if ("$n0 $n1" -match 'segreta-di-prova') { throw "community nell'output" }
           "SNMP rifiutato come previsto: $n1"
+          # I rifiuti attesi lasciano l'uscita 1: non è l'esito del passo.
+          $global:LASTEXITCODE = 0
           # API: richieste non valide rifiutate, stato iniziale vuoto, Active Directory via API.
           $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve', '--port', '8739' -PassThru -NoNewWindow
           try {
@@ -585,6 +587,7 @@ jobs:
             "Active Directory via API: $($a.result.read)"
             if ($a.result.read -ne 'nodomain') { throw "Active Directory via API: atteso nodomain" }
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
+          exit 0
       - name: Voci italiane per le videoguide (informativo)
         continue-on-error: true
         run: |

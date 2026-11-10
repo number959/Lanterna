@@ -87,8 +87,18 @@ export interface SwitchPort {
 export function switchPort(scan: Scan): SwitchPort | undefined {
   const l2 = l2Of(scan);
   if (!l2) return undefined;
-  const l = (l2.lldp ?? []).find((n) => n.ttl > 0) ?? l2.lldp?.[0];
-  const c = l2.cdp?.[0];
+  // Con più schede cablate conta quella principale; gli annunci di schede
+  // diverse non si mescolano.
+  const primary = primaryAdapter(scan);
+  const mine = primary?.kind === 'ethernet' ? primary.name : undefined;
+  const lldp = l2.lldp ?? [];
+  const l =
+    (mine ? lldp.find((n) => n.adapter === mine && n.ttl > 0) ?? lldp.find((n) => n.adapter === mine) : undefined) ??
+    lldp.find((n) => n.ttl > 0) ??
+    lldp[0];
+  const cdp = l2.cdp ?? [];
+  const sameAdapter = (a?: string) => !l || !l.adapter || !a || a === l.adapter;
+  const c = (l ? cdp.find((n) => sameAdapter(n.adapter)) : undefined) ?? (!l ? ((mine ? cdp.find((n) => n.adapter === mine) : undefined) ?? cdp[0]) : undefined);
   if (l) {
     return {
       name: l.systemName || c?.deviceId || l.chassisId,
@@ -218,10 +228,13 @@ export function discoveredNets(scan: Scan, primary: Adapter | undefined = primar
   }
   for (const id of stpVlans(l2)) byVlan(id, 'Spanning Tree per VLAN (PVST+)');
 
-  // Tabella di instradamento del PC.
+  // Tabella di instradamento del PC: solo le rotte che passano da un router
+  // della rete del PC. Le reti collegate direttamente ad altre schede
+  // (virtuali, VPN, una seconda scheda) e le rotte di un tunnel non sono reti
+  // dietro il gateway.
   for (const rt of scan.lan?.routes ?? []) {
     const c = parseCidr(rt.prefix);
-    if (!usable(c)) continue;
+    if (!usable(c) || !rt.nextHop || !local || !inCidr(rt.nextHop, local)) continue;
     byPrefix(c!, rt.origin === 'dhcp' ? 'rotta ricevuta dal DHCP' : 'tabella di instradamento del PC');
   }
 
@@ -339,13 +352,33 @@ export function segmentationTargets(scan: Scan, nets: DiscoveredNet[] = discover
   // verificano i servizi (porte) che devono rispondere, non l'isolamento.
   const needed: string[] = [];
   for (const r of scan.infra?.reach?.results ?? []) if (r.expect === 'reachable' && r.ip) needed.push(r.ip);
+  // TTL delle risposte agli inventari: un apparato di rete risponde di solito con 255.
+  const ttl: Record<string, number> = {};
+  for (const i of scan.infra?.remote ?? []) for (const h of i.hosts) if (h.ttl) ttl[h.ip] = h.ttl;
   for (const n of nets) {
     if (n.local) continue;
     const serverNet = n.servers.length > 0 || SERVER_NET.test(n.name ?? '');
-    if (!serverNet) for (const ip of n.hosts.filter((h) => needed.indexOf(h) < 0).slice(0, PER_NET)) add({ label: netLabel(n), host: ip, expect: 'isolated' });
+    if (!serverNet)
+      for (const ip of n.hosts.filter((h) => needed.indexOf(h) < 0 && !likelyRouter(h, n, ttl[h])).slice(0, PER_NET))
+        add({ label: netLabel(n), host: ip, expect: 'isolated' });
     for (const ip of n.servers) if (dns.indexOf(ip) >= 0) add({ label: `Server DNS (${netLabel(n)})`, host: ip, port: 53, expect: 'reachable' });
   }
   return out;
+}
+
+/**
+ * L'indirizzo è probabilmente il router della rete (spesso risponde al ping
+ * anche quando l'isolamento funziona): primo o ultimo indirizzo utile della
+ * sottorete, oppure una risposta con il TTL di un apparato di rete.
+ */
+function likelyRouter(ip: string, n: DiscoveredNet, ttl?: number): boolean {
+  const c = parseCidr(n.prefix);
+  const v = ipNum(ip);
+  if (c && v !== undefined && c.prefix <= 30) {
+    const size = Math.pow(2, 32 - c.prefix);
+    if (v === c.net + 1 || v === c.net + size - 2) return true;
+  }
+  return ttl !== undefined && ttl >= 250;
 }
 
 /** Reti note senza dispositivi da proporre: servono inventario o SNMP. */
@@ -360,7 +393,7 @@ type Add = (f: Omit<Finding, 'actions'> & { actions?: string[] }) => void;
 const ADMIN_TEXT: Record<string, string> = {
   desirable: 'cerca attivamente di formare un trunk (dynamic desirable)',
   auto: 'diventa un trunk se l\'altro lato lo chiede (dynamic auto)',
-  on: 'è fissata come trunk',
+  on: 'è impostata come trunk',
   off: 'è fissata come porta di accesso',
 };
 
@@ -417,22 +450,27 @@ export function analyzeDiscovery(scan: Scan, add: Add, primary: Adapter | undefi
   // DTP: la porta del PC negozia il trunk.
   const dtp = l2?.read === 'ok' ? (l2.dtp ?? []) : [];
   if (dtp.length) {
-    const d = dtp.find((x) => x.operStatus === 'trunk') ?? dtp.find((x) => x.adminStatus === 'desirable' || x.adminStatus === 'auto') ?? dtp[0];
+    const d = dtp.find((x) => x.operStatus === 'trunk') ?? dtp.find((x) => x.adminStatus === 'desirable' || x.adminStatus === 'auto' || x.adminStatus === 'on') ?? dtp[0];
     const trunk = d.operStatus === 'trunk';
     const dynamic = d.adminStatus === 'desirable' || d.adminStatus === 'auto';
-    const sev: Severity = trunk ? 'crit' : dynamic ? 'warn' : 'info';
+    const trunkAdmin = d.adminStatus === 'on';
+    const sev: Severity = trunk ? 'crit' : dynamic || trunkAdmin ? 'warn' : 'info';
+    // "e cerca", "e diventa", ma "ed è".
+    const and = (t: string) => `${t.charAt(0) === 'è' ? 'ed' : 'e'} ${t}`;
     add({
       id: 'lan.dtp',
       metric: 'lan.dtp',
       category: 'infra',
       title: 'Negoziazione del trunk (DTP)',
-      value: trunk ? 'porta in trunk' : dynamic ? `modalità ${d.adminStatus}` : 'DTP attivo',
+      value: trunk ? 'porta in trunk' : dynamic || trunkAdmin ? `modalità ${d.adminStatus}` : 'DTP attivo',
       severity: sev,
       verdict: trunk
         ? 'La porta a cui è collegato il PC è un trunk: da qui arrivano le trame di più VLAN. Una postazione non dovrebbe mai stare su un trunk: chiunque si colleghi a questa presa può raggiungere le altre VLAN.'
         : dynamic
-          ? `La porta del PC manda annunci DTP e ${ADMIN_TEXT[d.adminStatus!]}: un dispositivo che si finge switch può trasformarla in un trunk e raggiungere tutte le VLAN (VLAN hopping).`
-          : `La porta del PC manda annunci DTP${d.adminStatus && ADMIN_TEXT[d.adminStatus] ? ` e ${ADMIN_TEXT[d.adminStatus]}` : ''}: il rischio è basso, ma sulle porte degli utenti la negoziazione va spenta del tutto.`,
+          ? `La porta del PC manda annunci DTP ${and(ADMIN_TEXT[d.adminStatus!])}: un dispositivo che si finge switch può trasformarla in un trunk e raggiungere tutte le VLAN (VLAN hopping).`
+          : trunkAdmin
+            ? `La porta del PC manda annunci DTP ${and(ADMIN_TEXT.on)}: una postazione non dovrebbe mai stare su un trunk, da cui si raggiungono le altre VLAN.`
+            : `La porta del PC manda annunci DTP${d.adminStatus && ADMIN_TEXT[d.adminStatus] ? ` ${and(ADMIN_TEXT[d.adminStatus])}` : ''}: il rischio è basso, ma sulle porte degli utenti la negoziazione va spenta del tutto.`,
       actions: ['disable-dtp'],
     });
   }

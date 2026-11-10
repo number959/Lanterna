@@ -91,9 +91,10 @@ func lldpID(v []byte, types map[byte]string, macSub, addrSub byte) (text, kind s
 	if kind == "" {
 		kind = fmt.Sprintf("subtype-%d", sub)
 	}
-	if kind == "interface-alias" {
-		// ifAlias è la descrizione scritta dall'amministratore: può contenere
-		// nomi di persone, quindi non si esporta (resta solo il tipo).
+	switch kind {
+	case "interface-alias", "chassis-component", "port-component":
+		// ifAlias ed entPhysicalAlias sono scritti dall'amministratore e
+		// possono contenere nomi di persone: non si esportano (resta il tipo).
 		return "", kind
 	}
 	switch sub {

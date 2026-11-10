@@ -23,6 +23,11 @@ func TestSNMPCredsFromInput(t *testing.T) {
 	if _, err := snmpCreds(false, "", "", strings.NewReader("")); err == nil {
 		t.Fatal("ingresso vuoto accettato")
 	}
+	// SNMPv3 da una pipe: tre righe, tre risposte (un solo lettore).
+	cr, err = snmpCreds(true, "SHA256", "AES", strings.NewReader("tecnico\npassword-auth\npassword-priv\n"))
+	if err != nil || cr.User != "tecnico" || cr.AuthPass != "password-auth" || cr.PrivPass != "password-priv" {
+		t.Fatalf("v3 da pipe: %v %#v", err, cr)
+	}
 	// SNMPv3: utente e password dalle variabili d'ambiente, nessuna domanda.
 	t.Setenv("POLARIS_SNMP_USER", "tecnico")
 	t.Setenv("POLARIS_SNMP_AUTH_PASS", "password-auth")

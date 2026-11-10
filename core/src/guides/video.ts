@@ -192,6 +192,7 @@ export const VIDEOS: VideoGuide[] = [
         diagram: 'vlan',
         narration: [
           'Polaris non scansiona interi intervalli di indirizzi e non prova a saltare da una VLAN all\'altra.',
+          'L\'inventario di una rete parte solo su richiesta, una sottorete alla volta.',
           'Sono tecniche da test di intrusione, che si usano solo con un incarico scritto.',
           'Qui gli ospiti raggiungono Internet, ma non la VLAN dei dispositivi medicali.',
         ],

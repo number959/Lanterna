@@ -86,6 +86,25 @@ func TestDiscoverL2(t *testing.T) {
 	if st, body := discStatus(t, h, "/api/discover/l2"); st.Running || st.Error != "ascolto interrotto" || !strings.Contains(body, `"portVlanId":20`) {
 		t.Fatalf("dopo l'interruzione resta l'esito precedente con il messaggio: %s", body)
 	}
+	// Un ascolto senza privilegi non cancella l'esito buono; "nessun annuncio" sì.
+	s.ListenL2 = func(context.Context, time.Duration) l2disc.Discovery { return l2disc.Discovery{Read: l2disc.ReadAdmin} }
+	if r := post(`{}`); r.Code != http.StatusAccepted {
+		t.Fatalf("avvio senza privilegi: %d", r.Code)
+	}
+	s.WaitDiscover()
+	if st, body := discStatus(t, h, "/api/discover/l2"); !strings.Contains(st.Error, "amministratore") || !strings.Contains(body, `"portVlanId":20`) {
+		t.Fatalf("senza privilegi: %s", body)
+	}
+	s.ListenL2 = func(context.Context, time.Duration) l2disc.Discovery {
+		return l2disc.Discovery{Read: l2disc.ReadNone, Seconds: 61}
+	}
+	if r := post(`{}`); r.Code != http.StatusAccepted {
+		t.Fatalf("avvio senza annunci: %d", r.Code)
+	}
+	s.WaitDiscover()
+	if st, body := discStatus(t, h, "/api/discover/l2"); st.Error != "" || !strings.Contains(body, `"read":"none"`) {
+		t.Fatalf("nessun annuncio: %s", body)
+	}
 }
 
 func TestDiscoverAD(t *testing.T) {

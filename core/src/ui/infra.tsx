@@ -19,8 +19,8 @@ import {
 import { AnimatePresence, m } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import { ASSESS_QUESTIONS, classifyHost, inCidr, KIND_LABEL, parseCidr, primaryAdapter, scoreAssessment } from '../engine';
-import type { AnswerValue, AssessAreaId, ClassifyContext, Inventory, InventoryHost, ReachExpect, ReachResult, ReachTarget, Scan, Severity } from '../engine';
+import { ASSESS_QUESTIONS, buildNetworkMap, inCidr, KIND_LABEL, parseCidr, primaryAdapter, scoreAssessment } from '../engine';
+import type { AnswerValue, AssessAreaId, Inventory, InventoryHost, MapNode, ReachExpect, ReachResult, ReachTarget, Scan, Severity } from '../engine';
 import { simulatedInventory, simulatedReach } from '../demo/simulate';
 import { guideById } from '../guides';
 import { download, inventoryStatus, runInventory, runReach } from './api';
@@ -173,36 +173,30 @@ function hostNote(h: InventoryHost): string {
     .join(' · ');
 }
 
-function inventoryCsv(inv: Inventory, scan: Scan): string {
-  const ctx = classifyContext(scan);
+/** Dispositivi della mappa della rete per indirizzo: il tipo è lo stesso nella mappa, nell'elenco e nel CSV. */
+function mapByIp(scan: Scan): Map<string, MapNode> {
+  const m = new Map<string, MapNode>();
+  for (const n of buildNetworkMap(scan).nodes) if (n.ip && !m.has(n.ip)) m.set(n.ip, n);
+  return m;
+}
+
+function inventoryCsv(inv: Inventory, kinds: Map<string, MapNode>): string {
   return toCsv([
     ['ip', 'nome_dns', 'netbios', 'mac', 'produttore', 'tipo', 'mac_casuale', 'ping_ms', 'note'],
-    ...inv.hosts.map((h) => [h.ip, h.name, h.netbios, h.mac, h.vendor, KIND_LABEL[classifyHost(h, ctx).kind], h.randomMac ? 'sì' : '', h.rttMs, hostNote(h)]),
+    ...inv.hosts.map((h) => [h.ip, h.name, h.netbios, h.mac, h.vendor, KIND_LABEL[kinds.get(h.ip)?.kind ?? 'unknown'], h.randomMac ? 'sì' : '', h.rttMs, hostNote(h)]),
   ]);
 }
 
-/** Contesto per riconoscere il tipo di dispositivo, come nella mappa della rete. */
-function classifyContext(scan: Scan): ClassifyContext {
-  const primary = primaryAdapter(scan);
-  return {
-    gatewayIp: scan.gateway?.ip ?? primary?.gateways[0],
-    dnsServers: primary?.dns ?? [],
-    dhcpServer: primary?.dhcpServer,
-    bssids: (scan.wifi?.networks ?? []).map((n) => n.bssid),
-  };
-}
-
 /** Tipo riconosciuto del dispositivo, con la sua icona e il motivo nel suggerimento. */
-function KindCell({ h, ctx, self, laptop }: { h: InventoryHost; ctx: ClassifyContext; self?: boolean; laptop: boolean }) {
-  const g = classifyHost(h, ctx);
-  const kind = self ? (laptop ? 'laptop' : 'pc') : g.kind;
+function KindCell({ node }: { node?: MapNode }) {
+  const kind = node?.kind ?? 'unknown';
   const Icon = KIND_ICON[kind];
-  const why = self ? 'è il PC su cui gira Polaris' : g.reasons.join('; ');
+  const why = node?.reasons.join('; ') ?? '';
   return (
     <span className="kind-cell" title={why ? `${KIND_LABEL[kind]}: ${why}` : KIND_LABEL[kind]}>
       <Icon size={15} aria-hidden style={{ color: kindColor(kind) }} />
       <span>{KIND_LABEL[kind]}</span>
-      {!self && g.confidence === 'bassa' && kind !== 'unknown' && <span className="faint">?</span>}
+      {node && !node.self && node.confidence === 'bassa' && kind !== 'unknown' && <span className="faint">?</span>}
     </span>
   );
 }
@@ -280,7 +274,7 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
     random: others.filter((h) => h.randomMac).length,
   };
   const pct = phase && phase.total ? Math.min(1, phase.done / phase.total) : 0;
-  const ctx = useMemo(() => classifyContext(scan), [scan]);
+  const kinds = useMemo(() => mapByIp(scan), [scan]);
 
   return (
     <m.section variants={rise} className="card">
@@ -297,7 +291,7 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
         {inv && (
           <button
             className="btn small"
-            onClick={() => download(`polaris-inventario-${inv.subnet.replace(/[/.]/g, '-')}.csv`, inventoryCsv(inv, scan), 'text/csv;charset=utf-8')}
+            onClick={() => download(`polaris-inventario-${inv.subnet.replace(/[/.]/g, '-')}.csv`, inventoryCsv(inv, kinds), 'text/csv;charset=utf-8')}
           >
             <FileSpreadsheet size={15} aria-hidden /> Esporta CSV
           </button>
@@ -435,7 +429,7 @@ function InventoryCard({ scan, live, source, setInfra }: ViewProps) {
                   <tr key={h.ip} className={h.self ? 'mine' : ''}>
                     <td className="mono">{h.ip}</td>
                     <td>
-                      <KindCell h={h} ctx={ctx} self={h.self} laptop={!!scan.pc?.battery} />
+                      <KindCell node={kinds.get(h.ip)} />
                     </td>
                     <td>{h.name ?? <span className="faint">—</span>}</td>
                     <td className="mono">{h.netbios ?? <span className="faint">—</span>}</td>

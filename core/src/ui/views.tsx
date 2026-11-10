@@ -81,6 +81,13 @@ export interface ViewProps {
    * risultati che arrivano dopo un minuto).
    */
   setInfra: (patch: Partial<InfraData> | ((infra: InfraData) => Partial<InfraData>)) => void;
+  /**
+   * Unisce alla parte Infrastruttura un risultato arrivato dopo un po'
+   * (ascolto dello switch, letture, inventari), solo se il rapporto mostrato
+   * è ancora quello della rete su cui è partito; altrimenti lo dice e
+   * restituisce false.
+   */
+  mergeInfra: (patch: (infra: InfraData) => Partial<InfraData>, target: CertTargetRef, what: string) => boolean;
   /** Unisce al rapporto il risultato di un test di velocità. */
   /** Aggiunge un test al rapporto mostrato, se è ancora quello del PC su cui è partito (false altrimenti). */
   addBench: (r: { cpu?: CpuBench; disk?: DiskBench; ram?: RamTest }, target: SpaceTarget) => boolean;

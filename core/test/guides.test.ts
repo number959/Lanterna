@@ -212,7 +212,7 @@ describe('mappa della rete e scoperta delle VLAN', () => {
 
   it('la scoperta delle VLAN copre ascolto, ciò che il PC sa, Active Directory, SNMP e i divieti', () => {
     const t = text('scoprire-vlan');
-    for (const w of ['LLDP', 'LLDP-MED', 'CDP', 'DTP', 'Spanning Tree', 'non trasmette nulla', 'come amministratore', '121 e 249', 'relay DHCP', 'Siti e servizi', 'SNMPv2c', 'SNMPv3', 'sola lettura', '10.0.0.0/8', 'switch spoofing', 'double tagging', 'VLAN della scheda di rete', 'test di segmentazione', 'Reti e VLAN', 'Ascolta lo switch', 'Leggi Active Directory', 'Leggi via SNMP', 'Usa nel test di segmentazione', 'Inventario di questa rete', 'numeri di serie', 'sysContact', 'Come Polaris giudica ciò che trova']) {
+    for (const w of ['LLDP', 'LLDP-MED', 'CDP', 'DTP', 'Spanning Tree', 'non trasmette nulla', 'come amministratore', '121 e 249', 'relay DHCP', 'Siti e servizi', 'SNMPv2c', 'SNMPv3', 'sola lettura', '10.0.0.0/8', 'switch spoofing', 'double tagging', 'VLAN della scheda di rete', 'test di segmentazione', 'Reti e VLAN', 'Ascolta lo switch', 'Leggi Active Directory', 'Leggi via SNMP', 'Usa nel test di segmentazione', 'Inventario accanto a ogni rete', 'numeri di serie', 'sysContact', 'Come Polaris giudica ciò che trova']) {
       expect(t, w).toContain(w);
     }
   });

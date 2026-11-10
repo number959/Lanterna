@@ -215,6 +215,11 @@ func stripSerials(s string) string {
 // numeri di serie.
 func nameText(b []byte) string { return stripSerials(clean(b)) }
 
+// StripSerials toglie da un nome di apparato i numeri di serie riconoscibili
+// (tra parentesi, o un nome che è un numero di serie, come il nome
+// predefinito di molti firewall e switch). Lo usa anche la lettura SNMP.
+func StripSerials(s string) string { return stripSerials(s) }
+
 // descText pulisce una descrizione libera: prima riga, senza numeri di
 // serie etichettati.
 func descText(b []byte) string { return redactLabeled(firstLine(b)) }

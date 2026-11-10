@@ -691,7 +691,7 @@ const list: Metric[] = [
       { range: 'nessun annuncio', severity: 'unknown', meaning: 'Switch non gestito o protocolli di scoperta spenti sulle porte degli utenti.' },
     ],
     why: 'Sapere switch, porta e VLAN della presa di una postazione accorcia ogni intervento, e confrontare la velocità vista dallo switch con quella del PC rivela cavi difettosi e impostazioni forzate.',
-    limits: 'Serve il cavo e l\'avvio di Polaris come amministratore. CDP si ripete ogni 60 secondi e LLDP di solito ogni 30: in un minuto di ascolto arrivano entrambi, ma uno switch configurato con intervalli più lunghi può non farsi sentire. Molti switch mandano la VLAN della voce solo ai dispositivi che si presentano come telefoni. Le descrizioni delle porte scritte dagli amministratori non si leggono: possono contenere nomi di persone.',
+    limits: 'Serve il cavo e l\'avvio di Polaris come amministratore. CDP si ripete ogni 60 secondi e LLDP di solito ogni 30: in un minuto di ascolto arrivano entrambi, ma uno switch configurato con intervalli più lunghi può non farsi sentire. La VLAN della voce arriva con LLDP-MED, che secondo lo standard (ANSI/TIA-1057) lo switch trasmette solo dopo aver riconosciuto un dispositivo LLDP-MED, come un telefono: a un PC che ascolta soltanto di norma non arriva, mentre CDP può indicarla comunque (da verificare sui singoli modelli). Le descrizioni delle porte scritte dagli amministratori non si leggono: possono contenere nomi di persone.',
   },
   {
     id: 'lan.dtp',

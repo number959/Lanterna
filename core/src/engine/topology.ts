@@ -322,7 +322,13 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
   if (sp) {
     const why = `annuncia sé stesso con ${sp.protocol} sulla porta del PC: porta ${sp.port ?? 'non indicata'}${sp.vlan ? `, VLAN ${sp.vlan}` : ''}`;
     const existing = sp.mgmt ? byIp.get(sp.mgmt) : undefined;
-    if (existing && existing !== gwNode && !existing.self) {
+    if (existing && existing === gwNode) {
+      // Lo switch della porta è anche il gateway (uno switch di livello 3):
+      // un solo nodo, con la porta del PC tra i ruoli.
+      gwNode.reasons = [why, ...gwNode.reasons];
+      if (gwNode.kind === 'router' || gwNode.kind === 'unknown') gwNode.kind = 'switch';
+      if (sp.port) gwNode.roles.push(`porta ${sp.port}`);
+    } else if (existing && !existing.self) {
       swNode = existing;
       swNode.kind = 'switch';
       swNode.confidence = 'alta';
@@ -350,7 +356,7 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
         byIp.set(sp.mgmt, swNode);
       }
     }
-    if (sp.port) swNode.roles.push(`porta ${sp.port}`);
+    if (swNode && sp.port) swNode.roles.push(`porta ${sp.port}`);
   }
 
   // Wi-Fi: l'access point a cui è collegato il PC.
@@ -431,11 +437,6 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
     if (r.seg.sources.indexOf(source) < 0) r.seg.sources.push(source);
     return r;
   };
-  for (const rt of scan.lan?.routes ?? []) {
-    const c = parseCidr(rt.prefix);
-    if (!c || privateKind(numIp(c.net)) !== 'private' || c.prefix < 8) continue;
-    addSegment(c, rt.origin === 'dhcp' ? 'rotta ricevuta dal DHCP' : 'tabella di instradamento del PC');
-  }
   // Reti scoperte (switch, Active Directory, SNMP, inventari): le zone hanno
   // il numero e il nome della VLAN. Gli aggregati (una /16 che contiene reti
   // già note) e le /24 presunte dai soli server non diventano zone.
@@ -537,6 +538,24 @@ export function buildNetworkMap(scan: Scan, analysis?: Analysis): NetworkMap {
   const secondRouter =
     first && privateKind(first.ip) === 'private' && first.rttMs !== undefined && gwHopRtt !== undefined && first.rttMs - gwHopRtt < 3 ? first : undefined;
   if (secondRouter) {
+    const h = secondRouter;
+    const why = 'il traceroute passa da un altro indirizzo privato dopo il gateway: due router in fila (doppio NAT)';
+    const existing = byIp.get(h.ip!);
+    if (existing) {
+      // Lo stesso apparato è già sulla mappa (per esempio come server DNS):
+      // diventa il secondo router della catena, senza un doppione.
+      for (const r of remote.values()) {
+        const i = r.ips.indexOf(h.ip!);
+        if (i >= 0) r.ips.splice(i, 1);
+      }
+      existing.kind = 'router';
+      existing.segment = 'core';
+      existing.reasons = [why, ...existing.reasons];
+      if (existing.rttMs === undefined) existing.rttMs = h.rttMs;
+      chain.push(existing);
+    }
+  }
+  if (secondRouter && !byIp.has(secondRouter.ip!)) {
     const h = secondRouter;
     const n: MapNode = {
       id: `ip:${h.ip}`,

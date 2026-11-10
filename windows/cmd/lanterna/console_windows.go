@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -28,7 +29,7 @@ func attachConsole() {
 
 // readSecret chiede un segreto senza mostrarlo: se lo standard input è la
 // console, si spegne l'eco dei caratteri per la durata della lettura.
-func readSecret(prompt string, in io.Reader) (string, error) {
+func readSecret(prompt string, in io.Reader, br *bufio.Reader) (string, error) {
 	fmt.Fprint(os.Stderr, prompt)
 	h := windows.Handle(os.Stdin.Fd())
 	var mode uint32
@@ -40,5 +41,5 @@ func readSecret(prompt string, in io.Reader) (string, error) {
 			}()
 		}
 	}
-	return readLine(in)
+	return readLine(br)
 }

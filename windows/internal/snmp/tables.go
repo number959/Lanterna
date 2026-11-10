@@ -18,6 +18,7 @@ import (
 
 	"github.com/gosnmp/gosnmp"
 
+	"lanterna/internal/l2disc"
 	"lanterna/internal/oui"
 )
 
@@ -232,7 +233,7 @@ func (c *collector) system() *Error {
 		}
 	}
 	if v, ok := vals[oidSysName]; ok {
-		sys.Name = text(v.Value, maxText)
+		sys.Name = l2disc.StripSerials(text(v.Value, maxText))
 	}
 	c.cisco = strings.HasPrefix(sys.ObjectID, ciscoPrefix)
 	if sys == (System{}) {
@@ -584,7 +585,7 @@ func (c *collector) lldp() *Error {
 	for _, r := range list {
 		ws = append(ws,
 			want{oidLldpRemPortIDSubtype + r.sfx, func(v gosnmp.SnmpPDU) { r.portSub, _ = intOf(v.Value) }},
-			want{oidLldpRemSysName + r.sfx, func(v gosnmp.SnmpPDU) { r.n.SysName = text(v.Value, maxText) }},
+			want{oidLldpRemSysName + r.sfx, func(v gosnmp.SnmpPDU) { r.n.SysName = l2disc.StripSerials(text(v.Value, maxText)) }},
 			want{oidLldpRemSysCapEnabled + r.sfx, func(v gosnmp.SnmpPDU) { r.n.CapsEnabled = caps(bytesOf(v.Value)) }})
 	}
 	if fe := c.fetch(&o, "lldpRemTable", ws); fe != nil {

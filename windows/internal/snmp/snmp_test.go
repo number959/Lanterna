@@ -17,6 +17,7 @@ import (
 
 	"github.com/gosnmp/gosnmp"
 
+	"lanterna/internal/l2disc"
 	"lanterna/internal/oui"
 )
 
@@ -1024,6 +1025,21 @@ func TestCheckTargetExported(t *testing.T) {
 	for _, bad := range []string{"8.8.8.8", "", "10.0.0.0/24", "router.local", "192.168.1.255"} {
 		if err := CheckTarget(bad); err == nil {
 			t.Errorf("%q accettato", bad)
+		}
+	}
+}
+
+func TestSerialNamesDropped(t *testing.T) {
+	// I firewall e gli switch che usano il numero di serie come nome
+	// predefinito non lo portano nei risultati.
+	for _, c := range []struct{ in, want string }{
+		{"FGT60F1234567890", ""},
+		{"S248DF3X17000123", ""},
+		{"SW-CORE(FOC1234X5YZ)", "SW-CORE"},
+		{"FW-CLINICA", "FW-CLINICA"},
+	} {
+		if got := l2disc.StripSerials(c.in); got != c.want {
+			t.Errorf("%q: %q, atteso %q", c.in, got, c.want)
 		}
 	}
 }

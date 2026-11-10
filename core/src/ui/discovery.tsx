@@ -6,6 +6,7 @@ import type { ADSubnets, DiscoveredNet, InfraData, Inventory, L2Discovery, Scan,
 import { simulatedAD, simulatedL2, simulatedRemoteInventory, simulatedSnmp } from '../demo/discovery';
 import { discoverStatus, listenSwitch, readADSubnets, readSnmp, runInventory, stopListen } from './api';
 import type { SnmpCreds } from './api';
+import type { CertTargetRef } from './certs';
 import { Stat, TableWrap, useToast } from './components';
 import { ease, rise, spring } from './motion';
 import { proposeReach } from './reachbus';
@@ -49,9 +50,6 @@ function useJobs(): Jobs {
   return j;
 }
 
-/** Il rapporto mostrato: un risultato arrivato dopo che si è passati a un altro non vi si unisce. */
-let shownKey = '';
-const keyOf = (s: Scan) => `${s.agent.host ?? ''}|${s.gateway?.ip ?? ''}|${s.agent.startedAt}`;
 
 const L2_READ: Record<string, string> = {
   none: 'Nessun annuncio in un minuto: lo switch non è gestito, oppure LLDP e CDP sono spenti sulle porte degli utenti. Anche un telefono IP o un piccolo switch tra il PC e la presa li fermano.',
@@ -82,10 +80,9 @@ function inventoriable(n: DiscoveredNet): boolean {
   return !!c && !n.local && !n.contains && c.prefix >= 22 && c.prefix <= 30 && privateIp(n.prefix!.split('/')[0]);
 }
 
-export function DiscoveryCard({ scan, live, source, setInfra }: ViewProps) {
+export function DiscoveryCard({ scan, live, source, mergeInfra }: ViewProps) {
   const toast = useToast();
   const j = useJobs();
-  shownKey = keyOf(scan);
   const disc = scan.infra?.discovery;
   const nets = useMemo(() => discoveredNets(scan), [scan]);
   const sp = useMemo(() => switchPort(scan), [scan]);
@@ -95,14 +92,9 @@ export function DiscoveryCard({ scan, live, source, setInfra }: ViewProps) {
   const [errors, setErrors] = useState<{ l2?: string; ad?: string; snmp?: string; inv?: string }>({});
   const fileOnly = source === 'file';
 
-  const merge = (start: string, patch: (i: InfraData) => Partial<InfraData>, what: string): boolean => {
-    if (start !== shownKey) {
-      toast(`${what} finito, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto`, 'warn');
-      return false;
-    }
-    setInfra(patch);
-    return true;
-  };
+  // Rete su cui parte una lettura: il risultato si unisce solo al rapporto della stessa rete.
+  const targetOf = (): CertTargetRef => ({ live, host: scan.agent.host, gateway: scan.gateway?.ip });
+  const merge = (start: CertTargetRef, patch: (i: InfraData) => Partial<InfraData>, what: string): boolean => mergeInfra(patch, start, what);
   const fail = (k: keyof typeof errors, e: unknown) => {
     const msg = e instanceof Error ? e.message : String(e);
     setErrors((x) => ({ ...x, [k]: msg }));
@@ -113,9 +105,14 @@ export function DiscoveryCard({ scan, live, source, setInfra }: ViewProps) {
   const startL2 = (resume = false) => {
     if (jobs.l2) return;
     setErrors((x) => ({ ...x, l2: undefined }));
-    const start = keyOf(scan);
+    const start = targetOf();
     setJobs({ l2: { elapsed: 0, seconds: L2_SECONDS } });
     const done = (r: L2Discovery) => {
+      // Un ascolto non riuscito non dice nulla della rete: resta l'esito precedente.
+      if (r.read === 'admin' || r.read === 'nowired' || r.read === 'unsupported' || r.read === 'error') {
+        fail('l2', new Error(r.error ?? L2_READ[r.read] ?? 'Ascolto non riuscito.'));
+        return;
+      }
       if (merge(start, (i) => ({ discovery: { ...i.discovery, l2: r } }), 'Ascolto dello switch'))
         toast(r.read === 'ok' ? 'Annunci dello switch ricevuti' : 'Ascolto finito', r.read === 'ok' ? 'ok' : undefined, r.read === 'ok' ? 'complete' : undefined);
     };
@@ -139,7 +136,7 @@ export function DiscoveryCard({ scan, live, source, setInfra }: ViewProps) {
   const startAD = () => {
     if (jobs.ad) return;
     setErrors((x) => ({ ...x, ad: undefined }));
-    const start = keyOf(scan);
+    const start = targetOf();
     setJobs({ ad: true });
     const p: Promise<ADSubnets> = live ? readADSubnets() : new Promise((ok) => setTimeout(() => ok(simulatedAD(scan)), 900));
     p.then((r) => {
@@ -152,7 +149,7 @@ export function DiscoveryCard({ scan, live, source, setInfra }: ViewProps) {
   const startSnmp = (target: string, creds: SnmpCreds) => {
     if (jobs.snmp) return;
     setErrors((x) => ({ ...x, snmp: undefined }));
-    const start = keyOf(scan);
+    const start = targetOf();
     setJobs({ snmp: { target } });
     const def = creds.version === '2c' && /^(public|private)$/i.test((creds.community ?? '').trim());
     const p: Promise<SnmpResult> = live
@@ -176,7 +173,7 @@ export function DiscoveryCard({ scan, live, source, setInfra }: ViewProps) {
   const startInv = (subnet: string) => {
     if (jobs.inv) return;
     setErrors((x) => ({ ...x, inv: undefined }));
-    const start = keyOf(scan);
+    const start = targetOf();
     setJobs({ inv: { subnet, phase: 'ping', done: 0, total: 0 } });
     const p: Promise<Inventory> = live
       ? runInventory((st) => setJobs({ inv: { subnet, phase: st.phase ?? 'ping', done: st.done, total: st.total } }), { subnet })
@@ -233,7 +230,8 @@ export function DiscoveryCard({ scan, live, source, setInfra }: ViewProps) {
       </div>
       <p className="muted" style={{ marginTop: 0 }}>
         Polaris unisce ciò che il PC sa già (rotte, server DNS e DHCP, reti Wi-Fi degli stessi access point) con tre letture che partono solo su tua richiesta.
-        Nessuna scansione di interi intervalli di indirizzi: ogni rete riporta la fonte da cui risulta.
+        Nessuna scansione a tappeto: l'inventario di un'altra rete parte solo su tua richiesta, una sottorete alla volta e senza porte. Ogni rete riporta la fonte da cui
+        risulta.
       </p>
 
       {fileOnly ? (
@@ -565,11 +563,9 @@ function SnmpTool({
         ? 'scrivi l\'utente SNMPv3'
         : auth && authPass.length < 8
           ? 'la password di autenticazione deve avere almeno 8 caratteri'
-          : priv && !auth
-            ? 'la cifratura richiede anche l\'autenticazione'
-            : priv && privPass.length < 8
-              ? 'la password di cifratura deve avere almeno 8 caratteri'
-              : null;
+          : auth && priv && privPass.length < 8
+            ? 'la password di cifratura deve avere almeno 8 caratteri'
+            : null;
   const submit = () => {
     if (problem || !authorized) return;
     const creds: SnmpCreds =
@@ -627,7 +623,15 @@ function SnmpTool({
               </label>
               <label>
                 <span>Autenticazione</span>
-                <select className="field" value={auth} onChange={(e) => setAuth(e.target.value)}>
+                <select
+                  className="field"
+                  value={auth}
+                  onChange={(e) => {
+                    setAuth(e.target.value);
+                    // Senza autenticazione SNMPv3 non ammette la cifratura.
+                    if (!e.target.value) setPriv('');
+                  }}
+                >
                   {AUTHS.map((a) => (
                     <option key={a} value={a}>
                       {a === 'SHA' ? 'SHA-1' : a === 'MD5' ? 'MD5 (superato)' : a.replace('SHA', 'SHA-')}

@@ -370,6 +370,20 @@ function Shell() {
     [toast],
   );
 
+  // Scoperta delle reti e inventari di altre reti: il risultato può arrivare
+  // dopo un minuto e si unisce solo al rapporto della rete su cui è partito.
+  const mergeInfra = useCallback(
+    (patch: (infra: InfraData) => Partial<InfraData>, target: CertTargetRef, what: string) => {
+      if (!sameCertTarget(target, scanRef.current, sourceRef.current)) {
+        toast(`${what} finito, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto`, 'warn');
+        return false;
+      }
+      setScan((s) => (s && s.agent.host === target.host && s.gateway?.ip === target.gateway ? { ...s, infra: { ...s.infra, ...patch(s.infra ?? {}) } } : s));
+      return true;
+    },
+    [toast],
+  );
+
   // Una nuova lettura delle schermate blu riguarda questo PC: si unisce solo
   // al rapporto dell'agente dello stesso PC e della stessa analisi.
   const addCrashes = useCallback(
@@ -503,7 +517,7 @@ function Shell() {
   const scanning = busy || (agent === undefined && slow);
   const props: ViewProps | null =
     effective && analysis
-      ? { scan: effective, analysis, go, focus, live, source, setInfra, addBench, addSpace, addCerts, addCrashes, addSurvey, setSurvey, addSpeed, patchPc, assessment, monitor, gwMacChange, rescan: busy ? undefined : scanNow }
+      ? { scan: effective, analysis, go, focus, live, source, setInfra, mergeInfra, addBench, addSpace, addCerts, addCrashes, addSurvey, setSurvey, addSpeed, patchPc, assessment, monitor, gwMacChange, rescan: busy ? undefined : scanNow }
       : null;
   const pickDemo = (k: DemoKind) => {
     setDemoKind(k);

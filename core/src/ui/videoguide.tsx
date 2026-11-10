@@ -94,6 +94,7 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
   const speaking = !prefs.muted && !!voice && !!synth();
   const timer = useRef<number | undefined>(undefined);
   const token = useRef(0);
+  const [restart, setRestart] = useState(0);
   const scans = useMemo(() => ({ casa: { scan: demoScan, a: analyze(demoScan) }, clinica: { scan: clinicScan, a: analyze(clinicScan) } }), []);
 
   const update = (p: Partial<Prefs>) =>
@@ -129,12 +130,14 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
       u.voice = voice;
       u.lang = voice.lang || 'it-IT';
       u.rate = prefs.rate;
+      // Una frase interrotta (pausa, cambio di scena o di voce) non deve
+      // toccare il tempo della lettura che l'ha sostituita.
       u.onend = () => {
-        timer.current = window.setTimeout(next, 350);
+        if (token.current === my) timer.current = window.setTimeout(next, 350);
       };
       // Una voce che non parte non deve bloccare la guida: si prosegue a tempo.
       u.onerror = () => {
-        timer.current = window.setTimeout(next, readingMs(text, prefs.rate));
+        if (token.current === my) timer.current = window.setTimeout(next, readingMs(text, prefs.rate));
       };
       // Chromium a volte ignora una lettura chiesta subito dopo cancel().
       timer.current = window.setTimeout(() => {
@@ -145,8 +148,10 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
     }
     return () => {
       window.clearTimeout(timer.current);
+      // Silenzio, cambio di voce o di velocità: la frase in corso si ferma subito.
+      synth()?.cancel();
     };
-  }, [playing, pos, speaking, voice, prefs.rate, lines]);
+  }, [playing, pos, speaking, voice, prefs.rate, lines, restart]);
 
   useEffect(() => stopAll, [stopAll]);
 
@@ -165,6 +170,8 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
     stopAll();
     setEnded(false);
     setPos(lines.findIndex((l) => l.si === si));
+    // Anche se la scena è quella in corso, la lettura riparte dalla prima frase.
+    setRestart((r) => r + 1);
   };
   const onKey = (e: ReactKeyboardEvent) => {
     if (e.target !== e.currentTarget) return;
@@ -218,7 +225,7 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
           <ChevronRight size={17} aria-hidden />
         </button>
         <span className="spacer" />
-        <button className="btn small icon" onClick={() => update({ muted: !prefs.muted })} aria-pressed={prefs.muted} aria-label={prefs.muted ? 'Riattiva la voce' : 'Solo sottotitoli'} title={prefs.muted ? 'Riattiva la voce' : 'Solo sottotitoli'} disabled={noVoice}>
+        <button className="btn small icon" onClick={() => update({ muted: !prefs.muted })} aria-pressed={prefs.muted} aria-label="Solo sottotitoli, senza voce" title="Solo sottotitoli, senza voce" disabled={noVoice}>
           {prefs.muted || noVoice ? <VolumeX size={16} aria-hidden /> : <Volume2 size={16} aria-hidden />}
         </button>
         {voices.length > 1 && (

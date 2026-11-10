@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIONS, analyze, discoveredNets, METRICS, netLabel, renderDocument, segmentationTargets, switchPort } from '../src/engine';
+import { ACTIONS, analyze, buildNetworkMap, discoveredNets, METRICS, netLabel, renderDocument, segmentationTargets, switchPort } from '../src/engine';
 import type { Scan } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
@@ -116,5 +116,77 @@ describe('scoperta delle reti e delle VLAN', () => {
     expect(n.sources).toContain('inventario attraverso il router');
     const a = analyze(scan);
     expect(a.findings.find((f) => f.id === 'infra.inventory.10.20.50.0/24')).toMatchObject({ severity: 'info', actions: ['test-segmentation'] });
+  });
+});
+
+describe('porta dello switch con più schede cablate', () => {
+  it('usa la scheda principale e non mescola gli annunci', () => {
+    const base = withL2(clinicScan);
+    const l2 = base.infra!.discovery!.l2!;
+    const other = { ...l2.lldp![0], adapter: 'Ethernet 2', systemName: 'SW-ALTRO', portId: 'Gi0/1', portVlanId: 99, voiceVlan: undefined };
+    const scan: Scan = {
+      ...base,
+      adapters: base.adapters.map((a) => (a.kind === 'ethernet' ? { ...a, up: true, ipv4: ['10.20.30.57/24'], gateways: ['10.20.30.1'] } : { ...a, up: false, ipv4: [], gateways: [] })),
+      infra: { ...base.infra, discovery: { ...base.infra!.discovery, l2: { ...l2, lldp: [other, l2.lldp![0]], cdp: [{ ...l2.cdp![0], adapter: 'Ethernet 2', voiceVlan: 7 }] } } },
+    };
+    const sp = switchPort(scan)!;
+    expect(sp.name).toBe('SW-PIANO1.clinica.local');
+    expect(sp.vlan).toBe(30);
+    // La VLAN della voce della CDP di un'altra scheda non entra.
+    expect(sp.voiceVlan).toBe(100);
+  });
+});
+
+describe('casi della revisione indipendente', () => {
+  it('non propone come da isolare il router di una rete vista solo con l\'inventario', () => {
+    const inv = { subnet: '10.50.0.0/24', scanned: 254, startedAt: '2026-11-10T09:00:00Z', durationMs: 9000, hosts: [
+      { ip: '10.50.0.1', rttMs: 2, ttl: 255 },
+      { ip: '10.50.0.20', rttMs: 4, ttl: 127 },
+      { ip: '10.50.0.30', rttMs: 4, ttl: 254 },
+      { ip: '10.50.0.40', rttMs: 4, ttl: 63 },
+      { ip: '10.50.0.254', rttMs: 3, ttl: 64 },
+    ] };
+    const scan: Scan = { ...demoScan, infra: { ...demoScan.infra, remote: [inv] } };
+    const t = segmentationTargets(scan).filter((x) => x.expect === 'isolated').map((x) => x.host);
+    expect(t).toEqual(['10.50.0.20', '10.50.0.40']);
+  });
+
+  it('ignora le reti collegate di altre schede e le rotte che non passano dal router della rete', () => {
+    const scan: Scan = {
+      ...demoScan,
+      lan: {
+        ...demoScan.lan!,
+        routes: [
+          { prefix: '192.168.56.0/24', origin: 'rete collegata' },
+          { prefix: '172.29.0.0/20', origin: 'rete collegata' },
+          { prefix: '10.8.0.0/16', nextHop: '10.200.0.1', origin: 'manuale' },
+          { prefix: '192.168.50.0/24', nextHop: '192.168.1.1', origin: 'dhcp' },
+        ],
+      },
+      infra: { ...demoScan.infra, discovery: { ad: { read: 'ok', subnets: [] } } },
+    };
+    const nets = discoveredNets(scan).map((n) => n.prefix);
+    expect(nets).toContain('192.168.50.0/24');
+    for (const p of ['192.168.56.0/24', '172.29.0.0/20', '10.8.0.0/16']) expect(nets, p).not.toContain(p);
+    const m = buildNetworkMap(scan);
+    expect(m.segments.some((s) => s.subnet === '192.168.56.0/24')).toBe(false);
+  });
+
+  it('non fa una zona di una rotta aggregata che contiene la rete del PC', () => {
+    const scan: Scan = { ...clinicScan, lan: { ...clinicScan.lan!, routes: [{ prefix: '10.0.0.0/8', nextHop: '10.20.30.1', origin: 'manuale' }] } };
+    const m = buildNetworkMap(scan);
+    expect(m.segments.some((s) => s.subnet === '10.0.0.0/8')).toBe(false);
+  });
+
+  it('il secondo router che è anche il server DNS è un solo nodo', () => {
+    const s: Scan = JSON.parse(JSON.stringify(demoScan));
+    s.internet!.traceroute = [{ ttl: 1, ip: '192.168.1.1', rttMs: 2.1 }, { ttl: 2, ip: '192.168.100.1', rttMs: 3.0 }, { ttl: 3, ip: '93.40.0.17', rttMs: 14 }];
+    s.adapters = s.adapters.map((a) => (a.up && a.ipv4.length ? { ...a, dns: ['192.168.100.1'] } : a));
+    const m = buildNetworkMap(s);
+    const ids = m.nodes.map((n) => n.id);
+    expect(ids.length).toBe(new Set(ids).size);
+    const r2 = m.nodes.find((n) => n.ip === '192.168.100.1')!;
+    expect(r2).toMatchObject({ kind: 'router', segment: 'core' });
+    expect(m.flows.find((f) => f.kind === 'internet')?.path).toContain(r2.id);
   });
 });

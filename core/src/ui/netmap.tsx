@@ -501,7 +501,7 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
           <Maximize2 size={16} aria-hidden />
         </button>
         {!reduce && (
-          <button className="btn small icon" onClick={() => setPlaying((p) => !p)} aria-label={playing ? 'Ferma i pacchetti animati' : 'Anima i pacchetti'} aria-pressed={!playing} title={playing ? 'Ferma l\'animazione' : 'Anima'}>
+          <button className="btn small icon" onClick={() => setPlaying((p) => !p)} aria-label="Ferma i pacchetti animati" aria-pressed={!playing} title="Ferma i pacchetti animati">
             {playing ? <Pause size={16} aria-hidden /> : <Play size={16} aria-hidden />}
           </button>
         )}

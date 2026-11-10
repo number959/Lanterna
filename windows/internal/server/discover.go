@@ -84,6 +84,19 @@ type discState struct {
 
 var errDiscRunning = errors.New("scoperta già in corso: attendi che finisca o interrompila")
 
+// l2FailText spiega gli esiti dell'ascolto che non dicono nulla della rete.
+var l2FailText = map[string]string{
+	l2disc.ReadAdmin:       "serve Polaris avviato come amministratore",
+	l2disc.ReadNoWired:     "nessuna scheda cablata collegata: l'ascolto funziona solo con il cavo",
+	l2disc.ReadUnsupported: "cattura dei pacchetti non disponibile su questo sistema",
+	l2disc.ReadError:       "ascolto non riuscito",
+}
+
+func l2Failed(read string) bool {
+	_, ok := l2FailText[read]
+	return ok
+}
+
 // state legge lo stato del lavoro; il chiamante tiene j.mu.
 func (j *discJob) state() discState {
 	st := discState{Running: j.running, Seconds: j.seconds, Target: j.target, Step: j.step, Error: j.err, ErrorKind: j.errKind}
@@ -189,8 +202,9 @@ func (s *Server) discoverRoutes(mux *http.ServeMux) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "durata dell'ascolto non valida: da 10 a 180 secondi"})
 			return
 		}
-		// Margine per avvio e chiusura della cattura.
-		ctx, finish, ok := d.l2.begin(time.Duration(secs)*time.Second + 45*time.Second)
+		// Margine per avvio e chiusura della cattura: più dei due minuti che
+		// l'ascolto si riserva, così il suo messaggio di tempo scaduto arriva.
+		ctx, finish, ok := d.l2.begin(time.Duration(secs)*time.Second + 3*time.Minute)
 		if !ok {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": errDiscRunning.Error()})
 			return
@@ -210,10 +224,15 @@ func (s *Server) discoverRoutes(mux *http.ServeMux) {
 				}()
 				res = s.ListenL2(ctx, time.Duration(secs)*time.Second)
 			}()
-			// Un ascolto interrotto da chi lo ha avviato non sostituisce
-			// l'esito precedente: resta solo il messaggio.
-			if err == nil && errors.Is(ctx.Err(), context.Canceled) {
+			// Un ascolto interrotto o non riuscito (senza privilegi, senza cavo,
+			// cattura non disponibile, errore) non sostituisce l'esito
+			// precedente: resta solo il messaggio. "Nessun annuncio" invece è
+			// un esito.
+			if err == nil && (errors.Is(ctx.Err(), context.Canceled) || l2Failed(res.Read)) {
 				msg := res.Error
+				if msg == "" {
+					msg = l2FailText[res.Read]
+				}
 				if msg == "" {
 					msg = "ascolto interrotto"
 				}

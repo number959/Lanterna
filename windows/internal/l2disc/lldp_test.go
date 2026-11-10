@@ -112,7 +112,7 @@ func TestLLDPIdentifiers(t *testing.T) {
 		{cat([]byte{5, 2}, v6), cat([]byte{4, 1}, []byte{10, 0, 0, 9}), "fe80::1", "network-address", "10.0.0.9", "network-address"},
 		{cat([]byte{7}, []byte("switch-lab\x00")), cat([]byte{6}, []byte{0x00, 0x01, 0xff}), "switch-lab", "local", "00:01:ff", "agent-circuit-id"},
 		{cat([]byte{4}, []byte{1, 2, 3}), cat([]byte{1}, []byte("uplink")), "01:02:03", "mac", "", "interface-alias"},
-		{cat([]byte{9}, []byte("x")), cat([]byte{2}, []byte("Slot 1")), "x", "subtype-9", "Slot 1", "port-component"},
+		{cat([]byte{9}, []byte("x")), cat([]byte{2}, []byte("Slot 1")), "x", "subtype-9", "", "port-component"},
 		{cat([]byte{5, 9}, []byte{1, 2}), []byte{7}, "09:01:02", "network-address", "", "local"},
 	}
 	for _, c := range cases {

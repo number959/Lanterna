@@ -114,11 +114,14 @@ func runDiscover(args []string) error {
 // passano come argomenti: resterebbero nella cronologia del prompt e
 // nell'elenco dei processi.
 func snmpCreds(v3 bool, auth, priv string, in io.Reader) (snmp.Creds, error) {
+	// Un solo lettore per tutte le domande: con le credenziali passate da una
+	// pipe, un lettore nuovo per domanda perderebbe le righe già lette.
+	br := bufio.NewReader(in)
 	ask := func(env, prompt string) (string, error) {
 		if v := os.Getenv(env); v != "" {
 			return v, nil
 		}
-		return readSecret(prompt, in)
+		return readSecret(prompt, in, br)
 	}
 	if !v3 {
 		if auth != "" || priv != "" {
@@ -146,8 +149,8 @@ func snmpCreds(v3 bool, auth, priv string, in io.Reader) (snmp.Creds, error) {
 }
 
 // readLine legge una riga senza il ritorno a capo.
-func readLine(in io.Reader) (string, error) {
-	line, err := bufio.NewReader(in).ReadString('\n')
+func readLine(br *bufio.Reader) (string, error) {
+	line, err := br.ReadString('\n')
 	if err != nil && (err != io.EOF || line == "") {
 		return "", errors.New("credenziali non lette")
 	}

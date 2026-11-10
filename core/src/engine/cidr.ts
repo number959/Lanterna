@@ -22,6 +22,8 @@ export function parseCidr(c?: string): Cidr | undefined {
   if (!c) return undefined;
   const [ip, p] = c.split('/');
   const n = ipNum(ip);
+  // Il prefisso, se c'è, è un numero intero da 0 a 32 ("/24", mai "/24.5" o "/").
+  if (p !== undefined && !/^\d{1,2}$/.test(p)) return undefined;
   const prefix = p === undefined ? 32 : Number(p);
   if (n === undefined || !(prefix >= 0 && prefix <= 32)) return undefined;
   const size = Math.pow(2, 32 - prefix);
