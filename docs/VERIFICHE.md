@@ -1547,7 +1547,8 @@ sovrapposte in tutti i percorsi delle due demo, firma della rete, titoli delle z
 (casa e clinica a 1366, 1920 e 390 px) e sulla mappa (30 stati: temi scuro e chiaro, 1440, 390 e 320 px, scelta, filtri e ricerca,
 elenco), nessuno scorrimento orizzontale. Fluidità misurata in Chromium senza scheda grafica: traffico, mediana 16,7 ms tra i
 fotogrammi nella scena più carica; mappa, 60 fps a riposo e durante il trascinamento, 37-56 fps durante l'entrata; con la mappa
-fuori vista il lavoro a riposo scende da circa 240 a circa 80 ms al secondo.
+fuori vista il lavoro a riposo scende da circa 240 a circa 80 ms al secondo. Run 99-108 della CI verdi su Linux e su Windows reale
+(ultima: run 108, commit e33955f). La bozza della release v0.13.0 non contiene questo lavoro.
 
 **Avvertenze: cosa resta da provare.**
 - **Ascolto degli annunci con uno switch vero** (Cisco, HPE Aruba, altri): provato con trame costruite, su milioni di trame
