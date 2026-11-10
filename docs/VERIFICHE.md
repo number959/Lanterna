@@ -1515,7 +1515,8 @@ www.google.com", "52411 → 443") e una scia tratteggiata che avanza nel verso d
 28 prove per la vista (517 vitest in tutto), comprese la riga breve di ogni pacchetto delle due demo e la scia; axe-core di
 nuovo sull'anteprima (16 stati: temi scuro e chiaro, 1440 e 390 px) e sull'applicazione (Rete locale, Infrastruttura, guida
 con la videoguida della mappa; casa e clinica, temi scuro e chiaro, 1366 e 390 px): 0 violazioni, nessuno scorrimento
-orizzontale. La bozza della release v0.13.0 qui sopra è stata costruita prima di queste modifiche e non le contiene.
+orizzontale. Run 96 della CI (commit f48e9fb) verde su Linux e su Windows reale. La bozza della release v0.13.0 qui sopra è stata
+costruita prima di queste modifiche e non le contiene.
 
 **Avvertenze: cosa resta da provare.**
 - **Ascolto degli annunci con uno switch vero** (Cisco, HPE Aruba, altri): provato con trame costruite, su milioni di trame
