@@ -5,7 +5,6 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { buildNetworkMap, KIND_LABEL, packetTime, trafficScenarios, trafficSize } from '../engine';
 import type { Analysis, DeviceKind, MapNode, NetworkMap, PacketProto, Scan, TrafficPacket, TrafficScenario, TrafficStep } from '../engine';
 import { BrandSymbol } from './brand';
-import { DeviceArt } from './deviceart';
 import { useWidth } from './hooks';
 import { IsoDevice, isoTop } from './isoart';
 import {
@@ -780,13 +779,13 @@ function SequenceView({ step, pkt, prog, node, width }: { step: TrafficStep; pkt
         const nd = node(id)!;
         return (
           <g key={id} className={`tx-node${nd.self ? ' self' : ''}`}>
-            <g className="tx-glyph">
-              <DeviceArt kind={nd.kind} x={x(id)} y={34} scale={0.52} />
+            <g className="tx-glyph" transform={`translate(${x(id).toFixed(1)} 56) scale(0.6)`}>
+              <IsoGlyph kind={nd.kind} />
             </g>
-            <text x={x(id)} y={70} textAnchor="middle" className="tx-node-name">
+            <text x={x(id)} y={78} textAnchor="middle" className="tx-node-name">
               {clip(nd.self ? 'Questo PC' : nd.label, chars)}
             </text>
-            <line x1={x(id)} x2={x(id)} y1={82} y2={h - 8} className="tx-life" />
+            <line x1={x(id)} x2={x(id)} y1={88} y2={h - 8} className="tx-life" />
           </g>
         );
       })}
