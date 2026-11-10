@@ -6,6 +6,7 @@ import { demoScan } from '../src/demo/sample';
 import {
   arrowsAlong,
   buildScene,
+  CHIP_ROOM,
   easeOutCubic,
   ENTER,
   entranceSchedule,
@@ -15,7 +16,9 @@ import {
   hullRect,
   ISO_SCALE,
   latticePath,
+  LANE,
   lerpView,
+  networkSignature,
   offsetPolyline,
   pathToNode,
   placeLinkLabel,
@@ -30,7 +33,9 @@ import {
   STACK_GAP,
   toScreen,
   truncate,
+  unfold,
   visibleArea,
+  zoneTexts,
   zoomAbout,
 } from '../src/ui/netmap-iso';
 import type { Pt, Rect, Scene } from '../src/ui/netmap-iso';
@@ -123,6 +128,79 @@ describe('disposizione con più aria tra le zone', () => {
   });
 });
 
+/** Lunghezza dei tratti di a che stanno sopra un tratto di b (stessa retta entro 0,5 px, intervalli sovrapposti). */
+function overlap(a: Pt[], b: Pt[]): number {
+  let tot = 0;
+  for (let i = 1; i < a.length; i++)
+    for (let j = 1; j < b.length; j++) {
+      const [p, q] = [a[i - 1], a[i]];
+      const [r, s] = [b[j - 1], b[j]];
+      const L = dist(p, q);
+      if (L < 1) continue;
+      const u: Pt = [(q[0] - p[0]) / L, (q[1] - p[1]) / L];
+      const off = (z: Pt) => Math.abs((z[0] - p[0]) * u[1] - (z[1] - p[1]) * u[0]);
+      if (off(r) > 0.5 || off(s) > 0.5) continue;
+      const t = (z: Pt) => (z[0] - p[0]) * u[0] + (z[1] - p[1]) * u[1];
+      const lo = Math.max(0, Math.min(t(r), t(s)));
+      const hi = Math.min(L, Math.max(t(r), t(s)));
+      if (hi > lo) tot += hi - lo;
+    }
+  return tot;
+}
+
+describe('percorsi che tornano sui loro passi', () => {
+  it('andata e ritorno non si sovrappongono mai: tutti i percorsi del traffico e tutti i percorsi verso un dispositivo scelto, casa e poliambulatorio', () => {
+    const bad: string[] = [];
+    for (const [name, m] of [['casa', casa()], ['poliambulatorio', clinica()]] as const) {
+      const paths: [string, string[]][] = [...m.flows.map((f) => [f.id, f.path] as [string, string[]]), ...m.nodes.map((n) => [`scelto ${n.label}`, pathToNode(m, n)] as [string, string[]])];
+      expect(m.flows.length).toBeGreaterThan(1);
+      for (const [id, ids] of paths) {
+        if (ids.length < 2) continue;
+        const lay = routePoints(m, ids);
+        // Tratti paralleli agli assi della disposizione e nessuna inversione a U.
+        for (let i = 1; i < lay.length; i++) if (lay[i][0] !== lay[i - 1][0] && lay[i][1] !== lay[i - 1][1]) bad.push(`${name} ${id}: tratto obliquo`);
+        const pts = projectPath(lay);
+        for (let i = 1; i + 1 < pts.length; i++) {
+          const a: Pt = [pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]];
+          const b: Pt = [pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]];
+          if ((a[0] * b[0] + a[1] * b[1]) / (Math.hypot(...a) * Math.hypot(...b)) < -0.8) bad.push(`${name} ${id}: inversione a U`);
+        }
+        const req = offsetPolyline(pts, LANE);
+        const res = offsetPolyline(pts.slice().reverse(), LANE);
+        const ov = overlap(req, res);
+        if (ov > 0) bad.push(`${name} ${id}: andata sopra il ritorno per ${ov.toFixed(1)} px`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it('verso un\'altra VLAN: si entra nel gateway con un breve tratto laterale e si riparte lungo la dorsale', () => {
+    const m = clinica();
+    const srv = m.nodes.find((n) => n.ip === '10.20.50.10')!;
+    const gw = m.nodes.find((n) => n.gateway)!;
+    const pts = routePoints(m, pathToNode(m, srv));
+    const at = pts.findIndex((p) => p[0] === gw.x && p[1] === gw.y);
+    expect(at).toBeGreaterThan(0);
+    // Arrivo parallelo alla dorsale, spostato di lato; partenza sulla dorsale.
+    expect(pts[at - 1][1]).toBe(gw.y);
+    expect(pts[at - 1][0]).toBeLessThan(gw.x);
+    expect(pts[at + 1][0]).toBe(m.backbone!.x);
+    // Un percorso che non torna indietro resta com'è.
+    expect(unfold([[0, 0], [0, 50], [80, 50]])).toEqual([[0, 0], [0, 50], [80, 50]]);
+  });
+});
+
+describe('firma della rete', () => {
+  it('una nuova analisi della stessa rete ha la stessa firma; una rete diversa no', () => {
+    const a = clinica();
+    const again = spaceMap(buildNetworkMap({ ...clinicScan, internet: { ...(clinicScan.internet ?? { targets: [] }) } }, analyze({ ...clinicScan })));
+    expect(networkSignature(again)).toBe(networkSignature(a));
+    expect(networkSignature(casa())).not.toBe(networkSignature(a));
+    const moved = { ...a, nodes: a.nodes.map((n, i) => (i === 3 ? { ...n, x: n.x + 10 } : n)) };
+    expect(networkSignature(moved)).not.toBe(networkSignature(a));
+  });
+});
+
 /** Tutti i titoli delle zone liberi: non si toccano tra loro, non coprono altre zone né dispositivi. */
 function labelClashes(sc: Scene): string[] {
   const out: string[] = [];
@@ -159,6 +237,21 @@ describe('scena proiettata', () => {
         expect(a.hull.some((p) => inside(p, b.hull)) || b.hull.some((p) => inside(p, a.hull))).toBe(false);
       }
     expect(labelClashes(sc)).toEqual([]);
+  });
+
+  it('titoli delle zone: il nome nel titolo, il prefisso degli indirizzi nel sottotitolo, mai tagliato a metà', () => {
+    const sc = buildScene(clinica(), topOf);
+    const adm = sc.zones.find((z) => z.s.label.startsWith('VLAN 20'))!;
+    expect(adm.label.title).toBe('VLAN 20 AMMINISTRAZIONE');
+    expect(adm.label.sub).toBe('10.20.20.0/24 · 3 dispositivi');
+    for (const z of sc.zones) {
+      expect(z.label.title).not.toMatch(/\d\.\d+…/);
+      if (z.s.kind !== 'local') expect(z.label.title).not.toContain('·');
+      if (z.s.kind === 'remote') expect(z.label.sub).toContain(z.s.subnet ?? '');
+    }
+    const local = sc.zones.find((z) => z.s.kind === 'local')!;
+    expect(local.label.title).toBe('Rete di questo PC · AMBULATORI');
+    expect(zoneTexts({ id: 'w', label: 'Wi-Fi «Ospiti»', kind: 'wifi', sources: [], x: 0, y: 0, w: 1, h: 1 }, 0)).toEqual({ title: 'Wi-Fi «Ospiti»', sub: 'rete Wi-Fi' });
   });
 
   it('ordine di lettura (Tab) che è anche un ordine di disegno corretto; riquadro che contiene tutto', () => {
@@ -240,6 +333,8 @@ describe('camera', () => {
     const area = visibleArea(1140, 640, 'right');
     expect(area.x1).toBeLessThan(1140 - 330);
     expect(visibleArea(366, 440, 'bottom').y1).toBeLessThan(440 * 0.45);
+    // Il pannello in basso (styles.css) è alto il 58% e sta a 12 px dal bordo: l'area finisce sopra di lui.
+    for (const h of [300, 440, 620]) expect(visibleArea(366, h, 'bottom').y1).toBeLessThan(h - 12 - h * 0.58);
     const v = frameView({ x0: 0, y0: 0, x1: 200, y1: 100 }, area, 0.3, 1.15);
     const c = toScreen(v, [100, 50]);
     expect(c[0]).toBeCloseTo((area.x0 + area.x1) / 2, 6);
@@ -266,6 +361,9 @@ describe('camera', () => {
     const p = toScreen(phone, sc.nodes.find((s) => s.n.id === srv.id)!.p);
     expect(p[0]).toBeGreaterThan(0);
     expect(p[0]).toBeLessThan(366);
+    // Sopra l'arrivo c'è posto per l'etichetta ferma del pacchetto.
+    const arrive = sc.nodes.find((s) => s.n.id === srv.id)!;
+    expect(b.y0).toBeLessThanOrEqual(arrive.p[1] - arrive.h - CHIP_ROOM);
   });
 
   it('zoom attorno a un punto fermo; passaggio tra due viste con lo zoom geometrico', () => {

@@ -119,8 +119,105 @@ export function routePoints(map: NetworkMap, ids: string[]): Pt[] {
       pts.push(...nodeDrop(za, a).reverse(), ...zoneExit(map, za), ...zoneExit(map, zb).reverse(), ...nodeDrop(zb, b));
     } else pts.push([b.x, b.y]);
   }
-  // Toglie i punti ripetuti.
-  return pts.filter((p, i) => i === 0 || p[0] !== pts[i - 1][0] || p[1] !== pts[i - 1][1]);
+  // Toglie i punti ripetuti e apre i tratti in cui il percorso torna indietro.
+  return unfold(pts.filter((p, i) => i === 0 || p[0] !== pts[i - 1][0] || p[1] !== pts[i - 1][1]));
+}
+
+/** Distanza (unità della disposizione) tra i due rami di un percorso che torna sui suoi passi. */
+export const UNFOLD = 8;
+
+const unit = (a: Pt, b: Pt): Pt => {
+  const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+};
+const segLen = (a: Pt, b: Pt) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+const samePt = (a: Pt, b: Pt) => Math.abs(a[0] - b[0]) < 0.01 && Math.abs(a[1] - b[1]) < 0.01;
+
+/**
+ * Un percorso che raggiunge un dispositivo e riparte per la stessa strada
+ * (l'access point nella zona del PC, il gateway tra due VLAN) si ripiega su se
+ * stesso: le corsie di andata e ritorno finirebbero una sopra l'altra. Qui il
+ * ramo di arrivo si sposta di lato (2·gap sul tratto in comune, gap negli
+ * altri), il ramo di partenza resta sulla linea, e il dispositivo si raggiunge
+ * con un breve tratto laterale. I tratti restano paralleli agli assi.
+ */
+export function unfold(input: Pt[], gap = UNFOLD): Pt[] {
+  let pts = simplify(input);
+  let from = 1;
+  for (let guard = 0; guard < 12; guard++) {
+    let v = -1;
+    for (let i = Math.max(1, from); i < pts.length - 1; i++) {
+      const u = unit(pts[i - 1], pts[i]);
+      const w = unit(pts[i], pts[i + 1]);
+      if (u[0] * w[0] + u[1] * w[1] < -0.99) {
+        v = i;
+        break;
+      }
+    }
+    if (v < 0) return pts;
+    const fwd = unfoldAt(pts, v, gap);
+    const back = fwd ? null : unfoldAt(pts.slice().reverse(), pts.length - 1 - v, gap);
+    const next = fwd ?? back?.reverse();
+    if (next) pts = simplify(next);
+    else from = v + 1;
+  }
+  return pts;
+}
+
+/** Apre l'inversione a U nel punto v, se il ramo di arrivo è il più corto; null se non si può. */
+function unfoldAt(pts: Pt[], v: number, gap: number): Pt[] | null {
+  // Tratti in comune: In_j = pts[v-j-1] → pts[v-j], Out_j = pts[v+j] → pts[v+j+1].
+  let q = -1;
+  for (let j = 0; v - j - 1 >= 0 && v + j + 1 < pts.length; j++) {
+    const u = unit(pts[v - j - 1], pts[v - j]);
+    const w = unit(pts[v + j], pts[v + j + 1]);
+    if (u[0] * w[0] + u[1] * w[1] > -0.99) break;
+    q = j;
+    if (!samePt(pts[v - j - 1], pts[v + j + 1])) {
+      // Il tratto più esterno è in comune solo in parte: lo sposta il ramo più corto.
+      if (segLen(pts[v - j - 1], pts[v - j]) > segLen(pts[v + j], pts[v + j + 1])) return null;
+      break;
+    }
+  }
+  if (q < 0) return null;
+  const f = v - q - 1;
+  // Tratto che porta all'inizio del ramo ripiegato: si accorcia di 2·gap.
+  if (f < 1 || segLen(pts[f - 1], pts[f]) <= 2 * gap + 1) return null;
+  const a = unit(pts[f - 1], pts[f]);
+  const normal = (j: number): Pt => {
+    const d = unit(pts[v - j - 1], pts[v - j]);
+    return [-d[1], d[0]];
+  };
+  const nq = normal(q);
+  const side = -(nq[0] * a[0] + nq[1] * a[1]);
+  if (Math.abs(Math.abs(side) - 1) > 0.01) return null;
+  const offIn = (j: number): Pt => {
+    const n = normal(j);
+    const m = side * (j === q ? 2 * gap : gap);
+    return [n[0] * m, n[1] * m];
+  };
+  const offOut = (j: number): Pt => (j === q ? [0, 0] : [-offIn(j)[0], -offIn(j)[1]]);
+  const add = (p: Pt, ...ds: Pt[]): Pt => ds.reduce<Pt>((s, d) => [s[0] + d[0], s[1] + d[1]], [p[0], p[1]]);
+  const inb: Pt[] = [];
+  for (let i = f; i <= v; i++) {
+    const j = v - i;
+    inb.push(i === f ? add(pts[i], offIn(q)) : i === v ? add(pts[i], offIn(0)) : add(pts[i], offIn(j), offIn(j - 1)));
+  }
+  const out: Pt[] = [];
+  for (let i = v; i <= v + q; i++) {
+    const j = i - v;
+    out.push(i === v ? add(pts[i], offOut(0)) : add(pts[i], offOut(j - 1), offOut(j)));
+  }
+  // Ogni tratto spostato conserva il suo verso: nessun nuovo ripiegamento.
+  const keeps = (a0: Pt, a1: Pt, b0: Pt, b1: Pt) => {
+    const u = unit(a0, a1);
+    const w = unit(b0, b1);
+    return segLen(b0, b1) > 0.5 && u[0] * w[0] + u[1] * w[1] > 0.99;
+  };
+  for (let k = 0; k + 1 < inb.length; k++) if (!keeps(pts[f + k], pts[f + k + 1], inb[k], inb[k + 1])) return null;
+  const tail = pts[v + q + 1];
+  for (let k = 0; k <= q; k++) if (!keeps(pts[v + k], pts[v + k + 1], out[k], k < q ? out[k + 1] : tail)) return null;
+  return [...pts.slice(0, f), ...inb, ...out, ...pts.slice(v + q + 1)];
 }
 
 /** Percorso da questo PC al nodo scelto, ricavato dai percorsi noti. */
@@ -239,10 +336,32 @@ export function nodeParts(n: MapNode, p: Pt, h: number, sc: number): Rect[] {
 }
 export const nodeBox = (n: MapNode, p: Pt, h: number, sc = NODE_SCALE): Rect => union(nodeParts(n, p, h, sc));
 
+/**
+ * Titolo e sottotitolo di una zona. Per le zone che non sono la rete del PC
+ * l'etichetta ("VLAN 20 AMMINISTRAZIONE · 10.20.20.0/24") si divide al primo
+ * " · ": il nome nel titolo (accorciato solo lui, se serve), il prefisso degli
+ * indirizzi nel sottotitolo con il conteggio.
+ */
 export function zoneTexts(s: MapSegment, count: number): { title: string; sub: string } {
   const n = s.kind !== 'wifi' ? `${count} ${count === 1 ? 'dispositivo' : 'dispositivi'}` : 'rete Wi-Fi';
-  const sub = s.kind === 'local' ? [s.vlan ? `VLAN ${s.vlan}` : '', s.subnet ?? '', n].filter(Boolean).join(' · ') : n;
-  return { title: ellipsis(s.label, TITLE_MAX), sub };
+  if (s.kind === 'local') return { title: ellipsis(s.label, TITLE_MAX), sub: [s.vlan ? `VLAN ${s.vlan}` : '', s.subnet ?? '', n].filter(Boolean).join(' · ') };
+  const cut = s.label.indexOf(' · ');
+  const name = cut > 0 ? s.label.slice(0, cut) : s.label;
+  const prefix = cut > 0 ? s.label.slice(cut + 3) : '';
+  return { title: ellipsis(name, TITLE_MAX), sub: [prefix, n].filter(Boolean).join(' · ') };
+}
+
+/**
+ * Firma della rete disegnata: dispositivi e zone con la loro posizione, e i
+ * percorsi. Una nuova analisi della stessa rete (test di velocità, banco della
+ * CPU, spazio su disco) dà la stessa firma: scelta, vista ed entrata restano.
+ */
+export function networkSignature(map: NetworkMap): string {
+  return [
+    map.nodes.map((n) => `${n.id}@${n.x},${n.y}`).join(';'),
+    map.segments.map((s) => `${s.id}@${s.x},${s.y}`).join(';'),
+    map.flows.map((f) => f.id).join(';'),
+  ].join('|');
 }
 
 /** Reticolo a terra di una zona: linee lungo i due assi isometrici, ogni "step" unità, da bordo a bordo. */
@@ -491,6 +610,9 @@ export function simplify(pts: Pt[]): Pt[] {
   return out;
 }
 
+/** Distanza delle due corsie (andata e ritorno) dal centro del percorso, in pixel. */
+export const LANE = 4;
+
 /**
  * Linea parallela a un percorso, a distanza d (positiva a destra del verso di
  * marcia, sullo schermo): le due corsie del traffico, andata e ritorno. Negli
@@ -600,11 +722,22 @@ export const easeInOutCubic = (t: number) => {
   return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 };
 
-/** Riquadro di un percorso proiettato con i dispositivi che attraversa. */
+/**
+ * Spazio sopra un dispositivo d'arrivo per l'etichetta del pacchetto ferma (pausa o "riduci
+ * movimento"), che sta sopra il disegno: alta fino a 6 + 47 px oltre il disegno, larga fino a
+ * circa 110 px, più la distanza della corsia.
+ */
+export const CHIP_ROOM = 58;
+export function chipRoom(sn: SceneNode): Rect {
+  return { x0: sn.p[0] - 56, x1: sn.p[0] + 56, y0: sn.p[1] - sn.h - CHIP_ROOM, y1: sn.p[1] };
+}
+
+/** Riquadro di un percorso proiettato con i dispositivi che attraversa e l'etichetta del pacchetto all'arrivo. */
 export function routeBounds(map: NetworkMap, scene: Scene, ids: string[]): Rect {
   const boxes = scene.nodes.filter((s) => ids.includes(s.n.id)).map((s) => s.box);
   const route = ids.length > 1 ? projectPath(routePoints(map, ids)) : [];
-  return union([...boxes, ...(route.length > 1 ? [hullRect(route)] : [])]);
+  const last = scene.nodes.find((s) => s.n.id === ids[ids.length - 1]);
+  return union([...boxes, ...(route.length > 1 ? [hullRect(route)] : []), ...(last ? [chipRoom(last)] : [])]);
 }
 
 /**
@@ -622,10 +755,14 @@ export function frameRoute(map: NetworkMap, scene: Scene, ids: string[], area: R
   return v;
 }
 
-/** Area della scena che resta visibile accanto al pannello dei dettagli (a destra, o in basso sul telefono). */
+/**
+ * Area della scena che resta visibile accanto al pannello dei dettagli (a destra, o in basso sul
+ * telefono), con un margine. Il pannello (styles.css) sta a 12 px dai bordi: a destra è largo
+ * fino a 330 px, in basso è alto il 58% della mappa, quindi comincia a 0,42·h − 12.
+ */
 export function visibleArea(w: number, h: number, panel: 'right' | 'bottom' | 'none'): Rect {
   if (panel === 'right') return { x0: 16, y0: 16, x1: Math.max(120, w - Math.min(330, w - 24) - 36), y1: h - 16 };
-  if (panel === 'bottom') return { x0: 16, y0: 12, x1: w - 16, y1: Math.max(100, h * 0.42 - 10) };
+  if (panel === 'bottom') return { x0: 16, y0: 12, x1: w - 16, y1: Math.max(100, h * 0.42 - 22) };
   return { x0: 16, y0: 16, x1: w - 16, y1: h - 16 };
 }
 

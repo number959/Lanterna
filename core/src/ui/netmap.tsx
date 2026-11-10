@@ -42,6 +42,7 @@ import {
   arrowPoints,
   arrowsAlong,
   buildScene,
+  chipRoom,
   easeInOutCubic,
   easeOutCubic,
   ellipsis,
@@ -49,8 +50,10 @@ import {
   frameRoute,
   frameView,
   LABEL_CHARS,
+  LANE,
   latticePath,
   lerpView,
+  networkSignature,
   nodeDrop,
   offsetPolyline,
   pathD,
@@ -64,6 +67,7 @@ import {
   spaceMap,
   toScreen,
   truncate,
+  union,
   visibleArea,
   zoneExit,
   ZONE_DEPTH,
@@ -146,8 +150,22 @@ const CONF_TEXT = { alta: 'riconosciuto con certezza', media: 'riconosciuto con 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const ptsAttr = (pts: Pt[]) => pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
 const ms = (v: number) => `${Math.round(v)}ms`;
-/** Distanza delle due corsie dal centro del percorso. */
-const LANE = 4;
+/** Sotto questa larghezza della finestra il pannello dei dettagli sta in basso (come in styles.css). */
+const NARROW = '(max-width: 760px)';
+/** Zoom minimo di "Mostra tutta la mappa": su un telefono una rete grande deve entrare intera. */
+const FIT_MIN = 0.08;
+/** Oltre questo spostamento (pixel) un gesto è un trascinamento, non un clic. */
+const DRAG = 6;
+
+/** Problema segnalato dall'analisi sul dispositivo, a parole (lo stesso testo per il lettore di schermo e l'elenco). */
+export function sevText(n: MapNode): string {
+  return n.sev === 'crit' ? 'problema' : n.sev === 'warn' ? 'da controllare' : '';
+}
+
+/** Il dispositivo corrisponde alla ricerca (testo già in minuscolo, vuoto = tutti)? */
+function matchesQuery(n: MapNode, q: string): boolean {
+  return !q || [n.label, n.ip ?? '', n.vendor ?? '', KIND_LABEL[n.kind], ...n.names].some((x) => x.toLowerCase().includes(q));
+}
 
 function pathText(map: NetworkMap, ids: string[]): string {
   const names = new Map(map.nodes.map((n) => [n.id, n.self ? 'questo PC' : n.label]));
@@ -156,9 +174,9 @@ function pathText(map: NetworkMap, ids: string[]): string {
 
 // ---------------------------------------------------------------- disegno
 
-/** Zona come piattaforma a terra: piano, spessore sui due lati davanti, linea di raccolta e titolo diritto. */
+/** Zona come piattaforma a terra: piano, spessore sui due lati davanti e linea di raccolta. */
 function ZonePlate({ z, delay }: { z: SceneZone; delay: number }) {
-  const { s, T, R, B, L, label } = z;
+  const { s, T, R, B, L } = z;
   const dn = (p: Pt): Pt => [p[0], p[1] + ZONE_DEPTH];
   const bus = s.kind !== 'wifi' ? projectPath([[s.x + 16, s.y + ZONE_BUS], [s.x + s.w - 16, s.y + ZONE_BUS]]) : null;
   const top = ptsAttr([T, R, B, L]);
@@ -169,6 +187,20 @@ function ZonePlate({ z, delay }: { z: SceneZone; delay: number }) {
       <polygon points={top} className="nm-plat-t" />
       <path d={latticePath(s)} className="nm-plat-lat" />
       {bus && <path d={pathD(bus)} className="nm-bus" />}
+      {s.kind === 'wifi' && s.note && (
+        <foreignObject x={(z.center[0] - 105).toFixed(1)} y={(z.center[1] - 30).toFixed(1)} width={210} height={62}>
+          <p className="nm-zone-note">{s.note}</p>
+        </foreignObject>
+      )}
+    </g>
+  );
+}
+
+/** Titolo e sottotitolo diritti di una zona: in un gruppo sopra tutte le piattaforme, così nessuna li copre. */
+function ZoneTitle({ z, delay }: { z: SceneZone; delay: number }) {
+  const { label } = z;
+  return (
+    <g className={`nm-zone-label nm-zone-${z.s.kind}`} style={{ animationDelay: ms(delay) }}>
       <text x={label.x.toFixed(1)} y={label.y.toFixed(1)} textAnchor={label.anchor} className="nm-zone-title">
         {label.title}
       </text>
@@ -176,11 +208,6 @@ function ZonePlate({ z, delay }: { z: SceneZone; delay: number }) {
         <text x={label.x.toFixed(1)} y={(label.y + 14).toFixed(1)} textAnchor={label.anchor} className="nm-zone-sub">
           {label.sub}
         </text>
-      )}
-      {s.kind === 'wifi' && s.note && (
-        <foreignObject x={(z.center[0] - 105).toFixed(1)} y={(z.center[1] - 30).toFixed(1)} width={210} height={62}>
-          <p className="nm-zone-note">{s.note}</p>
-        </foreignObject>
       )}
     </g>
   );
@@ -192,7 +219,8 @@ interface NodeProps {
   selected: boolean;
   playing: boolean;
   delay: number;
-  onPick: (n: MapNode) => void;
+  /** pointer: scelta con il clic (ignorata se il gesto era un trascinamento). */
+  onPick: (n: MapNode, pointer?: boolean) => void;
   onFocusNode: (n: MapNode, el: Element) => void;
 }
 
@@ -206,20 +234,21 @@ const NodeIso = memo(function NodeIso({ sn, dim, selected, playing, delay, onPic
     }
   };
   const head = n.self ? 22 : 8;
+  const sev = sevText(n);
   return (
     <g
       className={`nm-node${dim ? ' dim' : ''}${selected ? ' sel' : ''}${n.self ? ' self' : ''}`}
       transform={`translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})`}
       tabIndex={0}
       role="button"
-      aria-label={`${KIND_LABEL[n.kind]}: ${n.label}${n.self ? ' (questo PC)' : ''}${n.ip ? `, ${n.ip}` : ''}${n.confidence === 'bassa' ? ', tipo da verificare' : ''}${n.inferred ? ', dedotto' : ''}`}
+      data-id={n.id}
+      aria-label={`${KIND_LABEL[n.kind]}: ${n.label}${n.self ? ' (questo PC)' : ''}${n.ip ? `, ${n.ip}` : ''}${sev ? `, ${sev}` : ''}${n.confidence === 'bassa' ? ', tipo da verificare' : ''}${n.inferred ? ', dedotto' : ''}`}
       aria-pressed={selected}
       onClick={(e) => {
         e.stopPropagation();
-        onPick(n);
+        onPick(n, true);
       }}
       onKeyDown={onKey}
-      onPointerDown={(e) => e.stopPropagation()}
       onFocus={(e) => onFocusNode(n, e.currentTarget)}
     >
       <g className="nm-node-in" style={{ animationDelay: ms(delay) }}>
@@ -271,6 +300,8 @@ interface FlowGeo {
   dur: number;
   tag: string;
   info: string;
+  /** Altezza del disegno d'arrivo (+6 px): il chip fermo sta sopra il dispositivo, non sopra il suo disegno. */
+  lift: number;
 }
 
 /** Corsie tratteggiate con le punte di freccia: sotto i dispositivi. */
@@ -358,7 +389,9 @@ function FlowPackets({ g, playing }: { g: FlowGeo; playing: boolean }) {
         ))}
       {!playing && g.active && (
         <g transform={`translate(${end[0].toFixed(1)} ${end[1].toFixed(1)})`} className="nm-pkt">
-          <Chip tag={g.tag} info={g.info} />
+          <g transform={g.lift ? `translate(0 ${(-g.lift).toFixed(1)})` : undefined}>
+            <Chip tag={g.tag} info={g.info} />
+          </g>
           <circle r={4.6} className="nm-packet" />
         </g>
       )}
@@ -382,14 +415,21 @@ export interface NetMapProps {
   height?: number;
   /** Solo la mappa, senza comandi, filtri e note (per le videoguide). */
   compact?: boolean;
+  /** Pacchetti e corsie in movimento; la videoguida li muove solo mentre è in riproduzione. */
+  animate?: boolean;
 }
 
 type CamMode = 'glide' | 'jump';
 type Wire = { key: string; d: string; cls: string; style?: { stroke: string }; delay: number; draw: string };
 
-export function NetMap({ scan, analysis, height = 620, compact = false }: NetMapProps) {
+const matchNarrow = () => typeof window !== 'undefined' && !!window.matchMedia?.(NARROW).matches;
+const clock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+export function NetMap({ scan, analysis, height = 620, compact = false, animate }: NetMapProps) {
   // La disposizione piana del motore, con più aria tra le zone, proiettata sul piano isometrico.
   const map = useMemo(() => spaceMap(buildNetworkMap(scan, analysis)), [scan, analysis]);
+  // Una nuova analisi della stessa rete non è una mappa nuova: si confronta la firma, non l'oggetto.
+  const sig = useMemo(() => networkSignature(map), [map]);
   const scene = useMemo(() => buildScene(map, isoTop), [map]);
   const enter = useMemo(() => entranceSchedule(map), [map]);
   const reduce = !!useReducedMotion();
@@ -405,7 +445,10 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
   const [activeFlow, setActiveFlow] = useState<string>('flow:internet');
   const [list, setList] = useState(false);
   const [entering, setEntering] = useState(!reduce);
-  const live = playing && !reduce;
+  const [narrow, setNarrow] = useState(matchNarrow);
+  // Fuori dallo schermo (pagina scorsa) le animazioni continue si fermano.
+  const [onScreen, setOnScreen] = useState(true);
+  const live = playing && !reduce && (animate ?? true) && onScreen;
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -418,12 +461,50 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
     return () => ro.disconnect();
   }, [list, height]);
 
-  // Adatta: tutta la scena, sopra la riga dei suggerimenti in basso.
-  const fit = useMemo(() => frameView(scene.bounds, { x0: 14, y0: 14, x1: size.w - 14, y1: size.h - (compact ? 14 : 30) }, 0.2, 1.3), [scene, size.w, size.h, compact]);
+  useEffect(() => {
+    const mq = typeof window !== 'undefined' ? window.matchMedia?.(NARROW) : undefined;
+    if (!mq) return;
+    const on = () => setNarrow(mq.matches);
+    on();
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setOnScreen(true);
+      return;
+    }
+    const io = new IntersectionObserver((es) => {
+      const e = es[es.length - 1];
+      if (e) setOnScreen(e.isIntersecting);
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [list]);
+  useEffect(() => {
+    const svg = wrapRef.current?.querySelector('svg');
+    if (!svg) return;
+    if (onScreen) svg.unpauseAnimations?.();
+    else svg.pauseAnimations?.();
+  }, [onScreen, list]);
+
+  // Adatta: tutta la scena, sopra la riga dei suggerimenti in basso. Lo zoom può scendere
+  // sotto il minimo dei gesti, così una rete grande entra intera anche sul telefono.
+  // Il riquadro comprende l'etichetta ferma del pacchetto sopra gli arrivi dei percorsi (Internet è in cima).
+  const fitBounds = useMemo(() => {
+    const ends = new Set(map.flows.map((f) => f.path[f.path.length - 1]));
+    return union([scene.bounds, ...scene.nodes.filter((s) => ends.has(s.n.id)).map(chipRoom)]);
+  }, [map, scene]);
+  const fit = useMemo(() => frameView(fitBounds, { x0: 14, y0: 14, x1: size.w - 14, y1: size.h - (compact ? 14 : 30) }, FIT_MIN, 1.3), [fitBounds, size.w, size.h, compact]);
+  const kMinRef = useRef(0.2);
+  kMinRef.current = Math.min(0.2, fit.k);
   // Se la mappa intera diventerebbe illeggibile (telefono, reti grandi) si parte dal percorso di
   // questo PC verso Internet, come nella storia del pacchetto; se non entra, da questo PC.
+  // Nella videoguida (compatta) si vede sempre tutta la mappa: è quella di cui parla la voce.
   const initial = useMemo(() => {
-    if (fit.k >= 0.45) return fit;
+    if (compact || fit.k >= 0.45) return fit;
     const inet = map.flows.find((f) => f.kind === 'internet');
     if (inet && inet.path.length > 1) {
       const v = frameView(routeBounds(map, scene, inet.path), { x0: 20, y0: 24, x1: size.w - 20, y1: size.h - 40 }, 0.2, 1);
@@ -433,7 +514,7 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
     if (!c) return fit;
     const k = 0.8;
     return { k, x: size.w / 2 - c.p[0] * k, y: size.h / 2.3 - (c.p[1] - 10) * k };
-  }, [fit, map, scene, size.w, size.h]);
+  }, [compact, fit, map, scene, size.w, size.h]);
   const t = view ?? initial;
 
   // ------------------------------------------------ camera
@@ -445,6 +526,8 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
   const raf = useRef(0);
   const pending = useRef<CamMode | null>(null);
   const intro = useRef(!reduce);
+  /** La camera mostra ancora l'inquadratura automatica della scelta (nessun gesto dopo). */
+  const framed = useRef(false);
   const sizeRef = useRef(size);
   sizeRef.current = size;
   const targetRef = useRef(t);
@@ -453,6 +536,10 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
   initialRef.current = initial;
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const narrowRef = useRef(narrow);
+  narrowRef.current = narrow;
 
   const apply = useCallback((v: View) => {
     shown.current = v;
@@ -487,8 +574,12 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
   );
   useEffect(() => () => cancelAnimationFrame(raf.current), []);
 
-  /** Nuova inquadratura: "glide" scorre (pulsanti, tastiera, scelta), "jump" è immediata (trascinamento, pizzico, rotella). */
-  const go = useCallback((next: View | ((cur: View) => View), mode: CamMode) => {
+  /**
+   * Nuova inquadratura: "glide" scorre (pulsanti, tastiera, scelta), "jump" è immediata
+   * (trascinamento, pizzico, rotella). auto: è l'inquadratura della scelta, non un gesto.
+   */
+  const go = useCallback((next: View | ((cur: View) => View), mode: CamMode, auto = false) => {
+    framed.current = auto;
     pending.current = mode;
     setView((v) => {
       const cur = v ?? initialRef.current;
@@ -502,13 +593,33 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
     go({ ...shown.current }, 'jump');
   }, [go, stop]);
 
-  // Entrata in scena all'apertura e quando cambia l'analisi.
-  const epoch = useRef({ map, n: 0 });
-  if (epoch.current.map !== map) epoch.current = { map, n: epoch.current.n + 1 };
-  const firstMap = useRef(map);
+  // Entrata in scena all'apertura e quando cambia la rete (non a ogni nuova analisi della stessa rete).
+  const epoch = useRef({ sig, n: 0 });
+  /** Inizio dell'entrata in corso: i tracciati aggiunti a metà partono già avanti. */
+  const enterT0 = useRef(clock());
+  const maskDelays = useRef(new Map<string, number>());
+  if (epoch.current.sig !== sig) {
+    epoch.current = { sig, n: epoch.current.n + 1 };
+    enterT0.current = clock();
+    maskDelays.current.clear();
+  }
+  /**
+   * Ritardo di un tracciato della maschera dell'entrata, fissato quando compare (cambiarlo dopo
+   * farebbe saltare l'animazione): chi arriva a entrata iniziata, come il percorso di un
+   * dispositivo scelto subito, parte già avanti (ritardo negativo) e finisce con gli altri.
+   */
+  const maskDelay = (key: string, base: number) => {
+    let d = maskDelays.current.get(key);
+    if (d === undefined) {
+      d = base - Math.max(0, clock() - enterT0.current);
+      maskDelays.current.set(key, d);
+    }
+    return ms(d);
+  };
+  const firstSig = useRef(sig);
   useLayoutEffect(() => {
-    if (firstMap.current !== map) {
-      firstMap.current = map;
+    if (firstSig.current !== sig) {
+      firstSig.current = sig;
       setSelected(null);
       pending.current = null;
       setView(null);
@@ -519,10 +630,12 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
       return;
     }
     intro.current = true;
+    enterT0.current = clock();
     setEntering(true);
     const timer = window.setTimeout(() => setEntering(false), enter.end + 120);
     return () => window.clearTimeout(timer);
-  }, [map, reduce, enter]);
+    // La firma basta: con la stessa rete la tabella dell'entrata è la stessa.
+  }, [sig, reduce]);
 
   useLayoutEffect(() => {
     if (!measured) return;
@@ -531,11 +644,12 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
     pending.current = null;
     if (intro.current) {
       intro.current = false;
-      // La camera parte vicina a questo PC e si allontana mentre la scena si costruisce.
+      // La camera parte vicina a questo PC e si allontana mentre la scena si costruisce. La vista
+      // di partenza è quella iniziale: con una rete nuova la vista di prima è appena stata azzerata.
       const c = scene.nodes.find((s) => s.n.self) ?? scene.nodes.find((s) => s.n.gateway);
-      const [sx, sy] = c ? toScreen(target, c.p) : [size.w / 2, size.h / 2];
-      apply(zoomAbout(target, sx, sy, 1.7, 0.1, 4));
-      glide(target, 1450, easeInOutCubic);
+      const [sx, sy] = c ? toScreen(initial, c.p) : [size.w / 2, size.h / 2];
+      apply(zoomAbout(initial, sx, sy, 1.7, 0.1, 4));
+      glide(initial, 1450, easeInOutCubic);
       return;
     }
     if (mode === 'glide' && !reduce) glide(target, 620);
@@ -550,7 +664,7 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
       const px = cx ?? sizeRef.current.w / 2;
       const py = cy ?? sizeRef.current.h / 2;
       if (mode === 'jump') freeze();
-      go((cur) => zoomAbout(cur, px, py, factor), mode);
+      go((cur) => zoomAbout(cur, px, py, factor, Math.min(kMinRef.current, cur.k)), mode);
     },
     [go, freeze],
   );
@@ -569,14 +683,24 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
     return () => el.removeEventListener('wheel', onWheel);
   }, [zoomAt, list]);
 
-  // Trascinamento e pizzico con due dita: immediati, senza transizione.
+  // Trascinamento e pizzico con due dita: immediati, senza transizione. Un gesto può
+  // partire anche da un dispositivo; diventa trascinamento (e cattura il puntatore)
+  // solo oltre DRAG pixel, così un clic resta un clic.
   const pointers = useRef(new Map<number, Pt>());
   const pinch = useRef<{ d: number; k: number } | null>(null);
   const moved = useRef(0);
+  const capture = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const el = e.currentTarget;
+    try {
+      if (!el.hasPointerCapture(e.pointerId)) el.setPointerCapture(e.pointerId);
+    } catch {
+      /* puntatore già rilasciato */
+    }
+  };
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    if (e.isPrimary) pointers.current.clear();
+    moved.current = 0;
     freeze();
-    if (!pointers.current.size) moved.current = 0;
     pointers.current.set(e.pointerId, [e.clientX, e.clientY]);
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
@@ -591,22 +715,53 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
       const [a, b] = [...pointers.current.values()];
       const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
       const r = e.currentTarget.getBoundingClientRect();
-      const k = clamp((pinch.current.k * d) / pinch.current.d, 0.2, 3);
+      const k = clamp((pinch.current.k * d) / pinch.current.d, kMinRef.current, 3);
       moved.current += 10;
-      go((cur) => zoomAbout(cur, (a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top, k / cur.k), 'jump');
+      capture(e);
+      go((cur) => zoomAbout(cur, (a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top, k / cur.k, Math.min(kMinRef.current, cur.k)), 'jump');
       return;
     }
     const dx = e.clientX - prev[0];
     const dy = e.clientY - prev[1];
     moved.current += Math.abs(dx) + Math.abs(dy);
+    if (moved.current > DRAG) capture(e);
     if (dx || dy) go((cur) => ({ ...cur, x: cur.x + dx, y: cur.y + dy }), 'jump');
   };
   const onPointerUp = (e: ReactPointerEvent<SVGSVGElement>) => {
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
   };
+
+  const kinds = useMemo(() => KIND_ORDER.filter((k) => (map.counts[k] ?? 0) > 0), [map]);
+  const q = query.trim().toLowerCase();
+  const matches = (n: MapNode) => matchesQuery(n, q);
+  const visible = (n: MapNode) => n.segment === 'core' || hidden.indexOf(n.kind) < 0;
+  const sel = map.nodes.find((n) => n.id === selected);
+  const selPath = useMemo(() => (sel ? pathToNode(map, sel) : []), [map, sel]);
+
+  const pick = useCallback((n: MapNode, pointer = false) => {
+    if (pointer) {
+      // Il clic che chiude un trascinamento non sceglie; quelli dopo (anche senza puntatore,
+      // come il clic di un lettore di schermo) sì.
+      const drag = moved.current >= DRAG;
+      moved.current = 0;
+      if (drag) return;
+    }
+    setSelected((s) => (s === n.id ? null : n.id));
+  }, []);
+  /** Chiude il pannello; refocus: il fuoco torna sul dispositivo (dal pannello che scompare). */
+  const closePanel = useCallback((refocus: boolean) => {
+    const id = selectedRef.current;
+    setSelected(null);
+    if (!refocus || !id) return;
+    const root = wrapRef.current;
+    const node = [...(root?.querySelectorAll<SVGGElement>('.nm-node') ?? [])].find((el) => el.getAttribute('data-id') === id);
+    (node ?? root?.querySelector('svg'))?.focus({ preventScroll: true });
+  }, []);
+
   const onCanvasKey = (e: ReactKeyboardEvent) => {
-    if (e.target !== e.currentTarget) return;
+    // Vale anche con il fuoco su un dispositivo (Invio e Spazio li gestisce il dispositivo).
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const step = 80;
     const k = e.key;
     if (k === '+' || k === '=') zoomAt(1.25);
@@ -614,20 +769,27 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
     else if (k === '0') go(fit, 'glide');
     else if (k.startsWith('Arrow'))
       go((c) => ({ ...c, x: c.x + (k === 'ArrowLeft' ? step : k === 'ArrowRight' ? -step : 0), y: c.y + (k === 'ArrowUp' ? step : k === 'ArrowDown' ? -step : 0) }), 'glide');
+    else if (k === 'Escape' && selectedRef.current) closePanel(false);
     else return;
+    // Gestito qui: le scorciatoie globali (1-0 per le sezioni) non devono vederlo.
     e.preventDefault();
+    e.stopPropagation();
   };
 
-  const kinds = useMemo(() => KIND_ORDER.filter((k) => (map.counts[k] ?? 0) > 0), [map]);
-  const q = query.trim().toLowerCase();
-  const matches = (n: MapNode) =>
-    !q || [n.label, n.ip ?? '', n.vendor ?? '', KIND_LABEL[n.kind], ...n.names].some((x) => x.toLowerCase().includes(q));
-  const visible = (n: MapNode) => n.segment === 'core' || hidden.indexOf(n.kind) < 0;
-  const sel = map.nodes.find((n) => n.id === selected);
-  const selPath = useMemo(() => (sel ? pathToNode(map, sel) : []), [map, sel]);
+  // Un dispositivo scelto che un filtro o la ricerca nasconde non resta scelto (pannello e corsie verso il vuoto).
+  // I filtri per tipo contano quando cambiano i filtri; la ricerca solo quando cambia la ricerca, così un
+  // dispositivo attenuato dalla ricerca e scelto apposta resta scelto se si tocca il filtro di un altro tipo.
+  useEffect(() => {
+    const s = map.nodes.find((n) => n.id === selectedRef.current);
+    if (s && !visible(s)) setSelected(null);
+  }, [hidden]);
+  useEffect(() => {
+    const s = map.nodes.find((n) => n.id === selectedRef.current);
+    if (s && !matches(s)) setSelected(null);
+  }, [q]);
 
-  const pick = useCallback((n: MapNode) => setSelected((s) => (s === n.id ? null : n.id)), []);
-  // Con il tasto Tab la camera porta in vista il dispositivo raggiunto, se è fuori dallo schermo.
+  // Con il tasto Tab la camera porta in vista il dispositivo raggiunto, se è fuori dallo
+  // schermo o sotto il pannello dei dettagli: lo centra nella parte che resta visibile.
   const onFocusNode = useCallback(
     (n: MapNode, el: Element) => {
       let kb = true;
@@ -640,22 +802,36 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
       const sn = sceneRef.current.nodes.find((s) => s.n.id === n.id);
       if (!sn) return;
       const { w, h } = sizeRef.current;
-      const [sx, sy] = toScreen(targetRef.current, sn.p);
-      if (sx > 60 && sx < w - 60 && sy > 60 && sy < h - 60) return;
-      go((cur) => ({ ...cur, x: w / 2 - sn.p[0] * cur.k, y: h / 2.2 - sn.p[1] * cur.k }), 'glide');
+      const panel = selectedRef.current ? (narrowRef.current ? 'bottom' : 'right') : 'none';
+      const area = visibleArea(w, h, panel);
+      if (panel === 'none' && !compact) area.y1 = Math.min(area.y1, h - 30);
+      const v = targetRef.current;
+      const [x0, y0] = toScreen(v, [sn.box.x0, sn.box.y0]);
+      const [x1, y1] = toScreen(v, [sn.box.x1, sn.box.y1]);
+      if (x0 >= area.x0 && x1 <= area.x1 && y0 >= area.y0 && y1 <= area.y1) return;
+      const bx = (sn.box.x0 + sn.box.x1) / 2;
+      const by = (sn.box.y0 + sn.box.y1) / 2;
+      go((cur) => ({ ...cur, x: (area.x0 + area.x1) / 2 - bx * cur.k, y: (area.y0 + area.y1) / 2 - by * cur.k }), 'glide');
     },
-    [go],
+    [go, compact],
   );
 
   // Scelto un dispositivo, la camera inquadra il percorso da questo PC fino a lui, accanto al pannello.
+  // Se il pannello cambia posto (finestra più stretta o più larga) o cambia la misura della mappa,
+  // l'inquadratura si rifà, ma solo se l'utente non ha mosso la camera dopo la scelta.
+  const lastSel = useRef<string | null>(null);
   useEffect(() => {
-    if (!sel) return;
+    if (!sel) {
+      lastSel.current = null;
+      return;
+    }
+    const fresh = lastSel.current !== sel.id;
+    lastSel.current = sel.id;
+    if (!fresh && !framed.current) return;
     const ids = selPath.length > 1 ? selPath : [sel.id];
-    const narrow = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 760px)').matches;
     const { w, h } = sizeRef.current;
-    go(frameRoute(map, scene, ids, visibleArea(w, h, narrow ? 'bottom' : 'right'), 1.15, 0.5), 'glide');
-    // Solo quando cambia la scelta (non a ogni ridisegno): dopo, l'utente sposta e ingrandisce come vuole.
-  }, [selected]);
+    go(frameRoute(map, scene, ids, visibleArea(w, h, narrow ? 'bottom' : 'right'), 1.15, 0.5), 'glide', true);
+  }, [selected, narrow, size.w, size.h]);
 
   // ------------------------------------------------ geometria proiettata
   const byId = useMemo(() => new Map(map.nodes.map((n) => [n.id, n])), [map]);
@@ -725,6 +901,7 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
       const pts = blocked ? truncate(full, 0.82) : full;
       const dest = byId.get(path[path.length - 1]);
       const info = dest ? `→ ${dest.kind === 'internet' ? 'Internet' : (dest.ip ?? dest.label)}` : '';
+      const arrive = scene.nodes.find((s) => s.n.id === dest?.id);
       return {
         id,
         pts,
@@ -736,6 +913,7 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
         dur: clamp(polyLength(pts) / speed, 1.6, 9),
         tag,
         info: tag === 'DNS QUERY' && dest?.ip ? `A? → ${dest.ip}` : info,
+        lift: !blocked && arrive ? arrive.h + 6 : 0,
       };
     };
     if (sel) return selPath.length > 1 ? [geo('sel', selPath, 'var(--c-https)', true, false, 240, 'PERCORSO')].filter((g): g is FlowGeo => !!g) : [];
@@ -747,7 +925,7 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
       })
       .filter((g): g is FlowGeo => !!g)
       .sort((a, b) => Number(a.active) - Number(b.active));
-  }, [map, byId, flows, activeFlow, sel, selPath]);
+  }, [map, scene, byId, flows, activeFlow, sel, selPath]);
 
   const drawMask = `${uid}-draw`;
   const flowDelay = enter.flows;
@@ -757,6 +935,30 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
   if (!map.nodes.length) return <p className="muted">Nessun dato di rete da disegnare.</p>;
 
   const b = scene.bounds;
+  // Maschera dell'entrata: i collegamenti e i percorsi si disegnano. I ritardi dei tracciati che
+  // non ci sono più si dimenticano, così un tracciato che ricompare riparte dal punto giusto.
+  const maskUsed = new Set<string>();
+  const maskAt = (key: string, base: number) => {
+    maskUsed.add(key);
+    return maskDelay(key, base);
+  };
+  const maskEl = entering ? (
+    <mask key={epoch.current.n} id={drawMask} maskUnits="userSpaceOnUse" x={b.x0 - 400} y={b.y0 - 400} width={b.x1 - b.x0 + 800} height={b.y1 - b.y0 + 800}>
+      {wires.map((w) => (
+        <path key={w.key} d={w.draw} pathLength={1} className="nm-draw" style={{ animationDelay: maskAt(w.key, w.delay) }} />
+      ))}
+      {shownNodes
+        .filter((s) => s.n.segment !== 'core')
+        .map((s) => {
+          const z = segById.get(s.n.segment);
+          return z ? <path key={`d-${s.n.id}`} d={pathD(projectPath(nodeDrop(z, s.n)))} pathLength={1} className="nm-draw" style={{ animationDelay: maskAt(`d-${s.n.id}`, enter.wires + 160) }} /> : null;
+        })}
+      {flowGeo.map((g) => (
+        <path key={`f-${g.id}`} d={pathD(g.pts)} pathLength={1} className="nm-draw wide" style={{ animationDelay: maskAt(`f-${g.id}`, flowDelay) }} />
+      ))}
+    </mask>
+  ) : null;
+  for (const k of [...maskDelays.current.keys()]) if (!maskUsed.has(k)) maskDelays.current.delete(k);
   return (
     <div className={`netmap console${compact ? ' compact' : ''}`}>
       {!compact && (
@@ -807,46 +1009,39 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
       )}
 
       {list ? (
-        <NetMapList map={map} />
+        <NetMapList map={map} hidden={hidden} query={query} />
       ) : (
         <div className="nm-stage" ref={wrapRef} style={{ height }}>
           <svg
             className={`nm-canvas${live ? ' live' : ''}`}
             role="group"
-            aria-label={`Mappa della rete: ${map.nodes.length} elementi in ${counts} ${counts === 1 ? 'zona' : 'zone'}. Usa Tab per scegliere un dispositivo; + e − per lo zoom, 0 per adattare, frecce per spostarti.`}
+            aria-label={`Mappa della rete: ${map.nodes.length} elementi in ${counts} ${counts === 1 ? 'zona' : 'zone'}. Usa Tab per scegliere un dispositivo; + e − per lo zoom, 0 per adattare, frecce per spostarti, Esc per chiudere i dettagli.`}
             tabIndex={0}
             onKeyDown={onCanvasKey}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onPointerLeave={onPointerUp}
             onClick={() => {
-              if (moved.current < 6) setSelected(null);
+              const drag = moved.current >= DRAG;
+              moved.current = 0;
+              if (!drag) setSelected(null);
             }}
           >
             <defs>
-              {entering && (
-                <mask id={drawMask} maskUnits="userSpaceOnUse" x={b.x0 - 400} y={b.y0 - 400} width={b.x1 - b.x0 + 800} height={b.y1 - b.y0 + 800}>
-                  {wires.map((w) => (
-                    <path key={w.key} d={w.draw} pathLength={1} className="nm-draw" style={{ animationDelay: ms(w.delay) }} />
-                  ))}
-                  {shownNodes
-                    .filter((s) => s.n.segment !== 'core')
-                    .map((s) => {
-                      const z = segById.get(s.n.segment);
-                      return z ? <path key={`d-${s.n.id}`} d={pathD(projectPath(nodeDrop(z, s.n)))} pathLength={1} className="nm-draw" style={{ animationDelay: ms(enter.wires + 160) }} /> : null;
-                    })}
-                  {flowGeo.map((g) => (
-                    <path key={`f-${g.id}`} d={pathD(g.pts)} pathLength={1} className="nm-draw wide" style={{ animationDelay: ms(flowDelay) }} />
-                  ))}
-                </mask>
-              )}
+              {maskEl}
             </defs>
             <g ref={camRef}>
               <g key={epoch.current.n} className={`nm-world${entering ? ' nm-enter' : ''}`} style={{ ['--pk' as string]: ms(enter.packets) }}>
                 <g className="nm-zones">
                   {scene.zones.map((z) => (
                     <ZonePlate key={z.s.id} z={z} delay={enter.zone.get(z.s.id) ?? 0} />
+                  ))}
+                </g>
+                <g className="nm-zone-labels">
+                  {scene.zones.map((z) => (
+                    <ZoneTitle key={z.s.id} z={z} delay={enter.zone.get(z.s.id) ?? 0} />
                   ))}
                 </g>
                 <g className="nm-wires" mask={entering ? `url(#${drawMask})` : undefined}>
@@ -901,8 +1096,14 @@ export function NetMap({ scan, analysis, height = 620, compact = false }: NetMap
                 exit={{ opacity: 0, x: 16 }}
                 transition={{ duration: reduce ? 0 : 0.2 }}
                 aria-label={`Dettagli: ${sel.label}`}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Escape') return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  closePanel(true);
+                }}
               >
-                <NodeDetails map={map} n={sel} path={selPath} onClose={() => setSelected(null)} />
+                <NodeDetails map={map} n={sel} path={selPath} onClose={() => closePanel(true)} />
               </m.aside>
             )}
           </AnimatePresence>
@@ -972,6 +1173,12 @@ function NodeDetails({ map, n, path, onClose }: { map: NetworkMap; n: MapNode; p
         </button>
       </div>
       <dl className="kv nm-kv">
+        {sevText(n) && (
+          <>
+            <dt>Stato</dt>
+            <dd className={`c-${n.sev}`}>{n.sev === 'crit' ? "Problema segnalato dall'analisi" : "Da controllare: avviso dell'analisi"}</dd>
+          </>
+        )}
         {n.ip && (
           <>
             <dt>Indirizzo IP</dt>
@@ -1094,23 +1301,38 @@ function Legend() {
   );
 }
 
-/** Alternativa testuale alla mappa: zone e dispositivi in tabella. */
-export function NetMapList({ map }: { map: NetworkMap }) {
+/**
+ * Alternativa testuale alla mappa: zone e dispositivi in tabella, con gli stessi
+ * filtri dei tipi e la stessa ricerca della mappa; anche le zone senza
+ * dispositivi (reti Wi-Fi, siti remoti), con la loro nota.
+ */
+export function NetMapList({ map, hidden = [], query = '' }: { map: NetworkMap; hidden?: DeviceKind[]; query?: string }) {
   const zones = [{ id: 'core', label: 'Collegamento verso Internet' } as Pick<MapSegment, 'id' | 'label'>, ...map.segments];
+  const q = query.trim().toLowerCase();
+  const shown = (n: MapNode) => (n.segment === 'core' || hidden.indexOf(n.kind) < 0) && matchesQuery(n, q);
   return (
     <div className="nm-list">
       {zones.map((z) => {
-        const ns = map.nodes.filter((n) => n.segment === z.id);
-        if (!ns.length) return null;
+        const all = map.nodes.filter((n) => n.segment === z.id);
         const seg = map.segments.find((s) => s.id === z.id);
+        const caption = `${z.label}${seg?.vlan && !z.label.includes(`VLAN ${seg.vlan}`) ? ` · VLAN ${seg.vlan}` : ''}${seg?.subnet && seg.kind === 'local' ? ` · ${seg.subnet}` : ''}`;
+        if (!all.length) {
+          if (!seg) return null;
+          return (
+            <div key={z.id} className="nm-list-empty">
+              <p className="nm-list-cap">{caption}</p>
+              <p className="faint">
+                Nessun dispositivo rilevato in questa zona.{seg.note ? ` ${seg.note}` : ''}
+              </p>
+            </div>
+          );
+        }
+        const ns = all.filter(shown);
+        const off = all.length - ns.length;
         return (
           <TableWrap key={z.id} label={z.label}>
             <table className="pc-table">
-              <caption>
-                {z.label}
-                {seg?.vlan ? ` · VLAN ${seg.vlan}` : ''}
-                {seg?.subnet && seg.kind === 'local' ? ` · ${seg.subnet}` : ''}
-              </caption>
+              <caption>{caption}</caption>
               <thead>
                 <tr>
                   <th>Dispositivo</th>
@@ -1123,10 +1345,12 @@ export function NetMapList({ map }: { map: NetworkMap }) {
               <tbody>
                 {ns.map((n) => {
                   const Icon = KIND_ICON[n.kind];
+                  const sev = sevText(n);
                   return (
                     <tr key={n.id}>
                       <td>
                         <Icon size={15} color={kindColor(n.kind)} aria-hidden /> {n.self ? `${n.label} (questo PC)` : n.label}
+                        {sev && <span className={`c-${n.sev}`}> · {sev}</span>}
                       </td>
                       <td>
                         {KIND_LABEL[n.kind]}
@@ -1138,6 +1362,13 @@ export function NetMapList({ map }: { map: NetworkMap }) {
                     </tr>
                   );
                 })}
+                {off > 0 && (
+                  <tr className="nm-list-off">
+                    <td colSpan={5} className="faint">
+                      {off} {off === 1 ? 'nascosto' : 'nascosti'} dai filtri
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </TableWrap>

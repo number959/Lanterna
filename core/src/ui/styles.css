@@ -1888,13 +1888,19 @@ a.btn { text-decoration: none; }
 .netmap.console .nm-flow-note, .netmap.console .nm-note, .netmap.console .nm-legend { font-family: var(--font); }
 .netmap.console .nm-flows-title { font-family: var(--mono); }
 .netmap.console .table-wrap { background: var(--bg); }
+/* Il suggerimento in basso ha un fondo: non si mescola ai disegni che passano sotto. */
+.netmap.console .nm-hint { background: color-mix(in srgb, var(--bg) 88%, transparent); padding: 2px 8px; border-radius: 6px; }
+/* Durante lo zoom animato della camera il testo non si ri-impagina a ogni fotogramma. */
+.netmap.console .nm-canvas text { text-rendering: geometricPrecision; }
+.nm-list-empty p { margin: 0; font-size: 13px; }
+.nm-list-empty .nm-list-cap { font-weight: 650; margin-bottom: 4px; font-size: 14px; }
 
 /* Mappa in prospettiva isometrica (30°): zone come piattaforme a terra con lo
    spessore sui lati davanti, dispositivi a linee in piedi sul loro punto,
    due corsie tratteggiate per il percorso scelto (andata e ritorno) con le
    punte di freccia, pacchetto con l'etichetta del protocollo e la
    destinazione. L'entrata in scena usa solo transform e opacity. */
-.netmap.console .nm-zone { --zt: #7f9cf5; }
+.netmap.console .nm-zone, .netmap.console .nm-zone-label { --zt: #7f9cf5; }
 .netmap.console .nm-zone-local { --zt: #3fd0ff; }
 .netmap.console .nm-zone-remote { --zt: #a98bff; }
 .netmap.console .nm-zone-wifi { --zt: #3ddc97; }
@@ -1945,7 +1951,7 @@ a.btn { text-decoration: none; }
 .netmap.console .nm-node.sel .nm-label { fill: var(--accent-text); }
 /* Entrata in scena: le zone salgono, i dispositivi cadono uno alla volta,
    i collegamenti si disegnano (maschera), poi compaiono i pacchetti. */
-.netmap.console .nm-enter .nm-zone { animation: nm-rise 0.46s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.netmap.console .nm-enter .nm-zone, .netmap.console .nm-enter .nm-zone-label { animation: nm-rise 0.46s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .netmap.console .nm-enter .nm-node-in { animation: nm-drop 0.38s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .netmap.console .nm-enter .nm-pkts { animation: nm-fade 0.25s ease-out both; animation-delay: var(--pk, 1.2s); }
 .netmap.console .nm-draw { fill: none; stroke: #fff; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: nm-draw 0.52s cubic-bezier(0.33, 1, 0.68, 1) both; }
@@ -1955,7 +1961,7 @@ a.btn { text-decoration: none; }
 @keyframes nm-fade { from { opacity: 0; } }
 @keyframes nm-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .netmap.console .nm-enter .nm-zone, .netmap.console .nm-enter .nm-node-in, .netmap.console .nm-enter .nm-pkts, .netmap.console .nm-draw { animation: none; stroke-dashoffset: 0; }
+  .netmap.console .nm-enter .nm-zone, .netmap.console .nm-enter .nm-zone-label, .netmap.console .nm-enter .nm-node-in, .netmap.console .nm-enter .nm-pkts, .netmap.console .nm-draw { animation: none; stroke-dashoffset: 0; }
   .netmap.console .nm-canvas.live .nm-lane, .netmap.console .nm-canvas.live .nm-sel-ring, .netmap.console .nm-halo.live { animation: none; }
 }
 

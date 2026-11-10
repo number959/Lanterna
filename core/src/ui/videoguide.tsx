@@ -194,7 +194,7 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
             <Diagram id={scene.diagram} caption={scene.title} />
           ) : scene.map ? (
             <div className="vg-map">
-              <NetMap scan={scans[scene.map].scan} analysis={scans[scene.map].a} height={360} compact />
+              <NetMap scan={scans[scene.map].scan} analysis={scans[scene.map].a} height={360} compact animate={playing} />
             </div>
           ) : null}
         </m.div>

@@ -461,6 +461,8 @@ function Shell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Un tasto già gestito (per esempio 0 per adattare la mappa) non cambia sezione.
+      if (e.defaultPrevented) return;
       if (e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return;
       if (e.key >= '0' && e.key <= '9') {
         e.preventDefault();
