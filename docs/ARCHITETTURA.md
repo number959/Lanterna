@@ -160,8 +160,10 @@ Organizzazione di `core/src/ui/`:
   frase in `guides/narrazione/` con l'indice `guides/narrazione.ts` (dal testo della frase al file e alla durata), generati
   una volta da `scripts/narrazione` con una voce sintetica: il lettore suona la registrazione della frase corrente con un solo
   elemento audio, a fine frase aspetta 350 ms e passa alla successiva, e se un file non si carica prosegue a tempo con i
-  sottotitoli. In alternativa legge con una voce italiana di Windows (sintesi vocale del sistema, solo voci installate). Un
-  test tiene allineati frasi, indice e file; l'agente consegna i file come `audio/ogg`.
+  sottotitoli. In alternativa legge con una voce italiana di Windows (sintesi vocale del sistema, solo voci installate).
+  Suona una videoguida alla volta (quella che parte ferma l'altra) e una pausa data da fuori, per esempio dal tasto
+  multimediale della tastiera, ferma anche la guida. Un test tiene allineati frasi, indice e file (il nome di ogni file si
+  ricalcola dal testo della frase); l'agente consegna i file come `audio/ogg`.
 
 - `motion.ts`: il linguaggio del movimento in un solo posto. Curva di uscita lunga per ciò che entra, curva simmetrica e breve per
   ciò che esce, tre molle (`snappy` per pressioni e indicatori, `smooth` per pannelli e layout, `gentle` per numeri e grafici).
@@ -393,7 +395,8 @@ eventuali altri agenti esporranno la stessa API, quindi l'interfaccia non cambia
 ## Scelte e alternative scartate
 
 - **Go invece di C#/.NET**: un solo eseguibile statico, nessun runtime da installare, compilazione incrociata da qualunque sistema.
-- **WebView2 invece di Electron**: l'eseguibile pesa ~16 MB invece di ~150 MB; il motore di rendering è lo stesso Chromium.
+- **WebView2 invece di Electron**: l'eseguibile pesa circa 26 MB (nella 0.13.1, con interfaccia, caratteri e narrazione delle
+  videoguide incorporati) invece di ~150 MB; il motore di rendering è lo stesso Chromium.
 - **goja invece di riscrivere il motore in Go**: una sola implementazione delle spiegazioni e delle soglie.
 - **Client ndt7 proprio invece di `m-lab/ndt7-client-go`**: la libreria ufficiale (Apache-2.0) dalla versione 0.10 chiede Go
   1.25.5 e una versione non rilasciata di `gorilla/websocket`, più altri moduli di M-Lab. Il protocollo è breve e pubblico: un

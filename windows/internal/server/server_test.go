@@ -130,6 +130,13 @@ func TestStaticTypes(t *testing.T) {
 			t.Errorf("%s: %d %q, atteso %q", path, r.Code, r.Header().Get("Content-Type"), want)
 		}
 	}
+	// Su Linux le tabelle del sistema conoscono già .ogg e .woff2, quindi le richieste qui sopra passerebbero anche
+	// senza la nostra dichiarazione: che ci sia lo dice la tabella. Serve sui PC Windows il cui registro non li riporta.
+	for ext, want := range map[string]string{".woff2": "font/woff2", ".ico": "image/x-icon", ".ogg": "audio/ogg"} {
+		if staticTypes[ext] != want {
+			t.Errorf("tipo dichiarato per %s: %q, atteso %q", ext, staticTypes[ext], want)
+		}
+	}
 }
 
 func TestScanLifecycle(t *testing.T) {

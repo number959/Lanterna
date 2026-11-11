@@ -22,12 +22,14 @@ l'ascolto non c'è nessuna sintesi e nulla esce dal computer.
 | `voci/voci.json` | Le descrizioni delle voci create così e la frase di prova. |
 | `voci/<nome>.flac` | Il campione di ogni voce creata: **è** la voce, va tenuto. |
 | `crediti.mjs` | Scrive i crediti della voce in `THIRD_PARTY_NOTICES.md` (lo chiama `scripts/notices.sh`). |
-| `prova.py` | Prove veloci di numeri in lettere, pronunce e confronto con il testo capito (serve solo numpy). |
+| `prova.py` | Prove veloci di numeri in lettere, pronunce, confronto con il testo capito, negazioni e durate (serve solo numpy). |
 
 ## Rifare una frase cambiata
 
 Un test (`core/test/narrazione.test.ts`) fallisce se una frase di `video.ts` non ha la sua registrazione con il
-testo di oggi. Per rimettere le cose a posto, con la stessa voce:
+testo di oggi. L'indice non si corregge a mano: il nome di ogni file viene dal testo della frase (le prime 12 cifre di
+`sha1(chiave|testo)`, con la `chiave` scritta nell'indice) e il test lo ricalcola, quindi una frase cambiata anche
+nell'indice senza rifare la registrazione non passa. Per rimettere le cose a posto, con la stessa voce:
 
 ```sh
 node scripts/narrazione/frasi.mjs frasi.json
@@ -36,7 +38,9 @@ bash scripts/notices.sh
 ```
 
 `--solo-mancanti` rifà soltanto le frasi nuove o cambiate e toglie le registrazioni di quelle che non esistono
-più. Le opzioni della voce in uso sono qui sotto, alla voce che `narrazione.ts` dichiara in `VOCE`.
+più. Le opzioni della voce in uso sono qui sotto, alla voce che `narrazione.ts` dichiara in `VOCE`. Se le opzioni
+indicano un'altra voce (un altro modello, o un campione diverso da quello con cui sono state fatte le registrazioni:
+nell'indice c'è la sua impronta SHA-256), lo script si ferma e lo dice, invece di rifare tutto o di mescolare due voci.
 
 ## Le voci provate
 
@@ -105,24 +109,29 @@ I motori non leggono sigle, parole inglesi e numeri allo stesso modo, quindi `pr
 
 - **Piper e Kokoro** trasformano il testo in fonemi con espeak-ng, che legge tutto con le regole dell'italiano:
   le parole inglesi vanno riscritte come suonano («gateway» diventa «ghèit-uei»). Si controlla senza registrare:
-  `genera.py --motore piper --modello ... --fonemi` stampa i fonemi di ogni frase.
+  `genera.py --frasi frasi.json --motore piper --modello ... --fonemi` stampa i fonemi di ogni frase.
 - **Qwen3-TTS** legge il testo come farebbe una persona e le parole inglesi le sa: gli si scrivono per esteso solo
   le sigle («DHCP» diventa «di acca ci pi») e i numeri in lettere, perché scritti in cifre a volte li legge in
   un'altra lingua.
 
 Se una parola suona male si aggiunge una riga a `REGOLE` o a `REGOLE_LLM` e si rifanno le frasi che la contengono:
 `genera.py ... --solo-mancanti --rifai "parola"`. Con Qwen3-TTS, se una frase è venuta male senza un motivo,
-basta un'altra presa: `--solo-mancanti --rifai "inizio della frase" --seme 1`.
+basta un'altra presa: `--solo-mancanti --rifai "inizio della frase"`. A ogni ripresa (`--rifai`, `--ricontrolla`) lo
+script parte da un seme nuovo e lo stampa, così non ripete le prese già scartate; `--seme N` serve a rifarne una uguale.
 
 ## La verifica all'ascolto
 
-Qwen3-TTS sceglie a caso tra pronunce e intonazioni possibili, ed è per questo che suona naturale. Ha due difetti,
+Qwen3-TTS sceglie a caso tra pronunce e intonazioni possibili: la stessa frase non esce mai uguale. Ha due difetti,
 e `genera.py` li tiene a bada rifacendo le frasi che non passano l'esame, con un altro seme, fino a `--tentativi`
 prese (tre, se non dici altro), e tenendo la migliore.
 
 - **Ogni tanto salta o storpia una parola.** Con `--verifica small` ogni registrazione viene riascoltata da un
   riconoscitore vocale (Whisper, modello `small`): non passa se il testo capito si scosta da quello scritto per più
-  del 4% dei caratteri (`--soglia`) o se la durata è fuori misura.
+  del 4% dei caratteri (`--soglia`) o se la durata è fuori misura (tra 35 e 140 ms per carattere scritto e tra 30 e
+  110 per carattere detto: fuori ci sono le prese tagliate e quelle con parole ripetute). Lo scarto si misura
+  sull'intera frase, quindi in una frase lunga una parola corta saltata resterebbe sotto la soglia: per questo le
+  **negazioni** («non», «mai», «senza», «nessuno») si contano a parte, e una in meno o una in più basta a bocciare la
+  presa, perché il senso si rovescia. Le altre parole corte restano un limite del controllo.
 - **Cambia registro da una frase all'altra**: una calma e grave, la successiva acuta e concitata. Di ogni presa si
   misura l'altezza mediana della voce; dopo la prima passata il riferimento è la mediana di tutte le frasi, e non
   passa chi se ne stacca per più del 10% (`--tolleranza`; `--altezza 260` fissa il riferimento a mano,
@@ -140,20 +149,27 @@ separate»). `--rapporto file.json` salva che cosa ha capito frase per frase.
 quelle che finiscono nel programma, ne misura l'altezza e dà gli stessi elenchi.
 
 `controlla.py --frasi frasi.json` fa un controllo diverso, sul suono: per ogni registrazione misura il ritmo, il
-volume, le pause interne e l'altezza della voce e segnala quelle che si staccano dalle altre (una frase molto più
-lenta, una pausa lunga in mezzo, una voce più acuta del resto). Con `--modello M/Qwen3-TTS-12Hz-0.6B-Base` confronta
-anche l'impronta della voce di ogni registrazione con la media: serve a trovare le frasi in cui la voce è «scivolata».
+volume, le pause interne e l'altezza della voce e segnala quelle fuori misura: ritmo oltre il 40% dalla mediana,
+altezza oltre il 12%, una pausa interna oltre 0,9 secondi, volume oltre 3 dB dal resto, picco al massimo. Con
+`--modello M/Qwen3-TTS-12Hz-0.6B-Base` confronta anche l'impronta della voce di ogni registrazione con la media: serve a
+trovare le frasi in cui la voce è «scivolata».
 
 I due controlli dicono se le parole si capiscono e se le registrazioni si somigliano. **Non dicono se la voce è
 gradevole**: quello si sente solo con le orecchie.
 
 Per questo c'è `ascolto.py`: `python scripts/narrazione/ascolto.py --frasi frasi.json --uscita narrazione.html` scrive
-una pagina con le nove videoguide, ogni frase numerata (3.12 è la dodicesima della terza) e ascoltabile da sola o di
-seguito, con le stesse pause del programma. Chi ascolta dice i numeri delle frasi da rifare.
+una pagina con tutte le videoguide, ogni frase numerata (3.12 è la dodicesima della terza) e ascoltabile da sola o di
+seguito, con le stesse pause del programma. Chi ascolta dice i numeri delle frasi da rifare. La pagina è un documento
+completo, si apre dal disco e non chiede nulla alla rete; l'audio è in MP3 (nel programma resta Ogg Opus) ed Esc mette
+in pausa e riprende. Con `--rapporto file.json` (quello di `genera.py --riascolta --rapporto file.json`) le frasi su cui
+i controlli hanno un dubbio sono segnate ed elencate in cima; senza, la pagina dice che un riascolto automatico non
+c'è. `--frammento` serve solo a chi pubblica la pagina in un ambiente che aggiunge da sé l'involucro del documento.
 
 ## Che cosa serve
 
-- Python 3.10 o successivo e `ffmpeg` con `libopus`.
+- Python 3.10 o successivo e `ffmpeg` con `libopus` (per `ascolto.py` anche con `libmp3lame`).
+- Node, con le dipendenze dell'interfaccia installate (`npm ci` in `core/`): `frasi.mjs` legge le frasi da `video.ts`
+  con esbuild, e `crediti.mjs` scrive i crediti.
 - I motori si installano in un ambiente virtuale: non sono dipendenze del programma e non entrano nel pacchetto.
   Conviene non prendere versioni uscite da pochi giorni: `pip install --uploaded-prior-to <data di due settimane
   fa> ...` (serve un pip recente: provato con il 26.2).
@@ -176,9 +192,9 @@ repository: pesano da 60 MB (Piper) a oltre 4 GB (VoiceDesign).
 
 Tempi su quattro processori senza scheda grafica: Piper e Kokoro leggono tutta la narrazione (147 frasi, circa
 12 minuti) in pochi minuti; Qwen3-TTS 0.6B impiega quasi cinque secondi per ogni secondo di voce a una frase per
-volta e meno di tre con `--lotto 8` (misurati; `--lotto 4` sta in mezzo e chiede circa 9 GB di memoria, `--lotto 8`
-circa 12). Con `--lotto 4`, la verifica e le prese rifatte, tutta la narrazione chiede intorno a un'ora e mezza. Se si
-interrompe, `--solo-mancanti` riprende da dov'era.
+volta (4,7) e meno di tre con `--lotto 8` (2,7, con circa 12 GB di memoria); `--lotto 4` non è stato misurato da solo.
+Con `--lotto 4`, la verifica e le prese rifatte, tutta la narrazione ha chiesto intorno a un'ora e mezza. Se si
+interrompe, `--solo-mancanti` riprende da dov'era: l'indice viene riscritto dopo ogni registrazione.
 
 ## Licenze
 

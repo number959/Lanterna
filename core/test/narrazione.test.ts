@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,10 +24,13 @@ describe('narrazione registrata', () => {
 
   it('una voce creata da una descrizione ha ancora il suo campione e la sua scheda', () => {
     // Il campione è la voce: senza, una frase cambiata non si può più registrare con la stessa voce.
-    const m = /voce di riferimento ([\w-]+)\.flac/.exec(VOCE!.modello);
+    const m = /voce di riferimento ([^/\\]+)\.flac$/.exec(VOCE!.modello);
+    expect(!!m, VOCE!.modello).toBe(VOCE!.modello.includes('voce di riferimento'));
     if (!m) return;
     const voci = join(dir, '..', '..', '..', '..', 'scripts', 'narrazione', 'voci');
     expect(existsSync(join(voci, `${m[1]}.flac`)), `${m[1]}.flac`).toBe(true);
+    // Il nome non basta: l'impronta del campione è quella scritta nell'indice quando la voce è stata registrata.
+    expect(createHash('sha256').update(readFileSync(join(voci, `${m[1]}.flac`))).digest('hex'), `${m[1]}.flac`).toBe(VOCE!.campione);
     const scheda = JSON.parse(readFileSync(join(voci, 'voci.json'), 'utf8')) as { voci: Record<string, string>; testo: string };
     expect(Object.keys(scheda.voci)).toContain(m[1]);
     expect(scheda.testo.length).toBeGreaterThan(20);
@@ -39,6 +43,14 @@ describe('narrazione registrata', () => {
     expect(clipOf(frasi[0].t)!.url).toMatch(/\.ogg$/);
     expect(clipOf('Una frase che non esiste.')).toBeUndefined();
     expect(allRecorded([])).toBe(false);
+  });
+
+  it('il nome di ogni file viene dalla sua frase: un indice ritoccato a mano non passa', () => {
+    // genera.py chiama ogni file con le prime 12 cifre di sha1(chiave|testo). Se una frase cambia in video.ts e
+    // qualcuno corregge a mano anche la chiave dell'indice, il nome non torna più: la registrazione va rifatta.
+    expect(VOCE!.chiave.length).toBeGreaterThan(5);
+    for (const [testo, c] of Object.entries(CLIP))
+      expect(c.file, testo).toBe(createHash('sha1').update(`${VOCE!.chiave}|${testo}`).digest('hex').slice(0, 12) + '.ogg');
   });
 
   it('nessuna registrazione di frasi che non esistono più, nessun file fuori dall\'indice', () => {

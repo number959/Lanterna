@@ -1620,7 +1620,8 @@ narrazione va registrata con un'altra voce e messa nel programma.
   tipo sbagliato fermerebbe la riproduzione. Le registrazioni sono nell'eseguibile con il resto dell'interfaccia.
 - **Come sono fatte le registrazioni** (`scripts/narrazione/`, fuori dal programma): `frasi.mjs` estrae le frasi,
   `genera.py` le registra con uno di tre motori (Qwen3-TTS, Kokoro-82M, Piper), toglie i silenzi, porta tutte le frasi a
-  -20 dBFS con picco sotto -1,5 dBFS e codifica; `pronuncia.py` dice come vanno dette sigle, parole inglesi e numeri;
+  -20 dBFS con picco sotto -1,5 dBFS e poi codifica (la codifica Opus sposta di poco i picchi: sui file finali il massimo
+  è 0,87, circa -1,2 dBFS); `pronuncia.py` dice come vanno dette sigle, parole inglesi e numeri;
   `disegna.py` crea una voce da una descrizione; `controlla.py` misura il suono; `ascolto.py` costruisce una pagina per
   ascoltare tutta la narrazione, frase per frase; `crediti.mjs` scrive i crediti nelle note di licenza a partire
   dall'indice. Istruzioni in `scripts/narrazione/LEGGIMI.md`.
@@ -1653,11 +1654,15 @@ provini storpiavano più parole. Non provate: le voci «naturali» in linea di E
 servizi a pagamento.
 
 **Verifiche fatte.**
-- **Test**: 549 test in 33 file con vitest, tutti verdi (sei nuovi); `tsc` senza errori; `go test ./...` verde. Il test
-  nuovo `narrazione.test.ts` controlla che ogni frase di `video.ts` abbia la sua registrazione con il testo di oggi, che non
-  restino registrazioni di frasi tolte né file fuori dall'indice, che i file siano Ogg Opus veri, con durata tra 35 e 140
-  ms per carattere e peso coerente con la durata, che tutta la narrazione resti sotto 6 MB e che la voce creata da una
-  descrizione abbia ancora il suo campione e la sua scheda. `go test ./internal/server` verifica il tipo `audio/ogg`.
+- **Test**: 550 test in 33 file con vitest, tutti verdi (sette nuovi); `tsc` senza errori; `go test ./...` verde. Il test
+  nuovo `narrazione.test.ts` controlla che ogni frase di `video.ts` abbia la sua registrazione con il testo di oggi, che il
+  nome di ogni file sia quello che si ricalcola dalla chiave dell'indice e dal testo della frase (un indice ritoccato a
+  mano non passa), che non restino registrazioni di frasi tolte né file fuori dall'indice, che i file siano Ogg Opus veri,
+  con durata tra 35 e 140 ms per carattere e peso coerente con la durata, che tutta la narrazione resti sotto 6 MB e che la
+  voce creata da una descrizione abbia ancora la sua scheda e il suo campione, con l'impronta SHA-256 scritta nell'indice.
+  `go test ./internal/server` controlla che il tipo `audio/ogg` sia dichiarato e che un file `.ogg` esca con quel tipo; su
+  Linux le tabelle del sistema conoscono già `.ogg`, quindi che la dichiarazione serva davvero lo prova solo il passo
+  «Server locale e API» della CI su Windows.
 - **Riascolto automatico delle parole** (`genera.py --verifica`, poi `--riascolta` su tutti i file finali): ogni
   registrazione trascritta da Whisper `small` e confrontata con la frase scritta, carattere per carattere, dopo aver tolto
   spazi, accenti e punteggiatura (numeri e unità di misura valgono sia in cifre sia in lettere). Sui 147 file finali: 102
@@ -1667,6 +1672,9 @@ servizi a pagamento.
   della registrazione, su 81 frasi 29 hanno chiesto una seconda presa, 9 una terza e 7 una quarta. Tra le frasi entro la
   soglia ce ne sono alcune da sentire con le proprie orecchie, perché lo scarto potrebbe essere della voce e non del
   riconoscitore: «millisecondi» capito «millicicondi», «L'inventario parte solo» capito «L'inventario a parte è solo».
+  Lo scarto si misura sull'intera frase, quindi in una frase lunga una parola corta saltata resta sotto il 4%: dopo la
+  revisione le negazioni («non», «mai», «senza», «nessuno») si contano a parte. Sui file finali, riascoltati di nuovo:
+  28 frasi su 147 contengono una negazione e in nessuna il riconoscitore ne ha capita una in meno o una in più.
 - **Registro della voce** (`genera.py --riascolta`, sui file finali): altezza mediana delle frasi 268 Hz, da 235 a 295
   (prima del controllo andava da 220 a 362); 145 frasi su 147 entro il 10% dalla mediana, tutte entro il 15%. Le due più
   basse («Le reti scoperte diventano destinazioni del test di segmentazione.», -12%, e «Per esempio, con il Wi-Fi
@@ -1674,19 +1682,30 @@ servizi a pagamento.
 - **Controllo del suono** (`controlla.py`, sui file finali): ritmo mediano 59 ms per carattere detto, da 50 a 80 (le più
   lente sono elenchi con molte virgole); volume da -21,2 a -20,1 dBFS, picco massimo 0,87, pausa interna più lunga 0,71 s;
   impronta della voce (il vettore con cui il modello Base riconosce chi parla) simile alla media in tutte le frasi:
-  mediana 0,996, minima 0,990. Nessuna registrazione oltre le soglie.
+  mediana 0,996, minima 0,990. Con la soglia dell'altezza corretta dopo la revisione (12% dalla mediana; prima, per come
+  era scritta, scattava solo intorno al 28%) lo script segnala una registrazione: «Le reti scoperte…», 235 Hz, la stessa
+  del punto precedente. Nessun'altra oltre le soglie.
 - **Eseguibile sotto Wine**: `polaris-cli.exe serve` costruito con le registrazioni definitive consegna l'interfaccia con
   la sua CSP e le registrazioni come `audio/ogg`, con le richieste parziali (206); gli stessi 18 controlli del lettore
   passano contro l'eseguibile, e una registrazione caricata attraverso il protocollo di debug suona fino alla fine.
 - **Pagine consegnate a STARNET**: i provini delle dieci voci e tutta la narrazione di Giulia frase per frase, con le
-  quattro frasi dubbie segnate in cima (`ascolto.py --rapporto`); 20 controlli nel browser sulla seconda (telefono e
-  schermo largo, temi chiaro e scuro).
+  quattro frasi dubbie segnate in cima (`ascolto.py --rapporto`); 20 controlli nel browser sulla seconda, nella forma
+  pubblicata (telefono e schermo largo, temi chiaro e scuro). Dopo la revisione la pagina è stata corretta e riprovata
+  aperta dal disco, con clic e tasti veri: 16 controlli (documento completo con lingua, codifica e larghezza per i
+  telefoni, nessuna richiesta alla rete; pausa nell'attesa tra due frasi e poi clic su una frase, che prima faceva saltare
+  alla successiva; fine dell'ultima frase senza errori; Esc per pausa e ripresa; con Tab il fuoco non finisce sotto la
+  barra).
 - **Lettore nel browser** (Chromium di Playwright, build di produzione): 18 controlli sulla voce registrata (parte la
   registrazione della prima frase, a fine frase parte la successiva dopo circa 350 ms, il sottotitolo la segue, pausa e
   ripresa, velocità 1,15 arrivata all'elemento audio, «solo sottotitoli» senza audio e con avanzamento a tempo, cambio di
   scena, file bloccati: nessun suono ma la guida avanza, nessun errore in pagina) e 13 sul selettore con voci di Windows
   simulate (voce registrata come scelta iniziale, passaggio a Elsa e ritorno, scelta ricordata). axe sul lettore, con
-  l'una e con l'altra voce: 0 violazioni (WCAG 2.1 AA e buone pratiche).
+  l'una e con l'altra voce: 0 violazioni (WCAG 2.1 AA e buone pratiche). Dopo la revisione, 22 controlli sulla build di
+  produzione con clic veri: due videoguide aperte (avviata la seconda, la prima si ferma, e viceversa); pausa data da
+  fuori sull'elemento audio (il lettore passa a fermo e poi riprende); fine frase, pausa e ripresa, cambio di scena e di
+  velocità mentre suona; voci di Windows che arrivano mentre suona la registrazione (la frase non riparte); voce di
+  Windows scelta ed elenco non ancora arrivato (la registrazione non parte, poi legge Windows; senza voci, dopo un secondo
+  parte la registrazione); registrazioni che non si caricano (la guida prosegue a tempo).
 - **Note di licenza**: `scripts/notices.sh` rigenerato; la sezione sulla voce viene dall'indice delle registrazioni.
 - **CI**: run 112 (commit `ef2b929`, lettore e narrazione con una voce provvisoria) e run 113 (`e4cb26d`) verdi su Linux e
   su Windows reale. Su Linux: test, build e note di licenza allineate all'indice delle registrazioni. Su Windows: nel passo
@@ -1700,6 +1719,35 @@ servizi a pagamento.
   Windows della CI **Microsoft Edge 156 senza finestra**, aperto sull'interfaccia servita da `polaris-cli.exe`, dichiara
   di saper leggere `audio/ogg; codecs=opus` («probably»), carica una registrazione di Giulia e la suona fino alla fine
   (4,90 s, a volume zero, con il consenso che nel programma dà il clic su «Guarda la videoguida»).
+
+**Revisione indipendente prima della pubblicazione.** Cinque revisori (lettore, generatore, strumenti, CI e agente,
+documenti), ognuno seguito da un verificatore incaricato di smentire i rilievi; nessuno dei due aveva scritto il codice.
+I rilievi confermati sono stati corretti prima di pubblicare:
+- **Lettore**: due videoguide avviate nella stessa pagina suonavano una sopra l'altra (ora una narrazione alla volta);
+  una pausa arrivata da fuori lasciava il lettore «in riproduzione» senza suono; l'arrivo dell'elenco delle voci di
+  Windows faceva ripartire la frase registrata in corso, e chi aveva scelto la voce di Windows sentiva l'inizio della
+  registrazione finché l'elenco non arrivava; il test dell'indice passava anche con un indice corretto a mano.
+- **Generatore**: una parola corta saltata in una frase lunga restava sotto la soglia (ora le negazioni si contano a
+  parte; per le altre parole corte il limite resta ed è scritto nel LEGGIMI); le riprese ripetevano gli stessi semi (ora
+  un seme nuovo a ogni ripresa, stampato); un'interruzione poteva lasciare l'indice indietro rispetto ai file (ora
+  l'indice segue ogni file, con scrittura atomica); alla ripresa l'altezza di riferimento poteva venire da poche prime
+  prese; la durata si giudicava solo sui caratteri scritti; numeri oltre 999, decimali con zeri e cifre attaccate alle
+  lettere erano letti male o fermavano lo script; `--solo-mancanti` con un modello o un campione diverso rifaceva tutto
+  o avrebbe mescolato due voci (ora si ferma e lo dice), come con un indice illeggibile o un elenco di frasi vuoto. Nessuna
+  di queste correzioni cambia la forma detta delle 147 frasi né lo scarto misurato sui file finali (ricontrollati). Il
+  generatore è stato riprovato dall'inizio alla fine con un motore finto: 22 controlli su registrazione nuova, ripresa,
+  frase cambiata, `--rifai`, voce o campione diversi, indice monco, interruzione a metà.
+- **Strumenti**: nella pagina di ascolto una pausa nell'attesa tra due frasi seguita da un clic su una frase faceva poi
+  saltare alla frase successiva invece di mettere in pausa; la pagina usciva senza l'involucro del documento e caricava i
+  caratteri da Google; affermava sempre che un riconoscitore aveva controllato le parole; `controlla.py` segnalava
+  l'altezza solo oltre il 28% circa; i crediti dichiaravano l'origine della voce guardando solo il nome del campione (ora
+  anche la sua impronta).
+- **CI e agente**: la prova in Edge stampava l'esito senza guardarlo (ora il passo fallisce se la registrazione non suona
+  fino alla fine, e sta in un passo suo); la prova Go del tipo `audio/ogg` passava anche senza la dichiarazione.
+- **Documenti**: le note dicevano «più naturale» senza che nessuno avesse ascoltato; il pacchetto cresce di 5,6 MB e non
+  di 3 (le registrazioni stanno in tutti e due gli eseguibili: lo zip passa da 31.345.265 a 36.907.488 byte); nel
+  LEGGIMI mancavano Node e libmp3lame tra i requisiti e un comando d'esempio non partiva; l'aiuto di `--lotto` prometteva
+  un guadagno non misurato; il picco dichiarato valeva prima della codifica.
 
 **Strumenti.** Ambienti virtuali Python fuori dal repository; tutti i pacchetti installati hanno almeno 14 giorni (quelli
 più recenti sono stati riportati alla versione precedente con `pip install --uploaded-prior-to`): qwen-tts 0.1.1, torch
@@ -1717,6 +1765,10 @@ insieme, il riascolto e le prese rifatte, la registrazione di Giulia ha chiesto 
   non si è potuta provare in automatico, perché il caricatore di WebView2 incorporato non apre la porta di debug (run 113 e
   114): manca quindi la prova diretta, e manca soprattutto qualcuno che la ascolti dagli altoparlanti di un PC.
 - **Il riconoscitore sbaglia a sua volta**, soprattutto su sigle e parole inglesi, e tende a «correggere» ciò che sente:
-  può segnalare frasi giuste e non accorgersi di un accento sbagliato.
+  può segnalare frasi giuste e non accorgersi di un accento sbagliato. Vale anche per il conto delle negazioni, che
+  dipende da ciò che il riconoscitore capisce; e una parola corta che non sia una negazione, saltata in una frase lunga,
+  resta sotto la soglia.
+- **Pausa dai tasti multimediali**: provata fermando da fuori l'elemento audio nel browser, non con una tastiera vera né
+  dentro la finestra del programma.
 - **Licenze dei modelli**: lette sulle pagine dei progetti alla data indicata; i modelli non sono nel pacchetto, che
   contiene solo le registrazioni. Non è una consulenza legale.

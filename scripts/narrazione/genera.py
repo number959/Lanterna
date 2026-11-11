@@ -34,7 +34,11 @@ rifatta con un altro seme e si tiene la presa migliore. Vale per i motori che
 campionano (Qwen3-TTS), che ogni tanto saltano o storpiano una parola; per gli
 altri la verifica segnala soltanto. Il riconoscitore sbaglia a sua volta su
 sigle e parole inglesi: le frasi segnalate alla fine vanno riascoltate, non
-sono per forza sbagliate.
+sono per forza sbagliate. E non vede tutto: lo scarto si misura sull'intera
+frase, quindi in una frase lunga una parola corta saltata può restare sotto la
+soglia. Per questo le negazioni («non», «mai», «senza», «nessuno») si contano a
+parte: se nella frase capita ce n'è una in meno o una in più, la presa non
+passa, perché il senso si rovescia.
 
 Serve ffmpeg con libopus. I motori si installano a parte, in un ambiente
 virtuale (vedi LEGGIMI.md in questa cartella): non sono dipendenze del
@@ -45,10 +49,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 import unicodedata
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -283,6 +290,29 @@ def scarto(testo: str, capito: str) -> float:
     return min(_distanza(f, c) / max(1, len(f)) for f in forme for c in capite)
 
 
+_NEGAZIONI = {"non", "mai", "senza", "nessun", "nessuno", "nessuna"}
+
+
+def negazioni(testo: str) -> Counter:
+    """Quante volte compare ogni negazione: una in meno o una in più rovescia il senso della frase."""
+    piano = "".join(c for c in unicodedata.normalize("NFD", testo.lower()) if unicodedata.category(c) != "Mn")
+    return Counter(p for p in re.findall(r"[a-z]+", piano) if p in _NEGAZIONI)
+
+
+def esame(testo: str, capito: str) -> float:
+    """Lo scarto tra frase scritta e frase capita, più mezzo punto se le negazioni non tornano."""
+    return scarto(testo, capito) + (0.5 if negazioni(testo) != negazioni(capito) else 0.0)
+
+
+def durata_credibile(testo: str, ms: float) -> bool:
+    """Una durata fuori misura dice che la frase è tagliata o ha parole in più.
+
+    Si guarda sia la frase scritta (è il controllo che fa anche il test del programma) sia la frase com'è detta:
+    «192.168.1.20» scritto è corto e detto è lungo, e una frase così, tagliata a metà, sembrerebbe ancora giusta.
+    """
+    return 35 < ms / len(testo) < 140 and 30 < ms / len(parlato_llm(testo)) < 110
+
+
 # ---------------------------------------------------------------- indice
 
 
@@ -293,10 +323,14 @@ def leggi_indice(indice: Path) -> tuple[dict, dict]:
     testo = indice.read_text(encoding="utf-8")
     voce = re.search(r"export const VOCE[^=]*= (\{.*?\});", testo, re.S)
     clip = re.search(r"export const CLIP[^=]*= (\{.*\});", testo, re.S)
+    # Un indice che c'è ma non si legge non è un indice vuoto: proseguendo si rifarebbe (e cancellerebbe) tutto.
+    rotto = f"{indice}: l'indice delle registrazioni non si legge. Va ripristinato da git prima di proseguire."
+    if not clip:
+        raise SystemExit(rotto)
     try:
-        return (json.loads(voce.group(1)) if voce else {}), (json.loads(clip.group(1)) if clip else {})
-    except json.JSONDecodeError:
-        return {}, {}
+        return (json.loads(voce.group(1)) if voce else {}), json.loads(clip.group(1))
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"{rotto} ({e})") from None
 
 
 def segnala(esiti: list[dict], soglia: float) -> None:
@@ -333,8 +367,13 @@ def riascolta(args, frasi: list[str]) -> None:
             continue
         file = args.cartella / clip[testo]["file"]
         capito = ascolto.trascrivi_file(file)
-        s = scarto(testo, capito) + (0.0 if 35 < clip[testo]["ms"] / len(testo) < 140 else 1.0)
-        hz = 0.0 if args.senza_altezza else round(altezza(carica(file, 24000), 24000), 1)
+        # La durata si prende dal file, non dall'indice: così un indice rimasto indietro si vede.
+        suono = carica(file, 24000)
+        ms = 1000 * len(suono) / 24000
+        s = esame(testo, capito) + (0.0 if durata_credibile(testo, ms) else 1.0)
+        if abs(ms - clip[testo]["ms"]) > 60:
+            print(f"    durata nell'indice {clip[testo]['ms']} ms, nel file {ms:.0f} ms: l'indice va rifatto", flush=True)
+        hz = 0.0 if args.senza_altezza else round(altezza(suono, 24000), 1)
         esiti.append({"testo": testo, "capito": capito, "scarto": round(s, 3), "hz": hz})
         print(f"[{i + 1}/{len(frasi)}] scarto {100 * s:3.0f}%  {hz:3.0f} Hz  {testo[:70]}", flush=True)
     uguali = sum(e["scarto"] == 0 for e in esiti)
@@ -362,6 +401,10 @@ def scrivi_indice(indice: Path, voce: dict, clip: dict) -> None:
         "  modello: string;",
         "  /** Licenza del modello e attribuzione dovuta. */",
         "  licenza: string;",
+        "  /** Con il testo della frase dà il nome di ogni file: le prime 12 cifre di sha1(chiave|testo). */",
+        "  chiave: string;",
+        "  /** Per una voce clonata da un campione: SHA-256 del file del campione usato per registrare. */",
+        "  campione?: string;",
         "}",
         "",
         f"export const VOCE: VoceRegistrata | undefined = {json.dumps(voce, ensure_ascii=False, indent=2)};",
@@ -370,7 +413,10 @@ def scrivi_indice(indice: Path, voce: dict, clip: dict) -> None:
         f"export const CLIP: Record<string, {{ file: string; ms: number }}> = {json.dumps(clip, ensure_ascii=False, indent=2)};",
         "",
     ]
-    indice.write_text("\n".join(righe), encoding="utf-8")
+    # Prima su un file accanto, poi al posto dell'indice: un'interruzione a metà scrittura non lascia un indice monco.
+    provvisorio = indice.with_name(indice.name + ".tmp")
+    provvisorio.write_text("\n".join(righe), encoding="utf-8")
+    os.replace(provvisorio, indice)
 
 
 # ---------------------------------------------------------------- principale
@@ -390,10 +436,10 @@ def main() -> None:
     p.add_argument("--cartella", type=Path, default=CARTELLA, help="dove scrivere le registrazioni (per le prove)")
     p.add_argument("--indice", type=Path, default=INDICE, help="dove scrivere l'indice (per le prove)")
     p.add_argument("--processi", type=int, default=4, help="processori da usare (Qwen3-TTS, Whisper)")
-    p.add_argument("--lotto", type=int, default=1, help="frasi lette insieme (Qwen3-TTS): 4 quasi dimezza i tempi, ma servono circa 9 GB di memoria")
+    p.add_argument("--lotto", type=int, default=1, help="frasi lette insieme (Qwen3-TTS): con 8 si scende da 4,7 a 2,7 secondi per secondo di voce, ma servono circa 12 GB di memoria (meno con valori più bassi)")
     p.add_argument("--solo-mancanti", action="store_true", help="non rifare le frasi già registrate con questa voce")
     p.add_argument("--rifai", action="append", default=[], metavar="PAROLE", help="con --solo-mancanti: rifà anche le frasi che contengono queste parole (ripetibile)")
-    p.add_argument("--seme", type=int, default=0, help="cambia la presa dei motori che campionano (0 = la prima)")
+    p.add_argument("--seme", type=int, help="cambia le prese dei motori che campionano; senza: 0 per una registrazione nuova, un numero nuovo a ogni ripresa con --ricontrolla o --rifai")
     p.add_argument("--verifica", metavar="MODELLO", help="riascolta ogni registrazione con Whisper (es. small) e rifà quelle che non tornano")
     p.add_argument("--cartella-verifica", metavar="DIR", help="dove tenere il modello di Whisper")
     p.add_argument("--tentativi", type=int, default=3, help="prese al massimo per frase, per i motori che campionano")
@@ -408,6 +454,8 @@ def main() -> None:
     args = p.parse_args()
 
     frasi = [x["testo"] for x in json.loads(Path(args.frasi).read_text(encoding="utf-8"))]
+    if not frasi:
+        raise SystemExit(f"{args.frasi}: nessuna frase. Con un elenco vuoto tutte le registrazioni verrebbero tolte.")
     if args.riascolta:
         riascolta(args, frasi)
         return
@@ -431,8 +479,31 @@ def main() -> None:
         "licenza": args.licenza,
     }
     chiave = f"{args.motore}|{modello}|{args.voce or ''}|{Path(args.riferimento).name if args.riferimento else ''}"
+    # La chiave sta anche nell'indice: un test ricalcola da lì il nome di ogni file, così un indice ritoccato a mano
+    # (una frase cambiata senza rifare la registrazione) non passa.
+    voce["chiave"] = chiave
+    if args.riferimento:
+        # Il nome del campione non basta a dire quale voce è: nell'indice va l'impronta del file, e i crediti
+        # (crediti.mjs) e la prova dell'indice la confrontano con il campione che sta in scripts/narrazione/voci.
+        voce["campione"] = hashlib.sha256(Path(args.riferimento).read_bytes()).hexdigest()
     vecchia, vecchie = leggi_indice(args.indice)
     stessa = args.solo_mancanti and vecchia.get("motore") == voce["motore"] and vecchia.get("modello") == voce["modello"]
+    if args.solo_mancanti and vecchie and not stessa:
+        # Senza questo controllo un modello in una cartella con un altro nome farebbe rifare (e cancellare) tutto.
+        raise SystemExit(
+            f"--solo-mancanti: l'indice è della voce «{vecchia.get('motore')}, {vecchia.get('modello')}», questa è «{voce['motore']}, {voce['modello']}».\n"
+            "Per riprendere la stessa voce la cartella o il file del modello deve avere lo stesso nome; per cambiare voce togli --solo-mancanti."
+        )
+    if stessa and vecchia.get("campione") and vecchia["campione"] != voce.get("campione"):
+        raise SystemExit(
+            f"--solo-mancanti: il campione {Path(args.riferimento).name} non è quello con cui sono state fatte le registrazioni che ci sono già\n"
+            "(l'impronta nell'indice è un'altra): le frasi nuove uscirebbero con un'altra voce. Per cambiare voce togli --solo-mancanti."
+        )
+    if args.seme is None:
+        # Una ripresa con gli stessi semi rifarebbe le stesse prese già scartate.
+        args.seme = int(time.time()) % 100000 if stessa and (args.ricontrolla or args.rifai) else 0
+        if args.seme:
+            print(f"Seme di questa ripresa: {args.seme} (per ripeterla uguale: --seme {args.seme})", flush=True)
 
     ascolto = Ascolto(args.verifica, args.cartella_verifica, args.processi) if args.verifica else None
     # L'altezza della voce si tiene d'occhio solo con i motori che campionano: gli altri non cambiano registro.
@@ -465,22 +536,28 @@ def main() -> None:
             # Le registrazioni tenute dicono qual è il registro della voce; con --ricontrolla tornano anche all'esame.
             if registro or args.ricontrolla:
                 e = {"testo": testo, "capito": "", "scarto": 0.0, "hz": 0.0, "tenuta": 0, "prese": 0, "gia": True}
+                suono = carica(file, 24000)
+                # Se il lancio precedente si è fermato a metà di una presa rifatta, vale la durata del file.
+                clip[testo] = {"file": nome, "ms": round(1000 * len(suono) / 24000)}
                 if registro:
-                    e["hz"] = round(altezza(carica(file, 24000), 24000), 1)
+                    e["hz"] = round(altezza(suono, 24000), 1)
                 if args.ricontrolla and ascolto:
                     e["capito"] = ascolto.trascrivi_file(file)
-                    e["scarto"] = round(scarto(testo, e["capito"]) + (0.0 if 35 < clip[testo]["ms"] / len(testo) < 140 else 1.0), 3)
+                    e["scarto"] = round(esame(testo, e["capito"]) + (0.0 if durata_credibile(testo, clip[testo]["ms"]) else 1.0), 3)
                 esiti[testo] = e
         else:
             coda.append((testo, file))
 
-    def mediana_altezze() -> float | None:
+    def mediana_altezze(minimo: int = 3) -> float | None:
         valori = [e["hz"] for e in esiti.values() if e.get("hz")]
         # Con meno di tre frasi non c'è un registro da cui staccarsi.
-        return float(np.median(valori)) if len(valori) >= 3 else None
+        return float(np.median(valori)) if len(valori) >= max(3, minimo) else None
 
     if registro and not obiettivo:
-        obiettivo = mediana_altezze()
+        # Prima della prima passata il registro si prende dalle registrazioni tenute solo se sono almeno un quarto
+        # del totale: poche prime prese, mai esaminate, darebbero un riferimento spostato. Altrimenti si aspetta
+        # la fine della prima passata, quando si conoscono tutte.
+        obiettivo = mediana_altezze(len(frasi) // 4)
     if obiettivo:
         print(f"Altezza della voce: {obiettivo:.0f} Hz, con il {100 * args.tolleranza:.0f}% di margine", flush=True)
     if args.ricontrolla:
@@ -501,9 +578,9 @@ def main() -> None:
                 capito, s = "", 0.0
                 if ascolto:
                     capito = ascolto.trascrivi(a, motore.sr)
-                    s = scarto(testo, capito)
-                # Una durata fuori misura dice che la frase è tagliata o ha parole in più: vale come presa sbagliata.
-                if not 35 < ms / len(testo) < 140:
+                    s = esame(testo, capito)
+                # Una durata fuori misura vale come presa sbagliata.
+                if not durata_credibile(testo, ms):
                     s += 1.0
                 prima = esiti.get(testo)
                 nuova = {"testo": testo, "capito": capito, "scarto": round(s, 3), "hz": round(altezza(a, motore.sr), 1) if registro else 0.0}
@@ -513,13 +590,14 @@ def main() -> None:
                     codifica(a, motore.sr, file, args.kbit)
                     clip[testo] = {"file": file.name, "ms": ms}
                     esiti[testo] = nuova
+                    # L'indice si riscrive appena cambia un file: se il lancio si ferma qui, file e indice coincidono
+                    # e la ripresa con --solo-mancanti riparte da uno stato coerente.
+                    scrivi_indice(args.indice, voce, {t: clip[t] for t in frasi if t in clip})
                 else:
                     prima["prese"] = nuova["prese"]
                 fatte += 1
                 nota = (f"  scarto {100 * s:3.0f}%" if ascolto else "") + (f"  {nuova['hz']:3.0f} Hz" if registro else "")
                 print(f"[presa {k + 1}, {fatte}/{len(coda)}] {ms / 1000:5.1f} s{nota}  {testo[:70]}", flush=True)
-            # L'indice si aggiorna a ogni lotto: una registrazione lunga interrotta riparte con --solo-mancanti.
-            scrivi_indice(args.indice, voce, {t: clip[t] for t in frasi if t in clip})
         # Il registro della voce si conosce dopo la prima passata: è la mediana di tutte le frasi.
         if registro and not obiettivo:
             obiettivo = mediana_altezze()

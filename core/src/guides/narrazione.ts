@@ -10,13 +10,19 @@ export interface VoceRegistrata {
   modello: string;
   /** Licenza del modello e attribuzione dovuta. */
   licenza: string;
+  /** Con il testo della frase dà il nome di ogni file: le prime 12 cifre di sha1(chiave|testo). */
+  chiave: string;
+  /** Per una voce clonata da un campione: SHA-256 del file del campione usato per registrare. */
+  campione?: string;
 }
 
 export const VOCE: VoceRegistrata | undefined = {
   "nome": "Giulia",
   "motore": "Qwen3-TTS",
   "modello": "Qwen3-TTS-12Hz-0.6B-Base, voce di riferimento giulia.flac",
-  "licenza": "Qwen3-TTS di Alibaba Cloud, licenza Apache-2.0"
+  "licenza": "Qwen3-TTS di Alibaba Cloud, licenza Apache-2.0",
+  "chiave": "qwen|Qwen3-TTS-12Hz-0.6B-Base||giulia.flac",
+  "campione": "e39967f8e11a12067217a6e19ec3e9b1667abf5706de63623c85a17a04ee1d74"
 };
 
 /** Per ogni frase registrata: il file e la durata in millisecondi. */

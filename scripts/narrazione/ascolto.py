@@ -5,7 +5,10 @@ Le nove videoguide una sotto l'altra, ogni frase con il suo numero (3.12 è la
 dodicesima frase della terza videoguida) e la sua registrazione dentro la
 pagina: si apre in un browser, si ascolta, e chi ascolta dice i numeri delle
 frasi da rifare. È il controllo che gli script non sanno fare: sentire se la
-voce va bene.
+voce va bene. La pagina è un documento completo e non chiede nulla alla rete.
+Con --frammento esce senza l'involucro del documento e con i caratteri del
+marchio presi da Google Fonts: è la forma per gli ambienti che l'involucro lo
+aggiungono da soli quando pubblicano la pagina.
 
     node scripts/narrazione/frasi.mjs frasi.json
     python scripts/narrazione/ascolto.py --frasi frasi.json --uscita narrazione.html
@@ -31,6 +34,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from genera import CARTELLA, INDICE, leggi_indice  # noqa: E402
 
 PAUSA_MS = 350  # la stessa del lettore (GAP_MS in core/src/ui/videoguide.tsx)
+CARATTERI = (
+    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600'
+    '&family=JetBrains+Mono:wght@500;600&family=Saira:wdth,wght@112,600;112,700&display=swap">'
+)
 
 
 def mp3(file: Path) -> str:
@@ -56,6 +63,7 @@ def main() -> None:
     p.add_argument("--rapporto", type=Path, help="rapporto di genera.py --riascolta: segna le frasi dubbie")
     p.add_argument("--soglia", type=float, default=0.04, help="scarto delle parole oltre il quale una frase è dubbia")
     p.add_argument("--tolleranza", type=float, default=0.10, help="distanza dall'altezza mediana oltre la quale una frase è dubbia")
+    p.add_argument("--frammento", action="store_true", help="senza l'involucro del documento e con i caratteri da Google Fonts: per chi pubblica la pagina dentro un involucro suo")
     args = p.parse_args()
 
     frasi = json.loads(Path(args.frasi).read_text(encoding="utf-8"))
@@ -68,6 +76,8 @@ def main() -> None:
     dubbi: dict[str, str] = {}
     if args.rapporto:
         esiti = json.loads(args.rapporto.read_text(encoding="utf-8"))
+        if not isinstance(esiti, list) or not all(isinstance(e, dict) and "testo" in e and "scarto" in e for e in esiti):
+            raise SystemExit("--rapporto: serve il rapporto di `genera.py --riascolta` (quello di controlla.py ha altre misure e qui non si legge)")
         altezze = sorted(e["hz"] for e in esiti if e.get("hz"))
         mediana = altezze[len(altezze) // 2] if altezze else 0
         for e in esiti:
@@ -110,7 +120,27 @@ def main() -> None:
         )
 
     pagina = (Path(__file__).resolve().parent / "ascolto.html").read_text(encoding="utf-8")
+    if args.rapporto:
+        controllo = (
+            "Io non posso sentirle. Un riconoscitore vocale ha riascoltato ogni frase e l'altezza della voce è stata misurata: le frasi su cui "
+            "resta un dubbio sono segnate. Accenti, intonazione e parole inglesi li giudica solo l'orecchio: sono quelli i punti dove vale la pena fare attenzione."
+        )
+    else:
+        controllo = (
+            "Io non posso sentirle, e su questa pagina non c'è l'esito di un riascolto automatico: parole, accenti, intonazione "
+            "e parole inglesi li giudica solo l'orecchio."
+        )
+    if not args.frammento:
+        # Aperta dal disco la pagina deve reggersi da sola: tipo di documento, lingua, codifica e larghezza per i telefoni.
+        testa, corpo = pagina.split("</style>\n", 1)
+        pagina = (
+            '<!doctype html>\n<html lang="it">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+            + testa + "</style>\n</head>\n<body>\n" + corpo + "</body>\n</html>\n"
+        )
     campi = {
+        "@@CARATTERI@@": CARATTERI if args.frammento else "",
+        "@@CONTROLLO@@": controllo,
+        "@@VIDEOGUIDE@@": str(len(video)),
         "@@VOCE@@": html.escape(voce.get("nome", "")),
         "@@FRASI@@": str(len(frasi)),
         "@@MINUTI@@": str(round(totale / 60000)),

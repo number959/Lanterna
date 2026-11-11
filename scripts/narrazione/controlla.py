@@ -10,6 +10,10 @@ della voce di ogni registrazione con quella delle altre.
 
     python scripts/narrazione/controlla.py --frasi frasi.json [--modello M/Qwen3-TTS-12Hz-0.6B-Base]
 
+Soglie: ritmo oltre il 40% dalla mediana (e staccato dalle altre frasi), altezza
+della voce oltre il 12% dalla mediana, pausa interna oltre 0,9 secondi, picco
+al massimo, volume oltre 3 dB dalla mediana.
+
 Segnala, non giudica: le registrazioni elencate vanno riascoltate.
 """
 from __future__ import annotations
@@ -26,6 +30,7 @@ from genera import CARTELLA, INDICE, altezza, carica, leggi_indice  # noqa: E402
 from pronuncia import parlato_llm  # noqa: E402
 
 SR = 24000
+ALTEZZA = 0.12  # distanza dall'altezza mediana oltre la quale una frase viene segnalata
 
 
 def pausa_piu_lunga(a: np.ndarray) -> float:
@@ -112,7 +117,9 @@ def main() -> None:
         # Oltre a staccarsi dalle altre, la frase deve staccarsi di molto: un elenco con tante virgole è più lento, ed è giusto.
         if abs(z_ritmo[i]) > 4 and abs(r["ms_car"] / np.median(colonna("ms_car")) - 1) > 0.4:
             segna(i, f"ritmo insolito: {r['ms_car']:.0f} ms per carattere (mediana {np.median(colonna('ms_car')):.0f})")
-        if r["altezza"] and abs(z_alt[i]) > 4 and abs(r["altezza"] / np.median(colonna("altezza")) - 1) > 0.12:
+        # Per l'altezza decide la distanza dalla mediana e basta: l'altezza cambia molto da una frase all'altra, e
+        # chiedere anche di "staccarsi dalle altre" lasciava passare frasi fino al 28% più acute o più gravi.
+        if r["altezza"] and abs(r["altezza"] / np.median(colonna("altezza")) - 1) > ALTEZZA:
             segna(i, f"voce più {'acuta' if z_alt[i] > 0 else 'grave'} del resto: {r['altezza']:.0f} Hz (mediana {np.median(colonna('altezza')):.0f})")
         if r["pausa"] > 0.9:
             segna(i, f"pausa interna di {r['pausa']:.1f} s")

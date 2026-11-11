@@ -66,17 +66,27 @@ export function italianVoices(all: SpeechSynthesisVoice[]): SpeechSynthesisVoice
   return it.sort((a, b) => Number(/elsa/i.test(b.name)) - Number(/elsa/i.test(a.name)) || a.name.localeCompare(b.name));
 }
 
-function useVoices(): SpeechSynthesisVoice[] {
+/**
+ * Le voci italiane di Windows e se l'elenco è arrivato: il browser lo consegna
+ * poco dopo l'apertura della pagina, e la prima richiesta può tornare vuota.
+ * Dopo un secondo si smette di aspettare: su quel PC voci italiane non ce ne sono.
+ */
+function useVoices(): [SpeechSynthesisVoice[], boolean] {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => italianVoices(synth()?.getVoices() ?? []));
+  const [waited, setWaited] = useState(false);
   useEffect(() => {
     const s = synth();
     if (!s) return;
     const load = () => setVoices(italianVoices(s.getVoices()));
     load();
     s.addEventListener?.('voiceschanged', load);
-    return () => s.removeEventListener?.('voiceschanged', load);
+    const t = window.setTimeout(() => setWaited(true), 1000);
+    return () => {
+      s.removeEventListener?.('voiceschanged', load);
+      window.clearTimeout(t);
+    };
   }, []);
-  return voices;
+  return [voices, voices.length > 0 || waited || !synth()];
 }
 
 /** Tempo di lettura di una frase senza voce: circa 14 caratteri al secondo, almeno 2,4 secondi. */
@@ -91,11 +101,14 @@ export function videoMinutes(v: VideoGuide): number {
   return Math.max(1, Math.round(ms / 60000));
 }
 
+/** La videoguida che sta suonando: se ne parte un'altra nella stessa pagina, questa si ferma. */
+let current: (() => void) | null = null;
+
 const flat = (v: VideoGuide) => v.scenes.flatMap((s, si) => s.narration.map((t, ti) => ({ si, ti, t })));
 
 export function VideoPlayer({ video }: { video: VideoGuide }) {
   const reduce = useReducedMotion();
-  const voices = useVoices();
+  const [voices, voicesReady] = useVoices();
   const [prefs, setPrefs] = useState<Prefs>(readPrefs);
   const [pos, setPos] = useState(0); // indice della frase in tutta la guida
   const [playing, setPlaying] = useState(false);
@@ -108,6 +121,13 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
   const hasRec = useMemo(() => allRecorded(lines.map((l) => l.t)), [lines]);
   const recorded = hasRec && (prefs.source !== 'sys' || !voice || !synth());
   const speaking = !prefs.muted && !recorded && !!voice && !!synth();
+  // Chi ha scelto la voce di Windows non deve sentire l'inizio della registrazione mentre l'elenco delle voci arriva.
+  const waiting = prefs.source === 'sys' && !prefs.muted && !voicesReady;
+  // La voce di Windows conta per la lettura solo quando è lei a leggere: il browser rinnova gli oggetti voce a ogni
+  // aggiornamento dell'elenco, e la frase registrata in corso non deve ripartire per questo.
+  const voiceRef = useRef(voice);
+  voiceRef.current = voice;
+  const voiceId = recorded ? '' : (voice?.voiceURI ?? '');
   const audio = useRef<HTMLAudioElement | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const token = useRef(0);
@@ -128,9 +148,24 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
     audio.current?.pause();
   }, []);
 
-  // Lettura della frase corrente; alla fine si passa alla successiva.
+  const pause = useCallback(() => {
+    stopAll();
+    setPlaying(false);
+  }, [stopAll]);
+
+  // Una narrazione alla volta: con due videoguide aperte nella stessa pagina, quella che parte ferma l'altra.
   useEffect(() => {
     if (!playing) return;
+    if (current && current !== pause) current();
+    current = pause;
+    return () => {
+      if (current === pause) current = null;
+    };
+  }, [playing, pause]);
+
+  // Lettura della frase corrente; alla fine si passa alla successiva.
+  useEffect(() => {
+    if (!playing || waiting) return;
     const my = ++token.current;
     const next = () => {
       if (token.current !== my) return;
@@ -156,6 +191,12 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
       };
       // Un file che non si carica o che il browser non lascia partire non blocca la guida: si prosegue a tempo.
       a.onerror = timed;
+      // Una pausa arrivata da fuori (il tasto multimediale della tastiera, i comandi di Windows) ferma anche la guida:
+      // altrimenti resterebbe "in riproduzione" senza suono e senza avanzare. A fine frase l'evento arriva lo stesso,
+      // ma lì l'audio risulta finito; dopo un nuovo avvio non risulta più in pausa.
+      a.onpause = () => {
+        if (token.current === my && a.paused && !a.ended) pause();
+      };
       a.src = clip.url;
       // Anche come velocità predefinita: il caricamento di un file nuovo riporta l'elemento a quella.
       a.defaultPlaybackRate = prefs.rate;
@@ -173,12 +214,13 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
         pre.preload = 'auto';
         pre.src = after.url;
       }
-    } else if (speaking && voice) {
+    } else if (speaking && voiceRef.current) {
+      const v = voiceRef.current;
       const s = synth()!;
       s.cancel();
       const u = new SpeechSynthesisUtterance(text);
-      u.voice = voice;
-      u.lang = voice.lang || 'it-IT';
+      u.voice = v;
+      u.lang = v.lang || 'it-IT';
       u.rate = prefs.rate;
       // Una frase interrotta (pausa, cambio di scena o di voce) non deve
       // toccare il tempo della lettura che l'ha sostituita.
@@ -203,10 +245,11 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
       if (audio.current) {
         audio.current.onended = null;
         audio.current.onerror = null;
+        audio.current.onpause = null;
         audio.current.pause();
       }
     };
-  }, [playing, pos, speaking, recorded, prefs.muted, voice, prefs.rate, lines, restart]);
+  }, [playing, waiting, pos, speaking, recorded, prefs.muted, voiceId, prefs.rate, lines, restart, pause]);
 
   useEffect(() => stopAll, [stopAll]);
 
@@ -216,10 +259,6 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
       setEnded(false);
     }
     setPlaying(true);
-  };
-  const pause = () => {
-    stopAll();
-    setPlaying(false);
   };
   const goScene = (si: number) => {
     stopAll();

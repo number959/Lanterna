@@ -964,7 +964,7 @@ jobs:
           $r = ./polaris-cli.exe defender quick --json | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "scansione rapida non riuscita" }
           "Esito: $($r.message) in $([math]::Round($r.durationMs/1000)) s; minacce nuove: $($r.newThreats)"
-      - name: Finestra grafica con WebView2 e narrazione in Edge (prove non bloccanti)
+      - name: Finestra grafica con WebView2 (prova non bloccante)
         continue-on-error: true
         run: |
           $gui = Start-Process -FilePath ./Polaris.exe -PassThru
@@ -978,14 +978,19 @@ jobs:
           [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
           $bmp.Save("$PWD\finestra.png")
           Stop-Process $gui -ErrorAction SilentlyContinue
+      - name: Narrazione delle videoguide in Microsoft Edge (prova non bloccante)
+        continue-on-error: true
+        run: |
           # Narrazione delle videoguide: una registrazione presa dall'interfaccia deve caricarsi e suonare fino alla
           # fine (a volume zero, con il consenso che nel programma dà il clic su "Guarda la videoguida"). Si prova in
           # Microsoft Edge senza finestra, che ha lo stesso motore di WebView2, contro l'interfaccia servita
           # dall'eseguibile. Dentro la finestra del programma non si riesce: il caricatore di WebView2 incorporato
           # (SDK 1.0.992.28) non apre la porta di debug né con la variabile d'ambiente né con la chiave di registro
           # previste per le prove (run 113 e 114). Nella run 116 la registrazione ha suonato fino alla fine in Edge 156.
+          # Il job resta verde in ogni caso, ma se la registrazione non suona fino alla fine il passo risulta fallito.
           $js = @'
           (async () => {
+            if (document.readyState !== 'complete') await new Promise((ok) => addEventListener('load', ok, { once: true }));
             const tipo = document.createElement('audio').canPlayType('audio/ogg; codecs=opus');
             const js = [...document.scripts].map((s) => s.src).find((s) => /assets\/index-/.test(s));
             const ogg = ((await (await fetch(js)).text()).match(/[0-9a-f]{12}-[\w-]+\.ogg/) || [])[0];
@@ -1024,15 +1029,21 @@ jobs:
           }
           $srv = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8741' -PassThru -NoNewWindow
           $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          $esito = ''
           try {
             if (-not $edge) { throw "Microsoft Edge non trovato" }
             $nav = Start-Process -FilePath $edge -ArgumentList '--headless=new','--remote-debugging-port=9334','--remote-allow-origins=*',"--user-data-dir=$env:RUNNER_TEMP\edge-prova",'--no-first-run','http://127.0.0.1:8741/' -PassThru
-            Start-Sleep 10
-            "Narrazione in Microsoft Edge (stesso motore di WebView2): $(Suona 9334)"
-          } catch { "Narrazione in Microsoft Edge: prova non riuscita ($_)" }
+            # La porta di debug e la pagina arrivano qualche secondo dopo l'avvio: si riprova per mezzo minuto.
+            foreach ($giro in 1..15) {
+              Start-Sleep 2
+              try { $esito = Suona 9334; break } catch { $esito = "prova non riuscita ($_)" }
+            }
+          } catch { $esito = "prova non riuscita ($_)" }
           if ($nav) { Stop-Process $nav -ErrorAction SilentlyContinue }
           Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -ErrorAction SilentlyContinue
           Stop-Process $srv -ErrorAction SilentlyContinue
+          "Narrazione in Microsoft Edge (stesso motore di WebView2): $esito"
+          if ($esito -notmatch 'suonata fino alla fine') { throw "la registrazione non ha suonato fino alla fine: $esito" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -2,6 +2,7 @@
 // delle videoguide, con i dati dell'indice (core/src/guides/narrazione.ts):
 // così i crediti restano allineati alla voce che c'è davvero nel programma.
 // La chiama scripts/notices.sh.
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,10 +23,15 @@ const righe = [
     `nel programma ci sono soltanto le registrazioni, non il modello né il suo codice. Modello e licenza: ${voce.licenza}.`,
 ];
 // Una voce creata da una descrizione ha il suo campione e la sua scheda in scripts/narrazione/voci.
-const rif = voce.modello.match(/voce di riferimento ([\w-]+)\.flac/);
+// Che sia proprio quel campione lo dice l'impronta scritta nell'indice da genera.py, non il nome del file.
+const rif = voce.modello.match(/voce di riferimento ([^/\\]+)\.flac$/);
+if (voce.modello.includes('voce di riferimento') && !rif) throw new Error(`narrazione.ts: non si legge il nome del campione in «${voce.modello}»`);
 if (rif) {
   const scheda = JSON.parse(readFileSync(join(qui, 'voci', 'voci.json'), 'utf8'));
-  if (!scheda.voci[rif[1]] || !existsSync(join(qui, 'voci', `${rif[1]}.flac`))) throw new Error(`scripts/narrazione/voci: manca la voce ${rif[1]}`);
+  const campione = join(qui, 'voci', `${rif[1]}.flac`);
+  if (!scheda.voci[rif[1]] || !existsSync(campione)) throw new Error(`scripts/narrazione/voci: manca la voce ${rif[1]}`);
+  if (createHash('sha256').update(readFileSync(campione)).digest('hex') !== voce.campione)
+    throw new Error(`scripts/narrazione/voci/${rif[1]}.flac non è il campione con cui sono state fatte le registrazioni (impronta diversa da quella dell'indice)`);
   righe.push(
     '',
     `La voce è stata creata da una descrizione a parole con ${scheda.modello} (stesso produttore e stessa licenza; descrizione in scripts/narrazione/voci/voci.json, ` +

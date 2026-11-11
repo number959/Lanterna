@@ -80,10 +80,7 @@ _UNITA = "zero uno due tre quattro cinque sei sette otto nove dieci undici dodic
 _DECINE = ["", "", "venti", "trenta", "quaranta", "cinquanta", "sessanta", "settanta", "ottanta", "novanta"]
 
 
-def in_lettere(n: int) -> str:
-    """Un numero da 0 a 999 in parole: 169 -> centosessantanove, 23 -> ventitré, 480 -> quattrocentottanta."""
-    if not 0 <= n <= 999:
-        raise ValueError(n)
+def _fino_a_999(n: int) -> str:
     if n < 20:
         return _UNITA[n]
     if n < 100:
@@ -97,13 +94,44 @@ def in_lettere(n: int) -> str:
     if resto == 0:
         return cento
     # "cento" perde la vocale davanti a ottanta: centottanta, quattrocentottanta.
-    return (cento[:-1] if 80 <= resto < 90 else cento) + in_lettere(resto)
+    return (cento[:-1] if 80 <= resto < 90 else cento) + _fino_a_999(resto)
+
+
+def in_lettere(n: int) -> str:
+    """Un numero da 0 a 999 999 in parole: 169 -> centosessantanove, 23 -> ventitré, 8080 -> ottomilaottanta."""
+    if not 0 <= n <= 999_999:
+        raise ValueError(n)
+    if n < 1000:
+        return _fino_a_999(n)
+    migliaia, resto = divmod(n, 1000)
+    # Dentro la parola l'accento di «ventitré» cade: ventitremila.
+    testa = "mille" if migliaia == 1 else _fino_a_999(migliaia).replace("tré", "tre") + "mila"
+    return testa + (_fino_a_999(resto) if resto else "")
+
+
+def _cifre(s: str) -> str:
+    """Una cifra per volta: per i decimali che cominciano per zero e per i numeri troppo lunghi."""
+    return " ".join(_UNITA[int(c)] for c in s)
+
+
+def _numero(s: str) -> str:
+    return in_lettere(int(s)) if len(s) <= 6 else _cifre(s)
+
+
+def _decimale(m: re.Match) -> str:
+    intero, dopo = m.group(1), m.group(2)
+    # «0,05» si dice «zero virgola zero cinque», non «zero virgola cinque».
+    return f"{_numero(intero)} virgola {_cifre(dopo) if dopo.startswith('0') or len(dopo) > 2 else _numero(dopo)}"
 
 
 def numeri_in_lettere(testo: str) -> str:
     """Le cifre scritte in lettere: «169» diventa «centosessantanove», «2,4» diventa «due virgola quattro»."""
-    testo = re.sub(r"(\d+),(\d+)", lambda m: f"{in_lettere(int(m.group(1)))} virgola {in_lettere(int(m.group(2)))}", testo)
-    return re.sub(r"\d+", lambda m: in_lettere(int(m.group(0))), testo)
+    # Una cifra attaccata a una parola si stacca, o le due si fonderebbero: «WPA2» diventa «WPA due».
+    testo = re.sub(r"(?<=[^\W\d_])(?=\d)|(?<=\d)(?=[^\W\d_])", " ", testo)
+    # Un indirizzo si dice con i punti: «10.0.0.1» diventa «dieci punto zero punto zero punto uno».
+    testo = re.sub(r"\d+(?:\.\d+){2,}", lambda m: " punto ".join(_numero(p) for p in m.group(0).split(".")), testo)
+    testo = re.sub(r"(\d+),(\d+)", _decimale, testo)
+    return re.sub(r"\d+", lambda m: _numero(m.group(0)), testo)
 
 
 def parlato_llm(testo: str) -> str:

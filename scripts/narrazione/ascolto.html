@@ -1,9 +1,11 @@
 <title>Narrazione completa</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&family=Saira:wdth,wght@112,600;112,700&display=swap">
+@@CARATTERI@@
 <style>
-  /* Una colonna: intestazione, indice delle nove videoguide, poi ogni videoguida con le sue frasi numerate.
+  /* Una colonna: intestazione, indice delle videoguide, poi ogni videoguida con le sue frasi numerate.
      In basso resta la barra di ascolto con la frase in corso. */
+  /* Con la tastiera, la frase a fuoco non deve finire sotto la barra fissa. */
+  html { scroll-padding-bottom: 120px; }
   :root {
     --bg: #f3f6fb; --surface: #ffffff; --surface-2: #e9eff8; --text: #0a1830; --muted: #4d5d78; --line: #cfd9e8;
     --accent: #0a6fc2; --accent-ink: #ffffff; --accent-soft: #dcebfa;
@@ -21,7 +23,7 @@
     --bg: #050f22; --surface: #0a1830; --surface-2: #0e2040; --text: #e8f1ff; --muted: #9db0cf; --line: #1f3558;
     --accent: #3fd0ff; --accent-ink: #04101f; --accent-soft: #10305a; color-scheme: dark;
   }
-  body { background: var(--bg); color: var(--text); font: 400 16px/1.55 var(--body); }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 400 16px/1.55 var(--body); }
   .pagina {
     max-width: 760px; margin: 0 auto; padding-block: 36px 150px;
     padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -74,7 +76,7 @@
   <header>
     <p class="occhiello">STARNET Polaris · videoguide · voce @@VOCE@@</p>
     <h1>Narrazione completa</h1>
-    <p class="intro">Tutte le nove videoguide lette dalla voce «@@VOCE@@», come si sentiranno nel programma: @@FRASI@@ frasi, @@MINUTI@@ minuti. Ogni frase ha un numero.</p>
+    <p class="intro">Tutte le videoguide (@@VIDEOGUIDE@@) lette dalla voce «@@VOCE@@»: @@FRASI@@ frasi, @@MINUTI@@ minuti. Ogni frase ha un numero.</p>
     <p class="intro">Se una frase suona male, dimmi <b>il suo numero</b> (per esempio 3.12): la rifaccio da sola, senza toccare le altre.</p>
   </header>
 
@@ -86,8 +88,9 @@
 
   <section class="fine">
     <h2>Che cosa ascoltare</h2>
-    <p>Io non posso sentirle. Un riconoscitore vocale ha controllato che le parole si capiscano, ma accenti, intonazione e parole inglesi li giudica solo l'orecchio: sono quelli i punti dove vale la pena fare attenzione.</p>
-    <p>Tocca una frase per sentirla da sola e proseguire da lì; «Ascolta tutta» parte dall'inizio della videoguida. Tra una frase e l'altra c'è la stessa pausa del programma.</p>
+    <p>@@CONTROLLO@@</p>
+    <p>Tocca una frase per sentirla da sola e proseguire da lì; «Ascolta tutta» parte dall'inizio della videoguida. Tra una frase e l'altra c'è la stessa pausa del programma. Con la tastiera, <b>Esc</b> mette in pausa e riprende.</p>
+    <p>Qui l'audio è in MP3, che ogni browser legge. Nel programma le stesse registrazioni sono in Ogg Opus, un poco più pulite.</p>
   </section>
 </main>
 
@@ -104,17 +107,20 @@
   const pausa = document.getElementById('pausa');
   const ora = document.getElementById('ora');
   const audio = new Audio();
-  let cur = -1, attesa = 0;
+  // cur: la frase in ascolto; attesa: il timer della pausa tra due frasi; sospesa: la frase che stava per partire
+  // quando si è messo in pausa proprio in quella pausa (con «Riprendi» parte lei).
+  let cur = -1, attesa = 0, sospesa = -1;
 
   function mostra() {
     frasi.forEach((f, i) => { f.classList.toggle('in-ascolto', i === cur); if (i === cur) f.setAttribute('aria-current', 'true'); else f.removeAttribute('aria-current'); });
     pausa.disabled = cur < 0;
-    pausa.textContent = cur >= 0 && audio.paused && !attesa ? 'Riprendi' : 'Pausa';
+    pausa.textContent = cur >= 0 && (sospesa >= 0 || (audio.paused && !attesa)) ? 'Riprendi' : 'Pausa';
     if (cur >= 0) { ora.textContent = ''; const b = document.createElement('b'); b.textContent = frasi[cur].dataset.n; ora.append(b, frasi[cur].querySelector('.t').firstChild.textContent); }
     else ora.textContent = 'Tocca una frase o «Ascolta tutta».';
   }
   function suona(i) {
-    clearTimeout(attesa); attesa = 0;
+    clearTimeout(attesa); attesa = 0; sospesa = -1;
+    if (i < 0 || i >= frasi.length) { cur = -1; audio.pause(); mostra(); return; }
     cur = i;
     audio.src = SRC[i];
     audio.play().catch(() => {});
@@ -135,8 +141,10 @@
   document.querySelectorAll('.tutta').forEach((b) => b.addEventListener('click', () => suona(frasi.findIndex((f) => f.dataset.g === b.dataset.g))));
   pausa.addEventListener('click', () => {
     if (cur < 0) return;
-    if (attesa) { clearTimeout(attesa); attesa = 0; mostra(); pausa.textContent = 'Riprendi'; pausa.dataset.dopo = '1'; return; }
-    if (pausa.dataset.dopo) { delete pausa.dataset.dopo; suona(cur + 1); return; }
+    if (attesa) { clearTimeout(attesa); attesa = 0; sospesa = cur + 1; mostra(); return; }
+    if (sospesa >= 0) { suona(sospesa); return; }
     if (audio.paused) audio.play().catch(() => {}); else audio.pause();
   });
+  // Il pulsante Pausa è in fondo alla pagina: con la tastiera si ferma (e si riprende) con Esc da qualunque punto.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && cur >= 0) { e.preventDefault(); pausa.click(); } });
 </script>
