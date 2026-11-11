@@ -964,16 +964,9 @@ jobs:
           $r = ./polaris-cli.exe defender quick --json | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "scansione rapida non riuscita" }
           "Esito: $($r.message) in $([math]::Round($r.durationMs/1000)) s; minacce nuove: $($r.newThreats)"
-      - name: Finestra grafica con WebView2 (prova non bloccante)
+      - name: Finestra grafica con WebView2 e narrazione in Edge (prove non bloccanti)
         continue-on-error: true
         run: |
-          # La porta di debug serve più sotto, per far suonare una registrazione dentro la finestra: la si chiede
-          # con la variabile d'ambiente e con la chiave di registro che WebView2 prevede per le prove.
-          $argomenti = '--remote-debugging-port=9333 --remote-allow-origins=*'
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $argomenti
-          $chiave = 'HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
-          New-Item -Path $chiave -Force | Out-Null
-          Set-ItemProperty -Path $chiave -Name 'Polaris.exe' -Value $argomenti
           $gui = Start-Process -FilePath ./Polaris.exe -PassThru
           Start-Sleep 30
           $gui.Refresh()
@@ -984,9 +977,13 @@ jobs:
           $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
           [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
           $bmp.Save("$PWD\finestra.png")
+          Stop-Process $gui -ErrorAction SilentlyContinue
           # Narrazione delle videoguide: una registrazione presa dall'interfaccia deve caricarsi e suonare fino alla
-          # fine (a volume zero, con il consenso che nel programma dà il clic su "Guarda la videoguida"). Si prova
-          # dentro la finestra del programma e, con lo stesso motore, in Microsoft Edge senza finestra.
+          # fine (a volume zero, con il consenso che nel programma dà il clic su "Guarda la videoguida"). Si prova in
+          # Microsoft Edge senza finestra, che ha lo stesso motore di WebView2, contro l'interfaccia servita
+          # dall'eseguibile. Dentro la finestra del programma non si riesce: il caricatore di WebView2 incorporato
+          # (SDK 1.0.992.28) non apre la porta di debug né con la variabile d'ambiente né con la chiave di registro
+          # previste per le prove (run 113 e 114).
           $js = @'
           (async () => {
             const tipo = document.createElement('audio').canPlayType('audio/ogg; codecs=opus');
@@ -1005,7 +1002,9 @@ jobs:
           })()
           '@
           function Suona([int]$porta) {
-            $pagina = @(Invoke-RestMethod "http://127.0.0.1:$porta/json") | Where-Object { $_.type -eq 'page' -and $_.url -like 'http://127.0.0.1*' } | Select-Object -First 1
+            # In PowerShell 7 l'elenco arriva come un solo oggetto: passando dalla variabile lo si scorre voce per voce.
+            $elenco = Invoke-RestMethod "http://127.0.0.1:$porta/json"
+            $pagina = $elenco | Where-Object { $_.type -eq 'page' -and $_.url -like 'http://127.0.0.1*' } | Select-Object -First 1
             if (-not $pagina) { throw "nessuna pagina del programma sulla porta di debug" }
             $fine = [Threading.CancellationTokenSource]::new(60000).Token
             $ws = [System.Net.WebSockets.ClientWebSocket]::new()
@@ -1023,9 +1022,6 @@ jobs:
             } until ($risposta.id -eq 1)
             "$($risposta.result.result.value)$($risposta.result.exceptionDetails.text)"
           }
-          try { "Narrazione dentro la finestra del programma (WebView2): $(Suona 9333)" } catch { "Narrazione dentro la finestra del programma (WebView2): prova non riuscita ($_)" }
-          Stop-Process $gui -ErrorAction SilentlyContinue
-          Remove-Item -Path $chiave -Force -ErrorAction SilentlyContinue
           $srv = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8741' -PassThru -NoNewWindow
           $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
           try {
