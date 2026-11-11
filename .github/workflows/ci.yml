@@ -967,6 +967,8 @@ jobs:
       - name: Finestra grafica con WebView2 (prova non bloccante)
         continue-on-error: true
         run: |
+          # La porta di debug serve più sotto, per far suonare una registrazione dentro la finestra.
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9333 --remote-allow-origins=*'
           $gui = Start-Process -FilePath ./Polaris.exe -PassThru
           Start-Sleep 30
           $gui.Refresh()
@@ -977,6 +979,44 @@ jobs:
           $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
           [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
           $bmp.Save("$PWD\finestra.png")
+          # Narrazione delle videoguide dentro WebView2: una registrazione presa dall'interfaccia deve caricarsi e
+          # suonare fino alla fine (a volume zero, con il consenso che nel programma dà il clic su "Guarda la videoguida").
+          try {
+            $pagina = @(Invoke-RestMethod http://127.0.0.1:9333/json) | Where-Object { $_.type -eq 'page' -and $_.url -like 'http://127.0.0.1*' } | Select-Object -First 1
+            if (-not $pagina) { throw "nessuna pagina del programma sulla porta di debug" }
+            $js = @'
+          (async () => {
+            const tipo = document.createElement('audio').canPlayType('audio/ogg; codecs=opus');
+            const js = [...document.scripts].map((s) => s.src).find((s) => /assets\/index-/.test(s));
+            const ogg = ((await (await fetch(js)).text()).match(/[0-9a-f]{12}-[\w-]+\.ogg/) || [])[0];
+            if (!ogg) return JSON.stringify({ tipo, esito: 'nessuna registrazione trovata' });
+            const esito = await new Promise((fine) => {
+              const a = new Audio(new URL('assets/' + ogg, location.href).href);
+              a.muted = true;
+              a.onended = () => fine('suonata fino alla fine, ' + a.duration.toFixed(2) + ' s');
+              a.onerror = () => fine('errore ' + (a.error ? a.error.code : '?'));
+              a.play().catch((e) => fine('avvio rifiutato: ' + e.name));
+              setTimeout(() => fine('tempo scaduto a ' + a.currentTime.toFixed(2) + ' s, stato ' + a.readyState), 25000);
+            });
+            return JSON.stringify({ tipo, ogg, esito });
+          })()
+          '@
+            $fine = [Threading.CancellationTokenSource]::new(60000).Token
+            $ws = [System.Net.WebSockets.ClientWebSocket]::new()
+            $ws.ConnectAsync([Uri]$pagina.webSocketDebuggerUrl, $fine).GetAwaiter().GetResult()
+            $domanda = @{ id = 1; method = 'Runtime.evaluate'; params = @{ expression = $js; awaitPromise = $true; returnByValue = $true; userGesture = $true } } | ConvertTo-Json -Depth 5 -Compress
+            $ws.SendAsync([ArraySegment[byte]]::new([Text.Encoding]::UTF8.GetBytes($domanda)), [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $fine).GetAwaiter().GetResult()
+            $pezzo = [byte[]]::new(65536)
+            do {
+              $testo = [Text.StringBuilder]::new()
+              do {
+                $r = $ws.ReceiveAsync([ArraySegment[byte]]::new($pezzo), $fine).GetAwaiter().GetResult()
+                [void]$testo.Append([Text.Encoding]::UTF8.GetString($pezzo, 0, $r.Count))
+              } until ($r.EndOfMessage)
+              $risposta = $testo.ToString() | ConvertFrom-Json
+            } until ($risposta.id -eq 1)
+            "Narrazione in WebView2 ($($pagina.url)): $($risposta.result.result.value)$($risposta.result.exceptionDetails.text)"
+          } catch { "Narrazione in WebView2: prova non riuscita ($_)" }
           Stop-Process $gui -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         if: always()
