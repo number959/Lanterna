@@ -1599,3 +1599,117 @@ costruito dallo stesso commit nella run 110, che è un'altra build rispetto a qu
   compatibilità Change Cipher Spec) e non sono state confrontate con catture di questi PC.
 - **Elenco dei prefissi MAC della IEEE**: condizioni d'uso da verificare.
 - **Etichette di Windows** nei testi nuovi: come per le versioni precedenti, da ripercorrere su un Windows italiano.
+
+## 18. Versione 0.13.1: una voce nuova per le videoguide
+
+**Perché.** Le videoguide della 0.13.0 erano lette dalla voce italiana installata in Windows (Microsoft Elsa, sintesi vocale
+del sistema). STARNET le ha trovate brutte e ha chiesto altre voci. Le voci di sistema sono quelle: per cambiarle davvero la
+narrazione va registrata con un'altra voce e messa nel programma.
+
+**Cosa è nuovo.**
+- **Narrazione registrata** (`core/src/guides/narrazione/`, `core/src/guides/narrazione.ts`, `core/src/ui/narrazione.ts`,
+  `core/src/ui/videoguide.tsx`): una registrazione Ogg Opus mono a 32 kbit/s per ognuna delle 147 frasi delle nove
+  videoguide, 12,2 minuti e 2,8 MB in tutto; l'indice porta dal testo della frase al file e alla durata. Il lettore
+  suona la registrazione della frase corrente con un solo elemento audio, a fine frase aspetta 350 ms e passa alla
+  successiva; velocità con `playbackRate` (0,85, 1, 1,15); la frase dopo si precarica. Se un file non si carica o l'avvio è
+  rifiutato, la frase prosegue a tempo con il sottotitolo. La durata mostrata per ogni videoguida viene dalle registrazioni.
+- **Voce di Windows come alternativa**: con voci italiane installate il selettore offre la voce registrata (scelta
+  iniziale) e le voci di Windows («Windows: Elsa»); la scelta resta nelle preferenze (`source`). Le voci di Windows sono
+  sempre e solo quelle locali (`localService`).
+- **Agente** (`internal/server`): tipo `audio/ogg` dichiarato per `.ogg`, perché con `X-Content-Type-Options: nosniff` un
+  tipo sbagliato fermerebbe la riproduzione. Le registrazioni sono nell'eseguibile con il resto dell'interfaccia.
+- **Come sono fatte le registrazioni** (`scripts/narrazione/`, fuori dal programma): `frasi.mjs` estrae le frasi,
+  `genera.py` le registra con uno di tre motori (Qwen3-TTS, Kokoro-82M, Piper), toglie i silenzi, porta tutte le frasi a
+  -20 dBFS con picco sotto -1,5 dBFS e codifica; `pronuncia.py` dice come vanno dette sigle, parole inglesi e numeri;
+  `disegna.py` crea una voce da una descrizione; `controlla.py` misura il suono; `ascolto.py` costruisce una pagina per
+  ascoltare tutta la narrazione, frase per frase; `crediti.mjs` scrive i crediti nelle note di licenza a partire
+  dall'indice. Istruzioni in `scripts/narrazione/LEGGIMI.md`.
+- **Due difetti del motore scelto, tenuti a bada da `genera.py`.** Qwen3-TTS campiona, quindi ogni tanto salta o storpia
+  una parola e cambia registro da una frase all'altra. Ogni presa viene riascoltata da un riconoscitore vocale e se ne
+  misura l'altezza mediana della voce: la frase si rifà con un altro seme, fino a quattro prese, se le parole capite si
+  scostano da quelle scritte per più del 4% dei caratteri o se l'altezza si stacca per più del 10% dalla mediana di tutte
+  le frasi; si tiene la presa migliore. Il secondo controllo è nato a registrazione in corso: nelle prime 88 frasi,
+  registrate senza, l'altezza mediana andava da 220 a 362 Hz (misurata con due metodi, YIN e pYIN, che concordano), cioè
+  frasi anche del 35% più acute della mediana; 25 di quelle 88 non passavano il nuovo esame e sono state rifatte. Lo stesso
+  difetto c'era nei
+  provini delle voci di Qwen3-TTS già consegnati (fino al 22% dalla mediana tra le quattro frasi): sono stati rifatti con
+  lo stesso controllo e la pagina è stata aggiornata.
+
+**La voce.** «Giulia»: una voce femminile creata da una descrizione a parole con Qwen3-TTS-12Hz-1.7B-VoiceDesign (una donna
+italiana sui trent'anni, voce calda e chiara, tono calmo da narratrice di una guida al programma; il testo esatto è in
+`scripts/narrazione/voci/voci.json`). Il modello ha letto con quella voce una frase di prova di nove secondi
+(`scripts/narrazione/voci/giulia.flac`) e il modello Base, da 0,6 miliardi di parametri, la riusa per leggere le 147
+frasi. Nessuna registrazione di una persona è servita da campione. È la scelta provvisoria di chi ha fatto il lavoro, la
+prima delle dieci proposte: la decisione spetta a STARNET, e cambiare voce vuol dire rifare la registrazione (un'ora
+e mezza circa) senza toccare il programma.
+
+**Le voci provate.** Dieci, con le stesse quattro frasi, in una pagina d'ascolto consegnata a STARNET per la scelta:
+quattro voci create da una descrizione con Qwen3-TTS (Giulia, Chiara, Marco, Andrea), due voci predefinite di Qwen3-TTS
+(Serena, Aiden), due di Kokoro-82M (Sara, Nicola), due di Piper (serena, paola). Licenze controllate sulle pagine dei
+modelli l'11/11/2026: Qwen3-TTS Apache-2.0, Kokoro-82M Apache-2.0, dati della voce Piper `paola` CC0-1.0, dati della voce
+Piper `serena` CC BY 4.0 (con il credito richiesto). Scartate prima della pagina: Piper `riccardo` (qualità bassa, 16 kHz)
+e le altre voci predefinite di Qwen3-TTS provate (Vivian, Ryan, Sohee, Uncle_Fu), nate per altre lingue, che nei primi
+provini storpiavano più parole. Non provate: le voci «naturali» in linea di Edge (manderebbero il testo a Microsoft) e i
+servizi a pagamento.
+
+**Verifiche fatte.**
+- **Test**: 549 test in 33 file con vitest, tutti verdi (sei nuovi); `tsc` senza errori; `go test ./...` verde. Il test
+  nuovo `narrazione.test.ts` controlla che ogni frase di `video.ts` abbia la sua registrazione con il testo di oggi, che non
+  restino registrazioni di frasi tolte né file fuori dall'indice, che i file siano Ogg Opus veri, con durata tra 35 e 140
+  ms per carattere e peso coerente con la durata, che tutta la narrazione resti sotto 6 MB e che la voce creata da una
+  descrizione abbia ancora il suo campione e la sua scheda. `go test ./internal/server` verifica il tipo `audio/ogg`.
+- **Riascolto automatico delle parole** (`genera.py --verifica`, poi `--riascolta` su tutti i file finali): ogni
+  registrazione trascritta da Whisper `small` e confrontata con la frase scritta, carattere per carattere, dopo aver tolto
+  spazi, accenti e punteggiatura (numeri e unità di misura valgono sia in cifre sia in lettere). Sui 147 file finali: 102
+  frasi capite identiche, 43 con uno scarto entro il 4% (quasi sempre la grafia di sigle e parole inglesi: «vilana» per VLAN, «picci» per PC,
+  «tracerute»), 2 oltre: «Si riavvia il PC dalla chiavetta…» (5,8%: «PC» capito «Pi, ci» ed «Esc all'accensione» capito
+  «scalla accensione») e «Memtest86+ lavora fuori da Windows…» (4,4%: «Memtest» capito «Mentre è»). Nell'ultima passata
+  della registrazione, su 81 frasi 29 hanno chiesto una seconda presa, 9 una terza e 7 una quarta. Tra le frasi entro la
+  soglia ce ne sono alcune da sentire con le proprie orecchie, perché lo scarto potrebbe essere della voce e non del
+  riconoscitore: «millisecondi» capito «millicicondi», «L'inventario parte solo» capito «L'inventario a parte è solo».
+- **Registro della voce** (`genera.py --riascolta`, sui file finali): altezza mediana delle frasi 268 Hz, da 235 a 295
+  (prima del controllo andava da 220 a 362); 145 frasi su 147 entro il 10% dalla mediana, tutte entro il 15%. Le due più
+  basse («Le reti scoperte diventano destinazioni del test di segmentazione.», -12%, e «Per esempio, con il Wi-Fi
+  disturbato dai vicini…», -11%) il modello le legge basse a ogni presa.
+- **Controllo del suono** (`controlla.py`, sui file finali): ritmo mediano 59 ms per carattere detto, da 50 a 80 (le più
+  lente sono elenchi con molte virgole); volume da -21,2 a -20,1 dBFS, picco massimo 0,87, pausa interna più lunga 0,71 s;
+  impronta della voce (il vettore con cui il modello Base riconosce chi parla) simile alla media in tutte le frasi:
+  mediana 0,996, minima 0,990. Nessuna registrazione oltre le soglie.
+- **Eseguibile sotto Wine**: `polaris-cli.exe serve` costruito con le registrazioni definitive consegna l'interfaccia con
+  la sua CSP e le registrazioni come `audio/ogg`, con le richieste parziali (206); gli stessi 18 controlli del lettore
+  passano contro l'eseguibile, e una registrazione caricata attraverso il protocollo di debug suona fino alla fine.
+- **Pagine consegnate a STARNET**: i provini delle dieci voci e tutta la narrazione di Giulia frase per frase, con le
+  quattro frasi dubbie segnate in cima (`ascolto.py --rapporto`); 20 controlli nel browser sulla seconda (telefono e
+  schermo largo, temi chiaro e scuro).
+- **Lettore nel browser** (Chromium di Playwright, build di produzione): 18 controlli sulla voce registrata (parte la
+  registrazione della prima frase, a fine frase parte la successiva dopo circa 350 ms, il sottotitolo la segue, pausa e
+  ripresa, velocità 1,15 arrivata all'elemento audio, «solo sottotitoli» senza audio e con avanzamento a tempo, cambio di
+  scena, file bloccati: nessun suono ma la guida avanza, nessun errore in pagina) e 13 sul selettore con voci di Windows
+  simulate (voce registrata come scelta iniziale, passaggio a Elsa e ritorno, scelta ricordata). axe sul lettore, con
+  l'una e con l'altra voce: 0 violazioni (WCAG 2.1 AA e buone pratiche).
+- **Note di licenza**: `scripts/notices.sh` rigenerato; la sezione sulla voce viene dall'indice delle registrazioni.
+- **CI**: run 112 (commit `ef2b929`, lettore e narrazione con una voce provvisoria) e run 113 (`e4cb26d`) verdi su Linux e
+  su Windows reale. Su Linux: test, build e note di licenza allineate all'indice delle registrazioni. Su Windows: nel passo
+  «Server locale e API» l'eseguibile consegna una registrazione presa dall'interfaccia come `audio/ogg`, con il contenuto
+  di un file Ogg. Nella run 113 la prova non bloccante dell'ascolto dentro la finestra del programma non è riuscita: la
+  porta di debug di WebView2 non si è aperta con la variabile d'ambiente prevista (il caricatore incorporato da
+  go-webview2 è quello dell'SDK 1.0.992.28, che non la nomina). Le run successive sono riportate in fondo.
+
+**Strumenti.** Ambienti virtuali Python fuori dal repository; tutti i pacchetti installati hanno almeno 14 giorni (quelli
+più recenti sono stati riportati alla versione precedente con `pip install --uploaded-prior-to`): qwen-tts 0.1.1, torch
+2.15.0, transformers 4.57.3, faster-whisper 1.2.1, ctranslate2 4.8.4, kokoro-onnx 0.6.1, piper-tts 1.8.0, onnxruntime
+1.31.1. Tempi su 4 processori senza scheda grafica: Kokoro e Piper leggono tutta la narrazione in pochi minuti;
+Qwen3-TTS 0.6B impiega 4,7 secondi per ogni secondo di voce a una frase per volta e 2,7 con otto frasi insieme (misurati); con quattro
+insieme, il riascolto e le prese rifatte, la registrazione di Giulia ha chiesto circa un'ora e mezza, in più riprese.
+
+**Avvertenze: cosa resta da provare.**
+- **Nessuno ha ascoltato la narrazione.** Chi ha fatto le registrazioni non può sentirle: i controlli dicono che le parole
+  si capiscono e che le registrazioni si somigliano, non che la voce sia gradevole, né che accenti e intonazione siano
+  giusti. Il giudizio è di chi ascolta; una frase che suona male si rifà da sola (`--rifai`).
+- **Ascolto dentro WebView2 su un PC vero**: la riproduzione è provata in Chromium su Linux. La CI su Windows controlla che
+  l'eseguibile consegni una registrazione come `audio/ogg`, ma non che la finestra del programma la suoni. Ogg Opus è un
+  formato che Chromium e WebView2 leggono senza componenti aggiuntivi: resta da sentire su Windows.
+- **Il riconoscitore sbaglia a sua volta**, soprattutto su sigle e parole inglesi, e tende a «correggere» ciò che sente:
+  può segnalare frasi giuste e non accorgersi di un accento sbagliato.
+- **Licenze dei modelli**: lette sulle pagine dei progetti alla data indicata; i modelli non sono nel pacchetto, che
+  contiene solo le registrazioni. Non è una consulenza legale.

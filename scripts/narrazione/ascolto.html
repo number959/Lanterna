@@ -50,6 +50,10 @@
   .frase .t { min-width: 0; overflow-wrap: anywhere; }
   .frase.in-ascolto { background: var(--accent-soft); }
   .frase.in-ascolto .t { font-weight: 600; }
+  .frase { scroll-margin-top: 16px; }
+  .dubbio { display: inline-block; margin-left: 6px; font: 600 11px/1.6 var(--mono); letter-spacing: 0.04em; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; white-space: nowrap; }
+  .dubbie { margin: 0; max-width: 66ch; font-size: 15px; background: var(--surface-2); border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; padding: 10px 14px; }
+  .dubbie a { color: var(--accent); font: 600 14px/1 var(--mono); }
   .barra {
     position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--line);
     padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
@@ -73,6 +77,8 @@
     <p class="intro">Tutte le nove videoguide lette dalla voce «@@VOCE@@», come si sentiranno nel programma: @@FRASI@@ frasi, @@MINUTI@@ minuti. Ogni frase ha un numero.</p>
     <p class="intro">Se una frase suona male, dimmi <b>il suo numero</b> (per esempio 3.12): la rifaccio da sola, senza toccare le altre.</p>
   </header>
+
+  @@DUBBIE@@
 
   <nav class="indice" aria-label="Videoguide">@@INDICE@@</nav>
 
@@ -104,7 +110,7 @@
     frasi.forEach((f, i) => { f.classList.toggle('in-ascolto', i === cur); if (i === cur) f.setAttribute('aria-current', 'true'); else f.removeAttribute('aria-current'); });
     pausa.disabled = cur < 0;
     pausa.textContent = cur >= 0 && audio.paused && !attesa ? 'Riprendi' : 'Pausa';
-    if (cur >= 0) { ora.textContent = ''; const b = document.createElement('b'); b.textContent = frasi[cur].dataset.n; ora.append(b, frasi[cur].querySelector('.t').textContent); }
+    if (cur >= 0) { ora.textContent = ''; const b = document.createElement('b'); b.textContent = frasi[cur].dataset.n; ora.append(b, frasi[cur].querySelector('.t').firstChild.textContent); }
     else ora.textContent = 'Tocca una frase o «Ascolta tutta».';
   }
   function suona(i) {

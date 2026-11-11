@@ -10,6 +10,10 @@ voce va bene.
     node scripts/narrazione/frasi.mjs frasi.json
     python scripts/narrazione/ascolto.py --frasi frasi.json --uscita narrazione.html
 
+Con --rapporto si passa il rapporto di `genera.py --riascolta`: le frasi su cui
+il riconoscitore o la misura dell'altezza hanno un dubbio vengono segnate, e
+la pagina le elenca in cima, da ascoltare per prime.
+
 L'audio della pagina è in MP3, che ogni browser legge (il programma usa le
 registrazioni Ogg Opus originali, un poco più pulite). Serve ffmpeg.
 """
@@ -49,6 +53,9 @@ def main() -> None:
     p.add_argument("--uscita", required=True, type=Path, help="pagina HTML da scrivere")
     p.add_argument("--cartella", type=Path, default=CARTELLA)
     p.add_argument("--indice", type=Path, default=INDICE)
+    p.add_argument("--rapporto", type=Path, help="rapporto di genera.py --riascolta: segna le frasi dubbie")
+    p.add_argument("--soglia", type=float, default=0.04, help="scarto delle parole oltre il quale una frase è dubbia")
+    p.add_argument("--tolleranza", type=float, default=0.10, help="distanza dall'altezza mediana oltre la quale una frase è dubbia")
     args = p.parse_args()
 
     frasi = json.loads(Path(args.frasi).read_text(encoding="utf-8"))
@@ -57,7 +64,22 @@ def main() -> None:
     if mancanti:
         raise SystemExit(f"{len(mancanti)} frasi senza registrazione: prima genera.py")
 
-    guide, audio, indice, totale = [], [], [], 0.0
+    # Le frasi su cui i controlli automatici hanno un dubbio, con il motivo.
+    dubbi: dict[str, str] = {}
+    if args.rapporto:
+        esiti = json.loads(args.rapporto.read_text(encoding="utf-8"))
+        altezze = sorted(e["hz"] for e in esiti if e.get("hz"))
+        mediana = altezze[len(altezze) // 2] if altezze else 0
+        for e in esiti:
+            motivi = []
+            if e["scarto"] > args.soglia:
+                motivi.append("parole da controllare")
+            if mediana and e.get("hz") and abs(e["hz"] / mediana - 1) > args.tolleranza:
+                motivi.append("tono più " + ("alto" if e["hz"] > mediana else "basso") + " delle altre")
+            if motivi:
+                dubbi[e["testo"]] = ", ".join(motivi)
+
+    guide, audio, indice, totale, da_sentire = [], [], [], 0.0, []
     video = list(dict.fromkeys(f["video"] for f in frasi))
     for g, v in enumerate(video, 1):
         blocco = [f for f in frasi if f["video"] == v]
@@ -69,9 +91,14 @@ def main() -> None:
             for f in (f for f in blocco if f["scena"] == s):
                 n += 1
                 audio.append(mp3(args.cartella / clip[f["testo"]]["file"]))
+                dubbio = dubbi.get(f["testo"])
+                if dubbio:
+                    da_sentire.append(f'<a href="#f{g}-{n}">{g}.{n}</a> ({html.escape(dubbio)})')
                 righe.append(
-                    f'<li><button class="frase" type="button" data-g="{g}" data-n="{g}.{n}">'
-                    f'<span class="n">{g}.{n}</span><span class="t">{html.escape(f["testo"])}</span></button></li>'
+                    f'<li><button class="frase{" dubbia" if dubbio else ""}" type="button" id="f{g}-{n}" data-g="{g}" data-n="{g}.{n}">'
+                    f'<span class="n">{g}.{n}</span><span class="t">{html.escape(f["testo"])}'
+                    + (f' <span class="dubbio">{html.escape(dubbio)}</span>' if dubbio else "")
+                    + "</span></button></li>"
                 )
             titolo = next(f["titoloScena"] for f in blocco if f["scena"] == s)
             scene.append(f'<div class="scena"><h3>{html.escape(titolo)}</h3><ol>{"".join(righe)}</ol></div>')
@@ -90,6 +117,11 @@ def main() -> None:
         "@@INDICE@@": "".join(indice),
         "@@GUIDE@@": "\n".join(guide),
         "@@AUDIO@@": json.dumps(audio),
+        "@@DUBBIE@@": (
+            '<p class="dubbie"><b>Da ascoltare per prime.</b> I controlli automatici hanno un dubbio su: ' + "; ".join(da_sentire) + ". Non è detto che siano sbagliate.</p>"
+            if da_sentire
+            else ""
+        ),
     }
     for k, val in campi.items():
         pagina = pagina.replace(k, val)

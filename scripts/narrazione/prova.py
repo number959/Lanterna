@@ -41,6 +41,7 @@ uguale(scarto("Inizia con 169.254.", "Inizia con centosessantanove punto duecent
 uguale(scarto("Copiare 100 gigabyte richiede 40 minuti.", "Copiare 100 GB richiede 40 minuti."), 0.0)
 uguale(scarto("A 480 megabit al secondo, circa 40 megabyte al secondo.", "A 480 Mbps, circa 40 MB/s."), 0.0)
 uguale(scarto("Il DHCP assegna gli indirizzi.", "Il di acca ci pi assegna gli indirizzi."), 0.0)
+uguale(scarto("Un indirizzo IP: quattro numeri da 0 a 255.", "Un indirizzo IP 4 numeri da 0 a 255."), 0.0)
 # Una parola saltata o cambiata si vede.
 assert scarto("Anche un solo errore è un problema serio.", "Anche un solo errore è un problema.") > 0.1
 assert scarto("Dividere la rete in zone limita i danni.", "Dividere la rete in zone limita gli anni.") > 0.04

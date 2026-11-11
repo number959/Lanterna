@@ -109,7 +109,8 @@ def main() -> None:
 
     z_ritmo, z_alt = scostamento(colonna("ms_car")), scostamento(colonna("altezza"))
     for i, r in enumerate(righe):
-        if abs(z_ritmo[i]) > 4:
+        # Oltre a staccarsi dalle altre, la frase deve staccarsi di molto: un elenco con tante virgole è più lento, ed è giusto.
+        if abs(z_ritmo[i]) > 4 and abs(r["ms_car"] / np.median(colonna("ms_car")) - 1) > 0.4:
             segna(i, f"ritmo insolito: {r['ms_car']:.0f} ms per carattere (mediana {np.median(colonna('ms_car')):.0f})")
         if r["altezza"] and abs(z_alt[i]) > 4 and abs(r["altezza"] / np.median(colonna("altezza")) - 1) > 0.12:
             segna(i, f"voce più {'acuta' if z_alt[i] > 0 else 'grave'} del resto: {r['altezza']:.0f} Hz (mediana {np.median(colonna('altezza')):.0f})")
@@ -122,7 +123,8 @@ def main() -> None:
     if args.modello:
         z_som = scostamento(colonna("somiglianza"))
         for i, r in enumerate(righe):
-            if z_som[i] < -4:
+            # Quando le impronte sono tutte vicinissime, anche uno scarto minuscolo "si stacca": serve una distanza vera.
+            if z_som[i] < -4 and r["somiglianza"] < np.median(colonna("somiglianza")) - 0.03:
                 segna(i, f"impronta della voce lontana dalle altre: {r['somiglianza']:.3f} (mediana {np.median(colonna('somiglianza')):.3f})")
 
     print(f"Voce {voce.get('nome', '?')}: {len(righe)} registrazioni")

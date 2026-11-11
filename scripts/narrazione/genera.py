@@ -274,6 +274,11 @@ def scarto(testo: str, capito: str) -> float:
     si confronta con la frase com'è scritta, con i numeri in lettere e con la forma detta, e vale il confronto migliore.
     """
     capite = {_piatto(capito), _piatto(_per_esteso(capito))}
+    try:
+        # Il riconoscitore può anche scrivere in cifre un numero che nella frase è in lettere («4 numeri»).
+        capite.add(_piatto(numeri_in_lettere(_per_esteso(capito))))
+    except ValueError:
+        pass  # un numero oltre 999: nelle frasi non ce ne sono, quindi è già un errore di lettura
     forme = {_piatto(testo), _piatto(numeri_in_lettere(testo)), _piatto(parlato_llm(testo))}
     return min(_distanza(f, c) / max(1, len(f)) for f in forme for c in capite)
 

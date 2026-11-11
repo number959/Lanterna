@@ -1080,9 +1080,11 @@ the list to obtain it directly from IEEE (and to update it on a regular
 basis) to ensure the integrity of the information.
 ```
 
-## Narrazione delle videoguide (voce sintetica «Sara»)
+## Narrazione delle videoguide (voce sintetica «Giulia»)
 
-La narrazione delle videoguide è registrata: 147 file Ogg Opus, circa 12 minuti in tutto (core/src/guides/narrazione/). Le registrazioni sono state generate una volta con Kokoro-82M (kokoro-v1.0.onnx, voce if_sara) dallo script scripts/narrazione/genera.py; nel programma ci sono soltanto le registrazioni, non il modello né il suo codice. Modello e licenza: Kokoro-82M di hexgrad, licenza Apache-2.0.
+La narrazione delle videoguide è registrata: 147 file Ogg Opus, circa 12 minuti in tutto (core/src/guides/narrazione/). Le registrazioni sono state generate una volta con Qwen3-TTS (Qwen3-TTS-12Hz-0.6B-Base, voce di riferimento giulia.flac) dallo script scripts/narrazione/genera.py; nel programma ci sono soltanto le registrazioni, non il modello né il suo codice. Modello e licenza: Qwen3-TTS di Alibaba Cloud, licenza Apache-2.0.
+
+La voce è stata creata da una descrizione a parole con Qwen3-TTS-12Hz-1.7B-VoiceDesign (stesso produttore e stessa licenza; descrizione in scripts/narrazione/voci/voci.json, campione in scripts/narrazione/voci/giulia.flac): nasce dalla sola descrizione, senza la registrazione di una persona da imitare.
 
 # Programmi inclusi nella cartella strumenti
 
