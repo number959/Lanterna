@@ -983,7 +983,7 @@ jobs:
           # Microsoft Edge senza finestra, che ha lo stesso motore di WebView2, contro l'interfaccia servita
           # dall'eseguibile. Dentro la finestra del programma non si riesce: il caricatore di WebView2 incorporato
           # (SDK 1.0.992.28) non apre la porta di debug né con la variabile d'ambiente né con la chiave di registro
-          # previste per le prove (run 113 e 114).
+          # previste per le prove (run 113 e 114). Nella run 116 la registrazione ha suonato fino alla fine in Edge 156.
           $js = @'
           (async () => {
             const tipo = document.createElement('audio').canPlayType('audio/ogg; codecs=opus');
@@ -1008,9 +1008,9 @@ jobs:
             if (-not $pagina) { throw "nessuna pagina del programma sulla porta di debug" }
             $fine = [Threading.CancellationTokenSource]::new(60000).Token
             $ws = [System.Net.WebSockets.ClientWebSocket]::new()
-            $ws.ConnectAsync([Uri]$pagina.webSocketDebuggerUrl, $fine).GetAwaiter().GetResult()
+            $null = $ws.ConnectAsync([Uri]$pagina.webSocketDebuggerUrl, $fine).GetAwaiter().GetResult()
             $domanda = @{ id = 1; method = 'Runtime.evaluate'; params = @{ expression = $js; awaitPromise = $true; returnByValue = $true; userGesture = $true } } | ConvertTo-Json -Depth 5 -Compress
-            $ws.SendAsync([ArraySegment[byte]]::new([Text.Encoding]::UTF8.GetBytes($domanda)), [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $fine).GetAwaiter().GetResult()
+            $null = $ws.SendAsync([ArraySegment[byte]]::new([Text.Encoding]::UTF8.GetBytes($domanda)), [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $fine).GetAwaiter().GetResult()
             $pezzo = [byte[]]::new(65536)
             do {
               $testo = [Text.StringBuilder]::new()

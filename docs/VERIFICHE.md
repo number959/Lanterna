@@ -1693,7 +1693,13 @@ servizi a pagamento.
   «Server locale e API» l'eseguibile consegna una registrazione presa dall'interfaccia come `audio/ogg`, con il contenuto
   di un file Ogg. Nella run 113 la prova non bloccante dell'ascolto dentro la finestra del programma non è riuscita: la
   porta di debug di WebView2 non si è aperta con la variabile d'ambiente prevista (il caricatore incorporato da
-  go-webview2 è quello dell'SDK 1.0.992.28, che non la nomina). Le run successive sono riportate in fondo.
+  go-webview2 è quello dell'SDK 1.0.992.28, che non la nomina). Run 114 (`27d2cd8`), verde: la porta non si apre nemmeno
+  con la chiave di registro prevista per le prove, e la prova in Microsoft Edge aveva un errore nello script. Run 115
+  (`12612e8`, la voce Giulia), verde su Linux e su Windows: test, build, note di licenza con i crediti di Giulia, e
+  l'eseguibile che consegna una registrazione di Giulia come `audio/ogg`. Run 116 (`02cdb13`), verde: sulla macchina
+  Windows della CI **Microsoft Edge 156 senza finestra**, aperto sull'interfaccia servita da `polaris-cli.exe`, dichiara
+  di saper leggere `audio/ogg; codecs=opus` («probably»), carica una registrazione di Giulia e la suona fino alla fine
+  (4,90 s, a volume zero, con il consenso che nel programma dà il clic su «Guarda la videoguida»).
 
 **Strumenti.** Ambienti virtuali Python fuori dal repository; tutti i pacchetti installati hanno almeno 14 giorni (quelli
 più recenti sono stati riportati alla versione precedente con `pip install --uploaded-prior-to`): qwen-tts 0.1.1, torch
@@ -1706,9 +1712,10 @@ insieme, il riascolto e le prese rifatte, la registrazione di Giulia ha chiesto 
 - **Nessuno ha ascoltato la narrazione.** Chi ha fatto le registrazioni non può sentirle: i controlli dicono che le parole
   si capiscono e che le registrazioni si somigliano, non che la voce sia gradevole, né che accenti e intonazione siano
   giusti. Il giudizio è di chi ascolta; una frase che suona male si rifà da sola (`--rifai`).
-- **Ascolto dentro WebView2 su un PC vero**: la riproduzione è provata in Chromium su Linux. La CI su Windows controlla che
-  l'eseguibile consegni una registrazione come `audio/ogg`, ma non che la finestra del programma la suoni. Ogg Opus è un
-  formato che Chromium e WebView2 leggono senza componenti aggiuntivi: resta da sentire su Windows.
+- **Ascolto dentro la finestra del programma su un PC vero**: la riproduzione è provata in Chromium su Linux e, su
+  Windows reale, in Microsoft Edge 156 (run 116), che ha lo stesso motore di WebView2. Dentro la finestra del programma
+  non si è potuta provare in automatico, perché il caricatore di WebView2 incorporato non apre la porta di debug (run 113 e
+  114): manca quindi la prova diretta, e manca soprattutto qualcuno che la ascolti dagli altoparlanti di un PC.
 - **Il riconoscitore sbaglia a sua volta**, soprattutto su sigle e parole inglesi, e tende a «correggere» ciò che sente:
   può segnalare frasi giuste e non accorgersi di un accento sbagliato.
 - **Licenze dei modelli**: lette sulle pagine dei progetti alla data indicata; i modelli non sono nel pacchetto, che
