@@ -91,11 +91,13 @@ import (
 	"lanterna/internal/tools"
 )
 
-// I font dell'interfaccia (woff2) e il favicon (ico) hanno il tipo dichiarato qui:
-// la tabella interna di Go non li contiene e il registro di Windows non sempre li riporta.
+// I font dell'interfaccia (woff2), il favicon (ico) e le registrazioni della
+// narrazione delle videoguide (ogg) hanno il tipo dichiarato qui: la tabella
+// interna di Go non li contiene e il registro di Windows non sempre li riporta.
 func init() {
 	_ = mime.AddExtensionType(".woff2", "font/woff2")
 	_ = mime.AddExtensionType(".ico", "image/x-icon")
+	_ = mime.AddExtensionType(".ogg", "audio/ogg")
 }
 
 type Server struct {

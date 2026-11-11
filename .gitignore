@@ -9,3 +9,4 @@ build/
 test-results/
 /windows/cmd/lanterna/rsrc_windows_*.syso
 core/dist-preview/
+__pycache__/

@@ -1,0 +1,136 @@
+<title>Narrazione completa</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&family=Saira:wdth,wght@112,600;112,700&display=swap">
+<style>
+  /* Una colonna: intestazione, indice delle nove videoguide, poi ogni videoguida con le sue frasi numerate.
+     In basso resta la barra di ascolto con la frase in corso. */
+  :root {
+    --bg: #f3f6fb; --surface: #ffffff; --surface-2: #e9eff8; --text: #0a1830; --muted: #4d5d78; --line: #cfd9e8;
+    --accent: #0a6fc2; --accent-ink: #ffffff; --accent-soft: #dcebfa;
+    --display: "Saira", "Segoe UI", system-ui, sans-serif;
+    --body: "Inter", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #050f22; --surface: #0a1830; --surface-2: #0e2040; --text: #e8f1ff; --muted: #9db0cf; --line: #1f3558;
+      --accent: #3fd0ff; --accent-ink: #04101f; --accent-soft: #10305a; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #050f22; --surface: #0a1830; --surface-2: #0e2040; --text: #e8f1ff; --muted: #9db0cf; --line: #1f3558;
+    --accent: #3fd0ff; --accent-ink: #04101f; --accent-soft: #10305a; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--text); font: 400 16px/1.55 var(--body); }
+  .pagina {
+    max-width: 760px; margin: 0 auto; padding-block: 36px 150px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid; gap: 30px;
+  }
+  .occhiello { font: 600 12px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0 0 12px; }
+  h1 { font: 700 clamp(30px, 6vw, 42px)/1.08 var(--display); letter-spacing: 0.01em; margin: 0 0 12px; text-wrap: balance; }
+  .intro { margin: 0 0 10px; max-width: 62ch; color: var(--muted); font-size: 17px; }
+  .intro b { color: var(--text); font-weight: 600; }
+  .indice { display: flex; flex-wrap: wrap; gap: 8px; }
+  .indice a { text-decoration: none; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 14px; }
+  .indice a:hover { border-color: var(--accent); }
+  .indice a b { font: 600 13px/1 var(--mono); color: var(--accent); margin-right: 6px; }
+  .guida { display: grid; gap: 12px; scroll-margin-top: 16px; }
+  .guida > .capo { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .num { flex: none; min-width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); font: 700 18px/1 var(--display); }
+  .guida h2 { flex: 1; min-width: 0; font: 700 21px/1.2 var(--display); margin: 0; text-wrap: balance; }
+  .dur { flex: none; font: 500 12px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tutta { justify-self: start; display: inline-flex; align-items: center; gap: 8px; font: 600 15px/1 var(--body); color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 9px; padding: 10px 14px; cursor: pointer; }
+  .scena { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 8px 8px; }
+  .scena h3 { font: 600 12px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 0 8px 6px; }
+  .scena ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .frase { width: 100%; display: flex; gap: 10px; align-items: baseline; text-align: left; background: none; border: 0; border-radius: 8px; padding: 7px 8px; color: inherit; font: inherit; cursor: pointer; }
+  .frase:hover { background: var(--surface-2); }
+  .frase .n { flex: none; min-width: 3.2em; font: 600 13px/1.5 var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+  .frase .t { min-width: 0; overflow-wrap: anywhere; }
+  .frase.in-ascolto { background: var(--accent-soft); }
+  .frase.in-ascolto .t { font-weight: 600; }
+  .barra {
+    position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--line);
+    padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  }
+  .barra > div { max-width: 760px; margin: 0 auto; display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .barra button { flex: none; font: 600 14px/1 var(--body); color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 9px; padding: 10px 14px; cursor: pointer; min-width: 92px; }
+  .barra button[disabled] { opacity: 0.45; cursor: default; }
+  .ora { min-width: 0; flex: 1; font-size: 14px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ora b { font: 600 13px/1 var(--mono); color: var(--accent); margin-right: 8px; }
+  .fine { border-top: 1px solid var(--line); padding-top: 22px; display: grid; gap: 10px; color: var(--muted); font-size: 15px; }
+  .fine h2 { font: 700 19px/1.2 var(--display); color: var(--text); margin: 0; }
+  .fine p { margin: 0; max-width: 66ch; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<main class="pagina">
+  <header>
+    <p class="occhiello">STARNET Polaris · videoguide · voce @@VOCE@@</p>
+    <h1>Narrazione completa</h1>
+    <p class="intro">Tutte le nove videoguide lette dalla voce «@@VOCE@@», come si sentiranno nel programma: @@FRASI@@ frasi, @@MINUTI@@ minuti. Ogni frase ha un numero.</p>
+    <p class="intro">Se una frase suona male, dimmi <b>il suo numero</b> (per esempio 3.12): la rifaccio da sola, senza toccare le altre.</p>
+  </header>
+
+  <nav class="indice" aria-label="Videoguide">@@INDICE@@</nav>
+
+  @@GUIDE@@
+
+  <section class="fine">
+    <h2>Che cosa ascoltare</h2>
+    <p>Io non posso sentirle. Un riconoscitore vocale ha controllato che le parole si capiscano, ma accenti, intonazione e parole inglesi li giudica solo l'orecchio: sono quelli i punti dove vale la pena fare attenzione.</p>
+    <p>Tocca una frase per sentirla da sola e proseguire da lì; «Ascolta tutta» parte dall'inizio della videoguida. Tra una frase e l'altra c'è la stessa pausa del programma.</p>
+  </section>
+</main>
+
+<div class="barra" role="region" aria-label="Ascolto">
+  <div>
+    <button id="pausa" type="button" disabled>Pausa</button>
+    <p class="ora" id="ora" aria-live="off">Tocca una frase o «Ascolta tutta».</p>
+  </div>
+</div>
+
+<script>
+  const SRC = @@AUDIO@@;
+  const frasi = [...document.querySelectorAll('.frase')];
+  const pausa = document.getElementById('pausa');
+  const ora = document.getElementById('ora');
+  const audio = new Audio();
+  let cur = -1, attesa = 0;
+
+  function mostra() {
+    frasi.forEach((f, i) => { f.classList.toggle('in-ascolto', i === cur); if (i === cur) f.setAttribute('aria-current', 'true'); else f.removeAttribute('aria-current'); });
+    pausa.disabled = cur < 0;
+    pausa.textContent = cur >= 0 && audio.paused && !attesa ? 'Riprendi' : 'Pausa';
+    if (cur >= 0) { ora.textContent = ''; const b = document.createElement('b'); b.textContent = frasi[cur].dataset.n; ora.append(b, frasi[cur].querySelector('.t').textContent); }
+    else ora.textContent = 'Tocca una frase o «Ascolta tutta».';
+  }
+  function suona(i) {
+    clearTimeout(attesa); attesa = 0;
+    cur = i;
+    audio.src = SRC[i];
+    audio.play().catch(() => {});
+    mostra();
+    const r = frasi[i].getBoundingClientRect();
+    if (r.top < 8 || r.bottom > innerHeight - 110) frasi[i].scrollIntoView({ block: 'center' });
+  }
+  audio.addEventListener('ended', () => {
+    const n = cur + 1;
+    // Si prosegue fino alla fine della videoguida, con la stessa pausa del programma.
+    if (n < frasi.length && frasi[n].dataset.g === frasi[cur].dataset.g) attesa = setTimeout(() => suona(n), 350);
+    else cur = -1;
+    mostra();
+  });
+  audio.addEventListener('pause', mostra);
+  audio.addEventListener('play', mostra);
+  frasi.forEach((f, i) => f.addEventListener('click', () => suona(i)));
+  document.querySelectorAll('.tutta').forEach((b) => b.addEventListener('click', () => suona(frasi.findIndex((f) => f.dataset.g === b.dataset.g))));
+  pausa.addEventListener('click', () => {
+    if (cur < 0) return;
+    if (attesa) { clearTimeout(attesa); attesa = 0; mostra(); pausa.textContent = 'Riprendi'; pausa.dataset.dopo = '1'; return; }
+    if (pausa.dataset.dopo) { delete pausa.dataset.dopo; suona(cur + 1); return; }
+    if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+  });
+</script>

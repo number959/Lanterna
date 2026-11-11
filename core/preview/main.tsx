@@ -56,7 +56,7 @@ function Preview() {
         <BrandSymbol size={34} title="STARNET" />
         <div className="pv-titles">
           <h1>Mappa della rete e traffico</h1>
-          <p>Anteprima della versione 0.13.0 di STARNET Polaris, con i dati dimostrativi di una casa e di un poliambulatorio.</p>
+          <p>Anteprima della versione 0.13.1 di STARNET Polaris, con i dati dimostrativi di una casa e di un poliambulatorio.</p>
         </div>
       </header>
       <section className="card pv-card">

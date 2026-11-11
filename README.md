@@ -31,8 +31,8 @@ servizi interni** e, con il tuo consenso ogni volta, misura la **velocità di In
 
 Funziona in casa come in uno studio, in un'azienda o in una **struttura sanitaria**: riconosce le reti con più access point e
 con dominio, censisce la sottorete, verifica la separazione tra le zone e i servizi critici e guida un'autovalutazione delle
-misure organizzative. Una biblioteca di **79 guide** in italiano, con schemi animati e **videoguide narrate dalla voce
-italiana di Windows**, spiega come usare il programma, il computer e la rete, dalle basi alle reti cliniche.
+misure organizzative. Una biblioteca di **79 guide** in italiano, con schemi animati e **videoguide narrate in
+italiano**, spiega come usare il programma, il computer e la rete, dalle basi alle reti cliniche.
 
 Il nome nasce dal marchio STARNET: Polaris è la stella polare, quella che indica la direzione. Qui indica cosa sistemare per primo.
 
@@ -346,8 +346,9 @@ Windows citate sono quelle note a metà 2026 e vanno verificate sul sito Microso
 alla guida che li spiega; diciassette schemi animati illustrano livelli, sottoreti, DHCP, canali, roaming, VLAN, zone di una rete
 sanitaria, mappa della rete, annunci LLDP, instradamento tra VLAN, SNMP, traceroute, velocità USB, test della RAM, fasi
 dell'avvio, percorso di stampa e Memtest86+ su chiavetta. **Nove videoguide** (dalla 0.13.0) uniscono scene animate e una
-narrazione letta dalla voce italiana di Windows (Elsa, se installata), con sottotitoli, capitoli, velocità e trascrizione: si
-usano solo le voci del PC, quindi il testo non esce dal computer, e senza voce italiana restano i sottotitoli. I riferimenti normativi citati (GDPR, NIS2, dispositivi medicali) sono una sintesi da verificare sui testi ufficiali,
+narrazione in italiano, con sottotitoli, capitoli, velocità e trascrizione. Dalla 0.13.1 la voce è una registrazione inclusa
+nel programma (una voce sintetica, generata una volta con un modello aperto: vedi `scripts/narrazione`), quindi non serve una
+voce installata e durante l'ascolto nulla esce dal computer; in alternativa si sceglie una voce italiana di Windows. I riferimenti normativi citati (GDPR, NIS2, dispositivi medicali) sono una sintesi da verificare sui testi ufficiali,
 non una consulenza legale.
 
 ## Piattaforme
@@ -421,6 +422,8 @@ avviato, il server di sviluppo inoltra `/api` all'agente vero.
 
 Fino alla versione 0.2.0 il programma si chiamava LANterna: il repository e il modulo Go conservano quel nome interno.
 I master del marchio sono in `brand/`; `node scripts/brand.mjs` rigenera i tracciati usati dall'interfaccia.
+La narrazione delle videoguide è registrata (`core/src/guides/narrazione/`): quando cambia una frase, o per cambiare voce, si
+rifà con gli script di `scripts/narrazione`, spiegati nel loro [LEGGIMI](scripts/narrazione/LEGGIMI.md).
 
 ## Alternative open source
 
@@ -483,7 +486,8 @@ PC con scheda Wi-Fi: [docs/VERIFICHE.md](docs/VERIFICHE.md).
 
 I componenti di terze parti inclusi nell'eseguibile e le loro licenze sono in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 (MIT, BSD, ISC, Apache-2.0, SIL Open Font License 1.1 per i font e la licenza del loader WebView2 di Microsoft), generato da
-`scripts/notices.sh` a partire da ciò che finisce davvero nel bundle. Lo stesso file elenca i programmi della cartella
+`scripts/notices.sh` a partire da ciò che finisce davvero nel bundle. Lo stesso file riporta i crediti della voce sintetica che
+narra le videoguide (modello e licenza) ed elenca i programmi della cartella
 `strumenti` (CrystalDiskInfo e CrystalDiskMark, licenza MIT; BlueScreenView, gratuito e ridistribuibile senza modifiche) con
 archivi, impronte e i componenti che contengono, ognuno con i testi completi nella propria cartella `License`. I programmi che
 Polaris scarica su richiesta non fanno parte del pacchetto e restano soggetti alle licenze dei produttori. Tra questi c'è la libreria AMD_RC2t7 di CrystalDiskInfo, con una licenza

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Rigenera THIRD_PARTY_NOTICES.md con i testi di licenza originali di tutto
-# ciò che finisce dentro l'eseguibile (moduli Go e librerie JS incluse nel bundle).
+# ciò che finisce dentro l'eseguibile (moduli Go e librerie JS incluse nel bundle)
+# e i crediti di dati, voce delle videoguide e programmi inclusi.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
@@ -79,6 +80,10 @@ basis) to ensure the integrity of the information.
 ```
 
 EOF
+  # Narrazione delle videoguide: registrazioni generate una volta con una voce
+  # sintetica (scripts/narrazione). Voce, modello e licenza vengono dall'indice
+  # delle registrazioni, così i crediti seguono la voce che c'è nel programma.
+  node "$ROOT/scripts/narrazione/crediti.mjs"
   # Programmi inclusi nella cartella strumenti (scripts/strumenti.sh): copie
   # originali con i testi delle licenze nella loro sottocartella License.
   mit() {

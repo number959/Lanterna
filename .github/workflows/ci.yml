@@ -591,7 +591,8 @@ jobs:
       - name: Voci italiane per le videoguide (informativo)
         continue-on-error: true
         run: |
-          # Le videoguide usano le voci locali di Windows (Elsa per l'italiano), se installate:
+          # Le videoguide hanno una narrazione registrata; in alternativa usano le voci locali di Windows
+          # (Elsa per l'italiano), se installate:
           # i runner sono in inglese, quindi qui si elencano soltanto.
           Add-Type -AssemblyName System.Speech
           $v = (New-Object System.Speech.Synthesis.SpeechSynthesizer).GetInstalledVoices() | ForEach-Object { "$($_.VoiceInfo.Name) [$($_.VoiceInfo.Culture)]" }
@@ -686,6 +687,16 @@ jobs:
             $html = Invoke-WebRequest http://127.0.0.1:8737/ -UseBasicParsing
             if ($html.Content -notmatch '<title>STARNET Polaris</title>') { throw "interfaccia non servita" }
             if (-not $html.Headers['Content-Security-Policy']) { throw "CSP mancante" }
+            # Narrazione delle videoguide: una registrazione, presa dall'interfaccia, deve arrivare come audio Ogg.
+            $js = ([regex]'assets/index-[\w-]+\.js').Match($html.Content).Value
+            if (-not $js) { throw "script dell'interfaccia non trovato nella pagina" }
+            $code = (Invoke-WebRequest "http://127.0.0.1:8737/$js" -UseBasicParsing).Content
+            $ogg = ([regex]'[0-9a-f]{12}-[\w-]+\.ogg').Match($code).Value
+            if (-not $ogg) { throw "nessuna registrazione della narrazione nell'interfaccia" }
+            $clip = Invoke-WebRequest "http://127.0.0.1:8737/assets/$ogg" -UseBasicParsing
+            if ("$($clip.Headers['Content-Type'])" -ne 'audio/ogg') { throw "registrazione servita come $($clip.Headers['Content-Type'])" }
+            if ([Text.Encoding]::ASCII.GetString([byte[]]$clip.Content[0..3]) -ne 'OggS') { throw "la registrazione servita non è un file Ogg" }
+            "Narrazione delle videoguide: $ogg servita come audio/ogg, $($clip.Content.Length) byte"
           } finally { Stop-Process $p -ErrorAction SilentlyContinue }
       - name: Programmi inclusi (CrystalDiskInfo, CrystalDiskMark, BlueScreenView, UsbTreeView)
         run: |

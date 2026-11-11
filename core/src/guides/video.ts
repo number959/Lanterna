@@ -1,9 +1,12 @@
 import type { VideoGuide } from './types';
 
-// Videoguide: scene animate con una narrazione in italiano, letta dalla voce
-// italiana di Windows (Microsoft Elsa) direttamente sul PC, senza audio
-// registrato e senza servizi esterni. Ogni frase è anche un sottotitolo:
-// frasi brevi, una idea per frase, parole che si capiscono ascoltandole.
+// Videoguide: scene animate con una narrazione in italiano. Ogni frase ha la
+// sua registrazione, generata una volta con una voce sintetica e inclusa nel
+// programma (indice in narrazione.ts, file in narrazione/): chi cambia una
+// frase rifà la sua registrazione con scripts/narrazione, e un test lo
+// ricorda. In alternativa il lettore usa una voce italiana di Windows.
+// Ogni frase è anche un sottotitolo: frasi brevi, una idea per frase, parole
+// che si capiscono ascoltandole.
 // Regole per la narrazione (controllate dai test):
 // - da 2 a 4 frasi per scena, ognuna di al massimo 200 caratteri;
 // - niente simboli da leggere ad alta voce (frecce, barre, percentuali,

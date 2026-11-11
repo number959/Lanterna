@@ -71,7 +71,7 @@ export interface VideoScene {
   narration: string[];
 }
 
-/** Videoguida: scene animate con narrazione, lette dalla voce italiana di Windows (Elsa). */
+/** Videoguida: scene animate con una narrazione registrata (in alternativa, letta da una voce italiana di Windows). */
 export interface VideoGuide {
   id: string;
   chapter: ChapterId;

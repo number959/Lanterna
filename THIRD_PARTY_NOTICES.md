@@ -1080,6 +1080,10 @@ the list to obtain it directly from IEEE (and to update it on a regular
 basis) to ensure the integrity of the information.
 ```
 
+## Narrazione delle videoguide (voce sintetica «Sara»)
+
+La narrazione delle videoguide è registrata: 147 file Ogg Opus, circa 12 minuti in tutto (core/src/guides/narrazione/). Le registrazioni sono state generate una volta con Kokoro-82M (kokoro-v1.0.onnx, voce if_sara) dallo script scripts/narrazione/genera.py; nel programma ci sono soltanto le registrazioni, non il modello né il suo codice. Modello e licenza: Kokoro-82M di hexgrad, licenza Apache-2.0.
+
 # Programmi inclusi nella cartella strumenti
 
 Il pacchetto contiene le copie originali e non modificate di quattro programmi di terze parti, verificate con l'impronta SHA-256 dell'archivio: CrystalDiskInfo e CrystalDiskMark, scaricati dalla pagina SourceForge del produttore (a cui rimanda il sito ufficiale https://crystalmark.info/), con gli eseguibili firmati digitalmente da CrystalMark Inc. e i testi completi delle licenze nella sottocartella License; BlueScreenView, scaricato dal sito https://www.nirsoft.net/, con l'eseguibile firmato da Nir Sofer e la licenza nel suo readme.txt; UsbTreeView, scaricato dal sito https://www.uwe-sieber.de/, con l'eseguibile verificato dall'impronta SHA-256 (porta una firma digitale a nome di Uwe Sieber che Windows, sulla macchina di collaudo, non ha confermato; nel pacchetto solo la versione per l'architettura del pacchetto).

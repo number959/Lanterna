@@ -8,14 +8,18 @@ import { demoScan } from '../demo/sample';
 import { videoById } from '../guides';
 import type { VideoGuide } from '../guides';
 import { Diagram } from './diagrams';
+import { allRecorded, clipOf, VOCE } from './narrazione';
 import { NetMap } from './netmap';
 
-// Videoguide: scene animate con la narrazione letta dalla voce italiana di
-// Windows (Microsoft Elsa) attraverso la sintesi vocale del sistema, sul PC.
-// Si usano solo le voci installate sul computer (localService): le voci
-// "online" di alcuni browser manderebbero il testo a un servizio esterno.
-// Ogni frase è anche un sottotitolo; senza una voce italiana, o con l'audio
-// spento, la guida procede con i soli sottotitoli al ritmo di lettura.
+// Videoguide: scene animate con la narrazione in italiano. La voce è una
+// registrazione inclusa nel programma, una per frase, generata una volta con
+// una voce neurale (scripts/narrazione): non dipende dalle voci installate sul
+// PC e durante l'ascolto nulla esce dal computer. In alternativa si può
+// scegliere una voce italiana di Windows (sintesi vocale del sistema, solo
+// voci installate, localService: le voci "online" di alcuni browser
+// manderebbero il testo a un servizio esterno). Ogni frase è anche un
+// sottotitolo; con l'audio spento, o se una registrazione non parte, la guida
+// procede con i soli sottotitoli al ritmo di lettura.
 
 const PREF_KEY = 'polaris.video';
 const RATES = [
@@ -24,8 +28,14 @@ const RATES = [
   { v: 1.15, label: 'Veloce' },
 ];
 
+/** Valore del selettore della voce per la narrazione registrata. */
+const REC = 'registrata';
+
 interface Prefs {
+  /** Voce di Windows scelta al posto della registrazione (voiceURI). */
   voice?: string;
+  /** Da dove viene la voce: la registrazione inclusa (predefinita) o la sintesi di Windows. */
+  source?: 'rec' | 'sys';
   rate: number;
   muted: boolean;
   transcript: boolean;
@@ -34,9 +44,9 @@ interface Prefs {
 function readPrefs(): Prefs {
   try {
     const v = JSON.parse(localStorage.getItem(PREF_KEY) ?? '{}') as Partial<Prefs>;
-    return { voice: v.voice, rate: typeof v.rate === 'number' ? v.rate : 1, muted: !!v.muted, transcript: !!v.transcript };
+    return { voice: v.voice, source: v.source === 'sys' ? 'sys' : 'rec', rate: typeof v.rate === 'number' ? v.rate : 1, muted: !!v.muted, transcript: !!v.transcript };
   } catch {
-    return { rate: 1, muted: false, transcript: false };
+    return { source: 'rec', rate: 1, muted: false, transcript: false };
   }
 }
 
@@ -72,9 +82,12 @@ function useVoices(): SpeechSynthesisVoice[] {
 /** Tempo di lettura di una frase senza voce: circa 14 caratteri al secondo, almeno 2,4 secondi. */
 export const readingMs = (text: string, rate = 1) => Math.max(2400, (text.length / 14) * 1000) / rate;
 
-/** Durata stimata della videoguida in minuti, arrotondata. */
+/** Pausa tra una frase e la successiva. */
+const GAP_MS = 350;
+
+/** Durata della videoguida in minuti, arrotondata: dalle registrazioni, o stimata dove mancano. */
 export function videoMinutes(v: VideoGuide): number {
-  const ms = v.scenes.reduce((a, s) => a + s.narration.reduce((b, t) => b + readingMs(t) + 350, 0), 0);
+  const ms = v.scenes.reduce((a, s) => a + s.narration.reduce((b, t) => b + (clipOf(t)?.ms ?? readingMs(t)) + GAP_MS, 0), 0);
   return Math.max(1, Math.round(ms / 60000));
 }
 
@@ -91,7 +104,11 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
   const cur = lines[Math.min(pos, lines.length - 1)];
   const scene = video.scenes[cur.si];
   const voice = voices.find((v) => v.voiceURI === prefs.voice) ?? voices[0];
-  const speaking = !prefs.muted && !!voice && !!synth();
+  // La registrazione c'è per tutta la guida ed è la voce predefinita.
+  const hasRec = useMemo(() => allRecorded(lines.map((l) => l.t)), [lines]);
+  const recorded = hasRec && (prefs.source !== 'sys' || !voice || !synth());
+  const speaking = !prefs.muted && !recorded && !!voice && !!synth();
+  const audio = useRef<HTMLAudioElement | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const token = useRef(0);
   const [restart, setRestart] = useState(0);
@@ -108,6 +125,7 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
     token.current++;
     window.clearTimeout(timer.current);
     synth()?.cancel();
+    audio.current?.pause();
   }, []);
 
   // Lettura della frase corrente; alla fine si passa alla successiva.
@@ -123,7 +141,39 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
       }
     };
     const text = lines[pos].t;
-    if (speaking && voice) {
+    const clip = !prefs.muted && recorded ? clipOf(text) : undefined;
+    if (clip) {
+      // Registrazione della frase: alla fine una breve pausa, poi la successiva.
+      const a = audio.current ?? (audio.current = new Audio());
+      // Può arrivare due volte per lo stesso file (evento di errore e avvio rifiutato): conta una volta sola.
+      const timed = () => {
+        if (token.current !== my) return;
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(next, readingMs(text, prefs.rate));
+      };
+      a.onended = () => {
+        if (token.current === my) timer.current = window.setTimeout(next, GAP_MS);
+      };
+      // Un file che non si carica o che il browser non lascia partire non blocca la guida: si prosegue a tempo.
+      a.onerror = timed;
+      a.src = clip.url;
+      // Anche come velocità predefinita: il caricamento di un file nuovo riporta l'elemento a quella.
+      a.defaultPlaybackRate = prefs.rate;
+      a.playbackRate = prefs.rate;
+      const started = a.play();
+      if (started && typeof started.catch === 'function')
+        started.catch((e: unknown) => {
+          // Una pausa o un cambio di frase interrompe l'avvio: non è un errore.
+          if ((e as { name?: string } | null)?.name !== 'AbortError') timed();
+        });
+      // La frase successiva si prepara intanto, così parte senza attese.
+      const after = lines[pos + 1] ? clipOf(lines[pos + 1].t) : undefined;
+      if (after) {
+        const pre = new Audio();
+        pre.preload = 'auto';
+        pre.src = after.url;
+      }
+    } else if (speaking && voice) {
       const s = synth()!;
       s.cancel();
       const u = new SpeechSynthesisUtterance(text);
@@ -150,8 +200,13 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
       window.clearTimeout(timer.current);
       // Silenzio, cambio di voce o di velocità: la frase in corso si ferma subito.
       synth()?.cancel();
+      if (audio.current) {
+        audio.current.onended = null;
+        audio.current.onerror = null;
+        audio.current.pause();
+      }
     };
-  }, [playing, pos, speaking, voice, prefs.rate, lines, restart]);
+  }, [playing, pos, speaking, recorded, prefs.muted, voice, prefs.rate, lines, restart]);
 
   useEffect(() => stopAll, [stopAll]);
 
@@ -184,7 +239,8 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
   };
 
   const pct = ((pos + (ended ? 1 : 0)) / lines.length) * 100;
-  const noVoice = !synth() || voices.length === 0;
+  const noVoice = !hasRec && (!synth() || voices.length === 0);
+  const sysName = (v: SpeechSynthesisVoice) => v.name.replace(/^Microsoft /, '').replace(/ - .*$/, '');
 
   return (
     <div className="vg" tabIndex={0} onKeyDown={onKey} role="region" aria-label={`Videoguida: ${video.title}`}>
@@ -228,13 +284,14 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
         <button className="btn small icon" onClick={() => update({ muted: !prefs.muted })} aria-pressed={prefs.muted} aria-label="Solo sottotitoli, senza voce" title="Solo sottotitoli, senza voce" disabled={noVoice}>
           {prefs.muted || noVoice ? <VolumeX size={16} aria-hidden /> : <Volume2 size={16} aria-hidden />}
         </button>
-        {voices.length > 1 && (
+        {(hasRec ? voices.length > 0 : voices.length > 1) && !!synth() && (
           <label className="vg-select">
             <span className="sr-only">Voce</span>
-            <select value={voice?.voiceURI} onChange={(e) => update({ voice: e.target.value })}>
+            <select value={recorded ? REC : voice?.voiceURI} onChange={(e) => update(e.target.value === REC ? { source: 'rec' } : { source: 'sys', voice: e.target.value })}>
+              {hasRec && <option value={REC}>{VOCE ? `${VOCE.nome} (voce registrata)` : 'Voce registrata'}</option>}
               {voices.map((v) => (
                 <option key={v.voiceURI} value={v.voiceURI}>
-                  {v.name.replace(/^Microsoft /, '').replace(/ - .*$/, '')}
+                  {hasRec ? `Windows: ${sysName(v)}` : sysName(v)}
                 </option>
               ))}
             </select>
@@ -267,6 +324,11 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
         <p className="faint vg-note">
           Su questo computer non c&apos;è una voce italiana per la lettura: la videoguida procede con i sottotitoli. Su Windows la voce italiana si chiama Microsoft
           Elsa; se manca, si aggiunge dalle impostazioni della voce di Windows.
+        </p>
+      ) : recorded ? (
+        <p className="faint vg-note">
+          Voce registrata{VOCE ? ` (${VOCE.nome}, voce sintetica)` : ''}, inclusa nel programma: non serve una voce installata e nulla esce dal computer. Barra
+          spaziatrice per pausa e ripresa, frecce per cambiare scena.
         </p>
       ) : (
         <p className="faint vg-note">
@@ -303,7 +365,7 @@ export function VideoBlock({ id }: { id: string }) {
       <span className="vg-poster-text">
         <b>Videoguida: {v.title}</b>
         <span className="faint">
-          {v.summary} · {v.scenes.length} scene, circa {videoMinutes(v)} {videoMinutes(v) === 1 ? 'minuto' : 'minuti'}, con la voce italiana di Windows
+          {v.summary} · {v.scenes.length} scene, circa {videoMinutes(v)} {videoMinutes(v) === 1 ? 'minuto' : 'minuti'}, con la narrazione in italiano
         </span>
       </span>
       <Play size={18} aria-hidden />

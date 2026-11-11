@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { italianVoices, readingMs, videoMinutes } from '../src/ui/videoguide';
 import { VIDEOS } from '../src/guides';
 
-// Lettore delle videoguide: scelta della voce (solo voci italiane installate
-// sul PC, Elsa per prima), tempi di lettura senza voce, durata stimata.
+// Lettore delle videoguide: scelta della voce di Windows, usata in alternativa
+// alla narrazione registrata (solo voci italiane installate sul PC, Elsa per
+// prima), tempi di lettura senza voce, durata stimata.
 
 const v = (name: string, lang: string, localService: boolean) => ({ name, lang, localService, voiceURI: name, default: false }) as SpeechSynthesisVoice;
 

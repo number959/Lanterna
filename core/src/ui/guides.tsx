@@ -307,7 +307,7 @@ function LibraryHome({ read, last, onOpen }: { read: string[]; last?: string; on
         <section className="chapter">
           <h2 className="section-title">Videoguide</h2>
           <p className="muted chapter-sum">
-            Spiegazioni animate con la voce italiana di Windows (Microsoft Elsa), lette sul PC senza collegarsi a Internet, con sottotitoli e testo completo.
+            Spiegazioni animate con una narrazione in italiano registrata e inclusa nel programma: si ascoltano senza collegarsi a Internet, con sottotitoli e testo completo.
           </p>
           <div className="vg-list">
             {VIDEOS.map((v) => (

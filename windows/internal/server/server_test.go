@@ -78,6 +78,7 @@ func newServer() *Server {
 			"assets/inter.woff2":   {Data: []byte("wOF2\x00\x01\x00\x00")},
 			"assets/index-abc.css": {Data: []byte("body{}")},
 			"favicon.ico":          {Data: []byte("\x00\x00\x01\x00\x01\x00")},
+			"assets/frase-abc.ogg": {Data: []byte("OggS\x00\x02\x00\x00")},
 		},
 		Ping: c.QuickPing,
 	}
@@ -120,10 +121,11 @@ func TestGuards(t *testing.T) {
 }
 
 // I file dell'interfaccia escono con il tipo giusto: con nosniff il browser
-// rifiuterebbe un foglio di stile servito come testo generico.
+// rifiuterebbe un foglio di stile servito come testo generico. Vale anche per
+// le registrazioni della narrazione delle videoguide.
 func TestStaticTypes(t *testing.T) {
 	h := newServer().Handler()
-	for path, want := range map[string]string{"/assets/inter.woff2": "font/woff2", "/assets/index-abc.css": "text/css; charset=utf-8", "/favicon.ico": "image/x-icon"} {
+	for path, want := range map[string]string{"/assets/inter.woff2": "font/woff2", "/assets/index-abc.css": "text/css; charset=utf-8", "/favicon.ico": "image/x-icon", "/assets/frase-abc.ogg": "audio/ogg"} {
 		if r := do(t, h, "GET", path, nil); r.Code != 200 || r.Header().Get("Content-Type") != want {
 			t.Errorf("%s: %d %q, atteso %q", path, r.Code, r.Header().Get("Content-Type"), want)
 		}

@@ -156,6 +156,13 @@ Organizzazione di `core/src/ui/`:
   le due metà della stella si incastrano lungo la S; la forma finale è sempre quella originale. Da qui anche l'esagono del
   punteggio (`HexGauge`), che si riempie nello stesso verso.
 
+- `videoguide.tsx` e `narrazione.ts`: il lettore delle videoguide. La narrazione è registrata, una registrazione Ogg Opus per
+  frase in `guides/narrazione/` con l'indice `guides/narrazione.ts` (dal testo della frase al file e alla durata), generati
+  una volta da `scripts/narrazione` con una voce sintetica: il lettore suona la registrazione della frase corrente con un solo
+  elemento audio, a fine frase aspetta 350 ms e passa alla successiva, e se un file non si carica prosegue a tempo con i
+  sottotitoli. In alternativa legge con una voce italiana di Windows (sintesi vocale del sistema, solo voci installate). Un
+  test tiene allineati frasi, indice e file; l'agente consegna i file come `audio/ogg`.
+
 - `motion.ts`: il linguaggio del movimento in un solo posto. Curva di uscita lunga per ciò che entra, curva simmetrica e breve per
   ciò che esce, tre molle (`snappy` per pressioni e indicatori, `smooth` per pannelli e layout, `gentle` per numeri e grafici).
   Tempi: 150-200 ms le microinterazioni, 300-450 ms le transizioni, 600-1200 ms i dati.

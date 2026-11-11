@@ -5,8 +5,8 @@ import { CHAPTERS, GUIDES, VIDEOS, guideById, videoById } from '../src/guides';
 import type { DiagramId } from '../src/guides';
 import { DIAGRAM_IDS, Diagram } from '../src/ui/diagrams';
 
-// Videoguide: la narrazione è letta dalla voce italiana di Windows (Microsoft
-// Elsa) ed è anche il sottotitolo. Questi test tengono le frasi brevi e
+// Videoguide: la narrazione è registrata con una voce sintetica (o letta da
+// una voce di Windows) ed è anche il sottotitolo. Questi test tengono le frasi brevi e
 // pronunciabili, e ogni scena collegata a un disegno o a una mappa esistenti.
 
 const MAPS = ['casa', 'clinica'];

@@ -87,9 +87,12 @@ COSA FA
   Active Directory, lettura SNMP in sola lettura di router e switch con le
   tue credenziali e inventario di un'altra rete attraverso il router; poi
   le porta nel test di segmentazione.
-  79 guide, con schemi animati e nove videoguide narrate dalla voce italiana
-  di Windows (Elsa, se installata), spiegano come si usa il programma, il
-  computer e la rete, dalle basi alle reti cliniche.
+  79 guide, con schemi animati e nove videoguide narrate in italiano,
+  spiegano come si usa il programma, il computer e la rete, dalle basi alle
+  reti cliniche. Dalla versione 0.13.1 la voce delle videoguide e' una
+  registrazione inclusa nel programma (voce sintetica): non serve una voce
+  installata e nulla esce dal computer. In alternativa si puo' scegliere
+  una voce italiana di Windows.
 
 REQUISITI
   - Windows 10 o 11, 64 bit.

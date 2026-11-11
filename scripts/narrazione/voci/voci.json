@@ -1,0 +1,11 @@
+{
+ "modello": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+ "seme": 11,
+ "testo": "Buongiorno. In questa guida vediamo come funziona la rete di casa: dal computer al router, fino a Internet. Bastano pochi minuti.",
+ "voci": {
+  "giulia": "A native Italian woman in her thirties with a warm, clear and friendly voice. Standard Italian pronunciation, no foreign accent. She speaks calmly at a moderate pace, like the professional narrator of a software tutorial: confident and reassuring.",
+  "chiara": "A native Italian woman in her late twenties with a bright, lively and articulate voice. Standard Italian pronunciation, no foreign accent. She speaks with energy and a smile, at a brisk but clear pace, like the host of a technology explainer video.",
+  "marco": "A native Italian man in his forties with a deep, calm and reassuring voice. Standard Italian pronunciation, no foreign accent. He speaks clearly at a moderate pace, like a professional documentary narrator.",
+  "andrea": "A native Italian man in his thirties with a clear, friendly, mid-pitched voice. Standard Italian pronunciation, no foreign accent. He speaks in a relaxed, conversational way at a moderate pace, like a helpful IT technician explaining things to a colleague."
+ }
+}
