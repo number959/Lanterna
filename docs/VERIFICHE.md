@@ -1726,6 +1726,10 @@ servizi a pagamento.
   Windows della CI **Microsoft Edge 156 senza finestra**, aperto sull'interfaccia servita da `polaris-cli.exe`, dichiara
   di saper leggere `audio/ogg; codecs=opus` («probably»), carica una registrazione di Giulia e la suona fino alla fine
   (4,90 s, a volume zero, con il consenso che nel programma dà il clic su «Guarda la videoguida»).
+  Run 117 (`98a3203`), 118 (`c0012bf`, correzioni della revisione), 119 (`8cf42e5`, pronunce e 38 frasi rifatte) e
+  120 (`98147a0`, verifica finale): verdi su Linux e su Windows reale. Dalla 118 la prova in Edge sta in un passo suo, che
+  fallisce se la registrazione non suona fino alla fine: nella 118, nella 119 e nella 120 ha suonato fino alla fine
+  (4,90 s, Edge 156).
 
 **Revisione indipendente prima della pubblicazione.** Cinque revisori (lettore, generatore, strumenti, CI e agente,
 documenti), ognuno seguito da un verificatore incaricato di smentire i rilievi; nessuno dei due aveva scritto il codice.
@@ -1834,6 +1838,17 @@ più recenti sono stati riportati alla versione precedente con `pip install --up
 variante per il solo processore, torchaudio 2.11.1): 17 minuti per il giro principale. Tempi su 4 processori senza scheda grafica: Kokoro e Piper leggono tutta la narrazione in pochi minuti;
 Qwen3-TTS 0.6B impiega 4,7 secondi per ogni secondo di voce a una frase per volta e 2,7 con otto frasi insieme (misurati); con quattro
 insieme, il riascolto e le prese rifatte, la registrazione di Giulia ha chiesto circa un'ora e mezza, in più riprese.
+
+**Pubblicazione.** L'11/11 STARNET ha chiesto di pubblicare la 0.13.1 con la voce Giulia dopo la revisione indipendente
+e le sue correzioni; la sera stessa, al primo ascolto, ha segnalato «Wi-Fi», e la pubblicazione è stata fermata finché le
+parole inglesi non sono state corrette e verificate (sopra). Il 12/11, alle 10:33 UTC, il workflow Release (run 7) ha
+pubblicato la versione dal commit `98147a0`, il primo con la CI verde dopo la verifica finale (run 120): ha rifatto test e
+build in un ambiente pulito, ha creato il tag `v0.13.1` e ha sostituito la bozza dell'11/11 (run 6, dal commit `98a3203`,
+con le registrazioni e le note di prima delle correzioni), che non è mai stata pubblicata. Pacchetto
+`STARNET-Polaris-0.13.1-windows-amd64.zip`, 36.902.514 byte (la 0.13.0 ne pesava 31.345.265), SHA-256
+`214c83a1885648e90990789a356bdcdacbe7fa3f48312292cc4843fb8529870a`: è l'impronta scritta in fondo alle note della release e
+nel file `.sha256` allegato, e coincide con quella che GitHub calcola da sé sull'allegato. Le release 0.11.0 e 0.12.0
+restano bozze.
 
 **Avvertenze: cosa resta da provare.**
 - **L'ascolto di una persona è appena cominciato.** Chi ha fatto le registrazioni non può sentirle. STARNET ha
