@@ -161,8 +161,8 @@ Organizzazione di `core/src/ui/`:
   una volta da `scripts/narrazione` con una voce sintetica: il lettore suona la registrazione della frase corrente con un solo
   elemento audio, a fine frase aspetta 350 ms e passa alla successiva, e se un file non si carica prosegue a tempo con i
   sottotitoli. In alternativa legge con una voce italiana di Windows (sintesi vocale del sistema, solo voci installate).
-  Suona una videoguida alla volta (quella che parte ferma l'altra) e una pausa data da fuori, per esempio dal tasto
-  multimediale della tastiera, ferma anche la guida. Un test tiene allineati frasi, indice e file (il nome di ogni file si
+  Suona una videoguida alla volta (quella che parte ferma l'altra); una pausa data da fuori, per esempio dal tasto
+  multimediale della tastiera, ferma anche la guida, e la ripresa dallo stesso tasto la fa ripartire. Un test tiene allineati frasi, indice e file (il nome di ogni file si
   ricalcola dal testo della frase); l'agente consegna i file come `audio/ogg`.
 
 - `motion.ts`: il linguaggio del movimento in un solo posto. Curva di uscita lunga per ciò che entra, curva simmetrica e breve per

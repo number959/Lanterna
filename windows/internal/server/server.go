@@ -92,19 +92,22 @@ import (
 )
 
 // I font dell'interfaccia (woff2), il favicon (ico) e le registrazioni della
-// narrazione delle videoguide (ogg) hanno il tipo dichiarato qui: la tabella
-// interna di Go non li contiene e il registro di Windows non sempre li riporta.
+// narrazione delle videoguide (ogg) hanno il tipo dichiarato qui, così non
+// dipende dal sistema: il registro di Windows può non riportarli o riportarne
+// un altro, e la dichiarazione fatta qui vince su quella del registro.
 var staticTypes = map[string]string{
 	".woff2": "font/woff2",
 	".ico":   "image/x-icon",
 	".ogg":   "audio/ogg",
 }
 
-func init() {
+func declareStaticTypes() {
 	for ext, typ := range staticTypes {
 		_ = mime.AddExtensionType(ext, typ)
 	}
 }
+
+func init() { declareStaticTypes() }
 
 type Server struct {
 	Collector *collect.Collector

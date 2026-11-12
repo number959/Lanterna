@@ -993,6 +993,7 @@ jobs:
             if (document.readyState !== 'complete') await new Promise((ok) => addEventListener('load', ok, { once: true }));
             const tipo = document.createElement('audio').canPlayType('audio/ogg; codecs=opus');
             const js = [...document.scripts].map((s) => s.src).find((s) => /assets\/index-/.test(s));
+            if (!js) throw new Error('pagina del programma non ancora caricata');
             const ogg = ((await (await fetch(js)).text()).match(/[0-9a-f]{12}-[\w-]+\.ogg/) || [])[0];
             if (!ogg) return JSON.stringify({ tipo, esito: 'nessuna registrazione trovata' });
             const esito = await new Promise((fine) => {
@@ -1025,7 +1026,9 @@ jobs:
               } until ($r.EndOfMessage)
               $risposta = $testo.ToString() | ConvertFrom-Json
             } until ($risposta.id -eq 1)
-            "$($risposta.result.result.value)$($risposta.result.exceptionDetails.text)"
+            # Una pagina non ancora pronta risponde con un errore: si segnala, così chi chiama riprova.
+            if ($risposta.error -or $risposta.result.exceptionDetails) { throw "pagina non pronta: $($risposta.error.message)$($risposta.result.exceptionDetails.text)" }
+            "$($risposta.result.result.value)"
           }
           $srv = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8741' -PassThru -NoNewWindow
           $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1

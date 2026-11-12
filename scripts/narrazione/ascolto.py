@@ -82,7 +82,9 @@ def main() -> None:
         mediana = altezze[len(altezze) // 2] if altezze else 0
         for e in esiti:
             motivi = []
-            if e["scarto"] > args.soglia:
+            if e.get("pronunce"):
+                motivi.append("pronuncia da controllare: " + ", ".join(x.split(" (")[0] for x in e["pronunce"].split("), ")))
+            elif e["scarto"] > args.soglia:
                 motivi.append("parole da controllare")
             if mediana and e.get("hz") and abs(e["hz"] / mediana - 1) > args.tolleranza:
                 motivi.append("tono più " + ("alto" if e["hz"] > mediana else "basso") + " delle altre")

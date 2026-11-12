@@ -10,8 +10,11 @@ Due insiemi di regole, secondo il motore:
                  ogni parola va scritta come si pronuncia in italiano; i fonemi
                  che ne escono si controllano con "genera.py --fonemi";
 - parlato_llm(): per i motori che leggono il testo da soli (Qwen3-TTS): le
-                 parole inglesi restano come sono, si scrivono per esteso solo
-                 le sigle e gli indirizzi.
+                 parole inglesi che conoscono restano come sono; si scrivono
+                 per esteso le sigle, gli indirizzi e le parole inglesi che
+                 leggono con le regole dell'italiano («Wi-Fi» detto «ui-fi»,
+                 «hub» detto «ub»). Quali siano lo dice fonemi.py, che ascolta
+                 le registrazioni suono per suono.
 """
 import re
 
@@ -19,6 +22,8 @@ REGOLE = [
     (r"\b192\.168\.1\.20\b", "192 punto 168 punto 1 punto 20"),
     (r"\b169\.254\b", "169 punto 254"),
     (r"\baccess point\b", "àcses pòint"),
+    (r"\bWi-Fi\b", "uài-fài"),
+    (r"(?i)\brouter\b", "rùter"),
     (r"\bVLAN\b", "vilàn"),
     (r"\bgateway\b", "ghèit-uei"),
     (r"\bbroadcast\b", "bròdcast"),
@@ -52,9 +57,23 @@ def parlato(testo: str) -> str:
         testo = re.sub(rx, sost, testo)
     return testo
 
-# Per i motori che leggono il testo da soli (Qwen3-TTS): le parole inglesi restano come sono,
-# si scrivono per esteso solo le sigle e gli indirizzi, che altrimenti verrebbero letti a caso.
+# Per i motori che leggono il testo da soli (Qwen3-TTS): le parole inglesi che il motore conosce restano come sono
+# («gateway», «firewall», «switch» le dice bene); si scrivono per esteso le sigle e gli indirizzi, che altrimenti
+# verrebbero letti a caso, e le parole inglesi che legge all'italiana. Ogni grafia qui sotto è stata scelta provandone
+# diverse con la voce in uso e ascoltando il risultato con fonemi.py; le pronunce sono quelle dei dizionari
+# (Treccani, DiPI, De Mauro): uài-fài, rùter, àkses pòint, fàil, àb.
 REGOLE_LLM = [
+    (r"\bWi-Fi\b", "uài-fài"),
+    (r"(?i)\brouter\b", "rùter"),
+    (r"(?i)\baccess point\b", "àkses pòint"),
+    (r"\bfile\b", "fàil"),
+    (r"\bhub\b", "àb"),
+    (r"(?i)\btraceroute\b", "treisrùt"),
+    (r"\bgigabyte\b", "gigabàit"),
+    (r"\bmegabyte\b", "megabàit"),
+    # Una parola italiana che si scrive come una inglese: vicino a «Wi-Fi» e «access point» il motore la legge
+    # all'inglese («sèpareit»). L'accento scritto la riporta all'italiano.
+    (r"\bseparate\b", "separàte"),
     (r"\b192\.168\.1\.20\b", "192 punto 168 punto 1 punto 20"),
     (r"\b169\.254\b", "169 punto 254"),
     (r"\bMemtest86\+", "Memtest ottantasei più"),

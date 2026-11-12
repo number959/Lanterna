@@ -240,8 +240,10 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
     }
     return () => {
       window.clearTimeout(timer.current);
-      // Silenzio, cambio di voce o di velocità: la frase in corso si ferma subito.
-      synth()?.cancel();
+      // Silenzio, cambio di voce o di velocità: la frase in corso si ferma subito. Se invece il lettore è già stato
+      // fermato (pausa, o un'altra videoguida partita), la voce è già zitta: un secondo arresto, che arriva in
+      // ritardo, toglierebbe la parola alla videoguida appena partita, perché la sintesi di Windows è una sola.
+      if (token.current === my) synth()?.cancel();
       if (audio.current) {
         audio.current.onended = null;
         audio.current.onerror = null;
@@ -250,6 +252,24 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
       }
     };
   }, [playing, waiting, pos, speaking, recorded, prefs.muted, voiceId, prefs.rate, lines, restart, pause]);
+
+  // Dopo una pausa, una ripresa arrivata da fuori (lo stesso tasto multimediale) fa ripartire la guida e non solo
+  // l'audio: altrimenti il resto della frase suonerebbe con la guida ferma, e a fine frase resterebbe il silenzio.
+  // La frase riparte dall'inizio, come con il pulsante «Riprendi».
+  useEffect(() => {
+    const a = audio.current;
+    if (playing || !a) return;
+    const resume = () => {
+      a.pause();
+      if (ended) {
+        setPos(0);
+        setEnded(false);
+      }
+      setPlaying(true);
+    };
+    a.addEventListener('play', resume);
+    return () => a.removeEventListener('play', resume);
+  }, [playing, ended]);
 
   useEffect(() => stopAll, [stopAll]);
 

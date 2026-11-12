@@ -40,6 +40,11 @@ soglia. Per questo le negazioni («non», «mai», «senza», «nessuno») si co
 parte: se nella frase capita ce n'è una in meno o una in più, la presa non
 passa, perché il senso si rovescia.
 
+Con --pronunce si aggiunge un secondo orecchio: un riconoscitore di fonemi, che
+scrive i suoni e non le parole (vedi fonemi.py). Whisper scrive «Wi-Fi» anche
+quando la voce dice «ui-fi»; quello di fonemi no, e una frase con una parola
+inglese detta male viene rifatta come le altre che non passano l'esame.
+
 Serve ffmpeg con libopus. I motori si installano a parte, in un ambiente
 virtuale (vedi LEGGIMI.md in questa cartella): non sono dipendenze del
 programma e non entrano nel pacchetto.
@@ -281,11 +286,11 @@ def scarto(testo: str, capito: str) -> float:
     si confronta con la frase com'è scritta, con i numeri in lettere e con la forma detta, e vale il confronto migliore.
     """
     capite = {_piatto(capito), _piatto(_per_esteso(capito))}
-    try:
-        # Il riconoscitore può anche scrivere in cifre un numero che nella frase è in lettere («4 numeri»).
-        capite.add(_piatto(numeri_in_lettere(_per_esteso(capito))))
-    except ValueError:
-        pass  # un numero oltre 999: nelle frasi non ce ne sono, quindi è già un errore di lettura
+    # Il riconoscitore può anche scrivere in cifre un numero che nella frase è in lettere («4 numeri»).
+    capite.add(_piatto(numeri_in_lettere(_per_esteso(capito))))
+    # E può scrivere per bene una parola e storpiarne un'altra («Wi-Fi» giusto, «vilan» per VLAN): la frase capita
+    # si porta anche lei alla forma detta, così si confronta con la forma detta della frase scritta.
+    capite.add(_piatto(parlato_llm(_per_esteso(capito))))
     forme = {_piatto(testo), _piatto(numeri_in_lettere(testo)), _piatto(parlato_llm(testo))}
     return min(_distanza(f, c) / max(1, len(f)) for f in forme for c in capite)
 
@@ -333,14 +338,37 @@ def leggi_indice(indice: Path) -> tuple[dict, dict]:
         raise SystemExit(f"{rotto} ({e})") from None
 
 
+# Una parola inglese detta male pesa come un quinto della frase sbagliata: la presa non passa, ma tra due prese
+# con la stessa pecca vince ancora quella con le parole più giuste.
+PENA_PRONUNCIA = 0.2
+
+
+def _orecchio(args):
+    """Il riconoscitore di fonemi, se chiesto con --pronunce."""
+    if not getattr(args, "pronunce", None):
+        return None
+    from fonemi import Fonemi
+
+    return Fonemi(args.pronunce, args.processi)
+
+
+def _dette_male(orecchio, testo: str, suono: np.ndarray, sr: int) -> str:
+    from fonemi import ATTESE, dubbie, pronunce
+
+    # Le frasi senza parole dell'elenco non si ascoltano nemmeno.
+    if not any(re.search(v[0], testo, re.I) for v in ATTESE.values()):
+        return ""
+    return dubbie(pronunce(testo, orecchio.ascolta(suono, sr)))
+
+
 def segnala(esiti: list[dict], soglia: float) -> None:
     """Le frasi in cui il riconoscitore ha capito altro: da riascoltare con le proprie orecchie."""
     dubbie = [e for e in esiti if e["scarto"] > soglia]
     if not dubbie:
         return
-    print(f"\nDa riascoltare ({len(dubbie)}): il riconoscitore ha capito altro, oppure la durata è fuori misura.")
+    print(f"\nDa riascoltare ({len(dubbie)}): il riconoscitore ha capito altro, la durata è fuori misura, oppure una parola inglese è detta male.")
     for e in sorted(dubbie, key=lambda e: -e["scarto"]):
-        print(f"  {100 * e['scarto']:3.0f}%  {e['testo']}\n        capito: {e['capito']}")
+        print(f"  {100 * e['scarto']:3.0f}%  {e['testo']}" + (f"\n        capito: {e['capito']}" if e.get("capito") else "") + (f"\n        pronuncia: {e['pronunce']}" if e.get("pronunce") else ""))
 
 
 def segnala_registro(esiti: list[dict], obiettivo: float | None, tolleranza: float) -> None:
@@ -360,6 +388,7 @@ def riascolta(args, frasi: list[str]) -> None:
     """Riascolta le registrazioni esistenti senza rifarne nessuna."""
     voce, clip = leggi_indice(args.indice)
     ascolto = Ascolto(args.verifica or "small", args.cartella_verifica, args.processi)
+    orecchio = _orecchio(args)
     esiti = []
     for i, testo in enumerate(frasi):
         if testo not in clip:
@@ -374,8 +403,11 @@ def riascolta(args, frasi: list[str]) -> None:
         if abs(ms - clip[testo]["ms"]) > 60:
             print(f"    durata nell'indice {clip[testo]['ms']} ms, nel file {ms:.0f} ms: l'indice va rifatto", flush=True)
         hz = 0.0 if args.senza_altezza else round(altezza(suono, 24000), 1)
-        esiti.append({"testo": testo, "capito": capito, "scarto": round(s, 3), "hz": hz})
-        print(f"[{i + 1}/{len(frasi)}] scarto {100 * s:3.0f}%  {hz:3.0f} Hz  {testo[:70]}", flush=True)
+        male = _dette_male(orecchio, testo, suono, 24000) if orecchio else ""
+        if male:
+            s += PENA_PRONUNCIA
+        esiti.append({"testo": testo, "capito": capito, "scarto": round(s, 3), "hz": hz} | ({"pronunce": male} if orecchio else {}))
+        print(f"[{i + 1}/{len(frasi)}] scarto {100 * s:3.0f}%  {hz:3.0f} Hz  {testo[:70]}" + (f"  pronuncia: {male}" if male else ""), flush=True)
     uguali = sum(e["scarto"] == 0 for e in esiti)
     entro = sum(e["scarto"] <= args.soglia for e in esiti)
     print(f"\nVoce {voce.get('nome', '?')}: {len(esiti)} frasi, {uguali} capite identiche, {entro} entro la soglia del {100 * args.soglia:.0f}%.")
@@ -428,7 +460,7 @@ def main() -> None:
     p.add_argument("--motore", choices=sorted(MOTORI))
     p.add_argument("--modello", help="file .onnx (Piper, Kokoro) o cartella del modello (Qwen3-TTS)")
     p.add_argument("--voce", help="Kokoro: if_sara, im_nicola; Qwen3-TTS CustomVoice: Serena, Ryan...")
-    p.add_argument("--riferimento", help="Qwen3-TTS Base: campione WAV della voce da clonare")
+    p.add_argument("--riferimento", help="Qwen3-TTS Base: campione della voce da clonare (un file .flac di scripts/narrazione/voci)")
     p.add_argument("--testo-riferimento", help="le parole dette nel campione")
     p.add_argument("--nome", help="nome della voce mostrato nel lettore")
     p.add_argument("--licenza", default="", help="licenza del modello e attribuzione, per l'indice")
@@ -445,6 +477,7 @@ def main() -> None:
     p.add_argument("--tentativi", type=int, default=3, help="prese al massimo per frase, per i motori che campionano")
     p.add_argument("--soglia", type=float, default=0.04, help="scarto accettato subito tra frase scritta e frase capita")
     p.add_argument("--rapporto", metavar="FILE", help="scrive qui l'esito della verifica, frase per frase (JSON)")
+    p.add_argument("--pronunce", metavar="DIR", help="cartella del riconoscitore di fonemi (vedi fonemi.py): controlla come sono dette le parole inglesi e rifà le frasi dove sono dette male")
     p.add_argument("--altezza", type=float, metavar="HZ", help="altezza della voce voluta (senza: la mediana delle registrazioni)")
     p.add_argument("--tolleranza", type=float, default=0.10, help="quanto una frase può staccarsi dall'altezza delle altre prima di essere rifatta")
     p.add_argument("--senza-altezza", action="store_true", help="non misura l'altezza della voce e non rifà le frasi fuori registro")
@@ -506,9 +539,10 @@ def main() -> None:
             print(f"Seme di questa ripresa: {args.seme} (per ripeterla uguale: --seme {args.seme})", flush=True)
 
     ascolto = Ascolto(args.verifica, args.cartella_verifica, args.processi) if args.verifica else None
+    orecchio = _orecchio(args)
     # L'altezza della voce si tiene d'occhio solo con i motori che campionano: gli altri non cambiano registro.
     registro = motore.casuale and not args.senza_altezza
-    prese = args.tentativi if motore.casuale and (ascolto or registro) else 1
+    prese = args.tentativi if motore.casuale and (ascolto or registro or orecchio) else 1
     obiettivo = args.altezza
 
     def fuori(e: dict) -> float:
@@ -544,6 +578,9 @@ def main() -> None:
                 if args.ricontrolla and ascolto:
                     e["capito"] = ascolto.trascrivi_file(file)
                     e["scarto"] = round(esame(testo, e["capito"]) + (0.0 if durata_credibile(testo, clip[testo]["ms"]) else 1.0), 3)
+                if args.ricontrolla and orecchio:
+                    e["pronunce"] = _dette_male(orecchio, testo, suono, 24000)
+                    e["scarto"] = round(e["scarto"] + (PENA_PRONUNCIA if e["pronunce"] else 0.0), 3)
                 esiti[testo] = e
         else:
             coda.append((testo, file))
@@ -582,8 +619,14 @@ def main() -> None:
                 # Una durata fuori misura vale come presa sbagliata.
                 if not durata_credibile(testo, ms):
                     s += 1.0
+                # E così una parola inglese detta male: il riconoscitore di parole non la vede, quello di fonemi sì.
+                male = _dette_male(orecchio, testo, a, motore.sr) if orecchio else ""
+                if male:
+                    s += PENA_PRONUNCIA
                 prima = esiti.get(testo)
                 nuova = {"testo": testo, "capito": capito, "scarto": round(s, 3), "hz": round(altezza(a, motore.sr), 1) if registro else 0.0}
+                if orecchio:
+                    nuova["pronunce"] = male
                 nuova["prese"] = (prima["prese"] if prima else 0) + 1
                 nuova["tenuta"] = nuova["prese"]
                 if prima is None or voto(nuova) < voto(prima):
@@ -596,7 +639,7 @@ def main() -> None:
                 else:
                     prima["prese"] = nuova["prese"]
                 fatte += 1
-                nota = (f"  scarto {100 * s:3.0f}%" if ascolto else "") + (f"  {nuova['hz']:3.0f} Hz" if registro else "")
+                nota = (f"  scarto {100 * s:3.0f}%" if ascolto or orecchio else "") + (f"  {nuova['hz']:3.0f} Hz" if registro else "") + (f"  pronuncia: {male}" if male else "")
                 print(f"[presa {k + 1}, {fatte}/{len(coda)}] {ms / 1000:5.1f} s{nota}  {testo[:70]}", flush=True)
         # Il registro della voce si conosce dopo la prima passata: è la mediana di tutte le frasi.
         if registro and not obiettivo:
@@ -624,7 +667,7 @@ def main() -> None:
         e["fuori"] = round(fuori(e), 3)
     if args.rapporto:
         Path(args.rapporto).write_text(json.dumps(esiti, ensure_ascii=False, indent=1), encoding="utf-8")
-    if ascolto:
+    if ascolto or orecchio:
         segnala(esiti, args.soglia)
     segnala_registro(esiti, obiettivo, args.tolleranza)
 

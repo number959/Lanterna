@@ -37,6 +37,11 @@ uguale(numeri_in_lettere("Il router è 10.0.0.1."), "Il router è dieci punto ze
 uguale(parlato_llm("Un esempio è 192.168.1.20."), "Un esempio è centonovantadue punto centosessantotto punto uno punto venti.")
 uguale(parlato_llm("Il DHCP assegna un indirizzo IP al PC."), "Il di acca ci pi assegna un indirizzo ai pi al pi ci.")
 uguale(parlato_llm("Premi F12 o Esc."), "Premi effe dodici o esc.")
+# Le parole inglesi che il motore leggerebbe all'italiana si scrivono come suonano; quelle che sa restano.
+uguale(parlato_llm("Il Wi-Fi e il router: un access point, un hub, un file."), "Il uài-fài e il rùter: un àkses pòint, un àb, un fàil.")
+uguale(parlato_llm("Il gateway e il firewall dello switch."), "Il gateway e il firewall dello switch.")
+# La frase capita si confronta anche nella forma detta: «Wi-Fi» scritto bene dal riconoscitore non è uno scarto.
+uguale(scarto("Le reti Wi-Fi sono VLAN separate.", "Le reti Wi-Fi sono vi lan separate."), 0.0)
 # Per i motori con espeak-ng: le parole inglesi riscritte come suonano.
 assert "ghèit-uei" in parlato("Il gateway risponde."), parlato("Il gateway risponde.")
 assert "fàier uòl" in parlato("Il firewall filtra."), parlato("Il firewall filtra.")

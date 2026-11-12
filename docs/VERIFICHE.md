@@ -1660,31 +1660,36 @@ servizi a pagamento.
   mano non passa), che non restino registrazioni di frasi tolte né file fuori dall'indice, che i file siano Ogg Opus veri,
   con durata tra 35 e 140 ms per carattere e peso coerente con la durata, che tutta la narrazione resti sotto 6 MB e che la
   voce creata da una descrizione abbia ancora la sua scheda e il suo campione, con l'impronta SHA-256 scritta nell'indice.
-  `go test ./internal/server` controlla che il tipo `audio/ogg` sia dichiarato e che un file `.ogg` esca con quel tipo; su
-  Linux le tabelle del sistema conoscono già `.ogg`, quindi che la dichiarazione serva davvero lo prova solo il passo
-  «Server locale e API» della CI su Windows.
+  `go test ./internal/server` controlla che un file `.ogg` esca come `audio/ogg` e, dopo la revisione, che la
+  dichiarazione dell'agente vinca su un sistema che riporta un altro tipo (la prova finge un tipo sbagliato per `.ogg`,
+  `.woff2` e `.ico`, come potrebbe fare il registro di Windows): prima passava anche togliendo la dichiarazione, perché
+  Go 1.27 e le tabelle di Linux conoscono già `.ogg`.
 - **Riascolto automatico delle parole** (`genera.py --verifica`, poi `--riascolta` su tutti i file finali): ogni
   registrazione trascritta da Whisper `small` e confrontata con la frase scritta, carattere per carattere, dopo aver tolto
-  spazi, accenti e punteggiatura (numeri e unità di misura valgono sia in cifre sia in lettere). Sui 147 file finali: 102
-  frasi capite identiche, 43 con uno scarto entro il 4% (quasi sempre la grafia di sigle e parole inglesi: «vilana» per VLAN, «picci» per PC,
-  «tracerute»), 2 oltre: «Si riavvia il PC dalla chiavetta…» (5,8%: «PC» capito «Pi, ci» ed «Esc all'accensione» capito
-  «scalla accensione») e «Memtest86+ lavora fuori da Windows…» (4,4%: «Memtest» capito «Mentre è»). Nell'ultima passata
-  della registrazione, su 81 frasi 29 hanno chiesto una seconda presa, 9 una terza e 7 una quarta. Tra le frasi entro la
+  spazi, accenti e punteggiatura (numeri e unità di misura valgono sia in cifre sia in lettere; dopo la revisione la
+  frase capita si porta anche alla forma detta, così una sigla scritta per bene dal riconoscitore non conta come
+  scarto). Sui 147 file finali, dopo il rifacimento delle 38 frasi con le parole inglesi (più sotto): 101 frasi capite
+  identiche e tutte le altre entro il 4% (la più lontana al 3,8%; quasi sempre è la grafia di sigle e parole inglesi:
+  «vilane» per VLAN, «picci» per PC). Prima del rifacimento erano 102 identiche, 43 entro il 4% e 2 oltre: «Si riavvia
+  il PC dalla chiavetta…» (5,8%, sceso al 3,3% con il confronto nella forma detta: «PC» capito «Pi, ci») e «Memtest86+
+  lavora fuori da Windows…» (4,4%: «Memtest» capito «Mentre è»; rifatta). Nell'ultima passata della prima
+  registrazione, su 81 frasi 29 hanno chiesto una seconda presa, 9 una terza e 7 una quarta. Tra le frasi entro la
   soglia ce ne sono alcune da sentire con le proprie orecchie, perché lo scarto potrebbe essere della voce e non del
   riconoscitore: «millisecondi» capito «millicicondi», «L'inventario parte solo» capito «L'inventario a parte è solo».
   Lo scarto si misura sull'intera frase, quindi in una frase lunga una parola corta saltata resta sotto il 4%: dopo la
   revisione le negazioni («non», «mai», «senza», «nessuno») si contano a parte. Sui file finali, riascoltati di nuovo:
   28 frasi su 147 contengono una negazione e in nessuna il riconoscitore ne ha capita una in meno o una in più.
-- **Registro della voce** (`genera.py --riascolta`, sui file finali): altezza mediana delle frasi 268 Hz, da 235 a 295
-  (prima del controllo andava da 220 a 362); 145 frasi su 147 entro il 10% dalla mediana, tutte entro il 15%. Le due più
-  basse («Le reti scoperte diventano destinazioni del test di segmentazione.», -12%, e «Per esempio, con il Wi-Fi
-  disturbato dai vicini…», -11%) il modello le legge basse a ogni presa.
-- **Controllo del suono** (`controlla.py`, sui file finali): ritmo mediano 59 ms per carattere detto, da 50 a 80 (le più
-  lente sono elenchi con molte virgole); volume da -21,2 a -20,1 dBFS, picco massimo 0,87, pausa interna più lunga 0,71 s;
-  impronta della voce (il vettore con cui il modello Base riconosce chi parla) simile alla media in tutte le frasi:
-  mediana 0,996, minima 0,990. Con la soglia dell'altezza corretta dopo la revisione (12% dalla mediana; prima, per come
-  era scritta, scattava solo intorno al 28%) lo script segnala una registrazione: «Le reti scoperte…», 235 Hz, la stessa
-  del punto precedente. Nessun'altra oltre le soglie.
+- **Registro della voce** (`genera.py --riascolta`, sui file finali): altezza mediana delle frasi 269 Hz, da 235 a 295
+  (prima del controllo andava da 220 a 362); 146 frasi su 147 entro il 10% dalla mediana, tutte entro il 15%. La più
+  bassa («Le reti scoperte diventano destinazioni del test di segmentazione.», 235 Hz, -13%) il modello la legge bassa a
+  ogni presa.
+- **Controllo del suono** (`controlla.py`, sui file finali): ritmo mediano 59 ms per carattere detto, da 50 a 78 (le più
+  lente sono elenchi con molte virgole); volume mediano -20,1 dBFS, picco massimo 0,86, pausa interna più lunga 0,71 s;
+  impronta della voce (il vettore con cui il modello Base riconosce chi parla) simile alla media in tutte le frasi,
+  comprese le 38 rifatte in un'altra sessione e con un'altra installazione: mediana 0,996, minima 0,990. Con la soglia
+  dell'altezza corretta dopo la revisione (12% dalla mediana; prima, per come era scritta, scattava solo intorno al 28%)
+  lo script segnala una registrazione: «Le reti scoperte…», 235 Hz, la stessa del punto precedente. Nessun'altra oltre le
+  soglie.
 - **Eseguibile sotto Wine**: `polaris-cli.exe serve` costruito con le registrazioni definitive consegna l'interfaccia con
   la sua CSP e le registrazioni come `audio/ogg`, con le richieste parziali (206); gli stessi 18 controlli del lettore
   passano contro l'eseguibile, e una registrazione caricata attraverso il protocollo di debug suona fino alla fine.
@@ -1722,7 +1727,8 @@ servizi a pagamento.
 
 **Revisione indipendente prima della pubblicazione.** Cinque revisori (lettore, generatore, strumenti, CI e agente,
 documenti), ognuno seguito da un verificatore incaricato di smentire i rilievi; nessuno dei due aveva scritto il codice.
-I rilievi confermati sono stati corretti prima di pubblicare:
+Trenta rilievi in tutto: 25 confermati e 5 smentiti (non erano difetti; dove la proposta era comunque un miglioramento è
+stata accolta). I rilievi confermati sono stati corretti prima di pubblicare:
 - **Lettore**: due videoguide avviate nella stessa pagina suonavano una sopra l'altra (ora una narrazione alla volta);
   una pausa arrivata da fuori lasciava il lettore «in riproduzione» senza suono; l'arrivo dell'elenco delle voci di
   Windows faceva ripartire la frase registrata in corso, e chi aveva scelto la voce di Windows sentiva l'inizio della
@@ -1743,23 +1749,69 @@ I rilievi confermati sono stati corretti prima di pubblicare:
   l'altezza solo oltre il 28% circa; i crediti dichiaravano l'origine della voce guardando solo il nome del campione (ora
   anche la sua impronta).
 - **CI e agente**: la prova in Edge stampava l'esito senza guardarlo (ora il passo fallisce se la registrazione non suona
-  fino alla fine, e sta in un passo suo); la prova Go del tipo `audio/ogg` passava anche senza la dichiarazione.
+  fino alla fine, e sta in un passo suo); la prova Go del tipo `audio/ogg` passava anche senza la dichiarazione. Un
+  rilievo non era un difetto: `release.yml` è a posto, e la run 5 del rilascio finita senza creare job non dipende dal file.
 - **Documenti**: le note dicevano «più naturale» senza che nessuno avesse ascoltato; il pacchetto cresce di 5,6 MB e non
   di 3 (le registrazioni stanno in tutti e due gli eseguibili: lo zip passa da 31.345.265 a 36.907.488 byte); nel
   LEGGIMI mancavano Node e libmp3lame tra i requisiti e un comando d'esempio non partiva; l'aiuto di `--lotto` prometteva
   un guadagno non misurato; il picco dichiarato valeva prima della codifica.
 
+**Revisione delle correzioni.** Le correzioni al lettore sono passate da un altro revisore, incaricato di cercare
+regressioni. Ne ha trovata una vera: dopo una pausa arrivata da fuori, la ripresa dallo stesso tasto faceva suonare il
+resto della frase con la guida ferma (prima delle correzioni la guida proseguiva). Ora la ripresa da fuori fa ripartire
+la guida. Due rilievi minori, corretti anch'essi: l'arresto tardivo di un lettore già fermato poteva togliere la parola
+alla videoguida appena partita quando legge la voce di Windows (riprodotto dal revisore con il processore rallentato), e
+nella CI la prova in Edge si fermava al primo esito di una pagina non ancora caricata invece di riprovare. Nessun
+rilievo sulle altre aree guardate (ordine degli eventi, due lettori, voci in ritardo, tasti, test dell'indice, prova Go
+con `-race` e ordine casuale). I controlli del lettore nel browser sono ora 26, tutti passati, compresi pausa e ripresa
+da fuori.
+
+**Primo ascolto: la pronuncia delle parole inglesi.** Il 12/11 STARNET ha ascoltato la narrazione e ha segnalato «Wi-Fi»
+detto male. Whisper non poteva accorgersene: scrive «Wi-Fi» qualunque cosa senta di simile. Per vedere il difetto serve
+un riconoscitore di fonemi, che scrive i suoni: `scripts/narrazione/fonemi.py`, con il modello
+`facebook/wav2vec2-xlsr-53-espeak-cv-ft`.
+- **Che cosa diceva la voce** (tutte le 147 registrazioni ascoltate suono per suono): «Wi-Fi» mai «uai-fai» («uai-fi» 6
+  volte, «ui-fi» 3, «ue-fi» 1); «router» in tre modi nelle 18 frasi che lo contengono («rater» 8, «ruter» 8, «rauter» 2);
+  «access point» con la c dolce in 5 frasi su 5; «file» letto bene solo in 2 frasi su 5; «hub» detto «ub» in 2 su 2;
+  «traceroute» con la c dolce; «gigabyte» detto «gigabate»; «Memtest» detto «mempest» in una frase. Le altre parole
+  inglesi risultavano a posto (gateway, firewall, switch, server, computer, Internet, Windows, trunk, SuperSpeed,
+  broadcast, ransomware, firmware, BitLocker, megabit, gigahertz).
+- **Quale pronuncia è giusta.** Due ricerche indipendenti (dizionari di pronuncia; uso reale) e un giudice che le ha
+  riconciliate, per venti parole. Fonti lette: Treccani («Wi-Fi» ‹u̯ài fài›, «file» ‹fàil›), DiPI di Canepari («Access»
+  con la c dolce marcata come trascurata; «hub» = «ab»), Nuovo De Mauro, Dizionario Olivetti («router» /ˈruter/),
+  Wikizionario. Per «router» convivono «rùter» (la sola nei dizionari italiani) e «ràuter» (all'americana): è stata
+  scelta la prima, e la scelta resta a STARNET. «Traceroute» non è in nessun dizionario: «treis-rùt» è ricostruita.
+- **Quale grafia la fa dire.** 48 grafie provate con la voce Giulia, ognuna con due semi, e ascoltate con lo stesso
+  riconoscitore. Scelte: «uài-fài», «rùter», «àkses pòint», «fàil», «àb», «treisrùt», «gigabàit», «megabàit» (regole in
+  `pronuncia.py`). «Gateway», «firmware» e «BitLocker» il motore li dice già bene scritti in inglese, e peggio riscritti.
+- **Rifacimento.** 38 frasi rifatte (quelle con una delle parole, più le due con «Memtest86+»), con il controllo dei
+  fonemi dentro l'esame di ogni presa (`genera.py --pronunce`): 82 prese in tutto. Una frase ha chiesto più giri («Le
+  reti Wi-Fi trasmesse dagli stessi access point di solito sono VLAN separate.»): dopo tre parole inglesi il motore
+  leggeva all'inglese anche «separate». Ha ora una regola («separàte»), e la presa tenuta ha parole, pronunce e tono a
+  posto.
+- **Esito sui file finali.** Il riconoscitore ritrova la pronuncia giusta in tutte le 116 occorrenze delle 23 parole
+  controllate, in 81 frasi: «Wi-Fi» «uai-fai» in 10 frasi su 10, «router» «ruter» in 18 su 18, «access point» in 5 su 5,
+  «file» in 5 su 5, «hub» in 2 su 2. La pagina con tutta la narrazione è stata rigenerata e ripubblicata: resta segnata
+  una sola frase, per il tono.
+
 **Strumenti.** Ambienti virtuali Python fuori dal repository; tutti i pacchetti installati hanno almeno 14 giorni (quelli
 più recenti sono stati riportati alla versione precedente con `pip install --uploaded-prior-to`): qwen-tts 0.1.1, torch
 2.15.0, transformers 4.57.3, faster-whisper 1.2.1, ctranslate2 4.8.4, kokoro-onnx 0.6.1, piper-tts 1.8.0, onnxruntime
-1.31.1. Tempi su 4 processori senza scheda grafica: Kokoro e Piper leggono tutta la narrazione in pochi minuti;
+1.31.1. Le 38 frasi rifatte il 12/11 sono nate da un'installazione nuova con le stesse versioni (torch 2.15.0 nella
+variante per il solo processore, torchaudio 2.11.1): 17 minuti per il giro principale. Tempi su 4 processori senza scheda grafica: Kokoro e Piper leggono tutta la narrazione in pochi minuti;
 Qwen3-TTS 0.6B impiega 4,7 secondi per ogni secondo di voce a una frase per volta e 2,7 con otto frasi insieme (misurati); con quattro
 insieme, il riascolto e le prese rifatte, la registrazione di Giulia ha chiesto circa un'ora e mezza, in più riprese.
 
 **Avvertenze: cosa resta da provare.**
-- **Nessuno ha ascoltato la narrazione.** Chi ha fatto le registrazioni non può sentirle: i controlli dicono che le parole
-  si capiscono e che le registrazioni si somigliano, non che la voce sia gradevole, né che accenti e intonazione siano
-  giusti. Il giudizio è di chi ascolta; una frase che suona male si rifà da sola (`--rifai`).
+- **L'ascolto di una persona è appena cominciato.** Chi ha fatto le registrazioni non può sentirle. STARNET ha
+  cominciato ad ascoltare il 12/11 e ha segnalato «Wi-Fi»; il resto non è stato confermato a orecchio, e le frasi rifatte
+  sono state verificate solo dai riconoscitori. I controlli dicono che le parole si capiscono, che le parole inglesi
+  dell'elenco sono dette con i suoni giusti e che le registrazioni si somigliano; non che la voce sia gradevole, né che
+  accenti e intonazione siano giusti. Il giudizio è di chi ascolta; una frase che suona male si rifà da sola (`--rifai`).
+- **Il riconoscitore di fonemi è un aiuto, non un giudice**: non sente gli accenti («uài-fài» e «uai-fài» per lui sono
+  uguali), sbaglia qualche suono (di «router» a volte perde la r finale) e le parole molto corte, come «hub», le trova
+  solo con i suoni vicini. Controlla le 23 parole dell'elenco: una parola inglese nuova va aggiunta, e una parola
+  italiana letta all'inglese, come «separate», la vede solo Whisper.
 - **Ascolto dentro la finestra del programma su un PC vero**: la riproduzione è provata in Chromium su Linux e, su
   Windows reale, in Microsoft Edge 156 (run 116), che ha lo stesso motore di WebView2. Dentro la finestra del programma
   non si è potuta provare in automatico, perché il caricatore di WebView2 incorporato non apre la porta di debug (run 113 e

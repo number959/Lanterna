@@ -33,11 +33,11 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "In alto c'è Internet, poi la rete dell'operatore e il router.": {
     "file": "f1cf6d3fe7c1.ogg",
-    "ms": 3578
+    "ms": 3737
   },
   "Davanti al router ci sono le zone della rete, con i dispositivi disegnati secondo il loro tipo.": {
     "file": "5fd2317d36bf.ogg",
-    "ms": 5608
+    "ms": 5349
   },
   "Polaris non entra nei dispositivi: ascolta quello che dicono di sé.": {
     "file": "187251f46426.ogg",
@@ -69,7 +69,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Le piattaforme sono le zone: la rete di questo PC, le altre sottoreti e le reti Wi-Fi separate.": {
     "file": "921595aa8326.ogg",
-    "ms": 6198
+    "ms": 6214
   },
   "In una struttura sanitaria ogni zona è di solito una rete virtuale, chiamata VLAN.": {
     "file": "32696086c03d.ogg",
@@ -125,7 +125,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Prima la scheda di rete e il Wi-Fi, poi l'indirizzo e il router, infine Internet, i nomi e i siti.": {
     "file": "72de4f8afda8.ogg",
-    "ms": 5780
+    "ms": 6871
   },
   "Se un livello non funziona, anche quelli sopra sembrano guasti: per questo si parte dal basso.": {
     "file": "651a2c6b20a3.ogg",
@@ -145,7 +145,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Ogni area ha la sua sezione: computer, Wi-Fi, rete locale, Internet, router e infrastruttura.": {
     "file": "2d9ef001e5cf.ogg",
-    "ms": 7451
+    "ms": 6884
   },
   "Un clic su un giudizio apre la scheda che spiega il valore, le soglie e che cosa fare.": {
     "file": "2582c9202183.ogg",
@@ -161,7 +161,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Per esempio, con il Wi-Fi disturbato dai vicini propone di cambiare canale, passo dopo passo.": {
     "file": "2f1fbc3ab0f9.ogg",
-    "ms": 4972
+    "ms": 5692
   },
   "Ogni passo ha la sua spunta, così tieni il conto di ciò che hai già fatto.": {
     "file": "0ac43bfd4b17.ogg",
@@ -173,7 +173,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Si stampa o si salva in un file PDF, da consegnare a chi usa il computer.": {
     "file": "452821e5afa0.ogg",
-    "ms": 4917
+    "ms": 4426
   },
   "E se la stampante non stampa, c'è una guida anche per questo.": {
     "file": "758ee9e1a56d.ogg",
@@ -225,15 +225,15 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Le reti Wi-Fi trasmesse dagli stessi access point di solito sono VLAN separate.": {
     "file": "56197ee09618.ogg",
-    "ms": 4457
+    "ms": 5256
   },
   "Con le credenziali del tecnico, Polaris interroga il router in sola lettura con SNMP, il protocollo di gestione degli apparati.": {
     "file": "4fcf692aa292.ogg",
-    "ms": 8420
+    "ms": 7985
   },
   "Il router risponde con l'elenco delle VLAN, il gateway di ogni rete e i dispositivi che ha visto.": {
     "file": "5c41237168b6.ogg",
-    "ms": 5734
+    "ms": 5889
   },
   "Le credenziali non vengono salvate, e la versione 3 di SNMP, che cifra, è da preferire.": {
     "file": "505ddf6393d8.ogg",
@@ -269,7 +269,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "La forza del segnale Wi-Fi si misura in decibel milliwatt, con numeri negativi.": {
     "file": "b539cc73bdb7.ogg",
-    "ms": 4456
+    "ms": 4670
   },
   "Più il numero è vicino a zero, più il segnale è forte: meno 50 è ottimo, meno 80 è molto debole.": {
     "file": "a72fb67426d9.ogg",
@@ -281,7 +281,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Il Wi-Fi usa soprattutto due bande: 2,4 e 5 gigahertz.": {
     "file": "abd7324acf49.ogg",
-    "ms": 4687
+    "ms": 4865
   },
   "La banda a 2,4 gigahertz arriva più lontano, ma ha pochi canali ed è affollata.": {
     "file": "4a340c2aa8a2.ogg",
@@ -305,23 +305,23 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Con più access point è il dispositivo a decidere quando cambiare, di solito quando il segnale cala.": {
     "file": "c2c2726e608c.ogg",
-    "ms": 5379
+    "ms": 5611
   },
   "Tre funzioni lo aiutano: l'elenco degli access point vicini, l'invito a spostarsi e le chiavi preparate in anticipo.": {
     "file": "2475a1ea460d.ogg",
-    "ms": 7038
+    "ms": 6872
   },
   "Un dispositivo che resta attaccato all'access point lontano va piano e rallenta anche gli altri.": {
     "file": "df0830eae443.ogg",
-    "ms": 5689
+    "ms": 5248
   },
   "Nella sezione Wi-Fi, Polaris misura il segnale stanza per stanza con questo PC.": {
     "file": "eb5ebcf83200.ogg",
-    "ms": 5244
+    "ms": 4525
   },
   "Le stanze più deboli vanno in cima all'elenco: si parte da lì per spostare il router o aggiungere un access point.": {
     "file": "3e8d19fc947b.ogg",
-    "ms": 6598
+    "ms": 6841
   },
   "I valori valgono per questo PC: un telefono nello stesso punto può ricevere in modo diverso.": {
     "file": "13881a87b06d.ogg",
@@ -353,7 +353,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Per uscire dalla propria rete serve il gateway, cioè il router.": {
     "file": "7427d0926274.ogg",
-    "ms": 3346
+    "ms": 3768
   },
   "Il PC gli consegna tutto ciò che è diretto altrove, Internet compresa.": {
     "file": "865241a72f55.ogg",
@@ -365,7 +365,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Indirizzo, maschera, gateway e server dei nomi li assegna il DHCP, un servizio che di solito sta nel router.": {
     "file": "0959a6aec998.ogg",
-    "ms": 7266
+    "ms": 6169
   },
   "Il PC chiede in broadcast, cioè a tutti, se c'è un server.": {
     "file": "9ce7a5f6fd14.ogg",
@@ -393,7 +393,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Se uno viene infettato, un ransomware, cioè un programma che cifra i file per chiedere un riscatto, raggiunge tutto ciò che vede.": {
     "file": "a5e51f6c0eba.ogg",
-    "ms": 7306
+    "ms": 7438
   },
   "Dividere la rete in zone limita i danni.": {
     "file": "0b2b722f17cd.ogg",
@@ -453,7 +453,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Una memoria RAM difettosa provoca schermate blu, programmi che si chiudono e file danneggiati.": {
     "file": "81ca2661ac09.ogg",
-    "ms": 5709
+    "ms": 5148
   },
   "Spesso il guasto compare solo ogni tanto: per trovarlo serve un test lungo.": {
     "file": "6e1ca6d139c2.ogg",
@@ -485,15 +485,15 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Per provare tutta la memoria serve Memtest86+, che parte da una chiavetta prima di Windows.": {
     "file": "77388cc70654.ogg",
-    "ms": 5648
+    "ms": 5828
   },
   "Polaris scarica il file dal sito ufficiale e ne controlla l'impronta.": {
     "file": "927fb167044b.ogg",
-    "ms": 4116
+    "ms": 3977
   },
   "Con Rufus si scrive il file sulla chiavetta in modalità immagine DD: il contenuto della chiavetta si cancella.": {
     "file": "6376305556ad.ogg",
-    "ms": 6621
+    "ms": 6413
   },
   "Si riavvia il PC dalla chiavetta con il menu di avvio: di solito un tasto come F12 o Esc all'accensione.": {
     "file": "b5fd568b5ac8.ogg",
@@ -509,7 +509,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Memtest86+ lavora fuori da Windows: lascialo almeno un passaggio completo, meglio tutta la notte.": {
     "file": "60175dab1411.ogg",
-    "ms": 6348
+    "ms": 7242
   },
   "Una porta USB 3, spesso blu o con il simbolo SS, contiene in realtà due porte.": {
     "file": "39efad0d19d7.ogg",
@@ -525,15 +525,15 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Se il disco passa da un cavo USB 2, da una prolunga o da un hub USB 2, usa la porta compagna.": {
     "file": "49763d358655.ogg",
-    "ms": 6982
+    "ms": 6947
   },
   "Funziona, ma a 480 megabit al secondo: in pratica circa 40 megabyte al secondo.": {
     "file": "9a014f8b175b.ogg",
-    "ms": 6372
+    "ms": 6698
   },
   "Copiare 100 gigabyte richiede così più di 40 minuti.": {
     "file": "53e5e4986fb1.ogg",
-    "ms": 3562
+    "ms": 3372
   },
   "Collega il disco direttamente a una porta USB 3 del PC, con il suo cavo originale.": {
     "file": "477d32342512.ogg",
@@ -541,7 +541,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Evita prolunghe e hub vecchi: se serve un hub, che sia USB 3 e con l'alimentatore.": {
     "file": "652f8da128bd.ogg",
-    "ms": 6343
+    "ms": 5538
   },
   "Poi ripeti l'analisi per controllare la velocità.": {
     "file": "770a4a751fa9.ogg",
@@ -569,15 +569,15 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Il traffico di questo PC passa dallo switch e dal router prima di arrivare a Internet.": {
     "file": "6b6e91d9a571.ogg",
-    "ms": 4438
+    "ms": 5078
   },
   "Polaris misura nello stesso momento verso il router e verso Internet.": {
     "file": "623130c6dd4e.ogg",
-    "ms": 3663
+    "ms": 3657
   },
   "Se la latenza sale anche verso il router, il problema è in casa o in ufficio: Wi-Fi, cavo o apparati.": {
     "file": "4e2aa31ede58.ogg",
-    "ms": 6472
+    "ms": 6021
   },
   "Se sale solo verso Internet, il problema è sulla linea o presso l'operatore.": {
     "file": "789bf4e1c04b.ogg",
@@ -585,15 +585,15 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Il traceroute mostra i router attraversati per arrivare a una destinazione.": {
     "file": "30d88cabd042.ogg",
-    "ms": 4079
+    "ms": 4301
   },
   "Manda pacchetti con un contatore chiamato tempo di vita, che ogni router diminuisce di uno.": {
     "file": "88e87a341a04.ogg",
-    "ms": 5460
+    "ms": 4803
   },
   "Quando arriva a zero, il router scarta il pacchetto e risponde: così si scopre chi è.": {
     "file": "010dd01c948b.ogg",
-    "ms": 5329
+    "ms": 5355
   },
   "I tempi crescono con la distanza, ed è normale.": {
     "file": "997ea342d544.ogg",
@@ -601,15 +601,15 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "Conta un salto brusco che resta alto anche nei router successivi.": {
     "file": "a2a08aa75461.ogg",
-    "ms": 3465
+    "ms": 3486
   },
   "Un router che non risponde, segnato con un asterisco, non è un guasto se quelli dopo rispondono.": {
     "file": "58c04de07ee5.ogg",
-    "ms": 5299
+    "ms": 5176
   },
   "Se il problema nasce già verso il router, si cerca in casa: Wi-Fi, cavi e router.": {
     "file": "b8c95b9fa8ad.ogg",
-    "ms": 5270
+    "ms": 5055
   },
   "Se nasce più avanti, conviene portare all'operatore il rapporto di Polaris con le misure.": {
     "file": "2aa7a70dacf8.ogg",

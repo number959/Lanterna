@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -125,18 +126,27 @@ func TestGuards(t *testing.T) {
 // le registrazioni della narrazione delle videoguide.
 func TestStaticTypes(t *testing.T) {
 	h := newServer().Handler()
-	for path, want := range map[string]string{"/assets/inter.woff2": "font/woff2", "/assets/index-abc.css": "text/css; charset=utf-8", "/favicon.ico": "image/x-icon", "/assets/frase-abc.ogg": "audio/ogg"} {
-		if r := do(t, h, "GET", path, nil); r.Code != 200 || r.Header().Get("Content-Type") != want {
-			t.Errorf("%s: %d %q, atteso %q", path, r.Code, r.Header().Get("Content-Type"), want)
+	attesi := map[string]string{"/assets/inter.woff2": "font/woff2", "/assets/index-abc.css": "text/css; charset=utf-8", "/favicon.ico": "image/x-icon", "/assets/frase-abc.ogg": "audio/ogg"}
+	controlla := func(caso string) {
+		for path, want := range attesi {
+			if r := do(t, h, "GET", path, nil); r.Code != 200 || r.Header().Get("Content-Type") != want {
+				t.Errorf("%s, %s: %d %q, atteso %q", caso, path, r.Code, r.Header().Get("Content-Type"), want)
+			}
 		}
 	}
-	// Su Linux le tabelle del sistema conoscono già .ogg e .woff2, quindi le richieste qui sopra passerebbero anche
-	// senza la nostra dichiarazione: che ci sia lo dice la tabella. Serve sui PC Windows il cui registro non li riporta.
-	for ext, want := range map[string]string{".woff2": "font/woff2", ".ico": "image/x-icon", ".ogg": "audio/ogg"} {
-		if staticTypes[ext] != want {
-			t.Errorf("tipo dichiarato per %s: %q, atteso %q", ext, staticTypes[ext], want)
+	controlla("sistema della prova")
+	// Dove gira la prova il sistema e Go conoscono già quasi tutti questi tipi, quindi fin qui la dichiarazione
+	// dell'agente potrebbe anche mancare. Si finge allora un sistema che riporta un tipo sbagliato, come può fare
+	// il registro di Windows, e si controlla che la dichiarazione dell'agente vinca.
+	// Comunque finisca la prova, i tipi tornano quelli dell'agente per le prove che seguono.
+	t.Cleanup(declareStaticTypes)
+	for _, ext := range []string{".woff2", ".ico", ".ogg"} {
+		if err := mime.AddExtensionType(ext, "application/x-sbagliato"); err != nil {
+			t.Fatal(err)
 		}
 	}
+	declareStaticTypes()
+	controlla("sistema con tipi sbagliati")
 }
 
 func TestScanLifecycle(t *testing.T) {
