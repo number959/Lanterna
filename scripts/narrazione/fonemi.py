@@ -27,12 +27,14 @@ import argparse
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from genera import CARTELLA, INDICE, carica, leggi_indice  # noqa: E402
+from pronuncia import parlato_llm  # noqa: E402
 
 SR = 16000
 
@@ -86,32 +88,72 @@ def _distanza(a: str, b: str) -> int:
     return riga[-1]
 
 
-def vicino(suoni: str, attesa: str) -> tuple[int, str]:
-    """Il tratto di `suoni` più vicino ad `attesa`: quanti suoni di differenza e il tratto trovato."""
-    s, a = _piano(suoni), _piano(attesa)
-    migliore = (len(a), "")
-    for lung in range(max(1, len(a) - 2), len(a) + 3):
-        for i in range(0, max(1, len(s) - lung + 1)):
+def vicino(suoni: str, attesa: str, da: int = 0, a: int | None = None) -> tuple[int, str]:
+    """Il tratto di `suoni` più vicino ad `attesa`: quanti suoni di differenza e il tratto trovato.
+
+    Con `da` e `a` il tratto deve cominciare tra quelle due posizioni (nei suoni senza spazi).
+    """
+    s, att = _piano(suoni), _piano(attesa)
+    a = len(s) if a is None else a
+    migliore = (len(att), "")
+    for lung in range(max(1, len(att) - 2), len(att) + 3):
+        for i in range(max(0, da), max(0, min(a, len(s) - lung)) + 1):
             pezzo = s[i : i + lung]
-            d = _distanza(pezzo, a)
+            d = _distanza(pezzo, att)
             if d < migliore[0]:
                 migliore = (d, pezzo)
     return migliore
 
 
+def _lettere(t: str) -> int:
+    """Quante lettere ha il testo detto: serve a stimare dove cade una parola nella fila dei suoni."""
+    t = unicodedata.normalize("NFD", t.lower())
+    return sum(1 for c in t if c.isalpha() and unicodedata.category(c) != "Mn")
+
+
+def occorrenze(testo: str, rx: str, quanti_suoni: int) -> list[tuple[int, int]]:
+    """Per ogni volta che la parola compare: tra quali posizioni dei suoni la si cerca.
+
+    La posizione si stima dalla frase com'è detta (la parte prima della parola sulla frase intera), con un
+    margine: misurato sulle 147 registrazioni, l'errore della stima resta quasi sempre sotto l'8% della frase.
+    """
+    tutte = _lettere(parlato_llm(testo)) or 1
+    margine = int(0.08 * quanti_suoni) + 4
+    finestre = []
+    for m in re.finditer(rx, testo, re.I):
+        inizio = _lettere(parlato_llm(testo[: m.start()])) / tutte * quanti_suoni
+        fine = _lettere(parlato_llm(testo[: m.end()])) / tutte * quanti_suoni
+        finestre.append((max(0, int(inizio) - margine), int(fine) + margine))
+    return finestre
+
+
 def pronunce(testo: str, suoni: str, differenze: int = 2) -> dict[str, dict]:
     """Per ogni parola dell'elenco che compare nella frase: che cosa si è sentito e se la pronuncia è dubbia.
 
-    È dubbia se il tratto di suoni somiglia più a una pronuncia sbagliata che a una giusta, o se la pronuncia
-    giusta non si ritrova entro `differenze` suoni.
+    Ogni volta che la parola compare si guarda il tratto di suoni dove dovrebbe cadere, non tutta la frase:
+    così una parola detta due volte si controlla due volte, e una sillaba simile in un'altra parola non fa da
+    pronuncia giusta. Una volta è dubbia se lì i suoni somigliano più a una pronuncia sbagliata che a una
+    giusta, o se la giusta non si ritrova (entro `differenze` suoni, e meno per le parole corte).
     """
+    s = _piano(suoni)
     parole = {}
     for nome, (rx, giuste, sbagliate) in ATTESE.items():
-        if not re.search(rx, testo, re.I):
+        finestre = occorrenze(testo, rx, len(s))
+        if not finestre:
             continue
-        d, pezzo = min((vicino(suoni, pr) for pr in giuste), key=lambda x: x[0])
-        ds, sbagliato = min((vicino(suoni, pr) for pr in sbagliate), key=lambda x: x[0], default=(99, ""))
-        parole[nome] = {"differenze": d, "trovato": sbagliato if ds < d else pezzo, "atteso": giuste[0], "dubbia": ds < d or d > differenze}
+        limite = min(differenze, max(1, min(len(_piano(g)) for g in giuste) // 3))
+        esiti = []
+        for da, a in finestre:
+            d, pezzo = min((vicino(s, pr, da, a) for pr in giuste), key=lambda x: x[0])
+            ds, sbagliato = min((vicino(s, pr, da, a) for pr in sbagliate), key=lambda x: x[0], default=(99, ""))
+            esiti.append((ds < d or d > limite, d, sbagliato if ds < d else pezzo))
+        parole[nome] = {
+            "differenze": max(x[1] for x in esiti),
+            "trovato": " / ".join(x[2] for x in esiti),
+            "atteso": giuste[0],
+            "volte": len(esiti),
+            "dubbia": any(x[0] for x in esiti),
+        }
     return parole
 
 
@@ -163,7 +205,7 @@ def main() -> None:
     p.add_argument("--file", nargs="+", type=Path, help="ascolta questi file invece delle registrazioni dell'indice")
     p.add_argument("--solo", metavar="PAROLE", help="solo le frasi che contengono queste parole")
     p.add_argument("--tutte", action="store_true", help="stampa i suoni di ogni frase")
-    p.add_argument("--differenze", type=int, default=2, help="suoni di differenza oltre i quali la pronuncia giusta non si considera ritrovata")
+    p.add_argument("--differenze", type=int, default=2, help="suoni di differenza oltre i quali la pronuncia giusta non si considera ritrovata (meno per le parole corte)")
     p.add_argument("--rapporto", metavar="FILE", help="scrive qui i suoni di ogni frase e l'esito parola per parola (JSON)")
     args = p.parse_args()
 
@@ -195,13 +237,13 @@ def main() -> None:
 
     if args.rapporto:
         Path(args.rapporto).write_text(json.dumps(esiti, ensure_ascii=False, indent=1), encoding="utf-8")
-    conta: dict[str, list[bool]] = {}
+    conta: dict[str, list[tuple[int, bool]]] = {}
     for e in esiti:
         for nome, x in e["parole"].items():
-            conta.setdefault(nome, []).append(x["dubbia"])
-    print(f"\n{len(esiti)} frasi ascoltate. Per ogni parola: frasi in cui compare e frasi in cui si ritrova la pronuncia giusta.")
+            conta.setdefault(nome, []).append((x["volte"], x["dubbia"]))
+    print(f"\n{len(esiti)} frasi ascoltate. Per ogni parola: quante volte compare, in quante frasi, e in quante frasi la pronuncia giusta si ritrova ogni volta.")
     for nome, d in conta.items():
-        print(f"  {nome:14} {len(d):3} frasi, {sum(1 for x in d if not x):3} con la pronuncia giusta")
+        print(f"  {nome:14} {sum(v for v, _ in d):3} volte in {len(d):3} frasi, {sum(1 for _, x in d if not x):3} frasi a posto")
     if segnalate:
         print(f"\nDa ascoltare ({len(segnalate)}): la pronuncia giusta non si ritrova. Può sbagliare anche il riconoscitore.")
         for nome, d, pezzo, t in sorted(segnalate):

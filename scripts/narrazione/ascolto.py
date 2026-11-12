@@ -84,7 +84,8 @@ def main() -> None:
             motivi = []
             if e.get("pronunce"):
                 motivi.append("pronuncia da controllare: " + ", ".join(x.split(" (")[0] for x in e["pronunce"].split("), ")))
-            elif e["scarto"] > args.soglia:
+            # Lo scarto delle sole parole, se il rapporto lo ha: quello totale comprende la pena per la pronuncia.
+            if e.get("parole", e["scarto"] if not e.get("pronunce") else 0) > args.soglia:
                 motivi.append("parole da controllare")
             if mediana and e.get("hz") and abs(e["hz"] / mediana - 1) > args.tolleranza:
                 motivi.append("tono più " + ("alto" if e["hz"] > mediana else "basso") + " delle altre")

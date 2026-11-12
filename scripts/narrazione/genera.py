@@ -338,9 +338,13 @@ def leggi_indice(indice: Path) -> tuple[dict, dict]:
         raise SystemExit(f"{rotto} ({e})") from None
 
 
-# Una parola inglese detta male pesa come un quinto della frase sbagliata: la presa non passa, ma tra due prese
-# con la stessa pecca vince ancora quella con le parole più giuste.
-PENA_PRONUNCIA = 0.2
+def pena_pronuncia(soglia: float) -> float:
+    """Quanto pesa una parola inglese detta male: appena oltre la soglia delle parole.
+
+    La presa non passa l'esame; ma tra una presa con le parole giuste e una pronuncia segnalata (il riconoscitore
+    di fonemi può sbagliare) e una con parole saltate o cambiate oltre la soglia, si tiene la prima.
+    """
+    return soglia + 0.01
 
 
 def _orecchio(args):
@@ -404,9 +408,10 @@ def riascolta(args, frasi: list[str]) -> None:
             print(f"    durata nell'indice {clip[testo]['ms']} ms, nel file {ms:.0f} ms: l'indice va rifatto", flush=True)
         hz = 0.0 if args.senza_altezza else round(altezza(suono, 24000), 1)
         male = _dette_male(orecchio, testo, suono, 24000) if orecchio else ""
+        parole = s
         if male:
-            s += PENA_PRONUNCIA
-        esiti.append({"testo": testo, "capito": capito, "scarto": round(s, 3), "hz": hz} | ({"pronunce": male} if orecchio else {}))
+            s += pena_pronuncia(args.soglia)
+        esiti.append({"testo": testo, "capito": capito, "scarto": round(s, 3), "parole": round(parole, 3), "hz": hz} | ({"pronunce": male} if orecchio else {}))
         print(f"[{i + 1}/{len(frasi)}] scarto {100 * s:3.0f}%  {hz:3.0f} Hz  {testo[:70]}" + (f"  pronuncia: {male}" if male else ""), flush=True)
     uguali = sum(e["scarto"] == 0 for e in esiti)
     entro = sum(e["scarto"] <= args.soglia for e in esiti)
@@ -477,7 +482,7 @@ def main() -> None:
     p.add_argument("--tentativi", type=int, default=3, help="prese al massimo per frase, per i motori che campionano")
     p.add_argument("--soglia", type=float, default=0.04, help="scarto accettato subito tra frase scritta e frase capita")
     p.add_argument("--rapporto", metavar="FILE", help="scrive qui l'esito della verifica, frase per frase (JSON)")
-    p.add_argument("--pronunce", metavar="DIR", help="cartella del riconoscitore di fonemi (vedi fonemi.py): controlla come sono dette le parole inglesi e rifà le frasi dove sono dette male")
+    p.add_argument("--pronunce", metavar="DIR", help="cartella del riconoscitore di fonemi (vedi fonemi.py): controlla come sono dette le parole inglesi; con i motori che campionano (insieme a --verifica) rifà le frasi dove sono dette male, con gli altri le segnala")
     p.add_argument("--altezza", type=float, metavar="HZ", help="altezza della voce voluta (senza: la mediana delle registrazioni)")
     p.add_argument("--tolleranza", type=float, default=0.10, help="quanto una frase può staccarsi dall'altezza delle altre prima di essere rifatta")
     p.add_argument("--senza-altezza", action="store_true", help="non misura l'altezza della voce e non rifà le frasi fuori registro")
@@ -494,6 +499,9 @@ def main() -> None:
         return
     if not args.motore or not args.modello:
         p.error("servono --motore e --modello")
+    if args.pronunce and not args.verifica and MOTORI[args.motore].casuale and not args.fonemi:
+        # Senza Whisper una presa rifatta per la pronuncia passerebbe anche con parole saltate o cambiate.
+        p.error("--pronunce rifà le prese: serve anche --verifica, o le parole delle prese nuove non vengono controllate")
     motore = MOTORI[args.motore](args)
 
     if args.fonemi:
@@ -580,7 +588,8 @@ def main() -> None:
                     e["scarto"] = round(esame(testo, e["capito"]) + (0.0 if durata_credibile(testo, clip[testo]["ms"]) else 1.0), 3)
                 if args.ricontrolla and orecchio:
                     e["pronunce"] = _dette_male(orecchio, testo, suono, 24000)
-                    e["scarto"] = round(e["scarto"] + (PENA_PRONUNCIA if e["pronunce"] else 0.0), 3)
+                    e["parole"] = e["scarto"]
+                    e["scarto"] = round(e["scarto"] + (pena_pronuncia(args.soglia) if e["pronunce"] else 0.0), 3)
                 esiti[testo] = e
         else:
             coda.append((testo, file))
@@ -621,12 +630,14 @@ def main() -> None:
                     s += 1.0
                 # E così una parola inglese detta male: il riconoscitore di parole non la vede, quello di fonemi sì.
                 male = _dette_male(orecchio, testo, a, motore.sr) if orecchio else ""
+                parole = s
                 if male:
-                    s += PENA_PRONUNCIA
+                    s += pena_pronuncia(args.soglia)
                 prima = esiti.get(testo)
                 nuova = {"testo": testo, "capito": capito, "scarto": round(s, 3), "hz": round(altezza(a, motore.sr), 1) if registro else 0.0}
                 if orecchio:
                     nuova["pronunce"] = male
+                    nuova["parole"] = round(parole, 3)
                 nuova["prese"] = (prima["prese"] if prima else 0) + 1
                 nuova["tenuta"] = nuova["prese"]
                 if prima is None or voto(nuova) < voto(prima):

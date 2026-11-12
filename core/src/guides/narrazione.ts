@@ -293,7 +293,7 @@ export const CLIP: Record<string, { file: string; ms: number }> = {
   },
   "A 2,4 gigahertz ogni canale è largo circa 20 megahertz, ma i canali distano solo 5 megahertz.": {
     "file": "08ffcf6ddae4.ogg",
-    "ms": 7613
+    "ms": 7441
   },
   "Per questo solo i canali 1, 6 e 11 non si sovrappongono.": {
     "file": "dd6c97818b05.ogg",

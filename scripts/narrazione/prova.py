@@ -72,4 +72,21 @@ assert durata_credibile(breve, 3200)
 assert not durata_credibile(breve, 700)  # tagliata
 assert not durata_credibile(lunga, 20000)  # parole ripetute o un lungo silenzio
 
+# Il controllo della pronuncia guarda ogni volta che la parola compare, nel suo punto della frase, senza modelli:
+# qui i suoni sono scritti a mano come li darebbe il riconoscitore di fonemi.
+from fonemi import pronunce  # noqa: E402
+
+hub = "Evita prolunghe e hub vecchi: se serve un hub, che sia USB 3 e con l'alimentatore."
+giusti = "e v i t a p r o l u ŋ ɡ e e a b v e k i s e s e r v e u n a b k e s i a u e s e b i t r e e k o n l a l i m e n t a t o r e"
+assert not pronunce(hub, giusti)["hub"]["dubbia"]
+# Una delle due volte detta «ub»: prima bastava l'altra, giusta, a far passare la frase.
+assert pronunce(hub, giusti.replace("u n a b", "u n u b"))["hub"]["dubbia"]
+assert pronunce(hub, giusti.replace("e a b v", "e u b v"))["hub"]["dubbia"]
+tr = "Il traceroute mostra i router attraversati per arrivare a una destinazione."
+giusti = "i l t r eɪ z r u t m o s t r a r u t e r a t r a v e r s a t i p e r a r i v a r e a u n a d e s t i n a ts j o n e"
+assert not pronunce(tr, giusti)["router"]["dubbia"]
+# «router» detto «rater»: la «rut» di «traceroute», poco prima, non deve far da pronuncia giusta.
+assert pronunce(tr, giusti.replace("m o s t r a r u t e r", "m o s t r a r a t e r"))["router"]["dubbia"]
+uguale(pronunce(tr, giusti)["router"]["volte"], 1)
+
 print("tutto bene")

@@ -114,22 +114,30 @@ I motori non leggono sigle, parole inglesi e numeri allo stesso modo, quindi `pr
 - **Qwen3-TTS** legge il testo come farebbe una persona e molte parole inglesi le sa («gateway», «firewall»,
   «switch»): gli si scrivono per esteso le sigle («DHCP» diventa «di acca ci pi»), i numeri in lettere, perché
   scritti in cifre a volte li legge in un'altra lingua, e le parole inglesi che invece legge con le regole
-  dell'italiano. Sono venute fuori al primo ascolto di una persona: «Wi-Fi» detto «uai-fi» o «ui-fi», «router» in
-  tre modi diversi, «access point» con la c dolce, «file» com'è scritto, «hub» detto «ub», «traceroute» con la c
-  dolce. Ora hanno una regola ciascuna (uài-fài, rùter, àkses pòint, fàil, àb, treisrùt), con le pronunce dei
-  dizionari (Treccani, DiPI, De Mauro).
+  dell'italiano. Al primo ascolto di una persona è stato segnalato «Wi-Fi», detto «uai-fi» o «ui-fi»; il
+  riconoscitore di fonemi ha poi trovato «router» in tre modi diversi, «access point» con la c dolce, «file» com'è
+  scritto, «hub» detto «ub», «traceroute» con la c dolce. Ora hanno una regola ciascuna (uài-fài, rùter, àkses pòint,
+  fàil, àb, treisrùt), con le pronunce dei dizionari (Treccani, DiPI, De Mauro, Olivetti; «treisrùt» è ricostruita,
+  perché nessun dizionario ha la parola).
 
 **Come si trova una pronuncia sbagliata senza poterla sentire.** Whisper non serve: scrive «Wi-Fi» anche quando la
 voce dice «ui-fi», perché riconosce le parole e le scrive per bene. Serve un riconoscitore di **fonemi**, che scrive
 i suoni: `fonemi.py --frasi frasi.json --modello M/wav2vec2-xlsr-53-espeak-cv-ft` ascolta le frasi che contengono
-una parola dell'elenco `ATTESE` e segnala quelle in cui i suoni somigliano più a una pronuncia sbagliata che a
-quella giusta (`--tutte` stampa i suoni di ogni frase, `--solo "parola"` quelli di alcune). Per trovare la grafia
-che fa dire bene una parola nuova se ne provano alcune in una frase breve e si ascolta il risultato con
-`fonemi.py --file prova1.wav prova2.wav`: la stessa grafia non esce sempre uguale, quindi si prova con più semi.
-Con `genera.py ... --pronunce M/wav2vec2-xlsr-53-espeak-cv-ft` lo stesso controllo entra nell'esame di ogni presa:
-una frase con una parola inglese detta male si rifà come quelle con le parole sbagliate o fuori registro. È un
-aiuto, non un giudice: sbaglia qualche suono, non sente gli accenti e con le parole molto corte («hub») va guidato
-dai suoni vicini. L'ultima parola resta a chi ascolta.
+una parola dell'elenco `ATTESE` e, ogni volta che la parola compare, guarda i suoni nel punto della frase dove dovrebbe
+cadere (lo stima dalla frase com'è detta): segnala le frasi in cui lì i suoni somigliano più a una pronuncia sbagliata
+che a quella giusta, o non somigliano alla giusta (`--tutte` stampa i suoni di ogni frase, `--solo "parola"` quelli di
+alcune). Per trovare la grafia che fa dire bene una parola nuova se ne scrivono alcune in una frase breve, in un file
+di frasi di prova (lo stesso formato di `frasi.json`, con le grafie già scritte come devono essere lette), si
+registrano in una cartella a parte (`genera.py --frasi prove.json ... --cartella /tmp/prove --indice
+/tmp/prove/indice.ts`, magari due volte con `--seme` diversi, perché la stessa grafia non esce sempre uguale) e si
+ascoltano con `fonemi.py --modello M/wav2vec2-xlsr-53-espeak-cv-ft --frasi prove.json --cartella /tmp/prove --indice
+/tmp/prove/indice.ts --tutte`; `--file prova1.wav prova2.wav`, sempre con `--modello`, ascolta file qualunque.
+Con `genera.py ... --verifica small --pronunce M/wav2vec2-xlsr-53-espeak-cv-ft` lo stesso controllo entra nell'esame
+di ogni presa: una frase con una parola inglese detta male si rifà come quelle con le parole sbagliate o fuori registro
+(senza `--verifica` lo script si ferma: le prese rifatte per la pronuncia vanno controllate anche nelle parole). È un
+aiuto, non un giudice: sbaglia qualche suono, non sente gli accenti, la posizione di ogni parola è una stima e con le
+parole molto corte («hub») va guidato dai suoni vicini. Una parola inglese nuova va aggiunta all'elenco, con le
+pronunce giuste e quelle sbagliate già sentite. L'ultima parola resta a chi ascolta.
 
 Se una parola suona male si aggiunge una riga a `REGOLE` o a `REGOLE_LLM` e si rifanno le frasi che la contengono:
 `genera.py ... --solo-mancanti --rifai "parola"`. Con Qwen3-TTS, se una frase è venuta male senza un motivo,
@@ -209,7 +217,8 @@ I modelli si scaricano dalle pagine dei rispettivi progetti (per Qwen3-TTS: `Qwe
 repository: pesano da 60 MB (Piper) a oltre 4 GB (VoiceDesign). Il riconoscitore di fonemi è
 `facebook/wav2vec2-xlsr-53-espeak-cv-ft` (1,2 GB, licenza Apache-2.0): serve solo a controllare, non lascia nulla nel
 programma. Su un computer senza scheda grafica conviene la versione di torch per il solo processore
-(`pip install --index-url https://download.pytorch.org/whl/cpu torch`), molto più leggera.
+(`pip install --index-url https://download.pytorch.org/whl/cpu torch==2.15.0 torchaudio==2.11.1`, le versioni usate
+qui), molto più leggera.
 
 Tempi su quattro processori senza scheda grafica: Piper e Kokoro leggono tutta la narrazione (147 frasi, circa
 12 minuti) in pochi minuti; Qwen3-TTS 0.6B impiega quasi cinque secondi per ogni secondo di voce a una frase per

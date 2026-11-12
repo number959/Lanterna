@@ -260,6 +260,9 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
     const a = audio.current;
     if (playing || !a) return;
     const resume = () => {
+      // Un avvio chiesto dal lettore stesso fa arrivare l'evento qualche decina di millisecondi dopo: se nel frattempo
+      // l'utente ha premuto Pausa, l'audio è già fermo e quell'evento non è una ripresa.
+      if (a.paused) return;
       a.pause();
       if (ended) {
         setPos(0);
@@ -281,7 +284,9 @@ export function VideoPlayer({ video }: { video: VideoGuide }) {
     setPlaying(true);
   };
   const goScene = (si: number) => {
-    stopAll();
+    // Da fermo non c'è nulla da fermare: e la sintesi di Windows è una sola, quindi fermarla toglierebbe la parola
+    // a un'altra videoguida che sta leggendo.
+    if (playing) stopAll();
     setEnded(false);
     setPos(lines.findIndex((l) => l.si === si));
     // Anche se la scena è quella in corso, la lettura riparte dalla prima frase.
