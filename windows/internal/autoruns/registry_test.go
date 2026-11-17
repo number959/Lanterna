@@ -213,6 +213,8 @@ func TestCommandSecrets(t *testing.T) {
 		{`sc.exe config Svc obj= .\backup password= Quinta5`, `sc.exe config Svc obj= .\backup password= ‹password›`},
 		{`C:\App\db.exe "Server=x;User Id=sa;Password=Sesta6;"`, `C:\App\db.exe "Server=x;User Id=sa;Password=‹password›;"`},
 		{`schtasks /run /s srv /u admin /p Settima7 /tn x`, `schtasks /run /s srv /u admin /p ‹password› /tn x`},
+		{`schtasks /create /tn x /tr C:\x\a.exe /ru NAS\backup /rp Sedici16`, `schtasks /create /tn x /tr C:\x\a.exe /ru ‹utente› /rp ‹password›`},
+		{`C:\Tools\PsExec.exe \\srv -u DOM\admin -p Diciassette17 cmd`, `C:\Tools\PsExec.exe \\srv -u ‹utente› -p ‹password› cmd`},
 		// net use con la password dopo /user:, o con la condivisione fra
 		// virgolette; valori fra apici; password attaccata a -p di 7-Zip e
 		// MySQL; ConvertTo-SecureString; --user=.

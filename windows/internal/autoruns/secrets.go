@@ -20,8 +20,11 @@ var (
 	passOption = regexp.MustCompile(`(?i)((?:^|\s)(?:--?password|/password|--?passwd|--?pass|/pass|--?pwd|/pwd|-pw|/pw|-p|/p|/rp|--?token|/token|--?api-?key|--?secret)(?::|=|\s+))("[^"]*"|'[^']*'|[^\s"]+)`)
 	// -u utente:password, --user=utente:password (curl e simili).
 	userPass = regexp.MustCompile(`(?i)((?:^|\s)(?:-u|--user)(?:\s+|=))("[^"]*"|'[^']*'|[^\s"]+)`)
-	// /user:NOME (net use, runas): il nome di un account.
-	userOption = regexp.MustCompile(`(?i)((?:^|\s)/user:)("[^"]*"|[^\s"]+)`)
+	// /user:NOME (net use, runas) e /ru NOME (schtasks): il nome di un account.
+	userOption = regexp.MustCompile(`(?i)((?:^|\s)(?:/user:|/ru\s+))("[^"]*"|[^\s"]+)`)
+	// -u NOME di PsExec e PAExec (altrove -u è spesso altro: python -u).
+	psexecProg = regexp.MustCompile(`(?i)(?:^|[\s\\/"])(?:psexec|psexec64|paexec)(?:\.exe)?(?:"|\s|$)`)
+	psexecUser = regexp.MustCompile(`(?i)((?:^|\s)-u\s+)("[^"]*"|[^\s"]+)`)
 	// password=... in una stringa di connessione o in «sc config ... password= x».
 	keyPass = regexp.MustCompile(`(?i)(\b(?:password|pwd)\s*=\s*)("[^"]*"|'[^']*'|[^;\s"]+)`)
 	// PowerShell: ConvertTo-SecureString 'segreta' -AsPlainText.
@@ -55,6 +58,14 @@ func maskSecrets(s string) string {
 		return "‹utente›:‹password›"
 	})
 	s = maskValue(userOption, s, func(string) string { return "‹utente›" })
+	if psexecProg.MatchString(s) {
+		s = maskValue(psexecUser, s, func(v string) string {
+			if strings.HasPrefix(v, "‹") {
+				return "" // già mascherato (-u utente:password)
+			}
+			return "‹utente›"
+		})
+	}
 	s = maskValue(keyPass, s, func(string) string { return "‹password›" })
 	s = maskValue(secureString, s, func(v string) string {
 		if strings.HasPrefix(v, "$") || isOption(v) {
