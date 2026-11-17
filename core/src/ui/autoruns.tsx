@@ -32,8 +32,9 @@ import type { ViewProps } from './views';
 // chiavi Run (attività pianificate, servizi, driver, sottoscrizioni WMI,
 // estensioni dei browser, Winlogon e gli altri punti di Windows). L'agente
 // elenca le voci non di Microsoft, quelle con il file mancante e quelle in
-// cartelle dell'utente; le voci di Windows firmate da Microsoft si contano
-// soltanto. Polaris legge e basta: nessun pulsante disattiva o cancella;
+// cartelle che un utente può scrivere; le voci di Windows firmate da
+// Microsoft si contano soltanto. Polaris legge e basta: nessun pulsante
+// disattiva o cancella;
 // per agire ci sono i passi del piano d'azione e i programmi (Autoruns,
 // App di avvio di Windows).
 
@@ -61,9 +62,13 @@ const ISSUE_WORD: Record<Severity, string> = { crit: 'da controllare subito', wa
 
 const SCOPE: Record<NonNullable<AutorunEntry['scope']>, string> = { machine: 'tutti gli utenti', machine32: 'tutti gli utenti, programma a 32 bit', user: 'questo utente' };
 
+/** Tipo di voce, come lo scrive l'agente (Kind in windows/internal/autoruns). */
 const KIND: Record<string, string> = {
   run: 'chiave Run',
   runonce: 'chiave RunOnce',
+  runonceex: 'chiave RunOnceEx',
+  policyrun: 'chiave Run dei criteri',
+  load: 'valore load di Windows',
   folder: 'cartella Esecuzione automatica',
   shell: 'Shell di Winlogon',
   userinit: 'Userinit di Winlogon',
@@ -73,7 +78,9 @@ const KIND: Record<string, string> = {
   appinit: 'AppInit_DLLs',
   printmon: 'monitor di stampa',
   printproc: 'processore di stampa',
-  lsa: 'pacchetto di sicurezza',
+  'lsa-auth': 'pacchetto di autenticazione (LSA)',
+  'lsa-security': 'pacchetto di sicurezza (LSA)',
+  'lsa-notify': 'notifica delle password (LSA)',
   netprovider: 'provider di rete',
 };
 
@@ -83,15 +90,19 @@ const whenText = (iso?: string) => {
   return isNaN(d.getTime()) ? iso : d.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
 };
 
-/** Firma del file che conta per la voce, con il tono; undefined se la voce non ha file (estensioni, WMI). */
-export function entrySignature(e: AutorunEntry): { text: string; tone: Severity } | undefined {
+/**
+ * Firma del file che conta per la voce, con il tono; undefined se la voce non
+ * ha file (estensioni, WMI). Per un file mancante il tono è quello del
+ * giudizio sulla voce (issueSev): avviso solo per servizi e driver attivi.
+ */
+export function entrySignature(e: AutorunEntry, issueSev?: Severity): { text: string; tone: Severity } | undefined {
   if (interpretedInline(e)) return { text: `Comando eseguito da ${fileName(e.file?.path)}: la firma di Microsoft dell'interprete non dice nulla su ciò che esegue`, tone: 'info' };
   const f = entryFile(e);
   if (!f) return undefined;
-  if (f.missing) return { text: 'File mancante', tone: 'warn' };
+  if (f.missing) return { text: 'File mancante', tone: issueSev ?? 'unknown' };
   const l = signatureLabel(f.signature);
   const sev = fileSeverity(f);
-  if (f.signature && f.signature.status === 'unsigned' && userWritable(f.folder)) return { text: 'Nessuna firma, in una cartella che l\'utente può scrivere', tone: sev };
+  if (f.signature && f.signature.status === 'unsigned' && userWritable(f.folder)) return { text: 'Nessuna firma, in una cartella che un utente può scrivere', tone: sev };
   return { text: l.text, tone: sev === 'unknown' ? l.tone : sev };
 }
 
@@ -115,12 +126,14 @@ export function entryDetails(e: AutorunEntry): string[] {
     case 'services':
     case 'drivers':
       push(e.start && `avvio ${startLabel(e.start)}`);
-      push(e.account && `account ${accountLabel(e.account)}`);
+      // Account non letto: si dice, non si presume LocalSystem (i driver non hanno account).
+      push(e.account ? `account ${accountLabel(e.account)}` : e.category === 'services' && 'account non letto');
       if (e.unquoted) push(`percorso con spazi senza virgolette${e.interceptors ? `: ${plural(e.interceptors, 'file intercettore esiste', 'file intercettori esistono')}` : ''}`);
       break;
     case 'wmi':
       push(consumerLabel(e.consumer));
-      push(e.bound === true ? 'collegata a un evento' : e.bound === false ? 'non collegata a un evento' : '');
+      // bound falso non arriva nel JSON (omitempty): l'agente lo legge sempre, assente vuol dire non collegata.
+      push(e.bound ? 'collegata a un evento' : 'non collegata a un evento');
       push(e.namespace && `spazio ${e.namespace}`);
       break;
     case 'browser':
@@ -141,7 +154,8 @@ export function entryDetails(e: AutorunEntry): string[] {
 /** Stato della voce: attiva o disattivata, e in esecuzione per servizi e driver. */
 export function entryState(e: AutorunEntry): { text: string; on: boolean } {
   if (!e.enabled) return { text: e.start === 'disabled' ? 'disabilitato' : 'disattivata', on: false };
-  if (e.category === 'services' || e.category === 'drivers') return { text: e.running ? 'in esecuzione' : e.running === false ? 'fermo' : 'attivo', on: true };
+  // running falso non arriva nel JSON (omitempty): l'agente legge sempre lo stato dei servizi, assente vuol dire fermo.
+  if (e.category === 'services' || e.category === 'drivers') return { text: e.running ? 'in esecuzione' : 'fermo', on: true };
   return { text: 'attiva', on: true };
 }
 
@@ -230,7 +244,7 @@ function EntriesTable({ cat, entries, flagged }: { cat: AutorunCategory; entries
           <tbody>
             {shown.map((e, i) => {
               const issue = flagged.get(e);
-              const sig = entrySignature(e);
+              const sig = entrySignature(e, issue?.severity);
               const f = entryFile(e);
               const st = entryState(e);
               const det = entryDetails(e);
@@ -295,6 +309,8 @@ function CategoryPart({ data, cat, flagged, scan, showTitle }: { data: AutorunsD
   const n = autorunCounts(scan).find((c) => c.category === cat);
   const total = n ? Math.max(n.total, entries.length) : entries.length;
   const ms = n?.microsoft ?? 0;
+  // Nelle estensioni il totale dell'agente comprende i componenti interni del browser, che non si elencano.
+  const hidden = cat === 'browser' ? Math.max(0, total - ms - entries.length) : 0;
   const denied = (data.denied ?? []).indexOf(cat) >= 0;
   if (!showTitle && !entries.length && !total && !denied) return <p className="muted">Nessuna voce in questa categoria.</p>;
   if (showTitle && !entries.length && !total && !denied) return null;
@@ -303,7 +319,7 @@ function CategoryPart({ data, cat, flagged, scan, showTitle }: { data: AutorunsD
       {showTitle && <h3 className="dev-h">{categoryLabel(cat)}</h3>}
       <p className="faint ar-count">
         {total
-          ? `${plural(total, 'voce', 'voci')} in tutto${ms ? `: ${ms} di Windows firmate da Microsoft, non elencate` : ''}${entries.length ? `${ms ? ';' : ':'} ${plural(entries.length, 'elencata qui', 'elencate qui')}` : ''}.`
+          ? `${plural(total, 'voce', 'voci')} in tutto${ms ? `: ${ms} di Windows firmate da Microsoft, non elencate` : ''}${entries.length ? `${ms ? ';' : ':'} ${plural(entries.length, 'elencata qui', 'elencate qui')}` : ''}${hidden ? `${ms || entries.length ? ';' : ':'} ${plural(hidden, 'componente interno del browser, non elencato', 'componenti interni del browser, non elencati')}` : ''}.`
           : 'Nessuna voce letta.'}
       </p>
       {denied && (
@@ -360,7 +376,8 @@ export function AutorunsCard({ scan, analysis, live, source, go, initialTab }: P
         {ms > 0
           ? `Le voci di Windows firmate da Microsoft non si elencano: sono ${ms}. `
           : 'Le voci di Windows firmate da Microsoft non si elencano. '}
-        Qui sotto ci sono le altre: programmi di altri produttori, voci con il file mancante e quelle che partono da cartelle dell'utente.
+        Qui sotto ci sono le altre: programmi di altri produttori, voci con il file mancante e quelle che partono da cartelle che un utente può
+        scrivere. I componenti interni dei browser si contano soltanto.
       </p>
 
       {denied.length > 0 && (

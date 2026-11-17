@@ -24,9 +24,19 @@ type Add = (f: Omit<Finding, 'actions'> & { actions?: string[] }) => void;
 
 export type Tone = 'ok' | 'info' | 'warn' | 'crit' | 'unknown';
 
-/** Cartelle che un utente senza privilegi può scrivere (come sign.UserWritable dell'agente). */
-const USER_WRITABLE: FolderKind[] = ['appData', 'temp', 'downloads', 'profile', 'removable', 'network'];
+/**
+ * Cartelle che un utente senza privilegi può scrivere (come sign.UserWritable
+ * dell'agente). Con i permessi predefiniti di Windows un utente crea cartelle
+ * e file anche in C:\ProgramData (BUILTIN\Users: crea file e cartelle) e
+ * nelle cartelle create nella radice di un disco (Authenticated Users:
+ * modifica): "programData" e "other" non sono protette. Protette sono solo
+ * Programmi e la cartella di Windows, dove scrive solo l'amministratore.
+ */
+const USER_WRITABLE: FolderKind[] = ['appData', 'temp', 'downloads', 'profile', 'removable', 'network', 'programData', 'other'];
 export const userWritable = (folder?: FolderKind) => !!folder && USER_WRITABLE.indexOf(folder) >= 0;
+
+/** Cartelle protette: Programmi e la cartella di Windows. */
+export const protectedFolder = (folder?: FolderKind) => folder === 'windows' || folder === 'programFiles';
 
 /** Firme gravi: il file è stato cambiato dopo la firma, o il certificato è revocato o bloccato. */
 export const SIG_CRIT = ['tampered', 'revoked', 'distrusted'];
@@ -98,8 +108,17 @@ export const lc1 = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 /** Nome del file da un percorso di Windows. */
 export const fileName = (path?: string) => (path || '').split(/[\\/]/).pop() || '';
 
-/** Processi su cui si danno giudizi: non Polaris, e non i processi di sistema senza file (System, Registry...). */
+/** Processi su cui si danno giudizi: tutti tranne STARNET Polaris e le sue finestre. */
 const judged = (p: ProcessDetail) => !p.polaris;
+
+/**
+ * Processo del nucleo di Windows senza un file da verificare (System, PID 4;
+ * Registry, Memory Compression, Secure System), con la stessa regola di
+ * kernelPseudo dell'agente: PID 0 e 4, e i figli di System senza «.exe» nel
+ * nome. Il nome da solo non basta: un processo qualsiasi può chiamarsi
+ * «Registry» o «Idle», e se non si è potuto leggere resta non verificato.
+ */
+export const isKernelProc = (p: ProcessDetail) => p.pid === 0 || p.pid === 4 || (p.parentPid === 4 && !/\.exe$/i.test(p.name || ''));
 
 export interface ProcGroup {
   file: FileFacts;
@@ -108,13 +127,19 @@ export interface ProcGroup {
   procs: ProcessDetail[];
 }
 
-/** I processi raggruppati per file eseguibile: lo stesso file si giudica una volta. */
+/**
+ * I processi raggruppati per file eseguibile: lo stesso file si giudica una
+ * volta. La chiave comprende l'esito della verifica: i percorsi sono già
+ * ripuliti (C:\Users\‹utente›\...), e i file di due utenti diversi con lo
+ * stesso percorso ripulito ma firme diverse restano due gruppi.
+ */
 export function procGroups(items: ProcessDetail[]): ProcGroup[] {
   const map: { [k: string]: ProcGroup } = {};
   const out: ProcGroup[] = [];
   for (const p of items) {
     if (!judged(p) || !p.file || !p.file.path) continue;
-    const k = p.file.path.toLowerCase();
+    const s = p.file.signature;
+    const k = [p.file.path.toLowerCase(), s ? s.status : '', (s && s.signer) || '', (s && s.code) || '', p.file.folder || '', p.file.missing ? 'mancante' : ''].join('|');
     let g = map[k];
     if (!g) {
       g = map[k] = { file: p.file, names: [], count: 0, procs: [] };
@@ -127,7 +152,7 @@ export function procGroups(items: ProcessDetail[]): ProcGroup[] {
   return out;
 }
 
-/** Gravità di un file eseguito: firma grave, firma da guardare, senza firma in una cartella dell'utente. */
+/** Gravità di un file eseguito: firma grave, firma da guardare, senza firma in una cartella che un utente può scrivere. */
 export function fileSeverity(f?: FileFacts): Severity {
   const s = f && f.signature;
   if (!f || !s) return 'unknown';
@@ -161,19 +186,37 @@ export function isLookalike(p: ProcessDetail): boolean {
 
 const firewallOff = (scan: Scan) => !!scan.firewall && scan.firewall.profiles.some((p) => p.active && p.enabled === false);
 
+/** Un programma in ascolto su tutte le reti, con l'esito della verifica. */
+export interface Listener {
+  proc: ProcessDetail;
+  ports: number[];
+  /** Da controllare: firma non valida, o file in una cartella che un utente può scrivere. */
+  risky: boolean;
+  /**
+   * Non verificato: senza amministratore il processo non si apre, oppure il
+   * file non ha una firma verificata (lettura non finita in tempo, file non
+   * leggibile). Né da controllare né a posto: si dice che non si sa.
+   */
+  unverified: boolean;
+  /** Nucleo di Windows (System, PID 4): non ha un file da verificare. */
+  kernel: boolean;
+}
+
 /** Programmi in ascolto su tutte le interfacce (TCP), con la gravità di ciascuno. */
-export function listeners(scan: Scan): { proc: ProcessDetail; ports: number[]; risky: boolean }[] {
+export function listeners(scan: Scan): Listener[] {
   const items = (scan.pc && scan.pc.procs && scan.pc.procs.items) || [];
-  const out: { proc: ProcessDetail; ports: number[]; risky: boolean }[] = [];
+  const out: Listener[] = [];
   for (const p of items) {
     if (!judged(p)) continue;
     const ports = (p.listen || []).filter((l) => l.proto === 'tcp' && l.scope === 'all').map((l) => l.port);
     if (!ports.length) continue;
     const uniq = ports.filter((x, i) => ports.indexOf(x) === i).sort((a, b) => a - b);
-    const sig = p.file && p.file.signature;
-    // Senza file (System, PID 4) non c'è nulla da verificare: è il kernel.
-    const risky = !!p.file && !!p.file.path && ((!!sig && sig.status !== 'valid' && sig.status !== 'unreadable' && sig.status !== 'unknown') || userWritable(p.file.folder));
-    out.push({ proc: p, ports: uniq, risky });
+    const f = p.file && p.file.path && p.access !== 'none' ? p.file : undefined;
+    const sig = f && f.signature;
+    const kernel = !f && p.access !== 'none' && isKernelProc(p);
+    const risky = !!f && ((!!sig && sig.status !== 'valid' && sig.status !== 'unreadable' && sig.status !== 'unknown') || userWritable(f.folder));
+    const unverified = !risky && !kernel && (!f || !sig || sig.status === 'unreadable' || sig.status === 'unknown');
+    out.push({ proc: p, ports: uniq, risky, unverified, kernel });
   }
   return out;
 }
@@ -189,12 +232,26 @@ export function analyzeProcs(scan: Scan, add: Add) {
   if (groups.some((g) => g.file.signature)) {
     const bad = groups.map((g) => ({ g, sev: fileSeverity(g.file) })).filter((x) => x.sev === 'crit' || x.sev === 'warn');
     bad.sort((a, b) => RANK[b.sev] - RANK[a.sev]);
-    let sev: Severity = 'ok';
-    for (const b of bad) sev = worst(sev, b.sev);
-    const verified = groups.filter((g) => g.file.signature && g.file.signature.status === 'valid').length;
-    const unsigned = groups.filter((g) => g.file.signature && g.file.signature.status === 'unsigned').length;
-    const unchecked = groups.filter((g) => !g.file.signature || g.file.signature.status === 'unknown' || g.file.signature.status === 'unreadable').length;
+    const status = (g: ProcGroup) => (g.file.signature ? g.file.signature.status : undefined);
+    const verified = groups.filter((g) => status(g) === 'valid').length;
+    // Senza firma ma non da controllare: in Programmi o nella cartella di Windows, o in una cartella non letta.
+    const unsignedProt = groups.filter((g) => status(g) === 'unsigned' && protectedFolder(g.file.folder)).length;
+    const unsignedNoFolder = groups.filter((g) => status(g) === 'unsigned' && !g.file.folder).length;
+    const policy = groups.filter((g) => status(g) === 'policy').length;
+    const unchecked = groups.filter((g) => !g.file.signature || status(g) === 'unknown' || status(g) === 'unreadable').length;
     const crit = bad.some((b) => b.sev === 'crit');
+    let sev: Severity = policy ? 'info' : 'ok';
+    for (const b of bad) sev = worst(sev, b.sev);
+    // Nessun file verificato e nessuno da controllare: non si sa.
+    if (!bad.length && !verified && !policy && !unsignedProt && !unsignedNoFolder) sev = 'unknown';
+    const policyText = policy
+      ? `${policy === 1 ? '1 programma non è attendibile' : `${policy} programmi non sono attendibili`} per le impostazioni di questo PC (criteri di Windows o App Control): verifica che sia voluto`
+      : '';
+    const okParts: string[] = [];
+    if (unsignedProt)
+      okParts.push(`${unsignedProt === 1 ? '1 programma senza firma è installato' : `${unsignedProt} programmi senza firma sono installati`} in Programmi o nella cartella di Windows, dove scrive solo l'amministratore`);
+    if (unsignedNoFolder) okParts.push(`${num(unsignedNoFolder, 'programma è', 'programmi sono')} senza firma, in una cartella non riconosciuta`);
+    if (policyText) okParts.push(policyText);
     add({
       id: 'pc.procs.signature',
       metric: 'pc.procs.signature',
@@ -210,11 +267,18 @@ export function analyzeProcs(scan: Scan, add: Add) {
             .join('; ')}${more(bad.length, 4)}. ` +
           (crit
             ? 'Un file modificato dopo la firma, o con un certificato revocato o bloccato, non è quello pubblicato dal produttore: può essere danneggiato o alterato. Analizzalo con Microsoft Defender e verifica da dove viene.'
-            : 'Un programma senza firma in una cartella che l\'utente può scrivere, o con una firma scaduta o non riconosciuta, non è per forza pericoloso (molti programmi installati per utente non sono firmati), ma va riconosciuto: verifica da dove viene.') +
+            : 'Un programma senza firma in una cartella che un utente può scrivere (AppData, Download, ProgramData, cartelle create nella radice del disco), o con una firma scaduta o non riconosciuta, non è per forza pericoloso (molti programmi installati per utente non sono firmati), ma va riconosciuto: verifica da dove viene.') +
+          (policyText ? ` Inoltre ${lc1(policyText)}.` : '') +
           (unchecked ? ` ${num(unchecked, 'altro file non è stato verificato', 'altri file non sono stati verificati')}.` : '')
-        : `I programmi in esecuzione hanno una firma digitale valida${unsigned ? `, salvo ${num(unsigned, 'programma senza firma installato', 'programmi senza firma installati')} in cartelle protette` : ''}.` +
+        : (verified === groups.length
+            ? 'I programmi in esecuzione hanno una firma digitale valida'
+            : verified
+              ? `${verified === 1 ? '1 programma su' : `${verified} programmi su`} ${groups.length} ${verified === 1 ? 'ha' : 'hanno'} una firma digitale valida`
+              : 'Nessun programma in esecuzione ha una firma verificata') +
+          (okParts.length ? `; ${okParts.join('; ')}` : '') +
+          '.' +
           (unchecked ? ` ${num(unchecked, 'file non è stato verificato', 'file non sono stati verificati')}.` : ''),
-      actions: sev === 'crit' ? ['defender-scan-file', 'check-file-origin'] : sev === 'warn' ? ['check-file-origin', 'defender-scan-file'] : [],
+      actions: sev === 'crit' ? ['defender-scan-file', 'check-file-origin'] : sev === 'warn' ? ['check-file-origin', 'defender-scan-file'] : policy ? ['check-file-origin'] : [],
     });
   }
 
@@ -222,28 +286,53 @@ export function analyzeProcs(scan: Scan, add: Add) {
   if (data.connsRead) {
     const ls = listeners(scan);
     const risky = ls.filter((l) => l.risky);
+    const unverified = ls.filter((l) => l.unverified);
+    const kernel = ls.filter((l) => l.kernel);
+    const signed = ls.filter((l) => !l.risky && !l.unverified && !l.kernel);
     const off = firewallOff(scan);
-    const sev: Severity = risky.length ? (off ? 'crit' : 'warn') : 'ok';
-    const item = (l: { proc: ProcessDetail; ports: number[] }) =>
-      `${l.proc.name} (porta ${l.ports.slice(0, 3).join(', ')}${l.ports.length > 3 ? '...' : ''}${l.proc.file ? `; ${lc1(signatureLabel(l.proc.file.signature).text)}, ${folderLabel(l.proc.file.folder)}` : ''})`;
+    const sev: Severity = risky.length ? (off ? 'crit' : 'warn') : unverified.length ? 'info' : 'ok';
+    const ports = (l: Listener) => `porta ${l.ports.slice(0, 3).join(', ')}${l.ports.length > 3 ? '...' : ''}`;
+    const item = (l: Listener) => `${l.proc.name} (${ports(l)}${l.proc.file && l.proc.access !== 'none' ? `; ${lc1(signatureLabel(l.proc.file.signature).text)}, ${folderLabel(l.proc.file.folder)}` : ''})`;
+    const plain = (l: Listener) => `${l.proc.name} (${ports(l)})`;
+    // Da amministratore «senza amministratore» sarebbe falso: i processi che non si aprono sono protetti da Windows.
+    const why = data.elevated ? 'processi protetti da Windows, che non si aprono nemmeno da amministratore, oppure firma non verificata in tempo' : 'senza amministratore non si aprono, oppure la firma non è stata verificata in tempo';
+    const unverifiedText = unverified.length
+      ? `${unverified.length === 1 ? 'Accetta connessioni da tutta la rete 1 programma che non si è potuto verificare' : `Accettano connessioni da tutta la rete ${unverified.length} programmi che non si sono potuti verificare`} (${why}): ${unverified
+          .slice(0, 4)
+          .map(plain)
+          .join('; ')}${more(unverified.length, 4)}. Non sono né da controllare né a posto${data.elevated ? '.' : ': per verificarli ripeti l\'analisi avviando Polaris come amministratore.'}`
+      : '';
+    const signedText = signed.length
+      ? signed.length === 1
+        ? '1 programma in ascolto su tutte le reti ha una firma valida e sta in Programmi o nella cartella di Windows.'
+        : `${signed.length} programmi in ascolto su tutte le reti hanno una firma valida e stanno in Programmi o nella cartella di Windows.`
+      : '';
+    const kernelText = kernel.length ? `System, il nucleo di Windows (${ports(kernel[0])}), non ha un file da verificare.` : '';
     add({
       id: 'pc.procs.listen',
       metric: 'pc.procs.listen',
       category: 'pc',
       title: 'Programmi in ascolto sulla rete',
-      value: risky.length ? `${num(risky.length, 'programma da controllare', 'programmi da controllare')}${off ? ', firewall spento' : ''}` : ls.length ? `${num(ls.length, 'programma', 'programmi')} in ascolto, nessuno da controllare` : 'nessun programma in ascolto su tutte le reti',
+      value: risky.length
+        ? `${num(risky.length, 'programma da controllare', 'programmi da controllare')}${off ? ', firewall spento' : ''}`
+        : unverified.length
+          ? `${num(ls.length, 'programma', 'programmi')} in ascolto, ${unverified.length} non ${unverified.length === 1 ? 'verificato' : 'verificati'}`
+          : ls.length
+            ? `${num(ls.length, 'programma', 'programmi')} in ascolto, nessuno da controllare`
+            : 'nessun programma in ascolto su tutte le reti',
       numeric: risky.length,
       severity: sev,
       verdict: risky.length
         ? `Accettano connessioni da tutta la rete: ${risky
             .slice(0, 4)
             .map(item)
-            .join('; ')}${more(risky.length, 4)}. Un programma senza firma o avviato da una cartella dell'utente che aspetta connessioni dall'esterno va riconosciuto: se non serve, chiudilo o toglilo dall'avvio. ` +
+            .join('; ')}${more(risky.length, 4)}. Un programma senza firma valida, o avviato da una cartella che un utente può scrivere, che aspetta connessioni dall'esterno va riconosciuto: se non serve, chiudilo o toglilo dall'avvio. ` +
           (off
             ? 'Il firewall del profilo in uso è spento: la porta è raggiungibile da ogni dispositivo della rete.'
-            : 'Il firewall di Windows di norma blocca le connessioni in ingresso non richieste, salvo regole: Polaris non legge le singole regole.')
+            : 'Il firewall di Windows di norma blocca le connessioni in ingresso non richieste, salvo regole: Polaris non legge le singole regole.') +
+          (unverified.length ? ` ${unverified.length === 1 ? 'Un altro programma in ascolto non si è potuto verificare' : `Altri ${unverified.length} programmi in ascolto non si sono potuti verificare`}: ${unverified.slice(0, 4).map(plain).join('; ')}${more(unverified.length, 4)}.` : '')
         : ls.length
-          ? 'I programmi in ascolto su tutte le reti sono firmati e installati in cartelle protette.'
+          ? [unverifiedText, signedText, kernelText].filter(Boolean).join(' ')
           : 'Nessun programma accetta connessioni TCP da tutta la rete.',
       actions: risky.length ? (off ? ['enable-firewall', 'review-listening-app', 'check-file-origin'] : ['review-listening-app', 'check-file-origin']) : [],
     });

@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { analyze, autorunIssues } from '../src/engine';
+import { analyze, AUTORUN_CATEGORIES, autorunIssues } from '../src/engine';
 import type { AutorunEntry, Scan } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
@@ -22,13 +22,13 @@ const entry = (patch: Partial<AutorunEntry>): AutorunEntry => ({ category: 'logo
 describe('conteggi e testi delle voci', () => {
   it('conta per scheda le voci elencate, il totale, quelle di Microsoft, le voci da controllare e le categorie lette in parte', () => {
     const c = tabCounts(demoScan, autorunIssues(demoScan));
-    expect(c.logon).toEqual({ listed: 6, total: 14, microsoft: 2, issues: 3, denied: [] });
+    expect(c.logon).toEqual({ listed: 6, total: 8, microsoft: 2, issues: 3, denied: [] });
     expect(c.tasks.denied).toEqual(['tasks']);
     expect(c.tasks.issues).toBe(2);
     expect(c.browser.listed).toBe(3);
     expect(c.other.total).toBe(17);
     expect(c.other.listed).toBe(0);
-    expect(microsoftTotal(demoScan)).toBe(2 + 158 + 268 + 410 + 1 + 2 + 1 + 6 + 5 + 3);
+    expect(microsoftTotal(demoScan)).toBe(2 + 158 + 268 + 410 + 2 + 1 + 6 + 5 + 3);
     expect(AUTORUN_TABS.map((t) => t.id)).toEqual(['logon', 'tasks', 'services', 'drivers', 'wmi', 'browser', 'other']);
   });
 
@@ -47,6 +47,42 @@ describe('conteggi e testi delle voci', () => {
     const wmi = clinicScan.pc!.autoruns!.entries.find((e) => e.category === 'wmi')!;
     expect(entryDetails(wmi)).toEqual(['scrive nel registro eventi', 'collegata a un evento', 'spazio root\\subscription']);
     expect(entryState(entry({ enabled: false }))).toEqual({ text: 'disattivata', on: false });
+  });
+
+  it('booleani assenti nel JSON (omitempty) valgono falso: servizio fermo, sottoscrizione non collegata', () => {
+    // Steam Client Service nella demo: avvio manuale, fermo, l'agente non scrive running.
+    const steam = demoScan.pc!.autoruns!.entries.find((e) => e.name === 'Steam Client Service')!;
+    expect(steam.running).toBeUndefined();
+    expect(entryState(steam)).toEqual({ text: 'fermo', on: true });
+    expect(card(demoScan, { tab: 'services' })).toContain('>fermo<');
+    expect(entryState(entry({ category: 'drivers', start: 'boot' }))).toEqual({ text: 'fermo', on: true });
+    expect(entryDetails(entry({ category: 'wmi', consumer: 'commandline' }))).toEqual(['esegue un comando', 'non collegata a un evento']);
+  });
+
+  it('tipi di voce in italiano, come li scrive l\'agente; account non letto mai «LocalSystem»', () => {
+    const kinds: [string, string][] = [
+      ['runonceex', 'chiave RunOnceEx'],
+      ['policyrun', 'chiave Run dei criteri'],
+      ['load', 'valore load di Windows'],
+      ['lsa-auth', 'pacchetto di autenticazione (LSA)'],
+      ['lsa-security', 'pacchetto di sicurezza (LSA)'],
+      ['lsa-notify', 'notifica delle password (LSA)'],
+    ];
+    for (const [kind, text] of kinds) expect(entryDetails(entry({ kind, category: kind.startsWith('lsa') ? 'lsa' : 'logon' }))[0], kind).toBe(text);
+    const svc = entryDetails(entry({ category: 'services', start: 'auto' }));
+    expect(svc).toContain('account non letto');
+    expect(svc.join(' ')).not.toContain('LocalSystem');
+    expect(entryDetails(entry({ category: 'drivers', start: 'boot' })).join(' ')).not.toContain('account');
+  });
+
+  it('file mancante: il tono è quello del giudizio sulla voce, non sempre un avviso', () => {
+    const issues = autorunIssues(demoScan);
+    const sync = demoScan.pc!.autoruns!.entries.find((e) => e.name === 'AcmeSyncHelper')!;
+    const sev = issues.find((x) => x.entry === sync)!.severity;
+    expect(sev).toBe('info');
+    expect(entrySignature(sync, sev)).toEqual({ text: 'File mancante', tone: 'info' });
+    expect(entrySignature(entry({ file: { path: 'C:\\x.exe', missing: true } }))?.tone).toBe('unknown');
+    expect(card(demoScan)).toMatch(/<span class="c-info">(?:(?!<\/span><\/span>).)*File mancante/);
   });
 
   it('firma del file che conta: mancante, senza firma in AppData, comando interpretato, file eseguito da rundll32', () => {
@@ -69,7 +105,7 @@ describe('scheda Avvio automatico', () => {
   it('demo di casa: voci di Microsoft contate, voci da controllare in cima, categorie lette in parte, schede con i conteggi', () => {
     const html = card(demoScan);
     expect(html).toContain('Avvio automatico');
-    expect(html).toContain('Le voci di Windows firmate da Microsoft non si elencano: sono 856');
+    expect(html).toContain('Le voci di Windows firmate da Microsoft non si elencano: sono 855');
     expect(html).toContain('aria-label="Voci da controllare"');
     expect(html.indexOf('AcmeShare')).toBeLessThan(html.indexOf('Categorie dell&#x27;avvio automatico'));
     expect(html).toContain('Acme Coupon Helper');
@@ -86,7 +122,7 @@ describe('scheda Avvio automatico', () => {
     expect(html).toContain('role="tabpanel"');
     // Prima scheda con voci da controllare: Accesso.
     expect(html).toContain('aria-label="Accesso"');
-    expect(html).toContain('14 voci in tutto: 2 di Windows firmate da Microsoft, non elencate; 6 elencate qui.');
+    expect(html).toContain('8 voci in tutto: 2 di Windows firmate da Microsoft, non elencate; 6 elencate qui.');
     expect(html).toContain('HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run');
     expect(html).toContain('File mancante');
     expect(html).toContain('Passi nel piano d&#x27;azione');
@@ -99,6 +135,8 @@ describe('scheda Avvio automatico', () => {
     expect(tasks).toContain('Senza i permessi di amministratore questa categoria si legge solo in parte');
     const browser = card(demoScan, { tab: 'browser' });
     expect(browser).toContain('Estensione');
+    // Il totale dell'agente comprende i componenti interni del browser: si dice quanti sono.
+    expect(browser).toContain('7 voci in tutto: 3 elencate qui; 4 componenti interni del browser, non elencati.');
     expect(browser).toContain('acmecouponhelperacmecouponhelperac');
     expect(browser).toContain('imposta da criteri');
     const other = card(clinicScan, { tab: 'other' });
@@ -135,6 +173,41 @@ describe('scheda Avvio automatico', () => {
   });
 
   it('nessun profilo utente o nome di profilo del browser nella scheda', () => {
-    for (const s of [demoScan, clinicScan]) for (const t of AUTORUN_TABS) expect(card(s, { tab: t.id })).not.toMatch(/C:\\Users\\/i);
+    for (const s of [demoScan, clinicScan]) {
+      for (const t of AUTORUN_TABS) expect(card(s, { tab: t.id })).not.toMatch(/C:\\Users\\/i);
+      // Dei profili dei browser solo il numero, mai il nome.
+      for (const e of s.pc!.autoruns!.entries) if (e.profile !== undefined) expect(typeof e.profile, e.name).toBe('number');
+      expect(card(s, { tab: 'browser' })).not.toMatch(/profilo (?!\d)|Default|Profile \d/);
+    }
+  });
+
+  it('i dati delle demo sono quelli che l\'agente può produrre', () => {
+    for (const s of [demoScan, clinicScan]) {
+      const ar = s.pc!.autoruns!;
+      for (const c of AUTORUN_CATEGORIES) {
+        const n = ar.counts?.[c];
+        const listed = ar.entries.filter((e) => e.category === c).length;
+        if (!n) {
+          expect(listed, c).toBe(0);
+          continue;
+        }
+        // Totale = voci di Microsoft non elencate + voci elencate (per le estensioni anche i componenti interni).
+        if (c === 'browser') expect(n.total, c).toBeGreaterThanOrEqual(listed + (n.microsoft ?? 0));
+        else expect(n.total, c).toBe((n.microsoft ?? 0) + listed);
+      }
+      // Le sottoscrizioni WMI non hanno un file firmato: non si contano mai come voci di Microsoft.
+      expect(ar.counts?.wmi?.microsoft ?? 0).toBe(0);
+      for (const e of ar.entries) {
+        if (e.category === 'services') expect(e.scope, e.name).toBeUndefined();
+        expect(e.location ?? '', e.name).not.toMatch(/%PROGRAMDATA%/i);
+      }
+      const procs = s.pc!.procs!;
+      // Unreadable conta esattamente i processi non apribili, che l'agente segna con owner 'unknown'.
+      expect(procs.unreadable).toBe(procs.items.filter((p) => p.access === 'none').length);
+      for (const p of procs.items.filter((x) => x.access === 'none')) expect(p.owner, p.name).toBe('unknown');
+      // Gli pseudo-processi del nucleo non hanno owner; i processi di Polaris si aprono e hanno il file.
+      expect(procs.items.find((p) => p.pid === 4)!.owner).toBeUndefined();
+      for (const p of procs.items.filter((x) => x.polaris)) expect(p.file?.path, p.name).toBeTruthy();
+    }
   });
 });

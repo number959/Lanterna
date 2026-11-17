@@ -24,26 +24,49 @@ import type { Analysis, EventKind, Finding, ReachResult, Scan, Severity } from '
 
 const TAG: Record<Severity, string> = { ok: '[ OK ]', info: '[INFO]', warn: '[ !! ]', crit: '[CRIT]', unknown: '[ ?? ]' };
 
-function wrap(text: string, width: number, indent: string): string {
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
+/**
+ * Divide il testo in righe: la prima larga al più first caratteri, le altre
+ * rest. Una parola più lunga della riga (un percorso dello Store, un comando)
+ * si spezza dove finisce la riga e continua all'inizio della successiva,
+ * senza spazi aggiunti dentro la parola.
+ */
+function fill(text: string, first: number, rest: number): string[] {
+  const out: string[] = [];
   let line = '';
-  for (const w of words) {
-    if ((line + ' ' + w).trim().length > width) {
-      lines.push(line);
-      line = w;
-    } else line = (line ? line + ' ' : '') + w;
+  for (let w of text.split(/\s+/)) {
+    while (w) {
+      const max = Math.max(1, out.length ? rest : first);
+      if (!line) {
+        if (w.length <= max) {
+          line = w;
+          w = '';
+        } else {
+          out.push(w.slice(0, max));
+          w = w.slice(max);
+        }
+      } else if (line.length + 1 + w.length <= max) {
+        line += ' ' + w;
+        w = '';
+      } else {
+        out.push(line);
+        line = '';
+      }
+    }
   }
-  if (line) lines.push(line);
-  return lines.map((l) => indent + l).join('\n');
+  if (line) out.push(line);
+  return out;
+}
+
+function wrap(text: string, width: number, indent: string): string {
+  return fill(text, width, width)
+    .map((l) => indent + l)
+    .join('\n');
 }
 
 /** Come wrap, ma con rientro diverso per la prima riga e per le successive. */
 function hang(text: string, width: number, first: string, rest: string): string {
-  const lines = wrap(text, width - first.length, '').split('\n');
-  if (lines.length === 1) return first + lines[0];
-  const tail = wrap(lines.slice(1).join(' '), width - rest.length, rest);
-  return `${first}${lines[0]}\n${tail}`;
+  const lines = fill(text, width - first.length, width - rest.length);
+  return lines.length ? lines.map((l, i) => (i ? rest : first) + l).join('\n') : first;
 }
 
 function bar(score: number, width = 30): string {
@@ -176,7 +199,7 @@ function procsDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
   out.push(` Processi (${num(items.length, 'processo', 'processi')} a fine analisi${data.elevated ? ', da amministratore' : ''})`);
   out.push(
     hang(
-      `Programmi: ${groups.length}; firma verificata ${ok}, senza firma ${none}${other ? `, firma da controllare ${other}` : ''}${unchecked ? `, non verificati ${unchecked}` : ''}${data.unreadable ? `; ${num(data.unreadable, 'processo non leggibile', 'processi non leggibili')} senza amministratore` : ''}${data.partial ? '; lettura incompleta' : ''}`,
+      `Programmi: ${groups.length}; firma verificata ${ok}, senza firma ${none}${other ? `, firma da controllare ${other}` : ''}${unchecked ? `, non verificati ${unchecked}` : ''}${data.unreadable ? `; ${num(data.unreadable, 'processo non leggibile', 'processi non leggibili')}${data.elevated ? '' : ' senza amministratore'}` : ''}${data.partial ? '; lettura incompleta' : ''}`,
       W,
       '   ',
       '     ',
@@ -186,12 +209,15 @@ function procsDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
     const ls = listeners(scan);
     out.push(
       hang(
-        `In ascolto su tutte le reti: ${ls.length ? ls.map((l) => `${l.proc.name} (${l.ports.slice(0, 4).join(', ')})${l.risky ? ' da controllare' : ''}`).join('; ') : 'nessun programma'}`,
+        `In ascolto su tutte le reti: ${ls.length ? ls.map((l) => `${l.proc.name} (${l.ports.slice(0, 4).join(', ')})${l.risky ? ' da controllare' : l.unverified ? ' non verificato' : ''}`).join('; ') : 'nessun programma'}`,
         W,
         '   ',
         '     ',
       ),
     );
+  } else {
+    // connsRead falso non arriva nel JSON (omitempty): tabelle non lette, non «nessun programma».
+    out.push('   In ascolto su tutte le reti: non letto (tabelle delle connessioni non leggibili)');
   }
   if (verbose)
     for (const g of groups) {

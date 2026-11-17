@@ -15,6 +15,15 @@ import type { AutorunEntry, AutorunsData, FileFacts, FileSignature, FolderKind, 
 // sulla porta DICOM, il servizio dei referti con il percorso senza virgolette
 // (nessun file intercettore), una sottoscrizione WMI dell'antivirus aziendale
 // che scrive nel registro eventi, un'estensione imposta dall'organizzazione.
+//
+// I dati sono quelli che l'agente può produrre (lo controlla
+// test/autoruns-ui.test.ts): per ogni categoria il totale è la somma delle voci
+// di Microsoft non elencate e di quelle elencate (per le estensioni anche i
+// componenti interni del browser, contati e non elencati); «unreadable» è il
+// numero dei processi con access 'none', che hanno owner 'unknown'; gli
+// pseudo-processi del nucleo (System) non hanno owner; i processi di Polaris
+// si aprono e hanno il file; i servizi non hanno scope; le cartelle sono
+// scritte per esteso.
 
 const sig = (signer: string, extra: Partial<FileSignature> = {}): FileSignature => ({ status: 'valid', signer, ...extra });
 const file = (path: string, folder: FolderKind, signature?: FileSignature, extra: Partial<FileFacts> = {}): FileFacts => ({ path, folder, signature, ...extra });
@@ -23,6 +32,11 @@ const win = (path: string): FileFacts => file(path, 'windows', sig('Microsoft Wi
 const msCorp = (path: string, folder: FolderKind): FileFacts => file(path, folder, sig('Microsoft Corporation', { microsoft: true }));
 
 const SVCHOST = 'C:\\Windows\\System32\\svchost.exe';
+/** Polaris e la sua finestra WebView2: esclusi dai giudizi, ma l'agente li apre come gli altri processi dell'utente. */
+const polarisExe = file('%USERPROFILE%\\Downloads\\STARNET-Polaris\\STARNET-Polaris.exe', 'downloads', { status: 'unsigned' }, { description: 'STARNET Polaris' });
+const webview = msCorp('C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\142.0.3595.65\\msedgewebview2.exe', 'programFiles');
+/** Processo di un altro account che senza amministratore non si apre: l'agente ne conosce solo il nome. */
+const closed = { access: 'none' as const, owner: 'unknown' as const };
 
 // ---------------------------------------------------------------- Casa
 
@@ -35,17 +49,17 @@ export const homeProcs: ProcessesData = {
   elevated: false,
   connsRead: true,
   // Processi di altri account che senza amministratore non si aprono (elencati sotto con access: 'none').
-  unreadable: 7,
+  unreadable: 6,
   items: [
-    { pid: 4, name: 'System', owner: 'system', listen: [{ proto: 'tcp', port: 445, scope: 'all' }, { proto: 'tcp', port: 139, scope: 'specific' }] },
-    { pid: 412, parentPid: 4, name: 'smss.exe', access: 'none' },
-    { pid: 640, name: 'csrss.exe', access: 'none' },
-    { pid: 732, name: 'wininit.exe', access: 'none' },
-    { pid: 880, parentPid: 732, name: 'services.exe', access: 'none' },
-    { pid: 896, parentPid: 732, name: 'lsass.exe', access: 'none' },
+    { pid: 4, name: 'System', listen: [{ proto: 'tcp', port: 445, scope: 'all' }, { proto: 'tcp', port: 139, scope: 'specific' }] },
+    { pid: 412, parentPid: 4, name: 'smss.exe', ...closed },
+    { pid: 640, name: 'csrss.exe', ...closed },
+    { pid: 732, name: 'wininit.exe', ...closed },
+    { pid: 880, parentPid: 732, name: 'services.exe', ...closed },
+    { pid: 896, parentPid: 732, name: 'lsass.exe', ...closed },
     { pid: 1012, parentPid: 880, name: 'svchost.exe', file: win(SVCHOST), owner: 'system', services: ['RpcSs', 'RpcEptMapper'], listen: [{ proto: 'tcp', port: 135, scope: 'all' }] },
     { pid: 1468, parentPid: 880, name: 'svchost.exe', file: win(SVCHOST), owner: 'system', services: ['Dnscache'], listen: [{ proto: 'udp', port: 5353, scope: 'all' }] },
-    { pid: 1820, parentPid: 880, name: 'svchost.exe', access: 'none' },
+    { pid: 1820, parentPid: 880, name: 'svchost.exe', ...closed },
     { pid: 2216, parentPid: 880, name: 'MsMpEng.exe', file: msCorp('C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.24090.11-0\\MsMpEng.exe', 'programData'), owner: 'system', memoryMB: 214, cpuPct: 6.1 },
     { pid: 4720, parentPid: 4688, name: 'explorer.exe', file: win('C:\\Windows\\explorer.exe'), owner: 'self', memoryMB: 162, cpuPct: 0.6 },
     { pid: 5104, parentPid: 4720, name: 'SecurityHealthSystray.exe', file: win('C:\\Windows\\System32\\SecurityHealthSystray.exe'), owner: 'self' },
@@ -95,8 +109,8 @@ export const homeProcs: ProcessesData = {
     },
     { pid: 7610, parentPid: 4720, name: 'phototray.exe', file: homeAcmePhoto, owner: 'self', arch: 'x86', memoryMB: 38 },
     // STARNET Polaris e la sua finestra: esclusi dai giudizi.
-    { pid: 8120, parentPid: 4720, name: 'STARNET-Polaris.exe', polaris: true, owner: 'self', listen: [{ proto: 'tcp', port: 8737, scope: 'local' }] },
-    { pid: 8164, parentPid: 8120, name: 'msedgewebview2.exe', polaris: true, owner: 'self' },
+    { pid: 8120, parentPid: 4720, name: 'STARNET-Polaris.exe', polaris: true, file: polarisExe, owner: 'self', listen: [{ proto: 'tcp', port: 8737, scope: 'local' }] },
+    { pid: 8164, parentPid: 8120, name: 'msedgewebview2.exe', polaris: true, file: webview, owner: 'self' },
   ],
 };
 
@@ -116,12 +130,14 @@ export const homeAutoruns: AutorunsData = {
   // Senza amministratore si vedono solo le attività leggibili da questo utente.
   denied: ['tasks'],
   counts: {
-    logon: { total: 14, microsoft: 2 },
-    tasks: { total: 162, microsoft: 158 },
-    services: { total: 274, microsoft: 268 },
-    drivers: { total: 421, microsoft: 410 },
-    wmi: { total: 1, microsoft: 1 },
-    browser: { total: 3 },
+    logon: { total: 8, microsoft: 2 },
+    tasks: { total: 160, microsoft: 158 },
+    services: { total: 269, microsoft: 268 },
+    drivers: { total: 411, microsoft: 410 },
+    // Le sottoscrizioni WMI non hanno un file firmato: l'agente le elenca tutte.
+    wmi: { total: 1 },
+    // 3 estensioni elencate e 4 componenti interni di Chrome ed Edge, contati e non elencati.
+    browser: { total: 7 },
     winlogon: { total: 2, microsoft: 2 },
     hijacks: { total: 1, microsoft: 1 },
     lsa: { total: 6, microsoft: 6 },
@@ -164,11 +180,12 @@ export const homeAutoruns: AutorunsData = {
       lastRun: '2026-10-12T18:40:00Z',
       lastResult: '0x0',
     },
+    // Avvio manuale e fermo: l'agente non scrive running (omitempty).
     {
       category: 'services',
       kind: 'service',
-      scope: 'machine',
       name: 'Steam Client Service',
+      location: 'HKLM\\System\\CurrentControlSet\\Services\\Steam Client Service',
       command: '"C:\\Program Files (x86)\\Common Files\\Steam\\steamservice.exe" /RunAsService',
       file: file('C:\\Program Files (x86)\\Common Files\\Steam\\steamservice.exe', 'programFiles', sig('Valve Corp.')),
       enabled: true,
@@ -185,6 +202,8 @@ export const homeAutoruns: AutorunsData = {
       start: 'system',
       running: true,
     },
+    // Il consumer che Windows crea da sé: si elenca (nessun file da verificare) ma non si giudica.
+    { category: 'wmi', kind: 'wmi', name: 'SCM Event Log Consumer', namespace: 'root\\subscription', consumer: 'eventlog', bound: true, enabled: true },
     // Estensioni: nessun nome di profilo, solo il numero.
     { category: 'browser', kind: 'extension', name: 'Acme Coupon Helper', browser: 'chrome', extId: 'acmecouponhelperacmecouponhelperac', version: '3.1.4', source: 'policy', profile: 1, allSites: true, enabled: true },
     { category: 'browser', kind: 'extension', name: 'Traduttore rapido', browser: 'chrome', extId: 'traduttorerapidotraduttorerapidotr', version: '1.12.0', source: 'store', profile: 1, allSites: true, enabled: true },
@@ -202,12 +221,12 @@ export const clinicProcs: ProcessesData = {
   at: '2026-10-14T09:12:16Z',
   elevated: false,
   connsRead: true,
-  unreadable: 4,
+  unreadable: 3,
   items: [
-    { pid: 4, name: 'System', owner: 'system', listen: [{ proto: 'tcp', port: 445, scope: 'all' }] },
-    { pid: 620, name: 'csrss.exe', access: 'none' },
-    { pid: 860, name: 'services.exe', access: 'none' },
-    { pid: 876, name: 'lsass.exe', access: 'none' },
+    { pid: 4, name: 'System', listen: [{ proto: 'tcp', port: 445, scope: 'all' }] },
+    { pid: 620, name: 'csrss.exe', ...closed },
+    { pid: 860, name: 'services.exe', ...closed },
+    { pid: 876, name: 'lsass.exe', ...closed },
     { pid: 1010, parentPid: 860, name: 'svchost.exe', file: win(SVCHOST), owner: 'system', services: ['RpcSs'], listen: [{ proto: 'tcp', port: 135, scope: 'all' }] },
     { pid: 2380, parentPid: 860, name: 'EndpointAgent.exe', file: endpoint, owner: 'system', memoryMB: 210, cpuPct: 1.2, conns: { lan: 2, remotePorts: [{ port: 443, count: 2 }] } },
     { pid: 2412, parentPid: 860, name: 'EndpointAgent.exe', file: endpoint, owner: 'system', memoryMB: 100, cpuPct: 0.7 },
@@ -227,8 +246,8 @@ export const clinicProcs: ProcessesData = {
       arch: 'x86',
       listen: [{ proto: 'tcp', port: 9443, scope: 'local' }],
     },
-    { pid: 6120, parentPid: 4410, name: 'STARNET-Polaris.exe', polaris: true, owner: 'self', listen: [{ proto: 'tcp', port: 8737, scope: 'local' }] },
-    { pid: 6188, parentPid: 6120, name: 'msedgewebview2.exe', polaris: true, owner: 'self' },
+    { pid: 6120, parentPid: 4410, name: 'STARNET-Polaris.exe', polaris: true, file: polarisExe, owner: 'self', listen: [{ proto: 'tcp', port: 8737, scope: 'local' }] },
+    { pid: 6188, parentPid: 6120, name: 'msedgewebview2.exe', polaris: true, file: webview, owner: 'self' },
   ],
 };
 
@@ -236,11 +255,11 @@ export const clinicAutoruns: AutorunsData = {
   elevated: false,
   denied: ['tasks'],
   counts: {
-    logon: { total: 7, microsoft: 3 },
-    tasks: { total: 141, microsoft: 139 },
-    services: { total: 251, microsoft: 244 },
-    drivers: { total: 398, microsoft: 391 },
-    wmi: { total: 2, microsoft: 1 },
+    logon: { total: 6, microsoft: 3 },
+    tasks: { total: 139, microsoft: 139 },
+    services: { total: 247, microsoft: 244 },
+    drivers: { total: 392, microsoft: 391 },
+    wmi: { total: 2 },
     browser: { total: 1 },
     winlogon: { total: 2, microsoft: 2 },
     hijacks: { total: 1, microsoft: 1 },
@@ -256,7 +275,7 @@ export const clinicAutoruns: AutorunsData = {
       kind: 'folder',
       scope: 'machine',
       name: 'Scanner referti',
-      location: '%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp',
+      location: 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp',
       command: '"C:\\Program Files\\Acme Referti\\scanner.exe"',
       file: file('C:\\Program Files\\Acme Referti\\scanner.exe', 'programFiles', sig('Acme Medical Software S.r.l.')),
       enabled: true,
@@ -264,9 +283,8 @@ export const clinicAutoruns: AutorunsData = {
     {
       category: 'services',
       kind: 'service',
-      scope: 'machine',
       name: 'AcmeRefertiSvc',
-      location: 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\AcmeRefertiSvc',
+      location: 'HKLM\\System\\CurrentControlSet\\Services\\AcmeRefertiSvc',
       command: 'C:\\Program Files (x86)\\Acme Referti\\Servizio Referti\\refsvc.exe -service',
       file: refSvc,
       enabled: true,
@@ -279,9 +297,8 @@ export const clinicAutoruns: AutorunsData = {
     {
       category: 'services',
       kind: 'service',
-      scope: 'machine',
       name: 'AcmePacsGw',
-      location: 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\AcmePacsGw',
+      location: 'HKLM\\System\\CurrentControlSet\\Services\\AcmePacsGw',
       command: '"C:\\Program Files\\Acme PACS Gateway\\pacsgw.exe" --service',
       file: pacsGw,
       enabled: true,
@@ -292,8 +309,8 @@ export const clinicAutoruns: AutorunsData = {
     {
       category: 'services',
       kind: 'service',
-      scope: 'machine',
       name: 'AcmeEndpoint',
+      location: 'HKLM\\System\\CurrentControlSet\\Services\\AcmeEndpoint',
       command: '"C:\\Program Files\\Acme Endpoint\\EndpointAgent.exe"',
       file: endpoint,
       enabled: true,
@@ -320,6 +337,7 @@ export const clinicAutoruns: AutorunsData = {
     },
     // L'antivirus aziendale registra i suoi eventi con una sottoscrizione WMI.
     { category: 'wmi', kind: 'wmi', name: 'AcmeEndpointMonitor', namespace: 'root\\subscription', consumer: 'eventlog', bound: true, enabled: true },
+    { category: 'wmi', kind: 'wmi', name: 'SCM Event Log Consumer', namespace: 'root\\subscription', consumer: 'eventlog', bound: true, enabled: true },
     { category: 'browser', kind: 'extension', name: 'Acme SSO', browser: 'edge', extId: 'acmessoacmessoacmessoacmessoacmess', version: '4.0.1', source: 'policy', profile: 1, allSites: true, enabled: true },
   ],
 };
