@@ -48,6 +48,7 @@ import (
 	"lanterna/internal/netdisc"
 	"lanterna/internal/pcinfo"
 	"lanterna/internal/probe"
+	"lanterna/internal/procs"
 	"lanterna/internal/scan"
 	"lanterna/internal/sensors"
 	"lanterna/internal/server"
@@ -117,6 +118,12 @@ Uso:
                                  codice di arresto, parametri, driver indicato come
                                  indizio, impostazioni dei dump; i file si leggono solo
                                  avviando il Prompt dei comandi come amministratore
+      --json                     stampa il risultato in JSON
+  polaris-cli procs              processi in esecuzione (come Process Explorer e TCPView):
+                                 file, firma digitale verificata da Windows, account (solo
+                                 la categoria), servizi, porte in ascolto e connessioni
+                                 riassunte, senza indirizzi remoti; senza amministratore
+                                 alcuni processi si conoscono solo per nome. Sola lettura
       --json                     stampa il risultato in JSON
   polaris-cli wifi-survey STANZA misura il Wi-Fi nel punto in cui ti trovi, per la mappa
                                  per stanza: segnale una volta al secondo, cambi di access
@@ -202,6 +209,8 @@ func main() {
 		err = runCerts(args[1:])
 	case args[0] == "crashes":
 		err = runCrashes(args[1:])
+	case args[0] == "procs":
+		err = runProcs(args[1:])
 	case args[0] == "wifi-survey":
 		err = runWifiSurvey(args[1:])
 	case args[0] == "speedtest":
@@ -365,6 +374,7 @@ func startServer(port int) (*server.Server, string, error) {
 			return certs.Check(ctx, t, certs.Options{})
 		},
 		Crashes:    crash.Read,
+		Processes:  func(ctx context.Context) (*scan.ProcessesData, error) { return procs.Read(ctx, nil) },
 		SpaceOpen:  space.Open,
 		OpenTool:   func(id, target string) error { return tools.Open(id, target, fetcher) },
 		OpenRouter: tools.OpenRouter,

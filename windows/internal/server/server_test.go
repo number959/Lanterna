@@ -50,6 +50,9 @@ func (stubPlatform) PC(context.Context) (*scan.PcData, error) {
 func (stubPlatform) SampleLoad(context.Context, time.Duration) (*float64, []scan.ProcessInfo) {
 	return nil, nil
 }
+func (stubPlatform) Procs(context.Context, map[uint32]float64) (*scan.ProcessesData, error) {
+	return nil, errors.New("misura disponibile solo su Windows")
+}
 
 type stubPinger struct{}
 
@@ -1116,6 +1119,64 @@ func TestCrashesEndpoint(t *testing.T) {
 	}
 	if r := do(t, h, "GET", "/api/crashes", map[string]string{"Host": "evil.example:8737"}); r.Code == 200 {
 		t.Fatalf("da un altro nome: %d", r.Code)
+	}
+}
+
+func TestProcessesEndpoint(t *testing.T) {
+	s := newServer()
+	h := s.Handler()
+	if r := do(t, h, "GET", "/api/processes", nil); r.Code != http.StatusNotImplemented {
+		t.Fatalf("non disponibile: %d", r.Code)
+	}
+	var mu sync.Mutex
+	calls, running, overlap := 0, 0, false
+	s.Processes = func(ctx context.Context) (*scan.ProcessesData, error) {
+		mu.Lock()
+		calls++
+		running++
+		overlap = overlap || running > 1
+		mu.Unlock()
+		defer func() { mu.Lock(); running--; mu.Unlock() }()
+		if dl, ok := ctx.Deadline(); !ok || time.Until(dl) > 30*time.Second {
+			t.Error("lettura senza tempo massimo di 30 s")
+		}
+		time.Sleep(20 * time.Millisecond)
+		return &scan.ProcessesData{At: "2026-11-17T10:00:00Z", ConnsRead: true, Items: []scan.ProcessDetail{
+			{PID: 4, Name: "System", Listen: []scan.ListenPort{{Proto: "tcp", Port: 445, Scope: "all"}}},
+			{PID: 812, Name: "svchost.exe", Owner: "system", Services: []string{"Dnscache"}, File: &scan.FileFacts{Path: `C:\Windows\System32\svchost.exe`, Folder: "windows", Signature: &scan.FileSignature{Status: "valid", Signer: "Microsoft Windows", Catalog: true, Microsoft: true}}},
+		}}, nil
+	}
+	// Due richieste insieme: una lettura alla volta.
+	done := make(chan *httptest.ResponseRecorder, 2)
+	for i := 0; i < 2; i++ {
+		go func() { done <- do(t, h, "GET", "/api/processes", nil) }()
+	}
+	for i := 0; i < 2; i++ {
+		r := <-done
+		if r.Code != 200 || !strings.Contains(r.Body.String(), `"connsRead":true`) || !strings.Contains(r.Body.String(), `"microsoft":true`) {
+			t.Fatalf("lettura: %d %s", r.Code, r.Body)
+		}
+	}
+	if calls != 2 || overlap {
+		t.Fatalf("letture: %d, sovrapposte: %v", calls, overlap)
+	}
+	s.Processes = func(context.Context) (*scan.ProcessesData, error) {
+		return nil, errors.New("elenco dei processi non leggibile: accesso negato")
+	}
+	if r := do(t, h, "GET", "/api/processes", nil); r.Code != http.StatusInternalServerError || !strings.Contains(r.Body.String(), "accesso negato") {
+		t.Fatalf("errore: %d %s", r.Code, r.Body)
+	}
+	s.Processes = func(context.Context) (*scan.ProcessesData, error) {
+		return nil, fmt.Errorf("lettura dei processi disponibile solo su Windows: %w", errors.ErrUnsupported)
+	}
+	if r := do(t, h, "GET", "/api/processes", nil); r.Code != http.StatusNotImplemented || !strings.Contains(r.Body.String(), "solo su Windows") {
+		t.Fatalf("non su questo sistema: %d %s", r.Code, r.Body)
+	}
+	if r := do(t, h, "GET", "/api/processes", map[string]string{"Host": "evil.example:8737"}); r.Code == 200 {
+		t.Fatalf("da un altro nome: %d", r.Code)
+	}
+	if r := do(t, h, "POST", "/api/processes", map[string]string{"Content-Type": "application/json"}); r.Code == 200 {
+		t.Fatalf("POST: %d", r.Code)
 	}
 }
 

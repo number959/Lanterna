@@ -16,6 +16,7 @@ import (
 	"lanterna/internal/netdisc"
 	"lanterna/internal/pcinfo"
 	"lanterna/internal/probe"
+	"lanterna/internal/procs"
 	"lanterna/internal/scan"
 	"lanterna/internal/winapi"
 )
@@ -35,6 +36,16 @@ type Platform interface {
 	// SampleLoad misura carico della CPU e processi più pesanti per la
 	// durata indicata.
 	SampleLoad(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo)
+	// Procs legge i processi con file, firma e connessioni (come Process
+	// Explorer e TCPView); cpu sono i carichi per PID della misura del
+	// carico, nil se non misurati.
+	Procs(ctx context.Context, cpu map[uint32]float64) (*scan.ProcessesData, error)
+}
+
+// loadByPID è facoltativa: una piattaforma che la offre dà, dalla stessa
+// misura del carico, anche il carico di ogni PID per la fase "procs".
+type loadByPID interface {
+	SampleLoadByPID(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo, map[uint32]float64)
 }
 
 // readRoutes legge la tabella di instradamento (sostituibile nei test).
@@ -55,6 +66,12 @@ func (Native) Domain() string                                           { return
 func (Native) PC(ctx context.Context) (*scan.PcData, error)             { return pcinfo.Collect(ctx) }
 func (Native) SampleLoad(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo) {
 	return pcinfo.SampleLoad(ctx, d)
+}
+func (Native) SampleLoadByPID(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo, map[uint32]float64) {
+	return pcinfo.SampleLoadByPID(ctx, d)
+}
+func (Native) Procs(ctx context.Context, cpu map[uint32]float64) (*scan.ProcessesData, error) {
+	return procs.Read(ctx, cpu)
 }
 
 // Network raccoglie le dipendenze di rete sostituibili nei test.
@@ -132,7 +149,12 @@ var stepDefs = []Step{
 	{ID: "lan", Label: "Dispositivi in rete"},
 	{ID: "pc", Label: "Computer: sistema, dischi ed eventi"},
 	{ID: "load", Label: "Computer: carico e processi"},
+	{ID: "procs", Label: "Computer: processi, firme e connessioni"},
 }
+
+// procsTimeout limita la fase "procs" (la lettura stessa si ferma a 25 s e
+// dichiara il risultato parziale).
+const procsTimeout = 30 * time.Second
 
 // Progress viene notificato a ogni cambio di stato.
 type Progress func(steps []Step)
@@ -442,11 +464,18 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 	})
 
 	// 4. Carico della CPU a misure concluse, per non contare l'analisi stessa.
+	var cpuByPID map[uint32]float64
 	if s.PC == nil {
 		tr.set("load", "error") // il motivo è già nell'errore della fase "pc"
 	} else {
 		step("load", func() error {
-			load, procs := c.Platform.SampleLoad(ctx, c.Opt.LoadSample)
+			var load *float64
+			var procs []scan.ProcessInfo
+			if lp, ok := c.Platform.(loadByPID); ok {
+				load, procs, cpuByPID = lp.SampleLoadByPID(ctx, c.Opt.LoadSample)
+			} else {
+				load, procs = c.Platform.SampleLoad(ctx, c.Opt.LoadSample)
+			}
 			if load == nil && len(procs) == 0 {
 				return fmt.Errorf("carico della CPU non misurabile")
 			}
@@ -455,6 +484,27 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 			}
 			s.PC.CPU.LoadPct = load
 			s.PC.Processes = procs
+			return nil
+		})
+	}
+
+	// 5. Processi, firme e connessioni dopo il carico, in sequenza: la
+	// verifica delle firme legge i file e falserebbe la misura. Le tabelle
+	// delle connessioni si leggono qui, a misure di rete concluse.
+	if s.PC == nil {
+		tr.set("procs", "error") // il motivo è già nell'errore della fase "pc"
+	} else {
+		step("procs", func() error {
+			pctx, cancel := context.WithTimeout(ctx, procsTimeout)
+			defer cancel()
+			p, err := c.Platform.Procs(pctx, cpuByPID)
+			if p == nil {
+				if err == nil {
+					err = fmt.Errorf("processi non letti")
+				}
+				return err
+			}
+			s.PC.Procs = p
 			return nil
 		})
 	}

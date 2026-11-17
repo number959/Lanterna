@@ -54,9 +54,17 @@ func (c *Checker) Facts(ctx context.Context, path string) *scan.FileFacts {
 	if path == "" {
 		return &out
 	}
-	st, err := os.Stat(path)
+	// Un processo a 32 bit su Windows a 64 bit legge System32 attraverso
+	// Sysnative, altrimenti vedrebbe i file di SysWOW64 (nativePath).
+	np := nativePath(path)
+	st, err := os.Stat(np)
 	if err != nil || st.IsDir() {
 		out.Missing = err != nil && os.IsNotExist(err)
+		if err != nil && !out.Missing {
+			// Il file c'è ma non si legge (per esempio nel profilo di un
+			// altro utente): firma non verificabile, non «non firmato».
+			out.Signature = &scan.FileSignature{Status: "unreadable"}
+		}
 		return &out
 	}
 	key := strings.ToLower(path)
@@ -68,9 +76,15 @@ func (c *Checker) Facts(ctx context.Context, path string) *scan.FileFacts {
 		return &f
 	}
 	c.mu.Unlock()
-	if ctx.Err() == nil {
-		out.Signature = verify(ctx, path)
-		out.Company, out.Description, out.Version = versionInfo(path)
+	if ctx.Err() != nil {
+		// Tempo finito: nessuna verifica, e niente cache, così la lettura
+		// successiva la fa.
+		return &out
+	}
+	out.Signature = verify(ctx, np)
+	out.Company, out.Description, out.Version = versionInfo(np)
+	if ctx.Err() != nil {
+		return &out // verifica forse interrotta: niente cache
 	}
 	c.mu.Lock()
 	if c.cache == nil {
