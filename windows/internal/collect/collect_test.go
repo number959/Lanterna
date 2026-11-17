@@ -100,6 +100,10 @@ func (f *fakePlatform) Procs(ctx context.Context, cpu map[uint32]float64) (*scan
 	}
 	return &scan.ProcessesData{At: "2026-11-17T10:00:00Z", Items: []scan.ProcessDetail{{PID: 4, Name: "System"}}, ConnsRead: true}, nil
 }
+func (f *fakePlatform) Autoruns(context.Context) (*scan.AutorunsData, error) {
+	return &scan.AutorunsData{Entries: []scan.AutorunEntry{{Category: "logon", Kind: "run", Name: "Prova", Enabled: true}},
+		Counts: map[string]scan.AutorunCount{"logon": {Total: 1}, "services": {Total: 120, Microsoft: 115}}}, nil
+}
 
 func fakeNetwork(tcpOK bool) Network {
 	return Network{
@@ -175,6 +179,9 @@ func TestRunHealthyNetwork(t *testing.T) {
 	}
 	if s.PC.Procs == nil || len(s.PC.Procs.Items) != 1 || !s.PC.Procs.ConnsRead {
 		t.Fatalf("processi: %+v", s.PC.Procs)
+	}
+	if a := s.PC.Autoruns; a == nil || len(a.Entries) != 1 || a.Counts["services"].Total != 120 {
+		t.Fatalf("avvio automatico: %+v", a)
 	}
 	last := updates[len(updates)-1]
 	for _, st := range last {
