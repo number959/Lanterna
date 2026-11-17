@@ -20,6 +20,11 @@ func SampleLoad(ctx context.Context, d time.Duration) (*float64, []scan.ProcessI
 	return nil, nil
 }
 
+// SampleLoadByPID è disponibile solo su Windows.
+func SampleLoadByPID(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo, map[uint32]float64) {
+	return nil, nil, nil
+}
+
 // CPULoad è disponibile solo su Windows.
 func CPULoad(ctx context.Context, d time.Duration) *float64 { return nil }
 

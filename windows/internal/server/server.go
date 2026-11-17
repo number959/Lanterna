@@ -36,6 +36,9 @@
 //	                    scaricato o installato, o il sito ufficiale
 //	                    ({"tool": "cpu-z", "target": "site"})
 //	GET  /api/crashes  rilegge file e impostazioni delle schermate blu (solo letture)
+//	GET  /api/processes processi in esecuzione con firma digitale e connessioni
+//	                    riassunte, come Process Explorer e TCPView (solo letture;
+//	                    mai indirizzi remoti, righe di comando, SID o nomi utente)
 //	POST /api/wifi/survey misura il Wi-Fi in un punto per la mappa per stanza
 //	                    ({"room": "Soggiorno", "seconds": 15, "scan": true})
 //	GET  /api/wifi/survey avanzamento ed esito della misura
@@ -148,6 +151,11 @@ type Server struct {
 	// leggere gli stessi file due volte insieme.
 	Crashes   func(ctx context.Context) (*scan.CrashData, error)
 	crashesMu sync.Mutex
+	// Processes rilegge i processi con file, firma e connessioni riassunte
+	// (nil = non disponibile). Una lettura alla volta: la verifica delle
+	// firme legge i file.
+	Processes func(ctx context.Context) (*scan.ProcessesData, error)
+	procsMu   sync.Mutex
 	// Scoperta delle altre reti e delle VLAN (nil = non disponibile):
 	// ascolto passivo degli annunci degli switch, sottoreti di Active
 	// Directory e lettura SNMP con le credenziali del tecnico.
@@ -1395,6 +1403,26 @@ func (s *Server) Handler() http.Handler {
 		res, err := s.Crashes(ctx)
 		if res == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": errText(err)})
+			return
+		}
+		writeJSON(w, 200, res)
+	})
+	mux.HandleFunc("GET /api/processes", func(w http.ResponseWriter, r *http.Request) {
+		if s.Processes == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "lettura dei processi non disponibile"})
+			return
+		}
+		s.procsMu.Lock()
+		defer s.procsMu.Unlock()
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		res, err := s.Processes(ctx)
+		if res == nil {
+			code := http.StatusInternalServerError
+			if errors.Is(err, errors.ErrUnsupported) {
+				code = http.StatusNotImplemented // non su questo sistema
+			}
+			writeJSON(w, code, map[string]string{"error": errText(err)})
 			return
 		}
 		writeJSON(w, 200, res)

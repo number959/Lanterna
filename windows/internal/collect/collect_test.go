@@ -47,6 +47,11 @@ type fakePlatform struct {
 	pcErr    error
 	mu       sync.Mutex
 	pingers  int
+	// procsCPU sono i carichi per PID ricevuti dalla fase "procs";
+	// procsDeadline dice se la fase aveva un tempo massimo.
+	procsCalled   bool
+	procsCPU      map[uint32]float64
+	procsDeadline bool
 }
 
 func (f *fakePlatform) Adapters() ([]scan.Adapter, error) { return f.adapters, nil }
@@ -84,6 +89,16 @@ func (f *fakePlatform) PC(context.Context) (*scan.PcData, error) {
 }
 func (f *fakePlatform) SampleLoad(context.Context, time.Duration) (*float64, []scan.ProcessInfo) {
 	return scan.Ptr(12.5), []scan.ProcessInfo{{Name: "prova.exe", Count: 2, CPUPct: scan.Ptr(4.0), MemoryMB: 300}}
+}
+func (f *fakePlatform) Procs(ctx context.Context, cpu map[uint32]float64) (*scan.ProcessesData, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.procsCalled, f.procsCPU = true, cpu
+	_, f.procsDeadline = ctx.Deadline()
+	if f.pcErr != nil {
+		return nil, f.pcErr
+	}
+	return &scan.ProcessesData{At: "2026-11-17T10:00:00Z", Items: []scan.ProcessDetail{{PID: 4, Name: "System"}}, ConnsRead: true}, nil
 }
 
 func fakeNetwork(tcpOK bool) Network {
@@ -158,6 +173,9 @@ func TestRunHealthyNetwork(t *testing.T) {
 	if s.PC == nil || s.PC.OS.Name != "Windows 11 Pro" || s.PC.CPU.LoadPct == nil || *s.PC.CPU.LoadPct != 12.5 || len(s.PC.Processes) != 1 {
 		t.Fatalf("dati del computer: %+v", s.PC)
 	}
+	if s.PC.Procs == nil || len(s.PC.Procs.Items) != 1 || !s.PC.Procs.ConnsRead {
+		t.Fatalf("processi: %+v", s.PC.Procs)
+	}
 	last := updates[len(updates)-1]
 	for _, st := range last {
 		if st.State != "done" {
@@ -178,9 +196,51 @@ func TestRunWithoutPC(t *testing.T) {
 		t.Fatalf("errori: %+v", s.Errors)
 	}
 	for _, st := range last {
-		if (st.ID == "pc" || st.ID == "load") != (st.State == "error") {
+		if (st.ID == "pc" || st.ID == "load" || st.ID == "procs") != (st.State == "error") {
 			t.Fatalf("fase %s in stato %s", st.ID, st.State)
 		}
+	}
+}
+
+// loadPIDPlatform dà anche il carico per PID: la fase "procs" lo riceve,
+// con un tempo massimo; un errore della lettura dei processi resta suo.
+type loadPIDPlatform struct {
+	fakePlatform
+	procsErr error
+}
+
+func (p *loadPIDPlatform) SampleLoadByPID(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo, map[uint32]float64) {
+	load, procs := p.SampleLoad(ctx, d)
+	return load, procs, map[uint32]float64{1234: 4.5}
+}
+
+func (p *loadPIDPlatform) Procs(ctx context.Context, cpu map[uint32]float64) (*scan.ProcessesData, error) {
+	d, err := p.fakePlatform.Procs(ctx, cpu)
+	if p.procsErr != nil {
+		return nil, p.procsErr
+	}
+	return d, err
+}
+
+func TestProcsPhase(t *testing.T) {
+	n := &fakeNet{hops: 3, mtu: 1500, silent: map[string]bool{}, rtt: func(string) time.Duration { return time.Millisecond }}
+	p := &loadPIDPlatform{fakePlatform: fakePlatform{n: n, adapters: homeAdapters}}
+	c := &Collector{Platform: p, Net: fakeNetwork(false), Opt: fastOpts()}
+	s := c.Run(context.Background(), nil)
+	if !p.procsCalled || p.procsCPU[1234] != 4.5 || !p.procsDeadline || s.PC.Procs == nil || len(s.Errors) != 0 {
+		t.Fatalf("fase procs: chiamata %v, carichi %v, tempo massimo %v, %+v, errori %+v", p.procsCalled, p.procsCPU, p.procsDeadline, s.PC.Procs, s.Errors)
+	}
+	// Senza SampleLoadByPID i carichi per PID non ci sono.
+	f := &fakePlatform{n: n, adapters: homeAdapters}
+	(&Collector{Platform: f, Net: fakeNetwork(false), Opt: fastOpts()}).Run(context.Background(), nil)
+	if !f.procsCalled || f.procsCPU != nil {
+		t.Fatalf("senza carichi per PID: %v %v", f.procsCalled, f.procsCPU)
+	}
+	// Un errore dei processi non tocca il resto del computer.
+	p = &loadPIDPlatform{fakePlatform: fakePlatform{n: n, adapters: homeAdapters}, procsErr: errors.New("lettura dei processi disponibile solo su Windows")}
+	s = (&Collector{Platform: p, Net: fakeNetwork(false), Opt: fastOpts()}).Run(context.Background(), nil)
+	if s.PC == nil || s.PC.Procs != nil || s.PC.CPU.LoadPct == nil || len(s.Errors) != 1 || s.Errors[0].Probe != "Computer: processi, firme e connessioni" || !strings.Contains(s.Errors[0].Message, "solo su Windows") {
+		t.Fatalf("errore dei processi: %+v %+v", s.PC, s.Errors)
 	}
 }
 

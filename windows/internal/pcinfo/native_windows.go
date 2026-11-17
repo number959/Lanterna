@@ -252,13 +252,20 @@ const (
 // che la usano di più. Va eseguito quando le altre misure sono finite, per non
 // contare il lavoro dell'analisi stessa.
 func SampleLoad(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo) {
+	load, procs, _ := SampleLoadByPID(ctx, d)
+	return load, procs
+}
+
+// SampleLoadByPID è SampleLoad che restituisce anche il carico di ogni PID
+// della stessa misura (per i processi con firma del pacchetto procs).
+func SampleLoadByPID(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo, map[uint32]float64) {
 	i1, k1, u1, ok1 := systemTimes()
 	p1 := processes()
 	t1 := time.Now()
 	select {
 	case <-time.After(d):
 	case <-ctx.Done():
-		return nil, nil
+		return nil, nil, nil
 	}
 	i2, k2, u2, ok2 := systemTimes()
 	p2 := processes()
@@ -267,7 +274,7 @@ func SampleLoad(ctx context.Context, d time.Duration) (*float64, []scan.ProcessI
 	if ok1 && ok2 {
 		load = loadOf(i2-i1, (k2-k1)+(u2-u1))
 	}
-	return load, GroupProcesses(p1, p2, elapsed, runtime.NumCPU(), 8)
+	return load, GroupProcesses(p1, p2, elapsed, runtime.NumCPU(), 8), CPUByPID(p1, p2, elapsed, runtime.NumCPU())
 }
 
 // CPULoad misura il carico medio della CPU per la durata indicata (nil se non

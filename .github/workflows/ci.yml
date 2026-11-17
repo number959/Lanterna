@@ -182,6 +182,25 @@ jobs:
           if ($leak.Success) { throw "cartella dell'utente nel rapporto: $($leak.Value)" }
           "Defender: $($pc.defender | ConvertTo-Json -Compress)"
           "Minacce: $(if ($null -eq $pc.threats) { 'non lette' } else { "$(@($pc.threats).Count)" })"
+          # Processi con firma digitale e connessioni (come Process Explorer e TCPView).
+          $pr = $pc.procs
+          "Processi: $(@($pr.items).Count), non leggibili $($pr.unreadable), parziale $($pr.partial), connessioni lette $($pr.connsRead), amministratore $($pr.elevated)"
+          $ms = @($pr.items | Where-Object { $_.file.signature.status -eq 'valid' -and $_.file.signature.microsoft })
+          "Firma di Microsoft verificata: $($ms.Count); " + (($ms | Select-Object -First 5 | ForEach-Object { "$($_.name) [$($_.file.signature.signer)$(if ($_.file.signature.catalog) { ', catalogo' })]" }) -join ' | ')
+          "Stati delle firme: " + ((@($pr.items | Where-Object { $_.file.signature }) | Group-Object { $_.file.signature.status } | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join ' ')
+          "In ascolto: " + ((@($pr.items | Where-Object { $_.listen }) | Select-Object -First 8 | ForEach-Object { "$($_.name) " + (($_.listen | ForEach-Object { "$($_.proto)/$($_.port) $($_.scope)" }) -join ',') }) -join ' | ')
+          if (-not $pr -or @($pr.items).Count -lt 20) { throw "processi non letti" }
+          if (-not $ms.Count) { throw "nessun processo con firma valida di Microsoft" }
+          if (-not $pr.connsRead) { throw "tabelle delle connessioni non lette" }
+          if (-not @($pr.items | Where-Object { $_.polaris }).Count) { throw "Polaris non riconosciuto tra i processi" }
+          # Nessun indirizzo IPv4 pubblico (tolti versioni, descrizioni e percorsi dei file: «1.2.3.4»
+          # è spesso una versione, anche in un percorso come EdgeUpdate\1.3.195.39).
+          $pj = ($pr | ConvertTo-Json -Depth 8 -Compress) -replace '"(version|description|company|path)":"(\\.|[^"\\])*"', ''
+          $pub = @([regex]::Matches($pj, '\b\d{1,3}(\.\d{1,3}){3}\b') | ForEach-Object { $_.Value } | Where-Object { $_ -notmatch '^(0|10|127)\.|^192\.168\.|^169\.254\.|^172\.(1[6-9]|2\d|3[01])\.|^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.' })
+          if ($pub.Count) { throw "indirizzi IPv4 pubblici nei processi: $($pub -join ', ')" }
+          $po = ./polaris-cli.exe procs
+          if ($LASTEXITCODE -ne 0) { throw "comando procs non riuscito" }
+          $po | Select-Object -First 12
       - name: Velocità dei core in tempo reale (contatori di Windows)
         timeout-minutes: 3
         run: |
@@ -951,8 +970,9 @@ jobs:
       - name: Prove native dell'agente su Windows reale
         working-directory: sorgenti/windows
         run: |
-          # Letture native (registro eventi, dispositivi, servizi, volumi) con dati veri.
-          go test ./internal/winevt/ ./internal/pcinfo/ -run 'Windows$' -count=1 -v
+          # Letture native (registro eventi, dispositivi, servizi, volumi, firme digitali,
+          # processi e connessioni) con dati veri.
+          go test ./internal/winevt/ ./internal/pcinfo/ ./internal/sign/ ./internal/procs/ -run 'Windows$' -count=1 -v
           if ($LASTEXITCODE -ne 0) { throw "prove native non riuscite" }
           # La modalità test letta da Polaris deve coincidere con quella di bcdedit (qui siamo amministratori).
           $bcd = (bcdedit /enum '{current}' | Select-String -Pattern '^testsigning\s+(\w+)').Matches.Groups[1].Value
