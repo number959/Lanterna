@@ -178,12 +178,7 @@ func verify(ctx context.Context, path string) *scan.FileSignature {
 		// crittografia fermo): firma non verificabile, mai «non firmato».
 		return &scan.FileSignature{Status: "unknown", Code: codeHex(fail)}
 	}
-	st := unsignedStatus(emb.lastErr)
-	if st == "unsigned" && packagedApp(path) {
-		// App dello Store: la firma del pacchetto non si verifica qui.
-		st = "unknown"
-	}
-	return &scan.FileSignature{Status: st, Code: codeHex(emb.code)}
+	return unsignedSignature(emb.code, emb.lastErr, path)
 }
 
 // trust chiama WinVerifyTrust con WINTRUST_ACTION_GENERIC_VERIFY_V2 sul file
@@ -281,11 +276,34 @@ func microsoftRoot(chain *windows.CertChainContext) bool {
 	return false
 }
 
+// cats sono i contesti dei cataloghi tenuti aperti tra un file e l'altro
+// (catPool): aprirne uno per file costava gran parte del tempo della prima
+// verifica dell'avvio automatico.
+var cats = newCatPool(acquireCat, releaseCat)
+
+// acquireCat apre un contesto dei cataloghi di sistema (DRIVER_ACTION_VERIFY)
+// per l'algoritmo d'impronta indicato.
+func acquireCat(alg string) (uintptr, uint32) {
+	alg16, err := windows.UTF16PtrFromString(alg)
+	if err != nil {
+		return 0, trustEProviderUnknown
+	}
+	var cat windows.Handle
+	r, _, e := procCATAdminAcquireContext2.Call(uintptr(unsafe.Pointer(&cat)), uintptr(unsafe.Pointer(&driverActionVerify)), uintptr(unsafe.Pointer(alg16)), 0, 0)
+	if uint32(r) == 0 || cat == 0 {
+		return 0, hresultWin32(errnoOf(e))
+	}
+	return uintptr(cat), 0
+}
+
+func releaseCat(h uintptr) { procCATAdminReleaseContext.Call(h, 0) }
+
 // verifyCatalog cerca il file nei cataloghi di Windows, prima con l'impronta
 // SHA256 e poi con SHA1 (AcquireContext2 sceglie da sé l'algoritmo, e il
 // predefinito può cambiare: si passa il nome esplicito). found: il file è in
 // un catalogo e sig è l'esito della verifica; fail: i cataloghi non si sono
-// potuti consultare con nessun algoritmo.
+// potuti consultare con nessun algoritmo. I contesti vengono da cats: uno
+// per goroutine alla volta, e dopo un errore si chiude.
 func verifyCatalog(h windows.Handle, p16 *uint16) (sig *scan.FileSignature, found bool, fail uint32) {
 	for _, p := range []*windows.LazyProc{procCATAdminAcquireContext2, procCATAdminCalcHashFromHandle, procCATAdminEnumCatalogFromHash, procCATCatalogInfoFromContext, procCATAdminReleaseCatalogCtx, procCATAdminReleaseContext} {
 		if p.Find() != nil {
@@ -294,15 +312,13 @@ func verifyCatalog(h windows.Handle, p16 *uint16) (sig *scan.FileSignature, foun
 	}
 	searched := false
 	for _, alg := range []string{"SHA256", "SHA1"} {
-		alg16, _ := windows.UTF16PtrFromString(alg)
-		var cat windows.Handle
-		r, _, e := procCATAdminAcquireContext2.Call(uintptr(unsafe.Pointer(&cat)), uintptr(unsafe.Pointer(&driverActionVerify)), uintptr(unsafe.Pointer(alg16)), 0, 0)
-		if uint32(r) == 0 || cat == 0 {
-			fail = hresultWin32(errnoOf(e))
+		c, f := cats.get(alg)
+		if c == nil {
+			fail = f
 			continue
 		}
-		s, ok, f := catalogWith(cat, h, p16)
-		procCATAdminReleaseContext.Call(uintptr(cat), 0)
+		s, ok, f := catalogWith(windows.Handle(c.h), h, p16)
+		cats.put(c, f == 0)
 		if ok {
 			return s, true, 0
 		}
@@ -371,6 +387,16 @@ func catalogWith(cat, h windows.Handle, p16 *uint16) (*scan.FileSignature, bool,
 	runtime.KeepAlive(wci)
 	runtime.KeepAlive(ci)
 	return o.signature(true), true, 0
+}
+
+// driveTypeOf restituisce il tipo dell'unità con la radice indicata ("E:\")
+// con GetDriveType; 0 se non si legge.
+func driveTypeOf(root string) uint32 {
+	p, err := windows.UTF16PtrFromString(root)
+	if err != nil {
+		return 0
+	}
+	return windows.GetDriveType(p)
 }
 
 // Reindirizzamento di System32 per i processi a 32 bit su Windows a 64 bit.

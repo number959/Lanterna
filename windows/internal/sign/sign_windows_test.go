@@ -43,6 +43,41 @@ func TestVerifyWindows(t *testing.T) {
 		t.Fatal("nessun componente di Windows trovato")
 	}
 
+	// Contesti dei cataloghi riusati (catPool): dopo una verifica con il
+	// catalogo ne resta almeno uno libero, e verificare di nuovo i driver di
+	// Windows (quasi tutti nei cataloghi) dà lo stesso esito.
+	drivers, _ := filepath.Glob(filepath.Join(nativePath(filepath.Join(win, "System32")), "drivers", "*.sys"))
+	if len(drivers) > 60 {
+		drivers = drivers[:60]
+	}
+	first := map[string]string{}
+	start := time.Now()
+	inCatalog := 0
+	for _, p := range drivers {
+		s := verify(ctx, p)
+		if s != nil {
+			first[p] = s.Status + "|" + s.Signer
+			if s.Catalog {
+				inCatalog++
+			}
+		}
+	}
+	cats.mu.Lock()
+	free256, free1 := len(cats.free["SHA256"]), len(cats.free["SHA1"])
+	cats.mu.Unlock()
+	t.Logf("%d driver di Windows verificati in %v, %d nei cataloghi; contesti liberi: %d SHA256, %d SHA1",
+		len(drivers), time.Since(start), inCatalog, free256, free1)
+	if inCatalog > 0 {
+		if free256+free1 == 0 {
+			t.Error("nessun contesto dei cataloghi tenuto aperto dopo le verifiche")
+		}
+		for _, p := range drivers {
+			if s := verify(ctx, p); s != nil && first[p] != s.Status+"|"+s.Signer {
+				t.Errorf("%s: esito diverso con il contesto riusato: %q, poi %+v", p, first[p], s)
+			}
+		}
+	}
+
 	// File non firmati: l'eseguibile di questa prova (Go non lo firma) e un testo.
 	exe, err := os.Executable()
 	if err != nil {

@@ -50,7 +50,7 @@ func (stubPlatform) PC(context.Context) (*scan.PcData, error) {
 func (stubPlatform) SampleLoad(context.Context, time.Duration) (*float64, []scan.ProcessInfo) {
 	return nil, nil
 }
-func (stubPlatform) Procs(context.Context, map[uint32]float64) (*scan.ProcessesData, error) {
+func (stubPlatform) Procs(context.Context, map[uint32]float64, time.Time) (*scan.ProcessesData, error) {
 	return nil, errors.New("misura disponibile solo su Windows")
 }
 func (stubPlatform) Autoruns(context.Context) (*scan.AutorunsData, error) {
@@ -120,6 +120,31 @@ func TestGuards(t *testing.T) {
 	}
 	if r := do(t, h, "POST", "/api/scan", map[string]string{"Sec-Fetch-Site": "cross-site"}); r.Code != 403 {
 		t.Fatalf("POST cross-site accettato: %d", r.Code)
+	}
+	// Anche le GET delle API da un'altra pagina web (<img src=".../api/processes">):
+	// farebbero partire letture pesanti. Dalla stessa origine o digitate a mano sì.
+	s := newServer()
+	calls := 0
+	s.Processes = func(context.Context) (*scan.ProcessesData, error) {
+		calls++
+		return &scan.ProcessesData{Items: []scan.ProcessDetail{}}, nil
+	}
+	hp := s.Handler()
+	for _, path := range []string{"/api/processes", "/api/crashes", "/api/info"} {
+		if r := do(t, hp, "GET", path, map[string]string{"Sec-Fetch-Site": "cross-site"}); r.Code != 403 {
+			t.Errorf("GET %s cross-site accettato: %d", path, r.Code)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("lettura dei processi partita da un'altra pagina: %d", calls)
+	}
+	for _, site := range []string{"same-origin", "none", ""} {
+		if r := do(t, hp, "GET", "/api/processes", map[string]string{"Sec-Fetch-Site": site}); r.Code != 200 {
+			t.Errorf("GET /api/processes con Sec-Fetch-Site %q: %d", site, r.Code)
+		}
+	}
+	if r := do(t, hp, "GET", "/", map[string]string{"Sec-Fetch-Site": "cross-site"}); r.Code != 200 {
+		t.Errorf("pagina dell'interfaccia: %d", r.Code)
 	}
 	r := do(t, h, "GET", "/", nil)
 	if r.Code != 200 || !strings.Contains(r.Header().Get("Content-Security-Policy"), "default-src 'self'") || r.Header().Get("X-Content-Type-Options") != "nosniff" {

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"lanterna/internal/scan"
 )
@@ -117,6 +118,27 @@ func TestDestinationAndScope(t *testing.T) {
 	if destination(netip.Addr{}, local) != "" {
 		t.Error("indirizzo non valido")
 	}
+	// IPv6 globale: la stessa /64 dell'indirizzo locale è il collegamento
+	// locale (un NAS raggiunto con il suo indirizzo globale).
+	local6 := netip.MustParseAddr("2a01:e11:1234:5678::10")
+	for ip, want := range map[string]string{
+		"2a01:e11:1234:5678::20":           "lan",
+		"2a01:e11:1234:5678:abcd:ef01:2:3": "lan",
+		"2a01:e11:1234:5679::20":           "internet",
+		"2a00:1450::200e":                  "internet",
+		"2a01:e11:1234:5678::10":           "local",
+		"fe80::1":                          "lan",
+		"8.8.8.8":                          "internet",
+	} {
+		if got := destination(netip.MustParseAddr(ip), local6); got != want {
+			t.Errorf("destination(%s, %s) = %q, atteso %q", ip, local6, got, want)
+		}
+	}
+	// Con un indirizzo locale link-local o IPv4 nessuna /64 da confrontare.
+	if destination(netip.MustParseAddr("2a01:e11:1234:5678::20"), netip.MustParseAddr("fe80::10")) != "internet" ||
+		destination(netip.MustParseAddr("2a01:e11:1234:5678::20"), local) != "internet" {
+		t.Error("/64 senza un indirizzo locale globale")
+	}
 	for ip, want := range map[string]string{"0.0.0.0": "all", "::": "all", "127.0.0.1": "local", "::1": "local", "192.168.1.34": "specific", "fe80::5": "specific"} {
 		if got := listenScope(netip.MustParseAddr(ip)); got != want {
 			t.Errorf("listenScope(%s) = %q, atteso %q", ip, got, want)
@@ -189,10 +211,27 @@ func TestPolarisSetAndParent(t *testing.T) {
 		{pid: 500, parent: 100, name: "notepad.exe", created: 3000},
 		{pid: 600, parent: 999, name: "orfano.exe", created: 3000},     // padre terminato
 		{pid: 700, parent: 500, name: "nato-prima.exe", created: 2500}, // padre nato dopo il figlio
+		// Aperti da Polaris con ShellExecute (pannello del router, sito di uno
+		// strumento) e ciò che avviano: restano nei giudizi.
+		{pid: 800, parent: 200, name: "chrome.exe", created: 2300},
+		{pid: 801, parent: 800, name: "chrome.exe", created: 2400},
+		{pid: 802, parent: 800, name: "setup-sconosciuto.exe", created: 2500},
+		{pid: 803, parent: 802, name: "msedgewebview2.exe", created: 2600},  // WebView2 di un altro programma
+		{pid: 304, parent: 300, name: "gestore-esterno.exe", created: 2700}, // lanciato da WebView2
+		{pid: 305, parent: 200, name: "MSEdgeWebView2.exe", created: 1900},  // PID riciclato: nato prima di Polaris
 	}
 	got := polarisSet(ps, 200)
 	if !got[200] || !got[300] || !got[301] || got[302] || got[400] || got[100] || got[500] || len(got) != 3 {
 		t.Fatalf("albero di Polaris: %v", got)
+	}
+	for _, pid := range []uint32{800, 801, 802, 803, 304, 305} {
+		if got[pid] {
+			t.Errorf("PID %d segnato come Polaris", pid)
+		}
+	}
+	// Il nome si confronta senza maiuscole.
+	if set := polarisSet([]rawProc{{pid: 1, name: "polaris.exe", created: 1}, {pid: 2, parent: 1, name: "MSEDGEWEBVIEW2.EXE", created: 2}}, 1); !set[2] {
+		t.Errorf("WebView2 in maiuscolo: %v", set)
 	}
 	if len(polarisSet(ps, 12345)) != 0 {
 		t.Fatal("Polaris assente")
@@ -301,13 +340,16 @@ func TestVerifyOrder(t *testing.T) {
 		`C:\Windows\explorer.exe`,
 		`C:\Users\anna\AppData\Local\Agent\agent.exe`,
 		`D:\Giochi\gioco.exe`,
+		`C:\ProgramData\xyz\evil.exe`,
 	}
 	verifyOrder(paths, `C:\Users\anna`)
+	// ProgramData e le altre unità sono scrivibili dall'utente: prima di Programmi.
 	want := []string{
+		`C:\ProgramData\xyz\evil.exe`,
 		`C:\Users\anna\AppData\Local\Agent\agent.exe`,
 		`C:\Users\anna\Downloads\tool.exe`,
-		`C:\Program Files\App\app.exe`,
 		`D:\Giochi\gioco.exe`,
+		`C:\Program Files\App\app.exe`,
 		`C:\Windows\explorer.exe`,
 		`C:\Windows\System32\svchost.exe`,
 	}
@@ -337,7 +379,14 @@ func TestBuild(t *testing.T) {
 		row(1200, tcpEstab, "192.168.1.34", 50001, "140.82.112.3", 443),
 		row(1200, tcpEstab, "fd00::2", 50002, "2a00:1450::200e", 443),
 	})
-	items := build(ps, files, map[uint32][]string{812: {"RpcEptMapper", "RpcSs"}}, nets, map[uint32]float64{1200: 12.345, 812: 0}, 3000)
+	// Il browser nasce prima della misura del carico; il 1400 nasce dopo, con
+	// il PID di un processo misurato (riciclato): il carico non è suo. Il suo
+	// nome contiene quello dell'utente e passa dal pulitore.
+	ps[4].created = filetimeEpoch + 1767225000*10_000_000
+	ps = append(ps, rawProc{pid: 1400, parent: 700, name: "fattura anna.exe", opened: true, owner: "self", created: filetimeEpoch + 1767225700*10_000_000})
+	ld := load{cpu: map[uint32]float64{1200: 12.345, 812: 0, 1300: 5, 1400: 30}, since: filetime(time.Unix(1767225650, 0))}
+	clean := func(s string) string { return strings.ReplaceAll(s, "anna", "‹utente›") }
+	items := build(ps, files, map[uint32][]string{812: {"RpcEptMapper", "RpcSs"}}, nets, ld, 3000, clean)
 	if len(items) != len(ps) {
 		t.Fatalf("processi: %d", len(items))
 	}
@@ -345,7 +394,7 @@ func TestBuild(t *testing.T) {
 	for _, it := range items {
 		names = append(names, it.Name)
 	}
-	if strings.Join(names, ",") != "[System Process],antivirus.exe,Browser.exe,polaris.exe,svchost.exe,svchost.exe,System" {
+	if strings.Join(names, ",") != "[System Process],antivirus.exe,Browser.exe,fattura ‹utente›.exe,polaris.exe,svchost.exe,svchost.exe,System" {
 		t.Fatalf("ordine: %v", names)
 	}
 	by := map[uint32]scan.ProcessDetail{}
@@ -371,6 +420,26 @@ func TestBuild(t *testing.T) {
 	}
 	if !by[3000].Polaris || by[3000].File != nil {
 		t.Fatalf("Polaris: %+v", by[3000])
+	}
+	// PID riciclato dopo l'inizio della misura, oppure ora di nascita non
+	// letta: nessun carico.
+	if by[1400].CPUPct != nil || by[1300].CPUPct != nil {
+		t.Fatalf("carico attribuito a un altro processo: %v %v", by[1400].CPUPct, by[1300].CPUPct)
+	}
+	for _, c := range []struct {
+		created, since int64
+		want           bool
+	}{{100, 200, true}, {200, 200, false}, {300, 200, false}, {0, 200, false}, {100, 0, false}} {
+		if measured(c.created, c.since) != c.want {
+			t.Errorf("measured(%d, %d) != %v", c.created, c.since, c.want)
+		}
+	}
+	if filetime(time.Time{}) != 0 || started(filetime(time.Unix(1767225600, 0))) != "2026-01-01T00:00:00Z" {
+		t.Error("filetime")
+	}
+	// Senza pulitore il nome resta com'è.
+	if it := build(ps[5:6], nil, nil, nil, load{}, 0, nil); it[0].Name != "antivirus.exe" || it[0].CPUPct != nil {
+		t.Fatalf("senza pulitore né carichi: %+v", it[0])
 	}
 	// Nessun indirizzo nel JSON (tolte le versioni, che sembrano indirizzi).
 	b, _ := json.Marshal(scan.ProcessesData{Items: items})

@@ -65,17 +65,85 @@ func TestStatusOf(t *testing.T) {
 }
 
 func TestPackagedApp(t *testing.T) {
+	t.Setenv("ProgramFiles", `C:\Program Files`)
+	t.Setenv("ProgramW6432", "")
+	t.Setenv("SystemDrive", `C:`)
 	for p, want := range map[string]bool{
 		`C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_1.21.3231.0_x64__8wekyb3d8bbwe\WindowsTerminal.exe`: true,
 		`D:\WindowsApps\Gioco_1.0.0.0_x64__abc\gioco.exe`:                                                           true,
+		`D:\Program Files\WindowsApps\Gioco_1.0.0.0_x64__abc\gioco.exe`:                                             true,
 		`c:/program files/windowsapps/app/app.exe`:                                                                  true,
+		`\\?\C:\Program Files\WindowsApps\app\app.exe`:                                                              true,
 		`C:\Users\anna\AppData\Local\Microsoft\WindowsApps\winget.exe`:                                              false,
 		`\\server\WindowsApps\app.exe`:                                                                              false,
 		`C:\Program Files\App\app.exe`:                                                                              false,
 		`C:\Temp\WindowsAppsFinte.exe`:                                                                              false,
+		// Basta il nome di una cartella per non dirsi «non firmato»: no.
+		`C:\Users\anna\Downloads\WindowsApps\setup.exe`:  false,
+		`C:\Users\anna\Desktop\WindowsApps\setup.exe`:    false,
+		`C:\ProgramData\WindowsApps\x.exe`:               false,
+		`C:\Users\Public\WindowsApps\x.exe`:              false,
+		`C:\Program Files\App\WindowsApps\x.exe`:         false,
+		`C:\Program Files (x86)\WindowsApps\app\app.exe`: false,
+		`WindowsApps\x.exe`:                              false,
+		// Alla radice dell'unità di Windows ogni utente può creare una
+		// cartella: lì Windows non mette le app.
+		`C:\WindowsApps\Gioco_1.0.0.0_x64__abc\evil.exe`: false,
+		`\\?\c:\windowsapps\x\evil.exe`:                  false,
 	} {
 		if packagedApp(p) != want {
 			t.Errorf("packagedApp(%q) != %v", p, want)
+		}
+	}
+	// Polaris a 32 bit su Windows a 64 bit: %ProgramFiles% è quella (x86),
+	// le app stanno in %ProgramW6432%.
+	t.Setenv("ProgramFiles", `C:\Program Files (x86)`)
+	t.Setenv("ProgramW6432", `C:\Program Files`)
+	for p, want := range map[string]bool{
+		`C:\Program Files\WindowsApps\app\app.exe`: true,
+		`C:\WindowsApps\x\evil.exe`:                false,
+	} {
+		if packagedApp(p) != want {
+			t.Errorf("packagedApp(%q) a 32 bit != %v", p, want)
+		}
+	}
+	// %ProgramFiles% su un'altra unità, Windows su D:.
+	t.Setenv("ProgramFiles", `E:\Programmi`)
+	t.Setenv("ProgramW6432", "")
+	t.Setenv("SystemDrive", "")
+	t.Setenv("SystemRoot", `D:\Windows`)
+	for p, want := range map[string]bool{
+		`E:\Programmi\WindowsApps\app\app.exe`:            true,
+		`C:\WindowsApps\Gioco_1.0.0.0_x64__abc\gioco.exe`: true,
+		`D:\WindowsApps\x\evil.exe`:                       false,
+		`D:\Program Files\WindowsApps\x\evil.exe`:         false,
+	} {
+		if packagedApp(p) != want {
+			t.Errorf("packagedApp(%q) con ProgramFiles e Windows spostati != %v", p, want)
+		}
+	}
+}
+
+// Senza firma propria e fuori dai cataloghi: lo stato viene da
+// GetLastError, e il codice esportato è quello che lo spiega.
+func TestUnsignedSignature(t *testing.T) {
+	for _, c := range []struct {
+		code, lastErr uint32
+		path          string
+		status, hex   string
+	}{
+		{trustENoSignature, trustENoSignature, `C:\Users\anna\Downloads\x.exe`, "unsigned", "0x800B0100"},
+		{trustESubjectFormUnknown, 0, `C:\x.txt`, "unsigned", "0x800B0003"},
+		{trustENoSignature, trustENoSignature, `C:\Program Files\WindowsApps\a\a.exe`, "unknown", "0x800B0100"},
+		{trustENoSignature, trustENoSignature, `C:\Users\anna\Downloads\WindowsApps\x.exe`, "unsigned", "0x800B0100"},
+		// Firma rovinata: «firma non valida» con il suo codice, non 0x800B0100.
+		{trustENoSignature, trustEBadDigest, `C:\x.exe`, "invalid", "0x80096010"},
+		{trustENoSignature, 87, `C:\x.exe`, "invalid", "0x80070057"},
+		{trustENoSignature, 32, `C:\x.exe`, "unreadable", "0x80070020"},
+	} {
+		s := unsignedSignature(c.code, c.lastErr, c.path)
+		if s.Status != c.status || s.Code != c.hex || s.Signer != "" || s.Microsoft || s.Catalog {
+			t.Errorf("unsignedSignature(%#x, %#x, %q) = %+v, atteso %s %s", c.code, c.lastErr, c.path, s, c.status, c.hex)
 		}
 	}
 }

@@ -3,8 +3,11 @@ package sign
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"strings"
 	"unicode"
+
+	"lanterna/internal/scan"
 )
 
 // Codici restituiti da WinVerifyTrust e da CryptoAPI (winerror.h, gli stessi
@@ -87,15 +90,68 @@ func unsignedStatus(lastErr uint32) string {
 }
 
 // packagedApp dice se il file sta nella cartella delle app dello Store
-// (pacchetti MSIX, di solito %ProgramFiles%\WindowsApps): lì la firma è nel
-// pacchetto (AppxSignature.p7x), che Polaris non verifica, e un eseguibile
-// senza firma propria non è per questo «non firmato». La cartella è
-// scrivibile solo dal sistema; non vale per gli alias di esecuzione in
-// %LOCALAPPDATA%\Microsoft\WindowsApps, che l'utente può scrivere, né per le
-// condivisioni di rete.
+// (pacchetti MSIX): %ProgramFiles%\WindowsApps, oppure <unità>:\WindowsApps
+// e <unità>:\Program Files\WindowsApps per le app spostate su un'altra
+// unità. Lì la firma è nel pacchetto (AppxSignature.p7x), che Polaris non
+// verifica, e un eseguibile senza firma propria non è per questo «non
+// firmato». Quelle cartelle sono scrivibili solo dal sistema; una qualsiasi
+// altra cartella chiamata WindowsApps (nei Download, sul Desktop, in
+// ProgramData, gli alias di esecuzione in %LOCALAPPDATA%\Microsoft) o una
+// condivisione di rete non conta: basterebbe il nome per non dirsi «non
+// firmato». Sull'unità di Windows vale solo %ProgramFiles%\WindowsApps
+// (%ProgramW6432% per Polaris a 32 bit): alla radice di C:\ ogni utente può
+// creare una cartella (C:\WindowsApps), e lì Windows non mette le app.
 func packagedApp(path string) bool {
-	p := strings.ToLower(strings.ReplaceAll(path, "/", `\`))
-	return strings.Contains(p, `\windowsapps\`) && !strings.Contains(p, `\appdata\`) && !strings.HasPrefix(p, `\\`)
+	p := strings.TrimPrefix(winClean(path), `\\?\`)
+	pfs := []string{os.Getenv("ProgramW6432"), os.Getenv("ProgramFiles")}
+	if pfs[0] == "" && pfs[1] == "" {
+		pfs[0] = `C:\Program Files`
+	}
+	for _, pf := range pfs {
+		if pf = winClean(pf); pf != "" && strings.HasPrefix(p, pf+`\windowsapps\`) {
+			return true
+		}
+	}
+	if len(p) < 4 || p[1] != ':' || p[2] != '\\' || p[0] < 'a' || p[0] > 'z' || p[:2] == systemDrive() {
+		return false
+	}
+	return strings.HasPrefix(p[3:], `windowsapps\`) || strings.HasPrefix(p[3:], `program files\windowsapps\`)
+}
+
+// systemDrive è l'unità di Windows in minuscolo («c:»), da %SystemDrive% o
+// da %SystemRoot%.
+func systemDrive() string {
+	for _, v := range []string{os.Getenv("SystemDrive"), os.Getenv("SystemRoot")} {
+		if v = winClean(v); len(v) >= 2 && v[1] == ':' && v[0] >= 'a' && v[0] <= 'z' {
+			return v[:2]
+		}
+	}
+	return "c:"
+}
+
+// unsignedSignature è l'esito di un file senza firma propria e che nessun
+// catalogo contiene. Lo stato viene da GetLastError (unsignedStatus) e il
+// codice esportato è quello che lo spiega: per una firma non valida o un
+// file non leggibile è GetLastError, non il ritorno «nessuna firma»
+// (0x800B0100) che lo contraddirebbe.
+func unsignedSignature(code, lastErr uint32, path string) *scan.FileSignature {
+	st := unsignedStatus(lastErr)
+	switch {
+	case st == "unsigned" && packagedApp(path):
+		// App dello Store: la firma del pacchetto non si verifica qui.
+		st = "unknown"
+	case st != "unsigned":
+		code = hresultWin32(lastErr)
+	}
+	return &scan.FileSignature{Status: st, Code: codeHex(code)}
+}
+
+// transient dice se l'esito della verifica può cambiare senza che cambi il
+// file: file non apribile (in uso, accesso negato) o cataloghi di Windows
+// non consultabili (servizio Servizi di crittografia occupato o fermo). Non
+// lo è l'app dello Store (0x800B0100), il cui esito resta lo stesso.
+func transient(s *scan.FileSignature) bool {
+	return s != nil && (s.Status == "unreadable" || (s.Status == "unknown" && s.Code != codeHex(trustENoSignature)))
 }
 
 // statusOf traduce il codice di WinVerifyTrust in FileSignature.Status. Il

@@ -34,6 +34,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"lanterna/internal/assets"
 	"lanterna/internal/bench"
@@ -285,7 +286,7 @@ func runReport(args []string) error {
 		}
 		data = b
 	} else {
-		fmt.Fprintln(os.Stderr, "Analisi di PC e rete in corso (circa 25 secondi)...")
+		fmt.Fprintln(os.Stderr, scanNotice)
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer cancel()
 		var mu sync.Mutex
@@ -293,15 +294,8 @@ func runReport(args []string) error {
 		s := newCollector(*quick).Run(ctx, func(steps []collect.Step) {
 			mu.Lock()
 			defer mu.Unlock()
-			for _, st := range steps {
-				if (st.State == "done" || st.State == "error") && !shown[st.ID] {
-					shown[st.ID] = true
-					mark := "ok"
-					if st.State == "error" {
-						mark = "non riuscita"
-					}
-					fmt.Fprintf(os.Stderr, "  - %-36s %s\n", st.Label, mark)
-				}
+			for _, line := range progressLines(steps, shown) {
+				fmt.Fprintln(os.Stderr, line)
 			}
 		})
 		data, _ = json.MarshalIndent(s, "", "  ")
@@ -341,6 +335,36 @@ func runReport(args []string) error {
 	}
 	fmt.Print(text)
 	return nil
+}
+
+// scanNotice annuncia l'analisi con una durata onesta: su Windows reale
+// (CI, macchina Azure) la prima analisi ha chiesto circa 45 secondi, la
+// seconda 14 (a freddo Windows legge più lentamente i file e i cataloghi
+// delle firme).
+const scanNotice = "Analisi di PC e rete in corso (di solito meno di un minuto; la prima volta un po' di più)..."
+
+// progressLines restituisce le righe dell'avanzamento per le fasi appena
+// finite (done o error), una volta sola per fase (shown), con l'esito
+// incolonnato dopo l'etichetta più lunga: con una larghezza fissa
+// un'etichetta più lunga, come «Computer: processi, firme e connessioni»,
+// finiva attaccata al suo esito e la riga sembrava mancare.
+func progressLines(steps []collect.Step, shown map[string]bool) []string {
+	width := 0
+	for _, st := range steps {
+		width = max(width, utf8.RuneCountInString(st.Label))
+	}
+	var out []string
+	for _, st := range steps {
+		if (st.State == "done" || st.State == "error") && !shown[st.ID] {
+			shown[st.ID] = true
+			mark := "ok"
+			if st.State == "error" {
+				mark = "non riuscita"
+			}
+			out = append(out, fmt.Sprintf("  - %-*s  %s", width, st.Label, mark))
+		}
+	}
+	return out
 }
 
 func startServer(port int) (*server.Server, string, error) {
@@ -391,7 +415,7 @@ func startServer(port int) (*server.Server, string, error) {
 			return certs.Check(ctx, t, certs.Options{})
 		},
 		Crashes:    crash.Read,
-		Processes:  func(ctx context.Context) (*scan.ProcessesData, error) { return procs.Read(ctx, nil) },
+		Processes:  func(ctx context.Context) (*scan.ProcessesData, error) { return procs.Read(ctx, nil, time.Time{}) },
 		SpaceOpen:  space.Open,
 		OpenTool:   func(id, target string) error { return tools.Open(id, target, fetcher) },
 		OpenRouter: tools.OpenRouter,

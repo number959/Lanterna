@@ -6,8 +6,9 @@
 // Privacy: mai la riga di comando, mai SID o nomi di account, mai indirizzi
 // remoti. Gli indirizzi delle tabelle TCP e UDP restano dentro il pacchetto:
 // ne escono solo porte, ambito delle porte in ascolto e conteggi per
-// destinazione (questo PC, rete locale, Internet). I percorsi passano da
-// pulitore comune (pcinfo.Cleaner).
+// destinazione (questo PC, rete locale, Internet). I percorsi dei file
+// passano dal pulitore comune (pcinfo.Cleaner) attraverso il Checker delle
+// firme (sign.Shared), i nomi dei processi dallo stesso pulitore (build).
 //
 // La parte che non dipende da Windows (indirizzi, aggregazione delle
 // connessioni, albero di Polaris, ordinamento) sta qui ed è provata ovunque;
@@ -160,7 +161,10 @@ var cgnat = netip.MustParsePrefix("100.64.0.0/10")
 
 // destination classifica l'indirizzo remoto di una connessione: local (questo
 // PC), lan (indirizzi privati RFC 1918, fc00::/7, link-local, CGNAT
-// 100.64/10), internet (il resto); vuoto se non è una destinazione vera.
+// 100.64/10, e gli IPv6 globali nella stessa /64 dell'indirizzo locale, cioè
+// sullo stesso collegamento: un NAS o una stampante raggiunti con il loro
+// indirizzo globale), internet (il resto); vuoto se non è una destinazione
+// vera.
 func destination(remote, local netip.Addr) string {
 	remote, local = remote.Unmap(), local.Unmap()
 	switch {
@@ -170,6 +174,11 @@ func destination(remote, local netip.Addr) string {
 		return "local"
 	case remote.IsPrivate() || remote.IsLinkLocalUnicast() || cgnat.Contains(remote):
 		return "lan"
+	}
+	if remote.Is6() && local.Is6() && local.IsGlobalUnicast() {
+		if p, err := local.Prefix(64); err == nil && p.Contains(remote) {
+			return "lan"
+		}
 	}
 	return "internet"
 }
@@ -320,10 +329,18 @@ func kernelPseudo(pid, parent uint32, name string) bool {
 	return parent == 4 && !strings.HasSuffix(strings.ToLower(name), ".exe")
 }
 
-// polarisSet restituisce Polaris (il PID self) e i suoi discendenti, a ogni
-// livello (le finestre msedgewebview2 nate da Polaris e i loro figli). Il PID
-// si ricicla: un figlio vale solo se è nato dopo il padre, con entrambe le ore
-// lette; nel dubbio il processo non si segna, così non sparisce dai giudizi.
+// webView2Exe è il processo della finestra WebView2 di Polaris e di tutti i
+// suoi figli (renderer, GPU, servizi, crashpad).
+const webView2Exe = "msedgewebview2.exe"
+
+// polarisSet restituisce Polaris (il PID self) e la sua finestra WebView2:
+// i processi msedgewebview2.exe nati da Polaris e, a ogni livello, i loro
+// figli con lo stesso nome. Gli altri figli no: il browser, uno strumento o
+// un programma aperti da Polaris con ShellExecute (e ciò che a loro volta
+// avviano, come un setup scaricato) restano nei giudizi; lo stesso vale per
+// i gestori esterni che WebView2 può lanciare. Il PID si ricicla: un figlio
+// vale solo se è nato dopo il padre, con entrambe le ore lette; nel dubbio
+// il processo non si segna, così non sparisce dai giudizi.
 func polarisSet(ps []rawProc, self uint32) map[uint32]bool {
 	byPID := map[uint32]*rawProc{}
 	kids := map[uint32][]*rawProc{}
@@ -345,7 +362,7 @@ func polarisSet(ps []rawProc, self uint32) map[uint32]bool {
 		p := queue[0]
 		queue = queue[1:]
 		for _, k := range kids[p.pid] {
-			if out[k.pid] || k.created == 0 || p.created == 0 || k.created < p.created {
+			if out[k.pid] || !strings.EqualFold(k.name, webView2Exe) || k.created == 0 || p.created == 0 || k.created < p.created {
 				continue
 			}
 			out[k.pid] = true
@@ -379,6 +396,25 @@ func started(ft int64) string {
 		return ""
 	}
 	return time.Unix(0, (ft-filetimeEpoch)*100).UTC().Format(time.RFC3339)
+}
+
+// filetime è l'ora indicata come FILETIME (unità da 100 ns dal 1601), come
+// l'ora di creazione dei processi; 0 per l'ora zero.
+func filetime(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UnixNano()/100 + filetimeEpoch
+}
+
+// measured dice se il carico misurato con quel PID è di questo processo: la
+// misura è cominciata a since (FILETIME) e il processo era già nato. Un
+// processo nato dopo ha ripreso il PID di uno misurato (Windows ricicla i
+// PID in fretta) e il carico non è suo; un processo nato prima e ancora in
+// esecuzione ha tenuto il PID per tutta la misura. Senza una delle due ore,
+// nel dubbio, no.
+func measured(created, since int64) bool {
+	return created != 0 && since != 0 && created < since
 }
 
 // ownerOf classifica l'account del processo dal SID in forma di testo, che
@@ -474,21 +510,33 @@ func absWin(p string) bool {
 	return strings.HasPrefix(p, `\\`)
 }
 
+// load è il carico per PID della misura del carico, cominciata a since
+// (FILETIME): vale solo per i processi nati prima (measured).
+type load struct {
+	cpu   map[uint32]float64
+	since int64
+}
+
 // build compone i processi da esportare: nessun indirizzo, percorsi già
-// ripuliti dai fatti sui file, CPU dalla misura del carico se c'è.
-func build(ps []rawProc, files map[string]*scan.FileFacts, services map[uint32][]string, nets map[uint32]*netInfo, cpu map[uint32]float64, self uint32) []scan.ProcessDetail {
+// ripuliti dai fatti sui file, nomi ripuliti da clean (il nome del file può
+// contenere il nome dell'utente o un'e-mail), CPU dalla misura del carico
+// se è di quel processo.
+func build(ps []rawProc, files map[string]*scan.FileFacts, services map[uint32][]string, nets map[uint32]*netInfo, ld load, self uint32, clean func(string) string) []scan.ProcessDetail {
 	byPID := map[uint32]*rawProc{}
 	for i := range ps {
 		byPID[ps[i].pid] = &ps[i]
 	}
+	if clean == nil {
+		clean = func(s string) string { return s }
+	}
 	mine := polarisSet(ps, self)
 	out := make([]scan.ProcessDetail, 0, len(ps))
 	for _, p := range ps {
-		d := scan.ProcessDetail{PID: p.pid, ParentPID: parentOf(p, byPID), Name: p.name, Polaris: mine[p.pid], Services: services[p.pid]}
+		d := scan.ProcessDetail{PID: p.pid, ParentPID: parentOf(p, byPID), Name: clean(p.name), Polaris: mine[p.pid], Services: services[p.pid]}
 		if ni := nets[p.pid]; ni != nil {
 			d.Listen, d.Conns = ni.listen, ni.conns
 		}
-		if v, ok := cpu[p.pid]; ok {
+		if v, ok := ld.cpu[p.pid]; ok && measured(p.created, ld.since) {
 			v = math.Round(v*10) / 10
 			d.CPUPct = &v
 		}
@@ -543,9 +591,9 @@ func sortItems(items []scan.ProcessDetail) {
 }
 
 // verifyOrder ordina i file da verificare: prima quelli nelle cartelle che
-// l'utente può scrivere (AppData, Download, temporanee...), poi gli altri,
-// per ultimi quelli di Windows. Se il tempo finisce, restano senza verifica
-// i meno interessanti.
+// l'utente può scrivere (AppData, Download, temporanee, ProgramData, altre
+// unità...), poi Programmi, per ultimi quelli di Windows. Se il tempo
+// finisce, restano senza verifica i meno interessanti.
 func verifyOrder(paths []string, profile string) {
 	rank := make(map[string]int, len(paths))
 	for _, p := range paths {
