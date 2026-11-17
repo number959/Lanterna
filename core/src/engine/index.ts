@@ -186,7 +186,52 @@ export type { DocOptions } from './document';
 export { BUGCHECKS, dateIt, lastQualityUpdate, ramTestSeverity, WIN10_EOS, WIN10_ESU_CONSUMER, WIN11_EOS } from './pc';
 export { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw, STATUS_LABEL } from './smart';
 export type { AttrState, DiskSignal, DiskStatus } from './smart';
-export { cacheText, channelMode, channelOf, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
+export { cacheText, channelMode, channelOf, coreLayout, cpuVendor, displaysText, memVendor, moduleText } from './hardware';
+export { codeName, codeNameText, cpuNameClean } from './codenames';
+export type { CodeName } from './codenames';
+export { chipsetName, chipsetText } from './chipset';
+export type { ChipsetName } from './chipset';
+export { analyzeWin11, wddmText, win11Cpu, win11CpuRule, WIN11_CPU_LABEL, WIN11_STATUS_LABEL, win11Requirements } from './win11';
+export type { Win11CpuResult, Win11CpuVerdict, Win11Req, Win11Status } from './win11';
+export {
+  analyzeProcs,
+  fileName,
+  fileSeverity,
+  folderLabel,
+  isLookalike,
+  isMicrosoftSigned,
+  lc1,
+  listeners,
+  ownerLabel,
+  procGroups,
+  PROCS_UNREADABLE_INFO,
+  SIG_CRIT,
+  SIG_WARN,
+  signatureLabel,
+  SYSTEM_NAMES,
+  userWritable,
+} from './procs';
+export type { ProcGroup, Tone } from './procs';
+export {
+  accountLabel,
+  analyzeAutoruns,
+  AUTORUN_CATEGORIES,
+  autorunCounts,
+  autorunIssues,
+  browserLabel,
+  categoryLabel,
+  categoryLower,
+  categoryShort,
+  consumerLabel,
+  entryFile,
+  interpretedInline,
+  isInterpreter,
+  runAsLabel,
+  sourceLabel,
+  startLabel,
+  triggerLabel,
+} from './autoruns';
+export type { AutorunIssue, AutorunIssueKind } from './autoruns';
 export type { ChannelMode } from './hardware';
 export { pctText, reclaimableBytes, sizeText, spaceHintLabel, spaceLine, SPACE_CATEGORY_LABEL, SPACE_HINTS, SPACE_RISK_LABEL, unattributedBytes } from './space';
 export type { SpaceHintInfo, SpaceRisk } from './space';

@@ -1,6 +1,7 @@
 import { fmt, more, num, thousands } from './fmt';
 import { analyzeDefender } from './defender';
 import { analyzeHardware } from './hardware';
+import { analyzeWin11 } from './win11';
 import { bytesText, diskStatus, isFlashDisk } from './smart';
 import { reclaimableBytes, sizeText, SPACE_HINTS } from './space';
 import type { DiskBench, EventGroup, EventKind, Finding, PcData, PhysicalDisk, PlanKind, Scan, Severity, SpaceReport } from './types';
@@ -1064,6 +1065,7 @@ export function analyzePc(scan: Scan, add: Add) {
   analyzeMemory(pc, add);
   analyzeDisks(scan, pc, add);
   analyzeHardware(pc, add);
+  analyzeWin11(scan, add);
   analyzeStartup(pc, add);
   analyzeEvents(pc, now, add);
   analyzeSecurity(pc, now, add);

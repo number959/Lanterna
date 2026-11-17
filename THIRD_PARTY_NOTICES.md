@@ -1080,6 +1080,73 @@ the list to obtain it directly from IEEE (and to update it on a regular
 basis) to ensure the integrity of the information.
 ```
 
+## Tabelle dei nomi in codice dei processori e dei chipset
+
+Il motore di analisi (core/src/engine/codenames.ts e core/src/engine/chipset.ts) contiene tabelle scritte dal progetto con fatti pubblicati: famiglia, modello e stepping dei processori, ID PCI dei chipset e nomi dei prodotti. Fonti: l'elenco ufficiale dei processori di Intel «Intel Affected Processor List» (https://github.com/intel/Intel-affected-processor-list, licenza 0BSD, che non chiede avvisi), le schede tecniche dei chipset Intel e il manuale per sviluppatori di Intel citati nel codice, i sorgenti di Linux e di illumos usati solo come riscontro di fatti, senza copiarne codice o commenti. Gli schemi dei nomi commerciali con cui si risolvono i casi ambigui derivano da libcpuid; gli ID e i nomi dei chipset che non vengono da una scheda tecnica letta vengono dall'elenco pci.ids (versione 2026.11.16), di cui si sceglie la licenza BSD a 3 clausole.
+
+### libcpuid (BSD-2-Clause)
+
+```
+Copyright 2008  Veselin Georgiev,
+anrieffNOSPAM @ mgail_DOT.com (convert to gmail)
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### pci.ids, PCI ID Project (BSD-3-Clause)
+
+Dall'intestazione del file: «This file can be distributed under either the GNU General Public License (version 2 or higher) or the 3-clause BSD License. The database is a compilation of factual data, and as such the copyright only covers the aggregation and formatting. The copyright is held by Martin Mares and Albert Pool.»
+
+```
+Copyright (c) Martin Mares and Albert Pool
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+```
+
 ## Narrazione delle videoguide (voce sintetica «Giulia»)
 
 La narrazione delle videoguide è registrata: 147 file Ogg Opus, circa 12 minuti in tutto (core/src/guides/narrazione/). Le registrazioni sono state generate una volta con Qwen3-TTS (Qwen3-TTS-12Hz-0.6B-Base, voce di riferimento giulia.flac) dallo script scripts/narrazione/genera.py; nel programma ci sono soltanto le registrazioni, non il modello né il suo codice. Modello e licenza: Qwen3-TTS di Alibaba Cloud, licenza Apache-2.0.

@@ -636,18 +636,35 @@ describe('computer: scheda tecnica (stile CPU-Z)', () => {
     expect(find(hwPc({}), 'pc.tpm')).toBeUndefined();
   });
 
-  it('requisiti di Windows 11 solo sui PC con Windows 10', () => {
+  it('requisiti di Windows 11 su Windows 10 e su Windows 11 (i dettagli in win11.test.ts)', () => {
     const win10 = { name: 'Windows 10 Pro', version: '22H2', build: 19045 };
-    const good: Hardware = { firmware: 'uefi', secureBoot: true, tpm: '2.0', cpu: { features: ['SSE4.2', 'POPCNT'] } };
-    const ok = find(hwPc(good, win10), 'pc.win11');
+    const good: Hardware = { firmware: 'uefi', secureBoot: true, tpm: '2.0', chassis: 'laptop', displays: [{ width: 1920, height: 1080, diagonalIn: 14, bitsPerColor: 8, internal: true }], cpu: { features: ['SSE4.2', 'POPCNT'] } };
+    const goodPc = (os?: Partial<PcData['os']>) =>
+      edit((x) => {
+        x.hardware = good;
+        x.os = { ...x.os!, arch: 'x64', ...os };
+        x.cpu = { ...x.cpu!, name: '11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz', maxMhz: 2419 };
+        x.gpus = [{ name: 'Intel(R) Iris(R) Xe Graphics', wddm: 2900 }];
+      });
+    const ok = find(goodPc(win10), 'pc.win11');
     expect(ok?.severity).toBe('info');
+    expect(ok?.value).toBe('aggiornabile secondo i requisiti verificabili');
+    // Con il processore di prova, senza frequenza né modello del driver video: da verificare, mai «a posto».
+    expect(find(hwPc(good, win10), 'pc.win11')?.value).toBe('3 requisiti da verificare');
     expect(ok?.verdict).toContain('Controllo integrità PC');
-    const bad = find(hwPc({ firmware: 'bios', tpm: '', cpu: { features: ['SSE2'] } }, win10), 'pc.win11');
+    const noTpm = edit((x) => {
+      x.hardware = { firmware: 'bios', tpm: '', cpu: { features: ['SSE2'] } };
+      x.os = { ...x.os!, ...win10 };
+      delete x.win11;
+    });
+    const bad = find(noTpm, 'pc.win11');
     expect(bad?.severity).toBe('warn');
-    expect(bad?.verdict).toContain('TPM 2.0; avvio UEFI');
+    expect(bad?.verdict).toContain('firmware UEFI (BIOS legacy); Secure Boot (non disponibile con il BIOS legacy); TPM 2.0 (nessun TPM attivo)');
     expect(bad?.verdict).toContain('POPCNT');
-    expect(bad?.actions).toEqual(['firmware-security', 'upgrade-windows']);
-    expect(find(hwPc(good), 'pc.win11')).toBeUndefined(); // Windows 11
+    expect(bad?.actions).toEqual(['firmware-security', 'check-win11-cpu', 'upgrade-windows']); // processore di prova: da verificare
+    // Windows 11 già installato: sull'hardware giusto è a posto.
+    expect(sevOf(goodPc(), 'pc.win11')).toBe('ok');
+    expect(sevOf(hwPc(good), 'pc.win11')).toBe('info');
   });
 
   it('formattazione: core P/E, cache, produttori JEDEC', () => {
@@ -666,7 +683,7 @@ describe('computer: scheda tecnica (stile CPU-Z)', () => {
   it('demo: portatile in canale singolo, ambulatorio con Secure Boot spento', () => {
     const home = analyze(demoScan).findings;
     expect(home.find((f) => f.id === 'pc.ram.channel')?.severity).toBe('info');
-    expect(home.find((f) => f.id === 'pc.win11')).toBeUndefined();
+    expect(home.find((f) => f.id === 'pc.win11')?.severity).toBe('ok'); // Windows 11 su hardware supportato
     const clinic = analyze(clinicScan).findings;
     expect(clinic.find((f) => f.id === 'pc.secureboot')?.severity).toBe('warn');
     expect(clinic.find((f) => f.id === 'pc.win11')?.severity).toBe('info');

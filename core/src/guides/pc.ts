@@ -6,6 +6,7 @@ import { WU_ERRORS } from '../engine/maint';
 import { SPACE_HINTS, SPACE_RISK_LABEL } from '../engine/space';
 import type { SpaceRisk } from '../engine/space';
 import type { Guide } from './types';
+import { processi } from './processi';
 
 // Capitolo — Il computer: come funziona, dischi e loro salute, cosa occupa
 // spazio, test di velocità, memoria, avvio, aggiornamenti, registro eventi,
@@ -371,16 +372,17 @@ export const pc: Guide[] = [
     id: 'scheda-tecnica',
     chapter: 'pc',
     title: 'Scheda tecnica: processore, memoria e firmware',
-    summary: 'Come leggere la scheda tecnica che Polaris compila come CPU-Z: famiglia del processore, core P ed E, cache e istruzioni, velocità dei core in tempo reale, moduli di memoria e dual channel, UEFI, Secure Boot, TPM e requisiti di Windows 11.',
+    summary: 'Come leggere la scheda tecnica che Polaris compila come CPU-Z: famiglia e nome in codice del processore, chipset, core P ed E, cache e istruzioni, velocità dei core in tempo reale, moduli di memoria e dual channel, UEFI, Secure Boot, TPM e requisiti di Windows 11.',
     level: 'intermedio',
     metrics: ['pc.ram.channel', 'pc.ram.speed', 'pc.secureboot', 'pc.tpm', 'pc.win11'],
     actions: ['dual-channel', 'firmware-security', 'upgrade-windows'],
-    tags: ['cpu-z', 'scheda tecnica', 'processore', 'famiglia', 'modello', 'stepping', 'core p', 'core e', 'ibrido', 'cache', 'l1', 'l2', 'l3', 'avx', 'sse4.2', 'popcnt', 'ddr4', 'ddr5', 'lpddr', 'mt/s', 'dual channel', 'canale singolo', 'xmp', 'expo', 'sodimm', 'dimm', 'scheda madre', 'bios', 'uefi', 'legacy', 'secure boot', 'tpm', 'ptt', 'ftpm', 'windows 11', 'requisiti', 'virtualizzazione', 'vram', 'core speed', 'frequenza effettiva', 'turbo', 'turbo boost', 'precision boost', 'bus', 'bclk', 'moltiplicatore', 'tempo reale'],
+    tags: ['cpu-z', 'scheda tecnica', 'processore', 'famiglia', 'modello', 'stepping', 'core p', 'core e', 'ibrido', 'cache', 'l1', 'l2', 'l3', 'avx', 'sse4.2', 'popcnt', 'ddr4', 'ddr5', 'lpddr', 'mt/s', 'dual channel', 'canale singolo', 'xmp', 'expo', 'sodimm', 'dimm', 'scheda madre', 'bios', 'uefi', 'legacy', 'secure boot', 'tpm', 'ptt', 'ftpm', 'windows 11', 'requisiti', 'virtualizzazione', 'vram', 'core speed', 'frequenza effettiva', 'turbo', 'turbo boost', 'precision boost', 'bus', 'bclk', 'moltiplicatore', 'tempo reale', 'nome in codice', 'codename', 'chipset', 'pch', 'promontory', 'schermo', 'wddm'],
     blocks: [
       { t: 'p', text: 'Nella sezione Computer, sotto i dettagli del sistema, Polaris mostra la scheda tecnica del PC: gli stessi dati che si leggono con CPU-Z, raccolti da Windows in sola lettura e senza numeri di serie. Qui c\'è come leggerla.' },
       { t: 'h', text: 'Il processore' },
       { t: 'table', head: ['Voce', 'Che cosa indica'], rows: [
         ['Famiglia, modello, stepping', 'l\'identità esatta del chip secondo il produttore: serve a cercare aggiornamenti del BIOS e problemi noti'],
+        ['Nome in codice', 'il nome del progetto del produttore (Tiger Lake, Alder Lake, Raphael, Milan...), ricavato da famiglia, modello e stepping e, nei casi ambigui, dal nome commerciale; l\'anno è indicativo'],
         ['Zoccolo', 'il connettore sulla scheda madre (per esempio LGA1700, AM5); nei portatili il processore è saldato'],
         ['Core P ed E', 'i processori ibridi (Intel dalla 12ª generazione, molti ARM) uniscono core potenti (P) e core efficienti (E): Windows assegna i lavori pesanti ai primi'],
         ['Thread', 'flussi di istruzioni eseguibili insieme: con l\'Hyper-Threading (SMT) un core P ne gestisce due'],
@@ -389,6 +391,16 @@ export const pc: Guide[] = [
         ['Virtualizzazione', 'le estensioni Intel VT-x o AMD-V, necessarie per macchine virtuali, WSL e la sicurezza basata sulla virtualizzazione: si attivano nel firmware'],
         ['Frequenza del bus', 'il riferimento da cui si ricava la frequenza dei core (BCLK, quasi sempre 100 MHz): è il valore nominale dichiarato dal firmware'],
       ] },
+      { t: 'p', text: 'Il **nome in codice** viene da tabelle scritte dal progetto a partire da fatti pubblicati: l\'elenco ufficiale dei processori di Intel (licenza 0BSD), il manuale per sviluppatori di Intel, e come riscontro i sorgenti di Linux, illumos e libcpuid. Alcuni modelli valgono per più prodotti (per esempio lo stesso modello Intel per Kaby Lake e Amber Lake): decide il numero nel nome commerciale, e se non basta Polaris scrive «da verificare». Un modello che non è in tabella resta senza nome: mai un nome indovinato. Sui processori ARM (Snapdragon) il nome viene dal nome commerciale.' },
+      { t: 'h', text: 'Il chipset' },
+      { t: 'p', text: 'Il **chipset** è il chip della scheda madre che collega processore, dischi, porte USB e rete. Polaris lo riconosce dai codici PCI dei dispositivi (produttore e modello, mai l\'identificativo dell\'esemplare):' },
+      { t: 'list', items: [
+        '**Intel**: il modello del controller LPC/eSPI dice il chipset esatto (Z790, B660, Q670...), dalle schede tecniche Intel dalla serie 100 alla 800; i portatili recenti non hanno un chipset separato ma un **PCH integrato nel processore**;',
+        '**AMD**: le funzioni del chipset di base stanno nel processore; il chipset separato delle schede desktop si riconosce solo per serie, e la «E» di X670E o B650E non si distingue mai: Polaris scrive per esempio «serie 600 (probabilmente B650 o B650E)»;',
+        '**macchine virtuali**: mostrano un chipset emulato, che Polaris indica come tale;',
+        '**Snapdragon**: nessun chipset separato.',
+      ] },
+      { t: 'p', text: 'Le righe che vengono solo dall\'elenco pubblico pci.ids, senza una scheda tecnica letta, sono segnate da verificare.' },
       { t: 'h', text: 'La velocità dei core in tempo reale' },
       { t: 'p', text: 'Nella scheda Processore il riquadro **Velocità dei core in tempo reale** mostra, una volta al secondo, la frequenza a cui lavorano davvero i core: è il "Core Speed" di CPU-Z. Il valore grande è la media dei core, la stessa che mostra Gestione attività; accanto ci sono il core più veloce, la frequenza di base, la massima vista nella sessione e il carico, poi il grafico dell\'ultimo minuto e una barra per ogni processore logico.' },
       { t: 'list', items: [
@@ -412,10 +424,10 @@ export const pc: Guide[] = [
       ] },
       { t: 'note', kind: 'warn', title: 'Prima di toccare il firmware', text: 'Se il disco è cifrato con BitLocker, salva la chiave di ripristino prima di cambiare TPM o Secure Boot: il PC potrebbe chiederla al riavvio. Sui PC aziendali queste impostazioni le gestisce l\'amministratore.' },
       { t: 'h', text: 'Requisiti di Windows 11' },
-      { t: 'p', text: 'Sui PC con Windows 10 Polaris controlla i requisiti verificabili da Windows stesso: TPM 2.0, avvio UEFI (necessario per Secure Boot), almeno 4 GB di RAM, almeno 64 GB sul disco di sistema e le istruzioni POPCNT e SSE4.2. Il requisito più discusso, il modello del processore (in genere Intel dall\'8ª generazione e AMD Ryzen dalla serie 2000), lo verifica l\'app Controllo integrità PC di Microsoft. Requisiti noti a metà 2026: Microsoft può aggiornarli, verificali sul suo sito.' },
+      { t: 'p', text: 'Polaris controlla i requisiti di Windows 11 sia sui PC con Windows 10 sia su quelli con Windows 11 già installato: processore, memoria, disco di sistema, UEFI, Secure Boot, TPM 2.0, scheda video, schermo integrato e le istruzioni POPCNT e SSE4.2. Il requisito più discusso, la generazione del processore, Polaris lo valuta con regole proprie, perché non incorpora gli elenchi di Microsoft; la verifica ufficiale è l\'app Controllo integrità PC. Ogni requisito è spiegato in [[requisiti-windows-11]]. Requisiti letti a novembre 2026: Microsoft può aggiornarli.' },
       { t: 'p', text: 'Se il PC non è compatibile le strade sono tre: risolvere il requisito mancante quando è un\'impostazione (TPM, Secure Boot), aderire per il tempo necessario al programma Extended Security Updates, oppure sostituire il PC (vedi [[aggiornamenti-sicurezza-pc]]).' },
       { t: 'h', text: 'La scheda video' },
-      { t: 'p', text: 'Per ogni scheda video Polaris riporta la memoria video (VRAM), la risoluzione e la frequenza dello schermo collegato, insieme alla versione e alla data del driver. Le schede integrate non hanno memoria propria: usano una parte della RAM, e per questo traggono vantaggio dal dual channel.' },
+      { t: 'p', text: 'Per ogni scheda video Polaris riporta la memoria video (VRAM), la risoluzione e la frequenza dello schermo collegato, insieme alla versione e alla data del driver e al modello del driver (**WDDM**, chiesto da Windows 11 dalla versione 2.0). Le schede integrate non hanno memoria propria: usano una parte della RAM, e per questo traggono vantaggio dal dual channel. Degli schermi Polaris mostra la diagonale dichiarata, la risoluzione in uso e i bit per colore, mai il numero di serie.' },
     ],
   },
   {
@@ -503,17 +515,19 @@ export const pc: Guide[] = [
     level: 'base',
     metrics: ['pc.startup', 'pc.uptime', 'pc.reboot'],
     actions: ['trim-startup', 'restart-pc'],
-    tags: ['avvio', 'esecuzione automatica', 'startup', 'run', 'app di avvio', 'servizi', 'attività pianificate', 'avvio rapido', 'fast startup', 'riavvio', 'uptime', 'riavvio in sospeso', 'arresta il sistema'],
+    tags: ['avvio', 'esecuzione automatica', 'startup', 'run', 'app di avvio', 'servizi', 'attività pianificate', 'avvio rapido', 'fast startup', 'riavvio', 'uptime', 'riavvio in sospeso', 'arresta il sistema', 'processi', 'autoruns'],
     blocks: [
       { t: 'h', text: 'Che cosa parte con Windows' },
       { t: 'table', head: ['Meccanismo', 'Dove si vede', 'Letto da Polaris'], rows: [
         ['chiavi Run del registro (utente e computer)', 'Gestione attività > App di avvio', 'sì'],
         ['cartelle di esecuzione automatica', 'Gestione attività > App di avvio, o `shell:startup`', 'sì'],
-        ['servizi', '`services.msc`', 'no'],
-        ['attività pianificate', 'Utilità di pianificazione (`taskschd.msc`)', 'no'],
-        ['estensioni del browser', 'impostazioni del browser', 'no'],
+        ['servizi e driver', '`services.msc`, Gestione dispositivi', 'sì, in Avvio automatico'],
+        ['attività pianificate', 'Utilità di pianificazione (`taskschd.msc`)', 'sì, in Avvio automatico (senza amministratore solo quelle leggibili dall\'utente)'],
+        ['sottoscrizioni WMI', 'nessuna finestra di Windows', 'sì, in Avvio automatico'],
+        ['estensioni del browser', 'impostazioni del browser', 'sì, in Avvio automatico (solo i profili di chi usa Polaris)'],
+        ['Winlogon, IFEO, BootExecute, AppInit, LSA, stampa, provider di rete', 'solo nel registro', 'sì, in Avvio automatico'],
       ] },
-      { t: 'p', text: 'Polaris conta i programmi attivi e disattivati e ne mostra il comando. Oltre 8 programmi attivi segnala che qualcuno si può togliere, oltre 15 lo considera un rallentamento. Conta più che cosa fanno che quanti sono: Gestione attività stima l\'impatto di ciascuno nella colonna "Impatto all\'avvio".' },
+      { t: 'p', text: 'Per i programmi all\'accesso Polaris conta quelli attivi e disattivati e ne mostra il comando. Oltre 8 programmi attivi segnala che qualcuno si può togliere, oltre 15 lo considera un rallentamento. Conta più che cosa fanno che quanti sono: Gestione attività stima l\'impatto di ciascuno nella colonna "Impatto all\'avvio". Tutto il resto che parte da solo, con firma e cartella di ogni voce, è spiegato in [[avvio-automatico]].' },
       { t: 'table', caption: 'Cosa tenere e cosa disattivare', head: ['Di solito si tiene', 'Di solito si può disattivare'], rows: [
         ['antivirus e icona di Sicurezza di Windows (SecurityHealth)', 'launcher di giochi (Steam, Epic Games)'],
         ['utilità di audio, touchpad, tastiera e penna', 'musica e chat usate di rado'],
@@ -529,6 +543,7 @@ export const pc: Guide[] = [
       { t: 'note', kind: 'clinic', text: 'Sulle postazioni che devono restare sempre accese (accettazione, reparti, sale di controllo) il riavvio va pianificato in un orario concordato, non evitato: una postazione che non si riavvia da mesi accumula aggiornamenti mai applicati.' },
     ],
   },
+  ...processi,
   {
     id: 'aggiornamenti-sicurezza-pc',
     chapter: 'pc',
@@ -762,7 +777,7 @@ export const pc: Guide[] = [
         'i dispositivi scollegati, come Gestione dispositivi senza "Mostra dispositivi nascosti";',
         'i messaggi personalizzati che alcuni driver mostrano al posto del testo standard del codice;',
         'i nomi dei dispositivi Bluetooth abbinati, dei telefoni, delle code di stampa e dei dispositivi di rete, sostituiti da nomi generici perché possono contenere nomi di persone o di altri computer (la sezione Stampanti mostra invece il nome che Windows dà a ogni stampante installata);',
-        'la firma file per file: con la verifica attiva i driver avviati sono firmati per forza, quelli rifiutati hanno il codice 52.',
+        'qui la firma dei driver è lo stato generale di Windows: con la verifica attiva i driver avviati sono firmati per forza, quelli rifiutati hanno il codice 52; la firma file per file dei driver di altri produttori è nell\'avvio automatico (vedi [[avvio-automatico]]).',
       ] },
       { t: 'note', kind: 'tip', title: 'Controllo a mano', text: 'Da un Prompt dei comandi, `pnputil /enum-devices /problem` (da Windows 10 versione 1903) elenca i dispositivi con un problema e il loro codice. Microsoft consiglia di aprire il prompt come amministratore per la maggior parte dei comandi di PnPUtil.' },
     ],

@@ -9,6 +9,8 @@ import { analyzeUsb } from './usb';
 import { analyzeProtection } from './protect';
 import { analyzeCrashes } from './crash';
 import { analyzeDevices } from './devices';
+import { analyzeProcs } from './procs';
+import { analyzeAutoruns } from './autoruns';
 import { analyzeSurvey } from './survey';
 import { analyzeSpeed } from './speedtest';
 import { ACTIONS } from './kb/actions';
@@ -46,7 +48,7 @@ import {
   STRONG_NEIGHBOUR_DBM,
 } from './wifi';
 
-export const ENGINE_VERSION = '1.7.0';
+export const ENGINE_VERSION = '1.8.0';
 
 const SEV_RANK: Record<Severity, number> = { unknown: 0, ok: 1, info: 2, warn: 3, crit: 4 };
 const SEV_POINTS: Record<Severity, number | null> = { ok: 100, info: 95, warn: 55, crit: 10, unknown: null };
@@ -1555,6 +1557,9 @@ export function analyze(scan: Scan): Analysis {
   analyzePc(scan, (f) => c.add(f));
   // Dispositivi e driver, come Gestione dispositivi.
   analyzeDevices(scan, (f) => c.add(f));
+  // Processi con firma e connessioni (Process Explorer), avvio automatico esteso (Autoruns).
+  analyzeProcs(scan, (f) => c.add(f));
+  analyzeAutoruns(scan, (f) => c.add(f));
   // Avvio, programmi che si chiudono da soli, indice di stabilità.
   analyzeStability(scan, (f) => c.add(f));
   // Diagnostica memoria, aggiornamenti non riusciti, file system.
