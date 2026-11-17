@@ -385,6 +385,8 @@ func TestNetText(t *testing.T) {
 	}{
 		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: &net.OpError{Op: "proxyconnect", Net: "tcp", Addr: &net.TCPAddr{IP: net.IPv4(203, 0, 113, 7), Port: 3128}, Err: errors.New("connect: connection refused")}}, "proxy di sistema non risponde"},
 		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: &net.OpError{Op: "proxyconnect", Net: "tcp", Err: errors.New("Proxy Authentication Required")}}, "autenticazione"},
+		// Forma vera del 407 al CONNECT in net/http: solo il testo dello stato.
+		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: errors.New("Proxy Authentication Required")}, "autenticazione"},
 		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "learn.microsoft.com"}}}, "nome del sito non risolto"},
 		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}}, "connessione cifrata non verificabile"},
 		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: x509.HostnameError{Host: "learn.microsoft.com"}}, "connessione cifrata non verificabile"},
@@ -422,5 +424,21 @@ func TestCheckNetworkErrors(t *testing.T) {
 	clean("proxy", r.Error)
 	if !strings.Contains(r.Error, "proxy") {
 		t.Errorf("proxy che non risponde: %+v", r)
+	}
+	// Proxy aziendale che chiede le credenziali (407 al CONNECT): net/http
+	// restituisce solo il testo dello stato, senza *net.OpError.
+	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodConnect {
+			t.Errorf("richiesta al proxy: %s", req.Method)
+		}
+		w.Header().Set("Proxy-Authenticate", `Basic realm="azienda"`)
+		w.WriteHeader(http.StatusProxyAuthRequired)
+	}))
+	defer auth.Close()
+	authURL, _ := url.Parse(auth.URL)
+	r = Check(ctx, Options{Transport: &http.Transport{Proxy: http.ProxyURL(authURL)}, CPU: "Intel(R) Core(TM) i5-8250U", Vendor: "GenuineIntel"})
+	clean("proxy con autenticazione", r.Error)
+	if !strings.Contains(r.Error, "chiede un'autenticazione") {
+		t.Errorf("proxy con autenticazione: %+v", r)
 	}
 }

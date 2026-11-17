@@ -198,10 +198,12 @@ func netText(err error) string {
 	var op *net.OpError
 	var ne net.Error
 	switch {
+	// Il 407 al CONNECT arriva da net/http come errore semplice con il solo
+	// testo dello stato («Proxy Authentication Required»), non come
+	// *net.OpError «proxyconnect»: si riconosce dal testo.
+	case strings.Contains(strings.ToLower(err.Error()), "proxy authentication required"):
+		return "il proxy di sistema chiede un'autenticazione"
 	case errors.As(err, &op) && op.Op == "proxyconnect":
-		if strings.Contains(err.Error(), "407") || strings.Contains(strings.ToLower(err.Error()), "proxy authentication") {
-			return "il proxy di sistema chiede un'autenticazione"
-		}
 		return "il proxy di sistema non risponde"
 	case errors.As(err, &dns):
 		return "nome del sito non risolto (rete assente o DNS non disponibile)"

@@ -125,6 +125,15 @@ describe('generazione del processore: regole del progetto', () => {
     for (const n of ['AMD Ryzen 9 9950X 16-Core Processor', 'AMD Ryzen AI 9 HX 370 w/ Radeon 890M', 'AMD Ryzen 7 8845HS w/ Radeon 780M Graphics', 'AMD Ryzen Threadripper 3970X 32-Core Processor', 'AMD Ryzen 7 260 w/ Radeon 780M Graphics'])
       expect(win11Cpu(amd('notListed', n)), n).toMatchObject({ result: 'listed', source: 'rules' });
     expect(win11Cpu(list('notListed', 'Intel(R) Pentium(R) Gold G6400 CPU @ 4.00GHz'))).toMatchObject({ result: 'listed', source: 'rules' });
+    // Il dettaglio non dice che la serie è negli elenchi più recenti (la serie Pentium Gold G6000 non c'è): lo dicono le regole.
+    expect(win11Cpu(list('notListed', 'Intel(R) Pentium(R) Gold G6400 CPU @ 4.00GHz')).detail).toContain('le regole di Polaris lo collocano nella generazione supportata (Pentium Gold G6000)');
+    // Athlon 300/3000/4000 e AMD 3015e/3020e: Microsoft li elenca solo per modello (24H2), la 25H2 per serie non li ha.
+    expect(win11CpuRule('AMD Athlon Silver 3050U with Radeon Graphics')).toMatchObject({ result: 'listed', note: expect.stringContaining('per modello') });
+    expect(win11CpuRule('AMD 3020e with Radeon Graphics')).toMatchObject({ result: 'listed', note: expect.stringContaining('per modello') });
+    expect(win11CpuRule('AMD Athlon Gold 7220U')).toMatchObject({ result: 'listed', note: undefined });
+    for (const n of ['AMD Athlon PRO 3145U Mobile Processor with Radeon Graphics', 'AMD Athlon Gold PRO 4150GE with Radeon Graphics', 'AMD 3015e with Radeon Graphics'])
+      expect(win11Cpu(amd('notListed', n)), n).toMatchObject({ result: 'unknown', source: 'list' });
+    expect(win11Cpu(amd('notListed', 'AMD EPYC 7302 16-Core Processor')).detail).toContain('non lo escludono (EPYC 7002, negli elenchi per modello fino alla 24H2, non nella 25H2)');
     // Serie solo negli elenchi vecchi, serie con nota, nomi sconosciuti: da verificare, mai «non rispettato».
     for (const p of [
       list('notListed', 'Intel(R) Core(TM) i9-10900X CPU @ 3.70GHz'),
@@ -344,7 +353,24 @@ describe('giudizio pc.win11', () => {
     w10.pc!.hardware!.displays = [{ diagonalIn: 7, width: 1920, height: 1080, bitsPerColor: 8, internal: true }];
     f = win11Of(w10);
     expect(f?.severity).toBe('info');
-    expect(f?.verdict).toContain('rispetta i requisiti di Windows 11 che Windows Update controlla');
+    expect(f?.verdict).toContain('rispetta i requisiti di Windows 11 che Windows Update controlla.');
+    expect(f?.verdict).toContain('non blocca l\'aggiornamento a Windows 11');
+    // Con un requisito controllato da Windows Update ancora da verificare (TPM non letto) non si dice «rispettati» senza riserve.
+    w10.pc!.win11 = {};
+    delete w10.pc!.hardware!.tpm;
+    f = win11Of(w10);
+    expect(f?.verdict).toContain('che Windows Update controlla, tra quelli verificabili da qui. Non rispettato: schermo integrato');
+    expect(f?.verdict).toContain('Da verificare: TPM 2.0 (non letto)');
+    const w11u = goodScan();
+    w11u.pc!.hardware!.displays = [{ diagonalIn: 7, width: 1920, height: 1080, bitsPerColor: 8, internal: true }];
+    w11u.pc!.win11 = {};
+    delete w11u.pc!.hardware!.tpm;
+    expect(win11Of(w11u)?.verdict).toMatch(/^I requisiti verificabili che Windows Update controlla sono rispettati\. Non rispettato: schermo integrato .* non blocca gli aggiornamenti\. Da verificare: TPM 2\.0 \(non letto\)\./);
+    // Su Windows 10 con un requisito vero mancante: avviso, e lo schermo «anche».
+    w10.pc!.cpu!.name = 'Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz';
+    f = win11Of(w10);
+    expect(f?.severity).toBe('warn');
+    expect(f?.verdict).toContain('. Non rispettato anche: schermo integrato');
     // Con un requisito vero mancante resta l'avviso, e lo schermo si dice a parte.
     s.pc!.cpu!.name = 'Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz';
     f = win11Of(s);

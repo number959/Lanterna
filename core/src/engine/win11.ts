@@ -74,8 +74,10 @@ const unknown = (series?: string, note?: string): Rule => ({ result: 'unknown', 
 // Criterio unico per le serie tolte dagli elenchi recenti: se la serie è solo
 // negli elenchi fino alla 22H2 (Core X 7000X, 9000X e 10000X, Xeon W-2100,
 // W-2200 e W-3100, primi Snapdragon) l'esito è «da verificare»; se è ancora
-// negli elenchi per modello della 24H2 (Ryzen 2000, EPYC 7002) è «nella
-// generazione supportata», con la nota.
+// negli elenchi per modello della 24H2 ma non nella 25H2 per serie (Ryzen
+// 2000, EPYC 7002, Athlon 300, 3000 e 4000, AMD 3015e e 3020e) è «nella
+// generazione supportata», con la nota: Microsoft li elenca modello per
+// modello, quindi un modello assente dall'elenco letto è da verificare.
 const OLD_LISTS = 'presente negli elenchi Microsoft fino alla 22H2, non in quelli successivi';
 const MODEL_LISTS = 'negli elenchi per modello fino alla 24H2, non nella 25H2';
 
@@ -225,11 +227,13 @@ function amdRule(n: string): Rule | undefined {
     if ((m = /\bAthlon\s+(?:(?:Gold|Silver|PRO)\s+)*(\d)(\d{2,3})[A-Z]*\b/i.exec(n))) {
       const g = +m[1];
       if (g === 2 && m[2].length === 2) return notListed('Athlon 200 (Raven Ridge)');
-      if (g === 3 || g === 4 || g === 7) return listed(`Athlon ${g}${m[2].length === 2 ? '00' : '000'}`);
+      // Athlon 300, 3000 e 4000: solo negli elenchi per modello (la 25H2 per serie ha solo gli Athlon 7000).
+      if (g === 3 || g === 4) return listed(`Athlon ${g}${m[2].length === 2 ? '00' : '000'}`, MODEL_LISTS);
+      if (g === 7) return listed(`Athlon ${g}${m[2].length === 2 ? '00' : '000'}`);
     }
     return notListed('Athlon anteriore alla serie 3000');
   }
-  if (/\bAMD\s+30[12][05]e\b/i.test(n)) return listed('AMD 3015e/3020e');
+  if (/\bAMD\s+30[12][05]e\b/i.test(n)) return listed('AMD 3015e/3020e', MODEL_LISTS);
   if (/\b(?:A\d{1,2}(?:-PRO)?-\d{4}|FX-\d{4}|E\d?-\d{4})|\bPhenom\b|\bSempron\b|\bOpteron\b|\bTurion\b/i.test(n)) return notListed('processore AMD anteriore ai Ryzen');
   return undefined;
 }
@@ -265,9 +269,11 @@ export function win11CpuRule(name?: string): Rule | undefined {
  *   unknown     qualsiasi                (regola)    rules   (dalla regola)
  *   nessuno     nessuna                  unknown     none    da verificare
  *
- * Una regola «listed» senza nota dice che la serie è negli elenchi più
- * recenti (25H2 per serie): l'elenco per modello della 24H2 e quello di una
- * sola versione non comprendono i modelli usciti dopo né quelli dimenticati
+ * Una regola «listed» senza nota dice che la serie o la generazione è
+ * supportata secondo gli elenchi più recenti (25H2 per serie; Pentium Gold
+ * G6000 per generazione, come i Core di 10ª): l'elenco per modello della
+ * 24H2 e quello di una sola versione non comprendono i modelli usciti dopo
+ * né quelli dimenticati
  * (Ryzen 9000, Ryzen AI 300, Ryzen 7 8845HS). Una regola con nota (serie
  * solo negli elenchi di versioni precedenti, o negli elenchi per modello)
  * non basta contro l'assenza dal modello: da verificare.
@@ -295,7 +301,7 @@ export function win11Cpu(pc: PcData): Win11CpuVerdict {
         result: 'listed',
         series: rule.series,
         source: 'rules',
-        detail: `${absent}, ma secondo le regole di Polaris è in una serie o generazione degli elenchi Microsoft più recenti: ${ruleText(rule)}. Gli elenchi sono scritti per i PC nuovi, cambiano a ogni versione e non comprendono tutti i modelli.`,
+        detail: `${absent}, ma le regole di Polaris lo collocano nella generazione supportata${rule.series ? ` (${rule.series})` : ''}. Gli elenchi sono scritti per i PC nuovi, cambiano a ogni versione e non comprendono tutti i modelli.`,
       };
     if (rule && rule.result === 'notListed')
       return {
@@ -309,7 +315,7 @@ export function win11Cpu(pc: PcData): Win11CpuVerdict {
       result: 'unknown',
       series: rule && rule.series,
       source: 'list',
-      detail: `${absent}, ma le regole di Polaris non lo escludono${rule ? `: ${ruleText(rule)}` : ''}. Gli elenchi cambiano a ogni versione e non comprendono tutti i modelli: l'assenza da sola non basta per escluderlo.`,
+      detail: `${absent}, ma le regole di Polaris non lo escludono${rule && rule.series ? ` (${rule.series}${rule.note ? `, ${rule.note}` : ''})` : ''}. Gli elenchi cambiano a ogni versione e non comprendono tutti i modelli: l'assenza da sola non basta per escluderlo.`,
     };
   }
   if (rule)
@@ -573,10 +579,14 @@ export function analyzeWin11(scan: Scan, add: Add) {
   // blocco: Tpm, UefiSecureBoot, Memory, CPU, CpuFms, SModeState, SystemDriveSize) né Controllo
   // integrità PC controllano. Mancano anche su PC venduti con Windows 11 (console portatili da
   // 7"): solo informazione, mai la frase sugli aggiornamenti non garantiti.
-  const soft = fail.filter((r) => r.id === 'display' || r.id === 'gpu');
-  const hard = fail.filter((r) => r.id !== 'display' && r.id !== 'gpu');
+  const isSoft = (r: Win11Req) => r.id === 'display' || r.id === 'gpu';
+  const soft = fail.filter(isSoft);
+  const hard = fail.filter((r) => !isSoft(r));
+  // Con requisiti controllati da Windows Update ancora da verificare (TPM non letto, processore incerto)
+  // non si può dire che siano rispettati: solo quelli verificabili.
+  const hardUnsure = unsure.some((r) => !isSoft(r));
   const softText = soft.length
-    ? `${list(soft)}. ${soft.length > 1 ? 'Sono requisiti' : 'È un requisito'} che Microsoft indica, ma che né Windows Update né Controllo integrità PC controllano, e non ${soft.length > 1 ? 'bloccano' : 'blocca'} gli aggiornamenti.`
+    ? `${list(soft)}. ${soft.length > 1 ? 'Sono requisiti' : 'È un requisito'} che Microsoft indica, ma che né Windows Update né Controllo integrità PC controllano, e non ${soft.length > 1 ? 'bloccano' : 'blocca'} ${isWin10(pc) ? 'l\'aggiornamento a Windows 11' : 'gli aggiornamenti'}.`
     : '';
   const actions: string[] = [];
   if ([...fail, ...unsure].some((r) => r.id === 'tpm' || r.id === 'uefi' || r.id === 'secureboot') || (hw.secureBoot === false && hw.firmware === 'uefi')) actions.push('firmware-security');
@@ -605,9 +615,9 @@ export function analyzeWin11(scan: Scan, add: Add) {
         (hard.length
           ? `Il PC non rispetta questi requisiti di Windows 11: ${list(hard)}.`
           : soft.length
-            ? 'Il PC rispetta i requisiti di Windows 11 che Windows Update controlla.'
+            ? `Il PC rispetta i requisiti di Windows 11 che Windows Update controlla${hardUnsure ? ', tra quelli verificabili da qui' : ''}.`
             : 'Il PC rispetta i requisiti di Windows 11 verificabili da qui.') +
-        (soft.length ? ` Non rispettato: ${softText}` : '') +
+        (soft.length ? ` Non rispettato${hard.length ? ' anche' : ''}: ${softText}` : '') +
         unsureText +
         sbOff +
         apText +
@@ -628,7 +638,7 @@ export function analyzeWin11(scan: Scan, add: Add) {
     verdict: hard.length
       ? `Windows 11 è installato su un PC che non rispetta questi requisiti: ${list(hard)}. Secondo Microsoft i PC installati senza i requisiti non hanno garanzia di ricevere aggiornamenti, compresi quelli di sicurezza, e non hanno assistenza; sul desktop può comparire una filigrana.${soft.length ? ` Non rispettato anche: ${softText}` : ''}${unsureText}${sbOff}${apText}`
       : soft.length
-        ? `I requisiti che Windows Update controlla sono rispettati. Non rispettato: ${softText}${unsureText}${sbOff}${apText}`
+        ? `I requisiti ${hardUnsure ? 'verificabili ' : ''}che Windows Update controlla sono rispettati. Non rispettato: ${softText}${unsureText}${sbOff}${apText}`
         : unsure.length
           ? `I requisiti verificabili sono rispettati; da verificare: ${list(unsure)}.${sbOff}${apText}`
           : `Il PC rispetta i requisiti di Windows 11 verificabili da qui.${sbOff}`,
