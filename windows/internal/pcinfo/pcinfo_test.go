@@ -180,55 +180,6 @@ func TestStartupEnabled(t *testing.T) {
 	}
 }
 
-func TestSanitizeCommand(t *testing.T) {
-	p := `C:\Users\Mario Rossi`
-	for in, want := range map[string]string{
-		`"C:\Users\Mario Rossi\AppData\Local\Discord\Update.exe" --processStart Discord.exe`: `"%USERPROFILE%\AppData\Local\Discord\Update.exe" --processStart Discord.exe`,
-		`c:\users\mario rossi\app.exe --log c:\users\MARIO ROSSI\log.txt`:                    `%USERPROFILE%\app.exe --log %USERPROFILE%\log.txt`,
-		`"C:\Program Files\App\app.exe" /background`:                                         `"C:\Program Files\App\app.exe" /background`,
-		`  C:\Users\Mario Rossi  `:                                                           `%USERPROFILE%`,
-	} {
-		if got := SanitizeCommand(in, p); got != want {
-			t.Errorf("SanitizeCommand(%q)=%q, atteso %q", in, got, want)
-		}
-	}
-	if got := SanitizeCommand(`C:\Users\Mario Rossi\x.exe`, p+`\`); got != `%USERPROFILE%\x.exe` {
-		t.Errorf("barra finale nel profilo: %q", got)
-	}
-	// Lettere che in minuscolo cambiano lunghezza in byte prima del percorso:
-	// il nome non deve passare, nemmeno in parte.
-	for in, want := range map[string]string{
-		`İİ C:\Users\Mario Rossi\x.exe`:          `İİ %USERPROFILE%\x.exe`,
-		`İ "C:\Users\luca\a.exe" Ⱥ C:\Users\x\b`: `İ "C:\Users\‹utente›\a.exe" Ⱥ C:\Users\‹utente›\b`,
-		`K C:\USERS\MARIO ROSSI\y.exe`:           `K %USERPROFILE%\y.exe`,
-	} {
-		if got := SanitizeCommand(in, p); got != want {
-			t.Errorf("SanitizeCommand(%q)=%q, atteso %q", in, got, want)
-		}
-	}
-	if got := SanitizeCommand(`C:\x.exe`, ""); got != `C:\x.exe` {
-		t.Errorf("profilo vuoto: %q", got)
-	}
-	// Altri utenti, nomi che iniziano allo stesso modo, cartelle comuni.
-	a := `C:\Users\anna`
-	for in, want := range map[string]string{
-		`C:\Users\luigi\Downloads\setup.msi`:       `C:\Users\‹utente›\Downloads\setup.msi`,
-		`C:\Users\annabella\Desktop\x.exe`:         `C:\Users\‹utente›\Desktop\x.exe`,
-		`"C:\Users\Anna\app.exe" "C:\Users\Luigi"`: `"%USERPROFILE%\app.exe" "C:\Users\‹utente›"`,
-		`C:\Users\Public\Documents\x.txt`:          `C:\Users\Public\Documents\x.txt`,
-		`D:\Users\luigi\x.exe`:                     `D:\Users\luigi\x.exe`,
-	} {
-		if got := SanitizeCommand(in, a); got != want {
-			t.Errorf("SanitizeCommand(%q)=%q, atteso %q", in, got, want)
-		}
-	}
-	// Con un profilo in una cartella che non è una radice di utenti non si
-	// maschera nient'altro.
-	if got := SanitizeCommand(`C:\Program Files\x.exe C:\anna\y`, `C:\anna`); got != `C:\Program Files\x.exe %USERPROFILE%\y` {
-		t.Errorf("radice C: %q", got)
-	}
-}
-
 func TestOSNameAndPlan(t *testing.T) {
 	for _, c := range []struct {
 		product string

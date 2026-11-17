@@ -42,8 +42,9 @@ type Platform interface {
 	Autoruns(ctx context.Context) (*scan.AutorunsData, error)
 	// Procs legge i processi con file, firma e connessioni (come Process
 	// Explorer e TCPView); cpu sono i carichi per PID della misura del
-	// carico, nil se non misurati.
-	Procs(ctx context.Context, cpu map[uint32]float64) (*scan.ProcessesData, error)
+	// carico, cominciata a since (nil e l'ora zero se non misurati): valgono
+	// solo per i processi nati prima, perché un PID si ricicla.
+	Procs(ctx context.Context, cpu map[uint32]float64, since time.Time) (*scan.ProcessesData, error)
 }
 
 // loadByPID è facoltativa: una piattaforma che la offre dà, dalla stessa
@@ -74,8 +75,8 @@ func (Native) SampleLoad(ctx context.Context, d time.Duration) (*float64, []scan
 func (Native) SampleLoadByPID(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo, map[uint32]float64) {
 	return pcinfo.SampleLoadByPID(ctx, d)
 }
-func (Native) Procs(ctx context.Context, cpu map[uint32]float64) (*scan.ProcessesData, error) {
-	return procs.Read(ctx, cpu)
+func (Native) Procs(ctx context.Context, cpu map[uint32]float64, since time.Time) (*scan.ProcessesData, error) {
+	return procs.Read(ctx, cpu, since)
 }
 func (Native) Autoruns(ctx context.Context) (*scan.AutorunsData, error) { return autoruns.Collect(ctx) }
 
@@ -163,8 +164,17 @@ var stepDefs = []Step{
 const procsTimeout = 30 * time.Second
 
 // autorunsTimeout è il tempo massimo della fase «autoruns» (attività
-// pianificate e WMI con PowerShell, firme di servizi e driver).
-const autorunsTimeout = 45 * time.Second
+// pianificate e WMI con PowerShell, firme di servizi e driver). A freddo
+// le firme da verificare sono centinaia: su Windows reale (CI, macchina
+// Azure) la prima lettura non stava in 45 s, la seconda ne ha chiesti 7.
+//
+// Il conto con il tempo massimo di un'analisi del server (2 minuti,
+// server.go): le fasi di rete, "pc" (PowerShell fermato a 40 s) e
+// "autoruns" corrono insieme, quindi pesa la più lunga, al massimo 60 s;
+// poi in fila "lan" (una lettura), "load" (LoadSample, 1,5 s) e "procs" (al
+// massimo 30 s). In tutto circa 92 s: restano quasi 30 s di margine
+// (TestPhaseBudget).
+const autorunsTimeout = 60 * time.Second
 
 // Progress viene notificato a ogni cambio di stato.
 type Progress func(steps []Step)
@@ -491,6 +501,7 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 
 	// 4. Carico della CPU a misure concluse, per non contare l'analisi stessa.
 	var cpuByPID map[uint32]float64
+	var loadStart time.Time
 	if s.PC == nil {
 		tr.set("load", "error") // il motivo è già nell'errore della fase "pc"
 	} else {
@@ -498,6 +509,8 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 			var load *float64
 			var procs []scan.ProcessInfo
 			if lp, ok := c.Platform.(loadByPID); ok {
+				// Prima della misura: un processo nato dopo non è quello misurato.
+				loadStart = time.Now()
 				load, procs, cpuByPID = lp.SampleLoadByPID(ctx, c.Opt.LoadSample)
 			} else {
 				load, procs = c.Platform.SampleLoad(ctx, c.Opt.LoadSample)
@@ -523,7 +536,7 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 		step("procs", func() error {
 			pctx, cancel := context.WithTimeout(ctx, procsTimeout)
 			defer cancel()
-			p, err := c.Platform.Procs(pctx, cpuByPID)
+			p, err := c.Platform.Procs(pctx, cpuByPID, loadStart)
 			if p == nil {
 				if err == nil {
 					err = fmt.Errorf("processi non letti")

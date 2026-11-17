@@ -1476,10 +1476,14 @@ func guard(next http.Handler) http.Handler {
 				http.Error(w, "origine non consentita", http.StatusForbidden)
 				return
 			}
-			if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-				http.Error(w, "origine non consentita", http.StatusForbidden)
-				return
-			}
+		}
+		// Un'altra pagina web non usa le API, nemmeno in sola lettura: una
+		// GET come <img src="http://127.0.0.1:8737/api/processes"> farebbe
+		// partire letture pesanti (firme di tutti gli eseguibili, schermate
+		// blu). L'interfaccia è della stessa origine e non ne risente.
+		if r.Header.Get("Sec-Fetch-Site") == "cross-site" && (strings.HasPrefix(r.URL.Path, "/api/") || (r.Method != http.MethodGet && r.Method != http.MethodHead)) {
+			http.Error(w, "origine non consentita", http.StatusForbidden)
+			return
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")

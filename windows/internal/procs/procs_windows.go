@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"lanterna/internal/pcinfo"
 	"lanterna/internal/scan"
 )
 
@@ -74,9 +75,11 @@ var (
 
 // Read legge i processi in esecuzione, con file, firma, utente (categoria),
 // servizi e connessioni riassunte. cpu sono i carichi per PID misurati a
-// fine analisi (nil se non misurati). Tutto entro readTimeout: se la
-// verifica delle firme non finisce, Partial e i file restanti senza firma.
-func Read(ctx context.Context, cpu map[uint32]float64) (*scan.ProcessesData, error) {
+// fine analisi da una misura cominciata a since (nil e l'ora zero se non
+// misurati): valgono solo per i processi nati prima, perché un PID si
+// ricicla. Tutto entro readTimeout: se la verifica delle firme non finisce,
+// Partial e i file restanti senza firma.
+func Read(ctx context.Context, cpu map[uint32]float64, since time.Time) (*scan.ProcessesData, error) {
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 	list, err := snapshot()
@@ -121,7 +124,7 @@ func Read(ctx context.Context, cpu map[uint32]float64) (*scan.ProcessesData, err
 		nets = aggregate(socks)
 		out.ConnsRead = true
 	}
-	out.Items = build(ps, files, services, nets, cpu, self)
+	out.Items = build(ps, files, services, nets, load{cpu: cpu, since: filetime(since)}, self, pcinfo.DefaultCleaner().Text)
 	out.Partial = partial || filesPartial || ctx.Err() != nil
 	return out, nil
 }
@@ -343,7 +346,8 @@ func servicesByPID() map[uint32][]string {
 // fileFacts verifica una volta per file (svchost e le schede dei browser
 // sono decine di processi con lo stesso eseguibile), con pochi file insieme.
 // Allo scadere del contesto non aspetta le verifiche in corso: i file
-// restanti hanno solo percorso e cartella, e partial è vero.
+// restanti hanno solo percorso e cartella, e partial è vero. Le unità
+// rimovibili e di rete collegate a una lettera le riconosce Facts.
 func fileFacts(ctx context.Context, ps []rawProc) (map[string]*scan.FileFacts, bool) {
 	var list []string
 	seen := map[string]bool{}
@@ -394,35 +398,14 @@ feed:
 	}
 	mu.Unlock()
 	partial := false
-	drives := map[byte]bool{}
 	for _, p := range list {
 		k := strings.ToLower(p)
-		f := out[k]
-		if f == nil {
-			// Tempo scaduto: Facts non verifica, dà solo percorso e cartella.
+		if out[k] == nil {
+			// Tempo scaduto: Facts non tocca il disco e dà solo percorso e
+			// cartella.
 			partial = true
-			f = c.Facts(ctx, p)
-			out[k] = f
-		}
-		if f.Folder == "other" && removable(p, drives) {
-			f.Folder = "removable"
+			out[k] = c.Facts(ctx, p)
 		}
 	}
 	return out, partial
-}
-
-// removable dice se il percorso sta su un'unità rimovibile (chiavetta,
-// scheda di memoria), con una lettura per lettera di unità.
-func removable(p string, cache map[byte]bool) bool {
-	if len(p) < 3 || p[1] != ':' {
-		return false
-	}
-	d := p[0] | 0x20
-	if v, ok := cache[d]; ok {
-		return v
-	}
-	root, err := windows.UTF16PtrFromString(p[:2] + `\`)
-	v := err == nil && windows.GetDriveType(root) == windows.DRIVE_REMOVABLE
-	cache[d] = v
-	return v
 }

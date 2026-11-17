@@ -3,8 +3,11 @@ package sign
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"strings"
 	"unicode"
+
+	"lanterna/internal/scan"
 )
 
 // Codici restituiti da WinVerifyTrust e da CryptoAPI (winerror.h, gli stessi
@@ -87,15 +90,49 @@ func unsignedStatus(lastErr uint32) string {
 }
 
 // packagedApp dice se il file sta nella cartella delle app dello Store
-// (pacchetti MSIX, di solito %ProgramFiles%\WindowsApps): lì la firma è nel
-// pacchetto (AppxSignature.p7x), che Polaris non verifica, e un eseguibile
-// senza firma propria non è per questo «non firmato». La cartella è
-// scrivibile solo dal sistema; non vale per gli alias di esecuzione in
-// %LOCALAPPDATA%\Microsoft\WindowsApps, che l'utente può scrivere, né per le
-// condivisioni di rete.
+// (pacchetti MSIX): %ProgramFiles%\WindowsApps, oppure <unità>:\WindowsApps
+// e <unità>:\Program Files\WindowsApps per le app spostate su un'altra
+// unità. Lì la firma è nel pacchetto (AppxSignature.p7x), che Polaris non
+// verifica, e un eseguibile senza firma propria non è per questo «non
+// firmato». Quelle cartelle sono scrivibili solo dal sistema; una qualsiasi
+// altra cartella chiamata WindowsApps (nei Download, sul Desktop, in
+// ProgramData, gli alias di esecuzione in %LOCALAPPDATA%\Microsoft) o una
+// condivisione di rete non conta: basterebbe il nome per non dirsi «non
+// firmato».
 func packagedApp(path string) bool {
-	p := strings.ToLower(strings.ReplaceAll(path, "/", `\`))
-	return strings.Contains(p, `\windowsapps\`) && !strings.Contains(p, `\appdata\`) && !strings.HasPrefix(p, `\\`)
+	p := strings.TrimPrefix(winClean(path), `\\?\`)
+	if pf := winClean(os.Getenv("ProgramFiles")); pf != "" && strings.HasPrefix(p, pf+`\windowsapps\`) {
+		return true
+	}
+	if len(p) < 4 || p[1] != ':' || p[2] != '\\' || p[0] < 'a' || p[0] > 'z' {
+		return false
+	}
+	return strings.HasPrefix(p[3:], `windowsapps\`) || strings.HasPrefix(p[3:], `program files\windowsapps\`)
+}
+
+// unsignedSignature è l'esito di un file senza firma propria e che nessun
+// catalogo contiene. Lo stato viene da GetLastError (unsignedStatus) e il
+// codice esportato è quello che lo spiega: per una firma non valida o un
+// file non leggibile è GetLastError, non il ritorno «nessuna firma»
+// (0x800B0100) che lo contraddirebbe.
+func unsignedSignature(code, lastErr uint32, path string) *scan.FileSignature {
+	st := unsignedStatus(lastErr)
+	switch {
+	case st == "unsigned" && packagedApp(path):
+		// App dello Store: la firma del pacchetto non si verifica qui.
+		st = "unknown"
+	case st != "unsigned":
+		code = hresultWin32(lastErr)
+	}
+	return &scan.FileSignature{Status: st, Code: codeHex(code)}
+}
+
+// transient dice se l'esito della verifica può cambiare senza che cambi il
+// file: file non apribile (in uso, accesso negato) o cataloghi di Windows
+// non consultabili (servizio Servizi di crittografia occupato o fermo). Non
+// lo è l'app dello Store (0x800B0100), il cui esito resta lo stesso.
+func transient(s *scan.FileSignature) bool {
+	return s != nil && (s.Status == "unreadable" || (s.Status == "unknown" && s.Code != codeHex(trustENoSignature)))
 }
 
 // statusOf traduce il codice di WinVerifyTrust in FileSignature.Status. Il

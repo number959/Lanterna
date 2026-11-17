@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"lanterna/internal/pcinfo"
 	"lanterna/internal/sign"
 )
 
@@ -49,7 +50,9 @@ func TestReadWindows(t *testing.T) {
 
 	self := uint32(os.Getpid())
 	start := time.Now()
-	d, err := Read(context.Background(), map[uint32]float64{self: 1.5})
+	// La misura del carico «comincia» adesso: questo processo è nato prima e
+	// riceve il suo carico.
+	d, err := Read(context.Background(), map[uint32]float64{self: 1.5}, time.Now())
 	if err != nil || d == nil {
 		t.Fatalf("lettura: %v", err)
 	}
@@ -62,10 +65,20 @@ func TestReadWindows(t *testing.T) {
 	}
 	// Una seconda lettura usa la cache delle firme ed è più rapida.
 	start = time.Now()
-	if d2, err := Read(context.Background(), nil); err != nil || len(d2.Items) < 20 {
+	if d2, err := Read(context.Background(), map[uint32]float64{self: 1.5}, time.Now().Add(-time.Hour)); err != nil || len(d2.Items) < 20 {
 		t.Errorf("seconda lettura: %v", err)
+	} else {
+		// Una misura cominciata prima che il processo nascesse non è sua.
+		for _, it := range d2.Items {
+			if it.PID == self && it.CPUPct != nil {
+				t.Errorf("carico di un processo nato dopo l'inizio della misura: %v", *it.CPUPct)
+			}
+		}
 	}
 	t.Logf("seconda lettura in %v", time.Since(start))
+	if d3, err := Read(context.Background(), nil, time.Time{}); err != nil || len(d3.Items) < 20 {
+		t.Errorf("terza lettura, senza carichi: %v", err)
+	}
 
 	me, system := -1, -1
 	ms, svc := 0, 0
@@ -152,5 +165,15 @@ func TestReadWindows(t *testing.T) {
 		if strings.Contains(strings.ToLower(string(b)), strings.ToLower(strings.Trim(string(q), `"`))) {
 			t.Errorf("profilo dell'utente nel JSON")
 		}
+	}
+	// Il nome dell'account come parola intera (cartelle reindirizzate, nomi
+	// dei file) e i SID non escono.
+	if u := os.Getenv("USERNAME"); len([]rune(u)) >= 3 && !pcinfo.CommonWords[strings.ToLower(u)] {
+		if regexp.MustCompile(`(?i)(^|[^\pL\pN])` + regexp.QuoteMeta(u) + `($|[^\pL\pN])`).Match(b) {
+			t.Errorf("nome dell'utente nel JSON")
+		}
+	}
+	if m := regexp.MustCompile(`(?i)S-1-(5-21|12-1)(-\d+){4}`).Find(b); m != nil {
+		t.Errorf("SID nel JSON: %s", m)
 	}
 }

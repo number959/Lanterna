@@ -17,3 +17,6 @@ func versionInfo(string) (company, description, version string) { return "", "",
 // nativePath non cambia nulla fuori da Windows (niente reindirizzamento di
 // System32).
 func nativePath(p string) string { return p }
+
+// driveTypeOf: fuori da Windows non ci sono lettere di unità.
+func driveTypeOf(string) uint32 { return 0 }

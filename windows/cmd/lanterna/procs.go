@@ -32,7 +32,7 @@ func runProcs(args []string) error {
 	defer cancel()
 	ctx, stop := context.WithTimeout(ctx, 30*time.Second)
 	defer stop()
-	d, err := procs.Read(ctx, nil)
+	d, err := procs.Read(ctx, nil, time.Time{})
 	if d == nil {
 		return err
 	}
@@ -134,6 +134,16 @@ func connsText(c *scan.ConnSummary) string {
 	return out
 }
 
+// unopenedText descrive un processo che non si è potuto aprire: senza
+// amministratore lo si potrebbe aprire con i diritti in più; da
+// amministratore lo tiene chiuso Windows.
+func unopenedText(elevated bool) string {
+	if elevated {
+		return "non apribile: processo protetto da Windows"
+	}
+	return "non apribile senza amministratore"
+}
+
 func decimal(v float64) string {
 	return strings.Replace(strconv.FormatFloat(v, 'f', 1, 64), ".", ",", 1)
 }
@@ -146,7 +156,12 @@ func printProcs(d *scan.ProcessesData) {
 		fmt.Println("Letti senza i diritti di amministratore.")
 	}
 	if d.Unreadable > 0 {
-		fmt.Printf("Non leggibili senza amministratore: %d (se ne conosce solo il nome).\n", d.Unreadable)
+		if d.Elevated {
+			// Da amministratore restano chiusi solo i processi protetti da Windows.
+			fmt.Printf("Non apribili: %d, processi protetti da Windows (se ne conosce solo il nome).\n", d.Unreadable)
+		} else {
+			fmt.Printf("Non leggibili senza amministratore: %d (se ne conosce solo il nome).\n", d.Unreadable)
+		}
 	}
 	if !d.ConnsRead {
 		fmt.Println("Connessioni di rete non lette.")
@@ -184,7 +199,7 @@ func printProcs(d *scan.ProcessesData) {
 			tags = append(tags, "amministratore")
 		}
 		if p.Access == "none" {
-			tags = append(tags, "non apribile senza amministratore")
+			tags = append(tags, unopenedText(d.Elevated))
 		}
 		if p.Arch != "" {
 			tags = append(tags, p.Arch)

@@ -54,4 +54,21 @@ func TestPrintProcs(t *testing.T) {
 	if strings.Contains(out, "Connessioni di rete non lette") {
 		t.Error("connessioni lette")
 	}
+
+	// Da amministratore un processo non apribile non lo diventa con
+	// l'amministratore: è protetto da Windows.
+	d.Elevated = true
+	out = capture(t, func() { printProcs(d) })
+	for _, want := range []string{
+		"Letti come amministratore.",
+		"Non apribili: 3, processi protetti da Windows (se ne conosce solo il nome).",
+		"antivirus.exe (PID 1300) · account non leggibile, non apribile: processo protetto da Windows",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("da amministratore manca %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "senza amministratore") {
+		t.Errorf("da amministratore il testo parla di «senza amministratore»:\n%s", out)
+	}
 }

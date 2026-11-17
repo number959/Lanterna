@@ -6,7 +6,9 @@
 // Lo usano i processi (Process Explorer) e l'avvio automatico (Autoruns)
 // attraverso lo stesso Checker (Shared): lo stesso file si verifica una
 // volta sola per tutta la vita del programma, anche tra un'analisi e
-// l'altra, e la cache si rinnova se cambiano dimensione o data del file.
+// l'altra, e la cache si rinnova se cambiano dimensione o data del file. Gli
+// esiti che possono cambiare da soli (file in uso, cataloghi di Windows non
+// consultabili) si riprovano dopo transientTTL.
 package sign
 
 import (
@@ -20,6 +22,24 @@ import (
 	"lanterna/internal/scan"
 )
 
+// transientTTL è la durata in cache degli esiti transitori (transient):
+// basta a non ripeterli tra l'avvio automatico e i processi della stessa
+// analisi, e l'analisi successiva li riprova.
+const transientTTL = time.Minute
+
+// driveTTL è la durata in cache del tipo di un'unità: la stessa lettera può
+// diventare una chiavetta o un'unità di rete.
+const driveTTL = time.Minute
+
+// Sostituibili nelle prove: l'ora, la verifica della firma, le informazioni
+// di versione e il tipo di unità (GetDriveType, 0 fuori da Windows).
+var (
+	now         = time.Now
+	verifyFile  = verify
+	readVersion = versionInfo
+	driveType   = driveTypeOf
+)
+
 // Checker verifica i file e ne ricorda l'esito. È sicuro da usare da più
 // goroutine.
 type Checker struct {
@@ -30,14 +50,21 @@ type Checker struct {
 	// cartella (FolderOf).
 	Profile string
 
-	mu    sync.Mutex
-	cache map[string]cached
+	mu     sync.Mutex
+	cache  map[string]cached
+	drives map[byte]drive
 }
 
 type cached struct {
 	size  int64
 	mod   time.Time
+	at    time.Time // quando è stato verificato
 	facts scan.FileFacts
+}
+
+type drive struct {
+	folder string // "removable", "network" o vuoto
+	at     time.Time
 }
 
 var (
@@ -49,29 +76,36 @@ var (
 // e il pulitore di chi usa Polaris (pcinfo.DefaultCleaner): processi e
 // avvio automatico ne condividono la cache.
 func Shared() *Checker {
-	sharedOnce.Do(func() {
-		cl := pcinfo.DefaultCleaner()
-		shared = New(cl.Profile, cl.Path)
-	})
+	sharedOnce.Do(func() { shared = newShared(pcinfo.DefaultCleaner()) })
 	return shared
 }
 
+// newShared prepara il Checker comune con il pulitore indicato: i percorsi
+// esportati passano da cl.Path (profili, nome dell'utente, SID, e-mail,
+// indirizzi pubblici).
+func newShared(cl pcinfo.Cleaner) *Checker { return New(cl.Profile, cl.Path) }
+
 // New prepara un Checker.
 func New(profile string, sanitize func(string) string) *Checker {
-	return &Checker{Profile: profile, Sanitize: sanitize, cache: map[string]cached{}}
+	return &Checker{Profile: profile, Sanitize: sanitize, cache: map[string]cached{}, drives: map[byte]drive{}}
 }
 
 // Facts restituisce i fatti sul file indicato da un percorso assoluto già
 // espanso (niente variabili d'ambiente, niente virgolette). Il percorso
 // esportato passa da Sanitize. Non restituisce mai nil.
+//
+// A tempo scaduto restituisce solo percorso e cartella, senza toccare il
+// disco: os.Stat su una condivisione non più raggiungibile si bloccherebbe
+// per decine di secondi, oltre il tempo dichiarato della lettura.
 func (c *Checker) Facts(ctx context.Context, path string) *scan.FileFacts {
 	out := scan.FileFacts{Path: path, Folder: FolderOf(path, c.Profile)}
 	if c.Sanitize != nil {
 		out.Path = c.Sanitize(path)
 	}
-	if path == "" {
+	if path == "" || ctx.Err() != nil {
 		return &out
 	}
+	out.Folder = c.Folder(path)
 	// Un processo a 32 bit su Windows a 64 bit legge System32 attraverso
 	// Sysnative, altrimenti vedrebbe i file di SysWOW64 (nativePath).
 	np := nativePath(path)
@@ -87,7 +121,7 @@ func (c *Checker) Facts(ctx context.Context, path string) *scan.FileFacts {
 	}
 	key := strings.ToLower(path)
 	c.mu.Lock()
-	if v, ok := c.cache[key]; ok && v.size == st.Size() && v.mod.Equal(st.ModTime()) {
+	if v, ok := c.cache[key]; ok && v.size == st.Size() && v.mod.Equal(st.ModTime()) && !(transient(v.facts.Signature) && now().Sub(v.at) >= transientTTL) {
 		c.mu.Unlock()
 		f := v.facts
 		f.Path, f.Folder = out.Path, out.Folder
@@ -95,22 +129,95 @@ func (c *Checker) Facts(ctx context.Context, path string) *scan.FileFacts {
 	}
 	c.mu.Unlock()
 	if ctx.Err() != nil {
-		// Tempo finito: nessuna verifica, e niente cache, così la lettura
-		// successiva la fa.
+		// Tempo finito durante os.Stat: nessuna verifica, e niente cache,
+		// così la lettura successiva la fa.
 		return &out
 	}
-	out.Signature = verify(ctx, np)
-	out.Company, out.Description, out.Version = versionInfo(np)
-	if ctx.Err() != nil {
-		return &out // verifica forse interrotta: niente cache
+	out.Signature = verifyFile(ctx, np)
+	out.Company, out.Description, out.Version = readVersion(np)
+	if out.Signature == nil && ctx.Err() != nil {
+		// Verifica saltata per il tempo (nessuna firma incorporata e niente
+		// tempo per i cataloghi): niente cache. Una verifica arrivata in
+		// fondo invece è completa anche se il tempo è finito nel frattempo
+		// (WinVerifyTrust non si interrompe) e si tiene: un file che da solo
+		// richiede più del tempo massimo non riparte da capo a ogni lettura.
+		return &out
 	}
 	c.mu.Lock()
 	if c.cache == nil {
 		c.cache = map[string]cached{}
 	}
-	c.cache[key] = cached{size: st.Size(), mod: st.ModTime(), facts: out}
+	c.cache[key] = cached{size: st.Size(), mod: st.ModTime(), at: now(), facts: out}
 	c.mu.Unlock()
 	return &out
+}
+
+// Folder è FolderOf con il tipo di unità: una lettera che non è una
+// cartella nota ("other") può essere una chiavetta ("removable") o
+// un'unità di rete collegata a una condivisione, come Z:\ ("network"). Non
+// legge file: solo GetDriveType, una volta per lettera ogni driveTTL.
+func (c *Checker) Folder(path string) string {
+	f := FolderOf(path, c.Profile)
+	if f == "other" {
+		if d := c.driveFolder(path); d != "" {
+			return d
+		}
+	}
+	return f
+}
+
+// driveFolder dice se il percorso sta su un'unità rimovibile (chiavetta,
+// scheda di memoria: "removable") o su un'unità di rete collegata a una
+// lettera ("network"). Vuoto negli altri casi e fuori da Windows.
+func (c *Checker) driveFolder(path string) string {
+	d, ok := driveLetter(path)
+	if !ok {
+		return ""
+	}
+	c.mu.Lock()
+	if v, ok := c.drives[d]; ok && now().Sub(v.at) < driveTTL {
+		c.mu.Unlock()
+		return v.folder
+	}
+	c.mu.Unlock()
+	f := driveFolderOf(driveType(string([]byte{d, ':', '\\'})))
+	c.mu.Lock()
+	if c.drives == nil {
+		c.drives = map[byte]drive{}
+	}
+	c.drives[d] = drive{folder: f, at: now()}
+	c.mu.Unlock()
+	return f
+}
+
+// Tipi di unità di GetDriveType (winbase.h).
+const (
+	driveRemovable = 2 // DRIVE_REMOVABLE
+	driveRemote    = 4 // DRIVE_REMOTE
+)
+
+// driveFolderOf traduce il tipo di unità nel tipo di cartella.
+func driveFolderOf(t uint32) string {
+	switch t {
+	case driveRemovable:
+		return "removable"
+	case driveRemote:
+		return "network"
+	}
+	return ""
+}
+
+// driveLetter restituisce la lettera di unità, in minuscolo, di un percorso
+// assoluto come C:\x o \\?\C:\x.
+func driveLetter(p string) (byte, bool) {
+	p = strings.TrimPrefix(strings.ReplaceAll(p, "/", `\`), `\\?\`)
+	if len(p) < 3 || p[1] != ':' || p[2] != '\\' {
+		return 0, false
+	}
+	if d := p[0] | 0x20; d >= 'a' && d <= 'z' {
+		return d, true
+	}
+	return 0, false
 }
 
 // IsMicrosoft dice se la firma è valida e di Microsoft per un componente
@@ -121,12 +228,19 @@ func IsMicrosoft(s *scan.FileSignature) bool {
 	return s != nil && s.Status == "valid" && s.Microsoft
 }
 
+// writableWindowsDirs sono sottocartelle di Windows in cui, con i permessi
+// predefiniti, un utente senza privilegi può creare file: un programma lì
+// non sta in una cartella protetta. Relative a %SystemRoot%.
+var writableWindowsDirs = []string{`Tasks`, `Tracing`, `System32\spool\drivers\color`}
+
 // FolderOf classifica la cartella di un percorso assoluto di Windows:
 // windows | programFiles | programData | appData | temp | downloads |
 // profile | removable | network | other. Si basa sul testo del percorso e
 // sulle variabili d'ambiente standard, senza leggere il disco; "removable"
-// lo decide chi chiama (tipo di unità), qui si riconoscono solo le
-// condivisioni di rete. Lavora sulle barre rovesciate anche fuori da
+// e "network" per le lettere di unità li decide Checker.Facts (tipo di
+// unità), qui si riconoscono solo le condivisioni di rete (\\server). Le
+// sottocartelle di Windows scrivibili da tutti (writableWindowsDirs) sono
+// "other", non "windows". Lavora sulle barre rovesciate anche fuori da
 // Windows, così si prova ovunque.
 func FolderOf(path, profile string) string {
 	p := winClean(path)
@@ -156,6 +270,11 @@ func FolderOf(path, profile string) string {
 	for _, t := range []string{os.Getenv("TEMP"), os.Getenv("TMP"), sysRoot + `\Temp`} {
 		if t != "" && under(t) {
 			return "temp"
+		}
+	}
+	for _, d := range writableWindowsDirs {
+		if under(sysRoot + `\` + d) {
+			return "other"
 		}
 	}
 	switch {
@@ -217,10 +336,14 @@ func winClean(p string) string {
 
 // UserWritable dice se un tipo di cartella è, di norma, scrivibile da un
 // utente senza privilegi: lì un programma può essere messo o sostituito
-// senza chiedere l'amministratore.
+// senza chiedere l'amministratore. Sono protette solo Windows e Programmi.
+// ProgramData lo è solo in parte: con i permessi predefiniti ogni utente
+// può creare sottocartelle e file (e ne è proprietario). Le cartelle create
+// alla radice di un'unità ("other") ereditano la modifica per gli utenti
+// autenticati, e le altre unità di solito sono scrivibili.
 func UserWritable(folder string) bool {
 	switch folder {
-	case "appData", "temp", "downloads", "profile", "removable", "network":
+	case "appData", "temp", "downloads", "profile", "removable", "network", "programData", "other":
 		return true
 	}
 	return false
