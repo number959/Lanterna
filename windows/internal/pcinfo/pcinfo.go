@@ -54,7 +54,7 @@ const PSScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncoding=[T
 	`try{$r.av=@(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct|ForEach-Object{$s=[long]$_.productState;@{name="$($_.displayName)";enabled=(($s -band 0x1000) -ne 0);upToDate=(($s -band 0x10) -eq 0);source='securitycenter'}})}catch{$e.av="$_"};` +
 	`if(-not $r.av){try{$m=Get-MpComputerStatus;$r.av=@(@{name='Microsoft Defender Antivirus';enabled=[bool]($m.AntivirusEnabled -and $m.RealTimeProtectionEnabled);upToDate=([long]$m.AntivirusSignatureAge -le 7);source='defender'})}catch{$e.defender="$_"}};` +
 	`try{$h=Get-HotFix|Where-Object{$_.InstalledOn}|Sort-Object InstalledOn -Descending|Select-Object -First 1;if($h){$r.updates=@{last=$h.InstalledOn.ToString('yyyy-MM-dd');kb="$($h.HotFixID)"}}}catch{$e.updates="$_"};` +
-	defenderPS + `$r.errors=$e;ConvertTo-Json -Compress -Depth 5 -InputObject $r`
+	hw014PS + defenderPS + `$r.errors=$e;ConvertTo-Json -Compress -Depth 5 -InputObject $r`
 
 // defenderPS legge stato e cronologia di Microsoft Defender. Delle minacce
 // si tengono nome, gravità, stato e date: niente percorsi dei file, nomi
@@ -140,6 +140,10 @@ type psOut struct {
 	Defender *psDefender       `json:"defender"`
 	Threats  *[]psThreat       `json:"threats"`
 	Errors   map[string]string `json:"errors"`
+
+	// Schermi e Secure Boot attivabile (hw014PS).
+	Mon       *[]psMonitor `json:"mon"`
+	SBCapable *bool        `json:"sbCapable"`
 }
 
 type psDefender struct {

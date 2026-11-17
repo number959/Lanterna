@@ -10,9 +10,10 @@
 // l'agente (windows/internal/tools) e con scripts/strumenti.sh: lo verificano
 // i test dell'agente. Siti, licenze, indirizzi e firme verificati sui siti dei
 // produttori il 18 e il 19 ottobre 2026; per i programmi aggiunti nella 0.12.0
-// a novembre 2026 (docs/VERIFICHE.md, sezione 16).
+// a novembre 2026 (docs/VERIFICHE.md, sezione 16); TCPView e Process Monitor,
+// aggiunti nella 0.14.0, il 17 novembre 2026.
 
-export type ToolCategory = 'disco' | 'hardware' | 'sicurezza' | 'avvio' | 'spazio' | 'errori' | 'windows';
+export type ToolCategory = 'disco' | 'hardware' | 'sicurezza' | 'avvio' | 'rete' | 'spazio' | 'errori' | 'windows';
 
 /** Sezioni di Polaris a cui un programma esterno rimanda (stessi nomi delle viste dell'interfaccia). */
 export type ToolView = 'pc' | 'wifi' | 'lan' | 'internet' | 'router' | 'infra';
@@ -267,7 +268,7 @@ export const TOOLS: Tool[] = [
     vendor: 'Microsoft Sysinternals',
     category: 'avvio',
     what: 'Tutto ciò che parte da solo: programmi, servizi, driver, attività pianificate, estensioni.',
-    polaris: 'Computer > Avvio e processi: chiavi Run e cartelle di esecuzione automatica.',
+    polaris: 'Computer > Avvio e processi: ciò che parte da solo (accesso, attività pianificate, servizi, driver, sottoscrizioni WMI, estensioni dei browser), con la firma digitale dei file; le voci di Windows firmate da Microsoft si contano senza elencarle. Polaris legge soltanto: per disattivare una voce serve Autoruns.',
     polarisView: 'pc',
     license: 'gratuito',
     site: 'https://learn.microsoft.com/it-it/sysinternals/downloads/autoruns',
@@ -280,11 +281,35 @@ export const TOOLS: Tool[] = [
     vendor: 'Microsoft Sysinternals',
     category: 'avvio',
     what: 'Gestione attività avanzata: albero dei processi, file aperti, verifica delle firme e su VirusTotal.',
-    polaris: 'Computer > Avvio e processi: i processi che pesano di più durante l\'analisi.',
+    polaris: 'Computer > Avvio e processi: i processi in esecuzione con il file, la firma digitale, il tipo di account (mai il nome) e le connessioni di rete riassunte, oltre a quelli che pesano di più durante l\'analisi. Polaris non chiude processi: per l\'albero dei processi e i file aperti serve Process Explorer.',
     polarisView: 'pc',
     license: 'gratuito',
     site: 'https://learn.microsoft.com/it-it/sysinternals/downloads/process-explorer',
     portable: { from: 'download.sysinternals.com', signer: 'Microsoft Corporation', mb: 3.8, terms: 'gratuito (licenza Sysinternals); si scarica sempre l\'ultima versione' },
+  },
+  {
+    id: 'process-monitor',
+    name: 'Process Monitor',
+    vendor: 'Microsoft Sysinternals',
+    category: 'avvio',
+    what: 'Registra in tempo reale che cosa fanno i programmi su file, registro, rete e processi: serve a capire perché un programma non parte o si blocca.',
+    license: 'gratuito',
+    site: 'https://learn.microsoft.com/it-it/sysinternals/downloads/procmon',
+    note: 'Strumento per esperti. All\'avvio chiede i permessi di amministratore e carica un proprio driver; la licenza la accetti tu al primo avvio: Polaris lo apre solo quando lo chiedi e non la accetta al tuo posto. I registri salvati possono contenere nomi utente, percorsi e altri dati personali: controllali prima di condividerli. Il sito lo indica per Windows 11: su Windows 10 potrebbe non partire.',
+    portable: { from: 'download.sysinternals.com', signer: 'Microsoft Corporation', mb: 3.1, terms: 'gratuito (licenza Sysinternals); si scarica sempre l\'ultima versione; all\'avvio chiede i permessi di amministratore e carica il proprio driver' },
+  },
+  {
+    id: 'tcpview',
+    name: 'TCPView',
+    vendor: 'Microsoft Sysinternals',
+    category: 'rete',
+    what: 'Tutte le connessioni TCP e le porte UDP del PC, programma per programma, aggiornate in tempo reale.',
+    polaris: 'Computer > Avvio e processi: le porte in ascolto e le connessioni di ogni processo, riassunte per destinazione (questo PC, rete locale, Internet), senza indirizzi.',
+    polarisView: 'pc',
+    license: 'gratuito',
+    site: 'https://learn.microsoft.com/it-it/sysinternals/downloads/tcpview',
+    note: 'Strumento per esperti: può chiudere connessioni e terminare programmi. Mostra gli indirizzi remoti di ogni connessione: attenzione alle schermate che condividi.',
+    portable: { from: 'download.sysinternals.com', signer: 'Microsoft Corporation', mb: 1.5, terms: 'gratuito (licenza Sysinternals); si scarica sempre l\'ultima versione; da un account amministratore chiede i permessi di amministratore' },
   },
   {
     id: 'memtest86',
@@ -393,7 +418,7 @@ export const TOOLS: Tool[] = [
     vendor: 'Microsoft',
     category: 'windows',
     what: 'Verifica ufficiale dei requisiti di Windows 11, compreso il modello di processore.',
-    polaris: 'Computer > Valutazione: requisiti di Windows 11 verificabili da Windows (sui PC con Windows 10).',
+    polaris: 'Computer > Valutazione: requisiti di Windows 11 (TPM, firmware e Secure Boot, memoria, disco, istruzioni del processore, scheda video e schermo) e, su richiesta, il confronto del processore con l\'elenco ufficiale di Microsoft, scaricato dal sito. La verifica ufficiale resta quella di Controllo integrità PC.',
     polarisView: 'pc',
     license: 'gratuito',
     site: 'https://support.microsoft.com/it-it/windows/come-usare-l-app-controllo-integrit%C3%A0-pc-9c8abd9b-03ba-4e67-81ef-36f37caa7844',
@@ -440,6 +465,7 @@ export const CATEGORY_LABEL: Record<ToolCategory, string> = {
   hardware: 'Hardware',
   sicurezza: 'Sicurezza',
   avvio: 'Avvio e processi',
+  rete: 'Rete e connessioni',
   spazio: 'Spazio su disco',
   errori: 'Errori',
   windows: 'Windows',

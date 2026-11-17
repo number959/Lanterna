@@ -83,6 +83,24 @@ var Portables = map[string]Portable{
 		Exe:    map[string]string{"amd64": "procexp64.exe", "arm64": "procexp64a.exe", "386": "procexp.exe"},
 		Signer: "Microsoft Corporation", MaxMB: 20,
 	},
+	// TCPView 4.19 e Process Monitor 4.13 (0.14.0): indirizzi, nomi degli
+	// eseguibili negli zip (anche ARM64, che su live.sysinternals.com non c'è)
+	// e firmatario verificati il 17 novembre 2026. Come per Autoruns si
+	// scarica sempre l'ultima versione e conta la firma. Process Monitor
+	// chiede l'amministratore e carica un proprio driver: lo avvia solo
+	// l'utente, e Polaris non accetta la licenza al suo posto (/accepteula).
+	"tcpview": {
+		URL:   map[string]string{"*": "https://download.sysinternals.com/files/TCPView.zip"},
+		Hosts: []string{"download.sysinternals.com"}, Zip: true,
+		Exe:    map[string]string{"amd64": "tcpview64.exe", "arm64": "tcpview64a.exe", "386": "tcpview.exe"},
+		Signer: "Microsoft Corporation", MaxMB: 10,
+	},
+	"process-monitor": {
+		URL:   map[string]string{"*": "https://download.sysinternals.com/files/ProcessMonitor.zip"},
+		Hosts: []string{"download.sysinternals.com"}, Zip: true,
+		Exe:    map[string]string{"amd64": "Procmon64.exe", "arm64": "Procmon64a.exe", "386": "Procmon.exe"},
+		Signer: "Microsoft Corporation", MaxMB: 20,
+	},
 	"adwcleaner": {
 		URL:    map[string]string{"*": "https://downloads.malwarebytes.com/file/adwcleaner"},
 		Hosts:  []string{"downloads.malwarebytes.com", "adwcleaner.malwarebytes.com"},

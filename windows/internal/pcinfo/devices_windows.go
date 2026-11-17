@@ -28,6 +28,7 @@ var (
 
 	keyName          = windows.DEVPROPKEY{FmtID: nameGUID, PID: 10}   // DEVPKEY_NAME
 	keyHardwareIDs   = windows.DEVPROPKEY{FmtID: devGUID, PID: 3}     // DEVPKEY_Device_HardwareIds
+	keyCompatibleIDs = windows.DEVPROPKEY{FmtID: devGUID, PID: 4}     // DEVPKEY_Device_CompatibleIds
 	keyService       = windows.DEVPROPKEY{FmtID: devGUID, PID: 6}     // DEVPKEY_Device_Service
 	keyClass         = windows.DEVPROPKEY{FmtID: devGUID, PID: 9}     // DEVPKEY_Device_Class
 	keyEnumerator    = windows.DEVPROPKEY{FmtID: devGUID, PID: 24}    // DEVPKEY_Device_EnumeratorName
@@ -98,6 +99,12 @@ func readDevices(ctx context.Context) (raw []rawDevice, partial bool, err error)
 		}
 		if typ, b, ok := devProp(set, data, &keyHardwareIDs); ok && typ == windows.DEVPROP_TYPE_STRING_LIST {
 			r.HardwareIDs = propStringList(b)
+		}
+		// I compatible ID servono solo per la classe dei dispositivi PCI (chipset).
+		if strings.EqualFold(r.Enumerator, "PCI") {
+			if typ, b, ok := devProp(set, data, &keyCompatibleIDs); ok && typ == windows.DEVPROP_TYPE_STRING_LIST {
+				r.CompatibleIDs = propStringList(b)
+			}
 		}
 		if typ, b, ok := devProp(set, data, &keyDriverDate); ok && typ == windows.DEVPROP_TYPE_FILETIME {
 			r.Date = filetimeDate(b)

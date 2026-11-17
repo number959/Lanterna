@@ -156,6 +156,11 @@ type Server struct {
 	// firme legge i file.
 	Processes func(ctx context.Context) (*scan.ProcessesData, error)
 	procsMu   sync.Mutex
+	// Win11CPUs confronta il processore con l'elenco ufficiale dei
+	// processori supportati da Windows 11, scaricato su richiesta (nil = non
+	// disponibile); vedi win11.go.
+	Win11CPUs func(ctx context.Context) *scan.Win11CPUCheck
+	win11     win11Job
 	// Scoperta delle altre reti e delle VLAN (nil = non disponibile):
 	// ascolto passivo degli annunci degli switch, sottoreti di Active
 	// Directory e lettura SNMP con le credenziali del tecnico.
@@ -1447,6 +1452,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	s.surveyRoutes(mux)
 	s.discoverRoutes(mux)
+	s.win11Routes(mux)
 	return guard(mux)
 }
 
