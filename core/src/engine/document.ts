@@ -10,7 +10,12 @@ import { isRealPrinter, printerText } from './printing';
 import { USB_KIND, USB_STATUS, usbDeviceLabel, usbNodes, usbSlow, usbSpeedText, usbWhere } from './usb';
 import { fmt, num, thousands } from './fmt';
 import { discoveredNets, netLabel, switchPort } from './discovery';
-import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
+import { cacheText, channelMode, coreLayout, cpuVendor, displaysText, memVendor, moduleText } from './hardware';
+import { codeName, codeNameText } from './codenames';
+import { chipsetName, chipsetText } from './chipset';
+import { WIN11_STATUS_LABEL, win11Requirements } from './win11';
+import { fileSeverity, folderLabel, lc1, listeners, procGroups, signatureLabel } from './procs';
+import { autorunCounts, autorunIssues, categoryLower, categoryShort } from './autoruns';
 import { dateIt } from './pc';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import { pctText, sizeText, SPACE_CATEGORY_LABEL, SPACE_HINTS, SPACE_RISK_LABEL, unattributedBytes } from './space';
@@ -80,7 +85,22 @@ function scrub(s: string): string {
     return priv || RESOLVERS.indexOf(m) >= 0 ? m : '[IP pubblico]';
   });
 }
-const t = (s: unknown) => esc(scrub(String(s === undefined || s === null ? '' : s)));
+// Indirizzi IPv6 globali (2000::/3): restano loopback, link-local (fe80::/10),
+// locali unici (fc00::/7) e multicast (ff00::/8). Un candidato deve avere
+// "::" oppure otto gruppi, così gli orari (10:30:45) non si toccano; i MAC
+// sono già stati tolti. Niente lookbehind: il motore gira anche in goja.
+const IPV6 = /(^|[^0-9a-z:_.])([0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7})(?![0-9a-z:_.])/gi;
+function scrub6(s: string): string {
+  return s.replace(IPV6, (m: string, pre: string, addr: string) => {
+    const parts = addr.split(':');
+    const double = addr.indexOf('::');
+    if (double < 0 ? parts.length !== 8 : addr.indexOf('::', double + 1) >= 0) return m;
+    if (!/[0-9a-f]/i.test(addr) || parts.some((p) => p.length > 4)) return m;
+    const first = addr.slice(0, 2) === '::' ? 0 : parseInt(parts[0], 16);
+    return first >= 0x2000 && first <= 0x3fff ? `${pre}[IP pubblico]` : m;
+  });
+}
+const t = (s: unknown) => esc(scrub6(scrub(String(s === undefined || s === null ? '' : s))));
 
 const sev = (s: Severity) => `<span class="pd-sev pd-${s}"><b aria-hidden="true">${SEV[s].mark}</b> ${SEV[s].label}</span>`;
 const n1 = (v: number) => fmt(v, v < 10 ? 1 : 0);
@@ -271,14 +291,27 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
     const mode = channelMode(hw.memory);
     const tech = rows([
       ['Processore', c ? [c.family ? `${cpuVendor(c.vendor)} famiglia ${c.family} modello ${c.model} stepping ${c.stepping}` : '', [coreLayout(c), c.threads ? `${c.threads} thread` : ''].filter(Boolean).join(', '), c.socket ? `zoccolo ${c.socket}` : ''].filter(Boolean).join('; ') : undefined],
+      ['Nome in codice', codeNameText(codeName(c, pc.cpu && pc.cpu.name)) || undefined],
       ['Cache', c?.caches?.length ? c.caches.map((x) => cacheText(x).replace(': ', ' ')).join('; ') : undefined],
       ['Scheda madre', b ? [[b.vendor, b.product, b.version].filter(Boolean).join(' '), b.biosVersion ? `BIOS ${[b.biosVendor, b.biosVersion].filter(Boolean).join(' ')}${b.biosDate ? ` del ${dateIt(b.biosDate)}` : ''}` : ''].filter(Boolean).join('; ') : undefined],
+      ['Chipset', chipsetText(chipsetName(hw)) || undefined],
       ['Firmware', [hw.firmware === 'uefi' ? 'UEFI' : hw.firmware === 'bios' ? 'BIOS legacy' : '', hw.hypervisor ? 'hypervisor attivo' : ''].filter(Boolean).join(', ') || undefined],
       ['Memoria', mods.length ? `${mods.length} ${mods.length === 1 ? 'modulo' : 'moduli'}${hw.memory?.slots ? ` su ${hw.memory.slots} slot` : ''}${mode === 'single' || mode === 'same-channel' ? ', canale singolo' : mode === 'multi' ? ', dual channel' : ''}` : undefined],
       ...mods.map((m): [string, string] => [m.slot || m.bank || 'Modulo', `${moduleText(m)}${memVendor(m.vendor) || m.part ? `, ${[memVendor(m.vendor), m.part].filter(Boolean).join(' ')}` : ''}`]),
       ...(pc.gpus ?? []).map((g): [string, string] => ['Video', `${g.name}${g.vramMB ? `, ${g.vramMB >= 1024 ? `${n1(g.vramMB / 1024)} GB` : `${g.vramMB} MB`}` : ''}${g.width && g.height ? `, schermo ${g.width}×${g.height}${g.refreshHz ? ` a ${g.refreshHz} Hz` : ''}` : ''}${g.driverDate ? `, driver del ${dateIt(g.driverDate)}` : ''}`]),
     ]);
-    out.push(`<section><h2>Scheda tecnica</h2><table class="pd-kv pd-tech"><tbody>${tech}</tbody></table></section>`);
+    out.push(`<section><h2>Scheda tecnica</h2><table class="pd-kv pd-tech"><tbody>${tech}${rows([['Schermi', displaysText(hw.displays) || undefined]])}</tbody></table></section>`);
+  }
+
+  // Requisiti di Windows 11, uno per riga.
+  const reqs = win11Requirements(scan);
+  if (reqs.length) {
+    const mark = (s: string) => (s === 'na' ? `<span class="pd-muted">${esc(WIN11_STATUS_LABEL.na)}</span>` : sev(s === 'ok' ? 'ok' : s === 'fail' ? 'warn' : 'unknown'));
+    out.push(
+      `<section><h2>Requisiti di Windows 11</h2><table class="pd-table"><thead><tr><th>Requisito</th><th>Su questo PC</th><th><span class="pd-sr">Esito</span></th></tr></thead><tbody>${reqs
+        .map((r) => `<tr><td>${t(r.label)}${r.detail ? `<br><span class="pd-small">${t(r.detail)}</span>` : ''}</td><td>${t(r.value)}</td><td class="pd-c">${mark(r.status)}</td></tr>`)
+        .join('')}</tbody></table><p class="pd-muted pd-small">Polaris non incorpora gli elenchi dei processori di Microsoft: la generazione del processore è valutata con regole proprie. La verifica ufficiale è l'app Controllo integrità PC.</p></section>`,
+    );
   }
 
   if (pc?.eventsDays) {
@@ -477,6 +510,71 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
           : ''
       }</section>`,
     );
+  }
+
+  // Processi e avvio automatico: conteggi e voci da controllare; nessun
+  // indirizzo remoto e nessun percorso, solo nomi, cartelle e porte.
+  const procs = pc && pc.procs;
+  const autoruns = pc && pc.autoruns;
+  if (procs || autoruns) {
+    const parts: string[] = [];
+    if (procs) {
+      const items = procs.items.filter((p) => !p.polaris);
+      const groups = procGroups(items);
+      const cnt = (f: (s?: string) => boolean) => groups.filter((g) => f(g.file.signature && g.file.signature.status)).length;
+      const ok = cnt((s) => s === 'valid');
+      const none = cnt((s) => s === 'unsigned');
+      const unchecked = cnt((s) => !s || s === 'unknown' || s === 'unreadable');
+      const other = groups.length - ok - none - unchecked;
+      parts.push(
+        `<p>${num(items.length, 'processo', 'processi')} a fine analisi, ${num(groups.length, 'programma', 'programmi')}: ${ok} con firma verificata, ${none} senza firma${other ? `, <b>${other} con firma da controllare</b>` : ''}${unchecked ? `, ${unchecked} non verificati` : ''}.${
+          procs.unreadable ? ` ${num(procs.unreadable, 'processo non leggibile', 'processi non leggibili')} senza amministratore.` : ''
+        }</p>`,
+      );
+      const bad = groups.filter((g) => {
+        const s = fileSeverity(g.file);
+        return s === 'warn' || s === 'crit';
+      });
+      if (bad.length)
+        parts.push(`<p class="pd-small">Programmi da controllare: ${bad.map((g) => t(`${g.names[0]} (${lc1(signatureLabel(g.file.signature).text)}, ${folderLabel(g.file.folder)})`)).join('; ')}.</p>`);
+      if (procs.connsRead) {
+        const ls = listeners(scan);
+        const sum = { local: 0, lan: 0, internet: 0 };
+        for (const p of items) {
+          if (!p.conns) continue;
+          sum.local += p.conns.local || 0;
+          sum.lan += p.conns.lan || 0;
+          sum.internet += p.conns.internet || 0;
+        }
+        parts.push(
+          `<p class="pd-small">In ascolto su tutte le reti: ${
+            ls.length ? ls.map((l) => `${t(l.proc.name)} (${l.ports.slice(0, 4).join(', ')})${l.risky ? ' <b>da controllare</b>' : ''}`).join('; ') : 'nessun programma'
+          }. Connessioni TCP aperte: ${sum.internet} verso Internet, ${sum.lan} in rete locale, ${sum.local} su questo PC; gli indirizzi remoti non sono registrati.</p>`,
+        );
+      }
+    }
+    if (autoruns) {
+      const counts = autorunCounts(scan);
+      if (counts.length)
+        parts.push(
+          `<p class="pd-small">Avvio automatico, per categoria: ${counts
+            .map((c) => `${esc(categoryLower(c.category))} ${c.total}${c.microsoft ? ` (${c.microsoft} di Microsoft)` : ''}`)
+            .join('; ')}.</p>`,
+        );
+      const rank: Record<string, number> = { crit: 3, warn: 2, info: 1 };
+      const issues = autorunIssues(scan).sort((a, b) => (rank[b.severity] || 0) - (rank[a.severity] || 0));
+      if (issues.length)
+        parts.push(
+          `<table class="pd-table"><caption>Voci di avvio automatico da conoscere o controllare</caption><thead><tr><th>Voce</th><th>Tipo</th><th>Perché</th><th><span class="pd-sr">Giudizio</span></th></tr></thead><tbody>${issues
+            .slice(0, 20)
+            .map((x) => `<tr><td>${t(x.entry.name)}</td><td>${esc(categoryShort(x.entry.category))}</td><td class="pd-small">${t(x.why)}</td><td class="pd-c">${sev(x.severity)}</td></tr>`)
+            .join('')}</tbody></table>`,
+        );
+      else parts.push('<p class="pd-small">Nessuna voce di avvio automatico da controllare tra quelle lette.</p>');
+      if (autoruns.denied && autoruns.denied.length)
+        parts.push(`<p class="pd-small"><b>Da verificare da amministratore:</b> ${esc(autoruns.denied.map((c) => categoryLower(c)).join(', '))}.</p>`);
+    }
+    out.push(`<section><h2>Processi e avvio automatico</h2>${parts.join('')}<p class="pd-muted pd-small">Firme verificate da Windows senza accesso alla rete (la revoca dei certificati non si controlla online). Polaris non chiude processi e non disattiva voci.</p></section>`);
   }
 
   const bench = pc?.bench;

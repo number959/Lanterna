@@ -29,6 +29,9 @@ import {
   bytesText,
   cacheText,
   channelMode,
+  chipsetName,
+  codeName,
+  codeNameText,
   coreLayout,
   cpuVendor,
   dateIt,
@@ -42,8 +45,10 @@ import {
   THREAT_SEVERITY,
   THREAT_STATUS,
   unresolvedThreat,
+  wddmText,
+  win11Requirements,
 } from '../engine';
-import type { AttrState, ChannelMode, CpuBench, DiskBench, EventGroup, EventKind, Finding, NVMeHealth, PcData, PhysicalDisk, Scan, Severity, StartupItem, Volume } from '../engine';
+import type { AttrState, ChannelMode, CpuBench, DiskBench, Display, Hardware, EventGroup, EventKind, Finding, NVMeHealth, PcData, PhysicalDisk, Scan, Severity, StartupItem, Volume } from '../engine';
 import { simulatedCpuBench, simulatedDiskBench } from '../demo/simulate';
 import { guideById } from '../guides';
 import { benchStatus, defenderStatus, runBench, runDefender, stopBench, stopDefender } from './api';
@@ -62,6 +67,9 @@ import { StabilityCard } from './stability';
 import { RamTestCard } from './ramtest';
 import { MaintCard } from './maint';
 import { PrintersCard, ProtectionCard } from './protect';
+import { ProcsCard } from './procs';
+import { AutorunsCard } from './autoruns';
+import { Win11Card } from './win11';
 import { cascade, ease, rise, spring } from './motion';
 import { Section } from './views';
 import type { ViewProps } from './views';
@@ -163,6 +171,21 @@ export function PcView(props: ViewProps) {
         </Section>
       )}
 
+      {pc && (pc.procs || props.live) && (
+        <Section title="Processi">
+          <ProcsCard {...props} />
+          <ToolShortcut id="process-explorer" live={props.live} text="per l'albero completo dei processi, i file e le DLL aperte e la verifica dei file su VirusTotal" />
+          <ToolShortcut id="tcpview" live={props.live} text="per ogni connessione in tempo reale, con gli indirizzi remoti: attenzione alle schermate che condividi" />
+        </Section>
+      )}
+
+      {pc?.autoruns && (
+        <Section title="Avvio automatico">
+          <AutorunsCard {...props} />
+          <ToolShortcut id="autoruns" live={props.live} text="per vedere anche le voci di Windows e disattivare una voce senza cancellarla" />
+        </Section>
+      )}
+
       {pc?.eventsDays ? (
         <Section title={`Eventi degli ultimi ${pc.eventsDays} giorni`}>
           <EventsCard pc={pc} />
@@ -216,6 +239,13 @@ export function PcView(props: ViewProps) {
       {pc?.hardware && (
         <Section title="Scheda tecnica">
           <HardwareCard pc={pc} live={props.live} source={props.source} />
+        </Section>
+      )}
+
+      {pc && win11Requirements(scan).length > 0 && (
+        <Section title="Requisiti di Windows 11">
+          <Win11Card {...props} />
+          <ToolShortcut id="pc-health-check" live={props.live} text="per la verifica ufficiale di Microsoft, compreso il modello del processore" />
         </Section>
       )}
 
@@ -1693,7 +1723,7 @@ function DefenderCard({ scan, live, source, analysis, patchPc }: ViewProps) {
 
 // ---------------------------------------------------------------- Scheda tecnica
 
-type HwTab = 'cpu' | 'mem' | 'board' | 'gpu';
+export type HwTab = 'cpu' | 'mem' | 'board' | 'gpu';
 const CHASSIS: Record<string, string> = { desktop: 'computer fisso', laptop: 'portatile', workstation: 'workstation', server: 'server', tablet: 'tablet', other: 'altro' };
 const CHANNEL_TEXT: Record<ChannelMode, string> = {
   single: 'canale singolo',
@@ -1702,6 +1732,38 @@ const CHANNEL_TEXT: Record<ChannelMode, string> = {
   soldered: 'memoria saldata',
   unknown: 'non indicati dal firmware',
 };
+
+/** Nome in codice del processore per la scheda tecnica; incerto = "(da verificare)". */
+export function codeNameRow(c: Hardware['cpu'], name?: string): string | undefined {
+  const cn = codeName(c, name);
+  if (!cn) return undefined;
+  return `${codeNameText({ ...cn, uncertain: false })}${cn.uncertain ? ' (da verificare)' : ''}`;
+}
+
+/** Chipset della scheda madre: nome, poi serie e ID PCI; incerto = "(da verificare)". */
+export function chipsetRow(hw: Hardware): ReactNode | undefined {
+  const ch = chipsetName(hw);
+  if (!ch) return undefined;
+  return (
+    <>
+      {ch.name}
+      {ch.uncertain ? ' (da verificare)' : ''}
+      {ch.detail && <span className="faint hw-sub">{ch.detail}</span>}
+    </>
+  );
+}
+
+const displayTitle = (d: Display, i: number, n: number) => (d.internal ? 'Schermo integrato' : n > 1 ? `Schermo ${i + 1}` : 'Schermo');
+
+/** Diagonale, risoluzione e colore: niente numero di serie né nome del modello. */
+export function displayText(d: Display): string {
+  const parts = [
+    d.diagonalIn ? `${fmtNum(d.diagonalIn, 1)} pollici` : '',
+    d.width && d.height ? `${d.width} × ${d.height}` : '',
+    d.bitsPerColor ? `${d.bitsPerColor} bit per colore` : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'dimensioni non dichiarate';
+}
 
 /** Coppie etichetta-valore; le voci senza valore non si mostrano. */
 function Kv({ rows }: { rows: [string, ReactNode | undefined, Severity?][] }) {
@@ -1723,9 +1785,9 @@ function Kv({ rows }: { rows: [string, ReactNode | undefined, Severity?][] }) {
  * Scheda tecnica come CPU-Z: processore, memoria, scheda madre e firmware,
  * video. Solo dati letti da Windows; nessun numero di serie.
  */
-function HardwareCard({ pc, live, source }: { pc: PcData; live: boolean; source: ViewProps['source'] }) {
+export function HardwareCard({ pc, live, source, initialTab = 'cpu' }: { pc: PcData; live: boolean; source: ViewProps['source']; initialTab?: HwTab }) {
   const hw = pc.hardware!;
-  const [tab, setTab] = useState<HwTab>('cpu');
+  const [tab, setTab] = useState<HwTab>(initialTab);
   const c = hw.cpu;
   const mem = hw.memory;
   const mods = mem?.modules ?? [];
@@ -1755,6 +1817,7 @@ function HardwareCard({ pc, live, source }: { pc: PcData; live: boolean; source:
             <Kv
               rows={[
                 ['Processore', pc.cpu?.name],
+                ['Nome in codice', codeNameRow(c, pc.cpu?.name)],
                 ['Produttore', cpuVendor(c?.vendor) || undefined],
                 ['Famiglia, modello, stepping', c?.family ? `${c.family} · ${c.model ?? '?'} (0x${(c.model ?? 0).toString(16).toUpperCase()}) · ${c.stepping ?? '?'}` : undefined],
                 ['Zoccolo', c?.socket],
@@ -1838,6 +1901,7 @@ function HardwareCard({ pc, live, source }: { pc: PcData; live: boolean; source:
             rows={[
               ['Computer', [hw.vendor, hw.model].filter(Boolean).join(' ') || undefined],
               ['Scheda madre', hw.board ? [hw.board.vendor, hw.board.product, hw.board.version].filter(Boolean).join(' ') || undefined : undefined],
+              ['Chipset', chipsetRow(hw)],
               ['BIOS', hw.board?.biosVersion ? `${[hw.board.biosVendor, hw.board.biosVersion].filter(Boolean).join(' ')}${hw.board.biosDate ? ` del ${dateIt(hw.board.biosDate)}` : ''}` : undefined],
               ['Firmware', hw.firmware === 'uefi' ? 'UEFI' : hw.firmware === 'bios' ? 'BIOS legacy' : undefined, hw.firmware === 'bios' ? 'info' : undefined],
               ['Secure Boot', hw.secureBoot === undefined ? undefined : hw.secureBoot ? 'attivo' : 'disattivato', hw.secureBoot === false ? 'warn' : undefined],
@@ -1856,6 +1920,7 @@ function HardwareCard({ pc, live, source }: { pc: PcData; live: boolean; source:
                     ['Memoria video', g.vramMB ? (g.vramMB >= 1024 ? gb(g.vramMB / 1024) : `${g.vramMB} MB${g.vramMB <= 512 ? ' (usa la RAM di sistema)' : ''}`) : undefined],
                     ['Schermo', g.width && g.height ? `${g.width} × ${g.height}${g.refreshHz ? ` a ${g.refreshHz} Hz` : ''}` : undefined],
                     ['Driver', g.driverVersion ? `${g.driverVersion}${g.driverDate ? ` del ${dateIt(g.driverDate)}` : ''}` : undefined],
+                    ['Modello del driver', g.wddm ? `WDDM ${wddmText(g.wddm)}` : undefined],
                   ]}
                 />
               </div>
@@ -1863,6 +1928,12 @@ function HardwareCard({ pc, live, source }: { pc: PcData; live: boolean; source:
           ) : (
             <p className="muted">Nessuna scheda video riportata.</p>
           ))}
+        {tab === 'gpu' && (hw.displays ?? []).length > 0 && (
+          <div className="hw-block">
+            <h3>Schermi</h3>
+            <Kv rows={hw.displays!.map((d, i): [string, ReactNode] => [displayTitle(d, i, hw.displays!.length), displayText(d)])} />
+          </div>
+        )}
       </div>
     </m.section>
   );

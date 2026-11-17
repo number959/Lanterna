@@ -5,7 +5,13 @@ import { scoreAssessment } from './kb/assessment';
 import { METRICS } from './kb/metrics';
 import { dateIt } from './pc';
 import { THREAT_SEVERITY, THREAT_STATUS } from './defender';
-import { cacheText, channelMode, coreLayout, cpuVendor, memVendor, moduleText } from './hardware';
+import { cacheText, channelMode, coreLayout, cpuVendor, displaysText, memVendor, moduleText } from './hardware';
+import { num } from './fmt';
+import { codeName, codeNameText } from './codenames';
+import { chipsetName, chipsetText } from './chipset';
+import { win11Requirements } from './win11';
+import { listeners, procGroups, signatureLabel } from './procs';
+import { autorunCounts, autorunIssues, categoryLower, categoryShort } from './autoruns';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import { dbmText, gatewayText, radioText, surveyAliases, surveyRooms } from './survey';
 import { speedTextLines } from './speedtest';
@@ -153,6 +159,71 @@ const EVENT_TEXT: Record<EventKind, string> = {
 };
 const LOCATION: Record<string, string> = { user: 'utente', machine: 'computer', machine32: 'computer (32 bit)', 'user-folder': 'cartella utente', 'common-folder': 'cartella comune' };
 
+const REQ_TAG: Record<string, string> = { ok: '[ OK ]', fail: '[ !! ]', unknown: '[ ?? ]', na: '[ -- ]' };
+
+/** Processi a fine analisi: firme per conteggio e programmi in ascolto (nessun indirizzo remoto). */
+function procsDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
+  const data = scan.pc && scan.pc.procs;
+  if (!data) return;
+  const items = data.items.filter((p) => !p.polaris);
+  const groups = procGroups(items);
+  const count = (f: (s?: string) => boolean) => groups.filter((g) => f(g.file.signature && g.file.signature.status)).length;
+  const ok = count((s) => s === 'valid');
+  const none = count((s) => s === 'unsigned');
+  const unchecked = count((s) => !s || s === 'unknown' || s === 'unreadable');
+  const other = groups.length - ok - none - unchecked;
+  out.push('');
+  out.push(` Processi (${num(items.length, 'processo', 'processi')} a fine analisi${data.elevated ? ', da amministratore' : ''})`);
+  out.push(
+    hang(
+      `Programmi: ${groups.length}; firma verificata ${ok}, senza firma ${none}${other ? `, firma da controllare ${other}` : ''}${unchecked ? `, non verificati ${unchecked}` : ''}${data.unreadable ? `; ${num(data.unreadable, 'processo non leggibile', 'processi non leggibili')} senza amministratore` : ''}${data.partial ? '; lettura incompleta' : ''}`,
+      W,
+      '   ',
+      '     ',
+    ),
+  );
+  if (data.connsRead) {
+    const ls = listeners(scan);
+    out.push(
+      hang(
+        `In ascolto su tutte le reti: ${ls.length ? ls.map((l) => `${l.proc.name} (${l.ports.slice(0, 4).join(', ')})${l.risky ? ' da controllare' : ''}`).join('; ') : 'nessun programma'}`,
+        W,
+        '   ',
+        '     ',
+      ),
+    );
+  }
+  if (verbose)
+    for (const g of groups) {
+      const sig = signatureLabel(g.file.signature);
+      if (sig.tone === 'ok') continue;
+      out.push(hang(`${g.names[0]}${g.count > 1 ? ` (${g.count})` : ''}: ${sig.text}; ${g.file.path || ''}`, W, '     ', '       '));
+    }
+}
+
+const AR_TAG: Record<string, string> = { crit: '[CRIT]', warn: '[ !! ]', info: '[INFO]', ok: '[ OK ]', unknown: '[ ?? ]' };
+
+/** Avvio automatico esteso: conteggi per categoria e voci da controllare. */
+function autorunsDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
+  const data = scan.pc && scan.pc.autoruns;
+  if (!data) return;
+  out.push('');
+  out.push(` Avvio automatico${data.elevated ? ' (da amministratore)' : ''}`);
+  const counts = autorunCounts(scan);
+  if (counts.length)
+    out.push(hang(`Per categoria: ${counts.map((c) => `${categoryLower(c.category)} ${c.total}${c.microsoft ? ` (${c.microsoft} di Microsoft)` : ''}`).join('; ')}`, W, '   ', '     '));
+  const issues = autorunIssues(scan).filter((x) => verbose || x.severity === 'warn' || x.severity === 'crit');
+  const rank: Record<string, number> = { crit: 3, warn: 2, info: 1 };
+  issues.sort((a, b) => (rank[b.severity] || 0) - (rank[a.severity] || 0));
+  if (issues.length) {
+    out.push('   Voci da controllare:');
+    for (const x of issues.slice(0, verbose ? 40 : 10)) out.push(hang(`${AR_TAG[x.severity]} ${x.entry.name} (${categoryShort(x.entry.category)}): ${x.why}`, W, '     ', '            '));
+    if (!verbose && issues.length > 10) out.push(`     ... altre ${issues.length - 10} (con --verbose)`);
+  } else out.push('   Nessuna voce da controllare tra quelle lette.');
+  if (data.denied && data.denied.length)
+    out.push(hang(`Da verificare da amministratore: ${data.denied.map((c) => categoryLower(c)).join(', ')}`, W, '   ', '     '));
+}
+
 /** Dettagli del computer che non entrano nei giudizi: dischi, volumi, avvio, processi, eventi, test. */
 function pcDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
   const pc = scan.pc;
@@ -202,9 +273,12 @@ function pcDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
     const c = hw.cpu;
     if (c) {
       line('Processore', [c.family ? `${cpuVendor(c.vendor)} famiglia ${c.family} modello ${c.model} stepping ${c.stepping}`.trim() : '', c.socket ? `zoccolo ${c.socket}` : '', [coreLayout(c), c.threads ? `${c.threads} thread` : ''].filter(Boolean).join(', ')].filter(Boolean).join('; '));
+      line('Nome in codice', codeNameText(codeName(c, pc.cpu && pc.cpu.name)));
       line('Cache', (c.caches ?? []).map((x) => cacheText(x).replace(': ', ' ')).join('; '));
       line('Istruzioni', (c.features ?? []).join(' '));
     }
+    line('Chipset', chipsetText(chipsetName(hw)));
+    line('Schermi', displaysText(hw.displays, 'x'));
     const mods = hw.memory?.modules ?? [];
     if (mods.length) {
       const mode = channelMode(hw.memory);
@@ -214,6 +288,13 @@ function pcDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
       );
       for (const m of mods) out.push(hang(`${m.slot || m.bank || '-'}: ${moduleText(m)}${memVendor(m.vendor) || m.part ? `, ${[memVendor(m.vendor), m.part].filter(Boolean).join(' ')}` : ''}`, W, '     ', '       '));
     }
+  }
+  // Requisiti di Windows 11, uno per riga.
+  const reqs = win11Requirements(scan);
+  if (reqs.length) {
+    out.push('');
+    out.push(' Requisiti di Windows 11');
+    for (const r of reqs) out.push(hang(`${REQ_TAG[r.status]} ${r.label}: ${r.value}`, W, '   ', '          '));
   }
   if (pc.disks?.length) {
     out.push('');
@@ -267,6 +348,8 @@ function pcDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
     for (const p of pc.processes.slice(0, verbose ? 16 : 6))
       out.push(`   ${cut(`${p.name}${p.count > 1 ? ` (${p.count})` : ''}`, 34)} ${p.cpuPct !== undefined ? `${n1(p.cpuPct)} %`.padStart(7) : '      -'}  ${`${Math.round(p.memoryMB)} MB`.padStart(8)}`);
   }
+  procsDetails(scan, out, W, verbose);
+  autorunsDetails(scan, out, W, verbose);
   if (pc.eventsDays) {
     out.push(` Eventi rilevanti negli ultimi ${pc.eventsDays} giorni: ${pc.events?.length ? '' : 'nessuno'}`.trimEnd());
     for (const e of pc.events ?? [])

@@ -1,6 +1,7 @@
 import type { PcData, SmartAttr, StartupItem } from '../engine/types';
 import { clinicCrashes, homeCrashes } from './crashes';
 import { clinicDevices, homeDevices } from './devices';
+import { clinicAutoruns, clinicProcs, homeAutoruns, homeProcs } from './autoruns';
 import { clinicUsb, homeUsb } from './usb';
 import { clinicApps, clinicBoot, clinicReliability, homeApps, homeBoot, homeReliability } from './stability';
 import { clinicAccess, clinicAccounts, clinicBackup, clinicEncryption, clinicPrinting, homeAccess, homeAccounts, homeBackup, homeEncryption, homePrinting } from './protect';
@@ -27,8 +28,8 @@ export const homePc: PcData = {
     fastStartup: true,
   },
   cpu: { name: '11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz', cores: 4, threads: 8, maxMhz: 2419, loadPct: 23 },
-  memory: { totalMB: 7962, availableMB: 1150, commitMB: 11820, commitLimitMB: 12900 },
-  gpus: [{ name: 'Intel(R) Iris(R) Xe Graphics', driverVersion: '30.0.100.9864', driverDate: '2021-08-10', vramMB: 128, width: 1920, height: 1080, refreshHz: 60 }],
+  memory: { totalMB: 7962, availableMB: 1150, commitMB: 11820, commitLimitMB: 12900, installedMB: 8192 },
+  gpus: [{ name: 'Intel(R) Iris(R) Xe Graphics', driverVersion: '30.0.100.9864', driverDate: '2021-08-10', vramMB: 128, width: 1920, height: 1080, refreshHz: 60, wddm: 2900 }],
   // Portatile con un solo modulo SODIMM e uno slot libero: canale singolo.
   hardware: {
     vendor: 'Acer',
@@ -62,7 +63,11 @@ export const homePc: PcData = {
     firmware: 'uefi',
     secureBoot: true,
     tpm: '2.0',
+    // Tiger Lake-U: il PCH sta nel package del processore.
+    chipset: [{ vendor: '8086', device: 'A082', rev: '20', class: '0601' }],
+    displays: [{ width: 1920, height: 1080, diagonalIn: 15.6, bitsPerColor: 8, internal: true }],
   },
+  win11: { tpmVersion: '2.0' },
   disks: [
     {
       id: '0',
@@ -187,6 +192,8 @@ export const homePc: PcData = {
   access: homeAccess,
   printing: homePrinting,
   usb: homeUsb,
+  procs: homeProcs,
+  autoruns: homeAutoruns,
 };
 
 export const clinicPc: PcData = {
@@ -203,8 +210,8 @@ export const clinicPc: PcData = {
     fastStartup: false,
   },
   cpu: { name: '12th Gen Intel(R) Core(TM) i5-12500T', cores: 6, threads: 12, maxMhz: 2000, loadPct: 18 },
-  memory: { totalMB: 16123, availableMB: 8920, commitMB: 9870, commitLimitMB: 18555 },
-  gpus: [{ name: 'Intel(R) UHD Graphics 770', driverVersion: '31.0.101.5186', driverDate: '2024-01-10', vramMB: 128, width: 1920, height: 1080, refreshHz: 60 }],
+  memory: { totalMB: 16123, availableMB: 8920, commitMB: 9870, commitLimitMB: 18555, installedMB: 16384 },
+  gpus: [{ name: 'Intel(R) UHD Graphics 770', driverVersion: '31.0.101.5186', driverDate: '2024-01-10', vramMB: 128, width: 1920, height: 1080, refreshHz: 60, wddm: 3100 }],
   // Mini PC con Windows 10: requisiti di Windows 11 rispettati, ma Secure Boot spento.
   hardware: {
     vendor: 'Lenovo',
@@ -242,7 +249,12 @@ export const clinicPc: PcData = {
     firmware: 'uefi',
     secureBoot: false,
     tpm: '2.0',
+    chipset: [{ vendor: '8086', device: '7A83', rev: '11', class: '0601' }],
+    // Monitor esterno da 23,8": sul PC fisso il requisito dello schermo non si applica.
+    displays: [{ width: 1920, height: 1080, diagonalIn: 23.8, bitsPerColor: 8 }],
   },
+  // Windows Update ha già valutato l'aggiornamento (indizio da una chiave non documentata).
+  win11: { tpmVersion: '2.0', appraiser: { target: '25H2', verdict: 'green', at: '2026-10-10T03:12:00Z' } },
   disks: [
     {
       id: '0',
@@ -379,4 +391,6 @@ export const clinicPc: PcData = {
   access: clinicAccess,
   printing: clinicPrinting,
   usb: clinicUsb,
+  procs: clinicProcs,
+  autoruns: clinicAutoruns,
 };

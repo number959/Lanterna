@@ -1,9 +1,10 @@
-import { fmt, num, thousands } from './fmt';
-import type { Finding, HwCache, HwCpu, HwMemory, HwModule, PcData, Severity } from './types';
+import { fmt, thousands } from './fmt';
+import type { Display, Finding, HwCache, HwCpu, HwMemory, HwModule, PcData, Severity } from './types';
 
 // Scheda tecnica del computer, come in CPU-Z: giudizi su memoria (canali e
-// velocità), avvio protetto, TPM e requisiti di Windows 11, più le funzioni
-// di formattazione usate da interfaccia e rapporto.
+// velocità), avvio protetto e TPM, più le funzioni di formattazione usate da
+// interfaccia e rapporto. Nome in codice, chipset e requisiti di Windows 11
+// stanno in codenames.ts, chipset.ts e win11.ts.
 
 type Add = (f: Omit<Finding, 'actions'> & { actions?: string[] }) => void;
 
@@ -90,6 +91,18 @@ export function cacheText(c: HwCache): string {
 export function moduleText(m: HwModule): string {
   const speed = m.speedMTs ? `, ${m.speedMTs} MT/s${m.configuredMTs && m.configuredMTs !== m.speedMTs ? ` (lavora a ${m.configuredMTs})` : ''}` : '';
   return `${fmt(m.sizeGB, m.sizeGB % 1 ? 1 : 0)} GB${m.type ? ` ${m.type}` : ''}${m.form ? ` ${m.form}` : ''}${speed}`;
+}
+
+/** Schermi in breve: "15,6" 1920x1080 8 bit per colore integrato"; times è il segno della risoluzione (x o ×). */
+export function displaysText(list: Display[] | undefined, times = '×'): string {
+  return (list || [])
+    .map((d) =>
+      [d.diagonalIn ? `${fmt(d.diagonalIn, 1)}"` : '', d.width && d.height ? `${d.width}${times}${d.height}` : '', d.bitsPerColor ? `${d.bitsPerColor} bit per colore` : '', d.internal ? 'integrato' : '']
+        .filter(Boolean)
+        .join(' '),
+    )
+    .filter(Boolean)
+    .join('; ');
 }
 
 const VENDOR_NAME: Record<string, string> = { GenuineIntel: 'Intel', AuthenticAMD: 'AMD' };
@@ -200,35 +213,5 @@ export function analyzeHardware(pc: PcData, add: Add) {
       actions: ok ? [] : ['firmware-security'],
     });
   }
-
-  // Requisiti di Windows 11 sui PC ancora con Windows 10.
-  const os = pc.os;
-  if (os && !os.server && /^Windows 10/.test(os.name)) {
-    const sys = (pc.volumes ?? []).find((v) => v.system);
-    const feats = hw.cpu?.features;
-    const checks: [string, boolean | undefined][] = [
-      ['TPM 2.0', hw.tpm === undefined ? undefined : hw.tpm === '2.0'],
-      ['avvio UEFI (necessario per Secure Boot)', hw.firmware === undefined ? undefined : hw.firmware === 'uefi'],
-      ['almeno 4 GB di RAM', pc.memory ? pc.memory.totalMB >= 3800 : undefined],
-      ['almeno 64 GB sul disco di sistema', sys ? sys.sizeGB >= 64 : undefined],
-      ['istruzioni POPCNT e SSE4.2 (dalla versione 24H2)', feats?.length ? feats.includes('POPCNT') && feats.includes('SSE4.2') : undefined],
-    ];
-    const missing = checks.filter(([, ok]) => ok === false).map(([k]) => k);
-    const met = checks.filter(([, ok]) => ok === true).map(([k]) => k);
-    add({
-      id: 'pc.win11',
-      metric: 'pc.win11',
-      category: 'pc',
-      title: 'Requisiti di Windows 11',
-      value: missing.length ? `${num(missing.length, 'requisito mancante', 'requisiti mancanti')}` : `${met.length} su ${checks.length} verificati`,
-      severity: missing.length ? 'warn' : 'info',
-      verdict:
-        (missing.length
-          ? `Il PC non rispetta questi requisiti di Windows 11: ${missing.join('; ')}.`
-          : `Il PC rispetta i requisiti verificabili da qui: ${met.join(', ')}.`) +
-        (hw.secureBoot === false && hw.firmware === 'uefi' ? ' Secure Boot va attivato.' : '') +
-        ' Resta da verificare il processore, che deve essere nell\'elenco Microsoft (in genere Intel dall\'8ª generazione e AMD Ryzen dalla serie 2000): lo controlla l\'app Controllo integrità PC.',
-      actions: missing.some((k) => /TPM|UEFI/.test(k)) ? ['firmware-security', 'upgrade-windows'] : ['upgrade-windows'],
-    });
-  }
+  // I requisiti di Windows 11 sono in win11.ts (analyzeWin11, chiamata da analyzePc).
 }

@@ -112,6 +112,11 @@ export const ACTION_TOOLS: Record<string, string[]> = {
   'dual-channel': ['system-info'],
   'update-crash-driver': ['device-manager', 'windows-update'],
   'test-memory': ['memory-diagnostic'],
+  'check-file-origin': ['task-manager', 'windows-security'],
+  'defender-scan-file': ['windows-security'],
+  'review-startup-entry': ['startup-apps', 'task-manager'],
+  'review-listening-app': ['resource-monitor'],
+  'check-win11-cpu': ['system-info'],
 };
 
 export interface Tool {
@@ -458,6 +463,12 @@ export const ACTION_APPS: Record<string, string[]> = {
   'firmware-security': ['pc-health-check'],
   'add-ram': ['cpu-z'],
   'dual-channel': ['cpu-z'],
+  'check-file-origin': ['process-explorer'],
+  'review-listening-app': ['process-explorer'],
+  'review-startup-entry': ['autoruns'],
+  'review-wmi-subscription': ['autoruns'],
+  'fix-unquoted-service-path': ['autoruns'],
+  'check-win11-cpu': ['pc-health-check'],
 };
 
 export const CATEGORY_LABEL: Record<ToolCategory, string> = {
