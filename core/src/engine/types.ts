@@ -905,6 +905,14 @@ export interface PcData {
   printing?: PrintingInfo;
   /** Albero dei dispositivi USB (controller, hub, porte); assente se non letto. */
   usb?: UsbInfo;
+  /** Processi a fine analisi, come in Process Explorer: file, firma, utente (solo la categoria), connessioni riassunte. */
+  procs?: ProcessesData;
+  /** Tutto ciò che si avvia da solo, come in Autoruns. */
+  autoruns?: AutorunsData;
+  /** Dati per i requisiti di Windows 11 che non stanno nella scheda tecnica. */
+  win11?: Win11Data;
+  /** Confronto del processore con l'elenco ufficiale Microsoft, letto su richiesta dal PC dell'utente. */
+  win11List?: Win11CPUCheck;
   /** Limiti della raccolta (dati SMART solo da amministratore, PowerShell assente...). */
   notes?: string[];
 }
@@ -1009,6 +1017,8 @@ export interface PcMemory {
   /** Memoria impegnata (RAM + file di paging) e suo limite. */
   commitMB?: number;
   commitLimitMB?: number;
+  /** RAM installata secondo il firmware (SMBIOS): può superare totalMB, che esclude la memoria riservata. */
+  installedMB?: number;
 }
 
 export interface PcGpu {
@@ -1020,6 +1030,8 @@ export interface PcGpu {
   width?: number;
   height?: number;
   refreshHz?: number;
+  /** Modello del driver (D3DKMT): 2000 = WDDM 2.0, 3100 = WDDM 3.1. */
+  wddm?: number;
 }
 
 /** Scheda tecnica del computer, come in CPU-Z. Nessun numero di serie. */
@@ -1036,6 +1048,211 @@ export interface Hardware {
   /** Versione del TPM ("2.0", "1.2"); "" = nessun TPM; assente = non verificato. */
   tpm?: string;
   hypervisor?: boolean;
+  /** Funzioni PCI che identificano il chipset (solo ID, mai ID d'istanza): il nome lo ricava il motore. */
+  chipset?: PciFunc[];
+  /** Schermi collegati, con la diagonale dichiarata. */
+  displays?: Display[];
+}
+
+export interface PciFunc {
+  vendor: string; // "8086"
+  device: string; // "7A06"
+  rev?: string;
+  /** Classe e sottoclasse: "0601" bridge LPC/ISA, "0600" host, "0C05" SMBus. */
+  class?: string;
+}
+
+export interface Display {
+  width?: number;
+  height?: number;
+  /** Diagonale in pollici dalle dimensioni dichiarate dallo schermo; assente se non le dichiara. */
+  diagonalIn?: number;
+  bitsPerColor?: number;
+  /** Schermo integrato (portatile, tablet, tutto in uno). */
+  internal?: boolean;
+}
+
+// ---------- File, firme, processi e avvio automatico (0.14.0) ----------
+
+/** Esito della verifica della firma Authenticode (WinVerifyTrust, senza rete). */
+export type SignatureStatus =
+  | 'valid'
+  | 'unsigned'
+  | 'tampered'
+  | 'revoked'
+  | 'distrusted'
+  | 'expired'
+  | 'untrustedRoot'
+  | 'wrongUsage'
+  | 'policy'
+  | 'invalid'
+  | 'unreadable'
+  | 'unknown';
+
+export interface FileSignature {
+  status: SignatureStatus;
+  /** Nome semplice del certificato del firmatario ("Microsoft Windows"). */
+  signer?: string;
+  /** La firma sta in un catalogo di Windows, non nel file. */
+  catalog?: boolean;
+  /** Firma di Microsoft per un componente suo; falso per i driver di altri produttori rifirmati da Microsoft (WHQL, attestazione). */
+  microsoft?: boolean;
+  /** Codice esadecimale di WinVerifyTrust quando non è 0. */
+  code?: string;
+}
+
+export type FolderKind =
+  | 'windows'
+  | 'programFiles'
+  | 'programData'
+  | 'appData'
+  | 'temp'
+  | 'downloads'
+  | 'profile'
+  | 'removable'
+  | 'network'
+  | 'other';
+
+export interface FileFacts {
+  /** Percorso con il profilo sostituito da %USERPROFILE%. */
+  path?: string;
+  missing?: boolean;
+  signature?: FileSignature;
+  /** Dalle informazioni di versione del file: le scrive chi l'ha prodotto, non sono una prova. */
+  company?: string;
+  description?: string;
+  version?: string;
+  folder?: FolderKind;
+}
+
+export interface ProcessesData {
+  at: string;
+  items: ProcessDetail[];
+  /** Processi che senza amministratore non si aprono nemmeno con i diritti minimi. */
+  unreadable?: number;
+  partial?: boolean;
+  /** Le tabelle delle connessioni sono state lette. */
+  connsRead?: boolean;
+  elevated?: boolean;
+}
+
+export interface ProcessDetail {
+  pid: number;
+  parentPid?: number;
+  name: string;
+  /** STARNET Polaris stesso o una sua finestra WebView2: escluso dai giudizi. */
+  polaris?: boolean;
+  file?: FileFacts;
+  owner?: 'self' | 'system' | 'other' | 'unknown';
+  elevated?: boolean;
+  arch?: 'x64' | 'x86' | 'arm64' | 'arm' | 'x64-on-arm64';
+  started?: string;
+  /** 'none': non apribile senza amministratore. */
+  access?: 'none';
+  services?: string[];
+  memoryMB?: number;
+  cpuPct?: number;
+  listen?: ListenPort[];
+  conns?: ConnSummary;
+}
+
+export interface ListenPort {
+  proto: 'tcp' | 'udp';
+  port: number;
+  /** all = tutte le interfacce, local = solo questo PC, specific = un indirizzo della rete. */
+  scope: 'all' | 'local' | 'specific';
+  ipv6?: boolean;
+}
+
+/** Connessioni TCP per destinazione: nessun indirizzo remoto, per la privacy. */
+export interface ConnSummary {
+  local?: number;
+  lan?: number;
+  internet?: number;
+  remotePorts?: { port: number; count: number }[];
+}
+
+export type AutorunCategory =
+  | 'logon'
+  | 'tasks'
+  | 'services'
+  | 'drivers'
+  | 'wmi'
+  | 'browser'
+  | 'winlogon'
+  | 'hijacks'
+  | 'lsa'
+  | 'print'
+  | 'network';
+
+export interface AutorunsData {
+  entries: AutorunEntry[];
+  /** Per categoria: totale e quante sono di Microsoft (non elencate). */
+  counts?: Partial<Record<AutorunCategory, { total: number; microsoft?: number }>>;
+  /** Categorie lette solo in parte o per niente per i permessi. */
+  denied?: AutorunCategory[];
+  partial?: boolean;
+  elevated?: boolean;
+}
+
+export interface AutorunEntry {
+  category: AutorunCategory;
+  kind?: string;
+  scope?: 'machine' | 'machine32' | 'user';
+  name: string;
+  location?: string;
+  command?: string;
+  file?: FileFacts;
+  /** File eseguito da un programma di sistema per conto della voce (rundll32 x.dll, powershell -File x.ps1, wscript x.vbs). */
+  target?: FileFacts;
+  enabled: boolean;
+  // attività pianificate
+  triggers?: ('logon' | 'boot' | 'time' | 'daily' | 'weekly' | 'monthly' | 'idle' | 'event' | 'registration' | 'session' | 'other')[];
+  runAs?: 'system' | 'service' | 'user' | 'group' | 'other';
+  highest?: boolean;
+  hidden?: boolean;
+  authorMicrosoft?: boolean;
+  lastRun?: string;
+  lastResult?: string;
+  nextRun?: string;
+  // servizi e driver
+  start?: 'boot' | 'system' | 'auto' | 'delayed' | 'manual' | 'disabled';
+  running?: boolean;
+  unquoted?: boolean;
+  interceptors?: number;
+  account?: 'system' | 'localservice' | 'networkservice' | 'user' | 'other';
+  // estensioni
+  browser?: 'chrome' | 'edge' | 'brave' | 'firefox';
+  extId?: string;
+  version?: string;
+  source?: 'store' | 'policy' | 'external' | 'sideload' | 'unpacked' | 'component' | 'default' | 'other';
+  profile?: number;
+  allSites?: boolean;
+  // WMI
+  consumer?: 'commandline' | 'activescript' | 'eventlog' | 'logfile' | 'smtp' | 'other';
+  bound?: boolean;
+  namespace?: string;
+}
+
+export interface Win11Data {
+  /** Secure Boot supportato anche se spento: si sa solo da amministratore. */
+  secureBootCapable?: boolean;
+  /** Versione del TPM da Tbsi_GetDeviceInfo: "2.0", "1.2", "" = nessuno. */
+  tpmVersion?: string;
+  /** Verdetto già calcolato da Windows Update (chiave non documentata: indizio). */
+  appraiser?: { target?: string; verdict?: 'green' | 'yellow' | 'red' | ''; reasons?: string[]; at?: string };
+}
+
+export interface Win11CPUCheck {
+  at: string;
+  source: string;
+  version: string;
+  kind: 'model' | 'series';
+  result: 'listed' | 'notListed' | 'unknown';
+  match?: string;
+  cpu?: string;
+  rows?: number;
+  error?: string;
 }
 
 export interface HwBoard {

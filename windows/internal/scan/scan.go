@@ -662,8 +662,268 @@ type PcData struct {
 	// Usb è l'albero dei dispositivi USB (controller, hub, porte); nil se
 	// non letto.
 	Usb *UsbInfo `json:"usb,omitempty"`
+	// Procs sono i processi in esecuzione a fine analisi, come in Process
+	// Explorer: file, firma digitale, utente (solo la categoria) e connessioni
+	// di rete riassunte (mai indirizzi remoti pubblici). nil se non letti.
+	Procs *ProcessesData `json:"procs,omitempty"`
+	// Autoruns è tutto ciò che si avvia da solo, come in Autoruns: accesso,
+	// attività pianificate, servizi, driver, sottoscrizioni WMI, estensioni
+	// dei browser e dirottamenti noti. nil se non letto.
+	Autoruns *AutorunsData `json:"autoruns,omitempty"`
+	// Win11 sono i dati per i requisiti di Windows 11 che non stanno già nella
+	// scheda tecnica; Win11List l'esito del confronto del processore con
+	// l'elenco ufficiale Microsoft, letto su richiesta dal PC dell'utente.
+	Win11     *Win11Data     `json:"win11,omitempty"`
+	Win11List *Win11CPUCheck `json:"win11List,omitempty"`
 	// Notes spiega i limiti della raccolta (dati SMART solo da amministratore...).
 	Notes []string `json:"notes,omitempty"`
+}
+
+// ---------- File, firme, processi e avvio automatico (0.14.0) ----------
+
+// FileSignature è la firma digitale Authenticode di un file, verificata da
+// Windows (WinVerifyTrust, firma incorporata o catalogo) senza accedere alla
+// rete: la revoca dei certificati non si controlla online.
+type FileSignature struct {
+	// Status: valid | unsigned | tampered | revoked | distrusted | expired |
+	// untrustedRoot | wrongUsage | policy | invalid | unreadable | unknown.
+	Status string `json:"status"`
+	// Signer è il nome semplice del certificato del firmatario ("Microsoft
+	// Windows", "Google LLC").
+	Signer string `json:"signer,omitempty"`
+	// Catalog: la firma sta in un catalogo di Windows, non nel file.
+	Catalog bool `json:"catalog,omitempty"`
+	// Microsoft: firma valida di Microsoft per un componente suo (catena
+	// verso la radice Microsoft, CERT_CHAIN_POLICY_MICROSOFT_ROOT). Falso per
+	// i driver di altri produttori che Microsoft rifirma (WHQL o firma per
+	// attestazione, firmatario «Microsoft Windows Hardware Compatibility
+	// Publisher»): restano del loro produttore.
+	Microsoft bool `json:"microsoft,omitempty"`
+	// Code è il codice esadecimale di WinVerifyTrust quando non è 0.
+	Code string `json:"code,omitempty"`
+}
+
+// FileFacts riassume un file eseguibile puntato da un processo o da una voce
+// di avvio automatico.
+type FileFacts struct {
+	// Path è il percorso con il profilo di chi usa Polaris sostituito da
+	// %USERPROFILE% e gli altri profili da ‹utente›.
+	Path string `json:"path,omitempty"`
+	// Missing: il file indicato non esiste.
+	Missing   bool           `json:"missing,omitempty"`
+	Signature *FileSignature `json:"signature,omitempty"`
+	// Company, Description e Version vengono dalle informazioni di versione
+	// del file (VERSIONINFO): le scrive chi l'ha prodotto, non sono una prova.
+	Company     string `json:"company,omitempty"`
+	Description string `json:"description,omitempty"`
+	Version     string `json:"version,omitempty"`
+	// Folder è il tipo di cartella: windows | programFiles | programData |
+	// appData | temp | downloads | profile | removable | network | other.
+	Folder string `json:"folder,omitempty"`
+}
+
+// ProcessesData sono i processi in esecuzione, come in Process Explorer.
+type ProcessesData struct {
+	At    string          `json:"at"` // ora della lettura (RFC 3339)
+	Items []ProcessDetail `json:"items"`
+	// Unreadable conta i processi che senza amministratore non si aprono
+	// nemmeno con i diritti minimi (di essi si sa solo il nome).
+	Unreadable int  `json:"unreadable,omitempty"`
+	Partial    bool `json:"partial,omitempty"`
+	// ConnsRead: le tabelle delle connessioni TCP e UDP sono state lette.
+	ConnsRead bool `json:"connsRead,omitempty"`
+	// Elevated: lettura fatta da amministratore.
+	Elevated bool `json:"elevated,omitempty"`
+}
+
+// ProcessDetail è un processo. Mai la riga di comando: può contenere
+// password o dati personali.
+type ProcessDetail struct {
+	PID       uint32 `json:"pid"`
+	ParentPID uint32 `json:"parentPid,omitempty"`
+	Name      string `json:"name"`
+	// Polaris: il processo è STARNET Polaris stesso o una sua finestra
+	// WebView2; il motore lo esclude dai giudizi.
+	Polaris bool       `json:"polaris,omitempty"`
+	File    *FileFacts `json:"file,omitempty"`
+	// Owner: self (chi usa Polaris) | system (SYSTEM, LOCAL SERVICE,
+	// NETWORK SERVICE) | other (un altro account) | unknown. Mai nomi o SID.
+	Owner string `json:"owner,omitempty"`
+	// Elevated: il processo gira con i diritti di amministratore.
+	Elevated bool   `json:"elevated,omitempty"`
+	Arch     string `json:"arch,omitempty"` // x64 | x86 | arm64 | arm | x64-on-arm64
+	Started  string `json:"started,omitempty"`
+	// Access: "" (aperto con i diritti minimi) | none (non apribile senza
+	// amministratore: protetto o di un altro utente).
+	Access string `json:"access,omitempty"`
+	// Services sono i nomi brevi dei servizi ospitati (svchost).
+	Services []string `json:"services,omitempty"`
+	MemoryMB float64  `json:"memoryMB,omitempty"`
+	// CPUPct è il carico misurato a fine analisi (assente se non misurato).
+	CPUPct *float64     `json:"cpuPct,omitempty"`
+	Listen []ListenPort `json:"listen,omitempty"`
+	Conns  *ConnSummary `json:"conns,omitempty"`
+}
+
+// ListenPort è una porta su cui il processo accetta connessioni (TCP in
+// ascolto o UDP aperta).
+type ListenPort struct {
+	Proto string `json:"proto"` // tcp | udp
+	Port  uint16 `json:"port"`
+	// Scope: all (tutte le interfacce) | local (solo questo PC) | specific
+	// (un indirizzo della rete).
+	Scope string `json:"scope"`
+	IPv6  bool   `json:"ipv6,omitempty"`
+}
+
+// ConnSummary riassume le connessioni TCP del processo per destinazione:
+// nessun indirizzo remoto, per la privacy (gli IP sono dati personali).
+type ConnSummary struct {
+	Local    int `json:"local,omitempty"`    // verso questo PC (loopback)
+	LAN      int `json:"lan,omitempty"`      // verso indirizzi privati o link-local
+	Internet int `json:"internet,omitempty"` // verso indirizzi pubblici
+	// RemotePorts sono le porte remote più usate, con il numero di connessioni.
+	RemotePorts []PortCount `json:"remotePorts,omitempty"`
+}
+
+type PortCount struct {
+	Port  uint16 `json:"port"`
+	Count int    `json:"count"`
+}
+
+// AutorunsData è ciò che si avvia da solo, come in Autoruns. Le voci di
+// Windows firmate da Microsoft si contano ma non si elencano (Counts), come
+// fa Autoruns con «Hide Windows Entries»; si elencano invece se il file
+// manca, non è firmato da Microsoft o sta in una cartella dell'utente.
+type AutorunsData struct {
+	Entries []AutorunEntry `json:"entries"`
+	// Counts per categoria: totale e quante sono di Microsoft (non elencate).
+	Counts map[string]AutorunCount `json:"counts,omitempty"`
+	// Denied sono le categorie lette solo in parte o per niente per i
+	// permessi (senza amministratore): "tasks", "wmi", "services".
+	Denied   []string `json:"denied,omitempty"`
+	Partial  bool     `json:"partial,omitempty"`
+	Elevated bool     `json:"elevated,omitempty"`
+}
+
+type AutorunCount struct {
+	Total     int `json:"total"`
+	Microsoft int `json:"microsoft,omitempty"`
+}
+
+// AutorunEntry è una voce di avvio automatico.
+type AutorunEntry struct {
+	// Category: logon | tasks | services | drivers | wmi | browser |
+	// winlogon | hijacks | lsa | print | network.
+	Category string `json:"category"`
+	// Kind precisa la voce: run | runonce | runonceex | policyrun | load |
+	// folder | shell | userinit | ifeo | silentexit | appinit | bootexecute |
+	// lsa-auth | lsa-security | lsa-notify | printmon | printproc |
+	// netprovider | task | service | driver | wmi | extension.
+	Kind string `json:"kind,omitempty"`
+	// Scope: machine | machine32 | user.
+	Scope string `json:"scope,omitempty"`
+	Name  string `json:"name"`
+	// Location è la chiave del registro o la cartella (sanificata) in cui
+	// si trova la voce, o il percorso dell'attività ("\Fornitore\Aggiorna").
+	Location string `json:"location,omitempty"`
+	// Command è la riga di comando della voce, sanificata come i percorsi.
+	Command string     `json:"command,omitempty"`
+	File    *FileFacts `json:"file,omitempty"`
+	// Target è il file che un programma di sistema esegue per conto della
+	// voce (rundll32 x.dll, powershell -File x.ps1, wscript x.vbs, mshta,
+	// regsvr32, cmd /c): la firma di Microsoft sul programma non dice nulla
+	// su ciò che esegue.
+	Target  *FileFacts `json:"target,omitempty"`
+	Enabled bool       `json:"enabled"`
+
+	// Attività pianificate.
+	// Triggers: logon | boot | time | daily | weekly | monthly | idle |
+	// event | registration | session | other.
+	Triggers []string `json:"triggers,omitempty"`
+	// RunAs: system | service | user (l'utente che ha effettuato l'accesso) |
+	// group | other. Mai nomi.
+	RunAs   string `json:"runAs,omitempty"`
+	Highest bool   `json:"highest,omitempty"` // con i privilegi più elevati
+	Hidden  bool   `json:"hidden,omitempty"`
+	// AuthorMicrosoft: l'autore dichiarato è Microsoft (dichiarazione, non
+	// prova: decide la firma del file).
+	AuthorMicrosoft bool   `json:"authorMicrosoft,omitempty"`
+	LastRun         string `json:"lastRun,omitempty"`
+	LastResult      string `json:"lastResult,omitempty"` // "0x0", "0x80070002"
+	NextRun         string `json:"nextRun,omitempty"`
+
+	// Servizi e driver.
+	// Start: boot | system | auto | delayed | manual | disabled.
+	Start   string `json:"start,omitempty"`
+	Running bool   `json:"running,omitempty"`
+	// Unquoted: percorso con spazi senza virgolette; Interceptors quanti dei
+	// file che Windows proverebbe prima di quello giusto esistono già.
+	Unquoted     bool `json:"unquoted,omitempty"`
+	Interceptors int  `json:"interceptors,omitempty"`
+	// Account del servizio: system | localservice | networkservice | user | other.
+	Account string `json:"account,omitempty"`
+
+	// Estensioni dei browser.
+	Browser string `json:"browser,omitempty"` // chrome | edge | brave | firefox
+	ExtID   string `json:"extId,omitempty"`
+	Version string `json:"version,omitempty"`
+	// Source: store | policy | external | sideload | unpacked | component |
+	// default | other.
+	Source string `json:"source,omitempty"`
+	// Profile è il numero del profilo del browser (mai il nome).
+	Profile int `json:"profile,omitempty"`
+	// AllSites: l'estensione chiede di leggere e cambiare tutti i siti.
+	AllSites bool `json:"allSites,omitempty"`
+
+	// Sottoscrizioni WMI permanenti.
+	// Consumer: commandline | activescript | eventlog | logfile | smtp | other.
+	Consumer string `json:"consumer,omitempty"`
+	Bound    bool   `json:"bound,omitempty"`
+	// Namespace dello spazio WMI: root\subscription, root\default.
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// Win11Data sono i dati per i requisiti di Windows 11 che non stanno già
+// nella scheda tecnica (TPM, firmware, Secure Boot, RAM, disco, istruzioni).
+type Win11Data struct {
+	// SecureBootCapable: Secure Boot supportato anche se spento (si sa solo
+	// da amministratore: Confirm-SecureBootUEFI); nil se non verificato.
+	SecureBootCapable *bool `json:"secureBootCapable,omitempty"`
+	// TpmVersion dalla funzione documentata Tbsi_GetDeviceInfo: "2.0",
+	// "1.2", "" se non c'è TPM; nil se non verificato.
+	TpmVersion *string `json:"tpmVersion,omitempty"`
+	// Appraiser è il verdetto che Windows Update ha già calcolato su questo
+	// PC per l'aggiornamento (chiave del registro non documentata: indizio).
+	Appraiser *Win11Appraiser `json:"appraiser,omitempty"`
+}
+
+type Win11Appraiser struct {
+	Target string `json:"target,omitempty"` // versione per cui vale, es. "25H2"
+	// Verdict: green (aggiornabile) | yellow | red (bloccato) | "".
+	Verdict string `json:"verdict,omitempty"`
+	// Reasons sono i motivi del blocco come li scrive Windows (CpuFms, Tpm,
+	// UefiSecureBoot, Ram, SystemDriveSize...).
+	Reasons []string `json:"reasons,omitempty"`
+	At      string   `json:"at,omitempty"` // ora della valutazione, se c'è
+}
+
+// Win11CPUCheck è il confronto del processore con l'elenco ufficiale
+// Microsoft dei processori supportati, scaricato su richiesta dal PC
+// dell'utente: Polaris non incorpora l'elenco.
+type Win11CPUCheck struct {
+	At      string `json:"at"`
+	Source  string `json:"source"`  // indirizzo della pagina letta
+	Version string `json:"version"` // versione di Windows 11 dell'elenco: "24H2"
+	// Kind: model (elenco per modello) | series (elenco per serie).
+	Kind string `json:"kind"`
+	// Result: listed | notListed | unknown.
+	Result string `json:"result"`
+	// Match è la riga dell'elenco che corrisponde (marca e modello o serie).
+	Match string `json:"match,omitempty"`
+	CPU   string `json:"cpu,omitempty"` // nome del processore confrontato
+	Rows  int    `json:"rows,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 type PcOS struct {
@@ -694,6 +954,10 @@ type PcMemory struct {
 	AvailableMB   int64 `json:"availableMB"`
 	CommitMB      int64 `json:"commitMB,omitempty"`
 	CommitLimitMB int64 `json:"commitLimitMB,omitempty"`
+	// InstalledMB è la RAM installata secondo il firmware (SMBIOS,
+	// GetPhysicallyInstalledSystemMemory): può superare TotalMB, che esclude
+	// la memoria riservata (per esempio alla grafica integrata).
+	InstalledMB int64 `json:"installedMB,omitempty"`
 }
 
 type PcGPU struct {
@@ -705,6 +969,9 @@ type PcGPU struct {
 	Width     int `json:"width,omitempty"`
 	Height    int `json:"height,omitempty"`
 	RefreshHz int `json:"refreshHz,omitempty"`
+	// Wddm è il modello del driver dichiarato a Windows (D3DKMT,
+	// KMTQAITYPE_DRIVERVERSION): 2000 = WDDM 2.0, 3100 = WDDM 3.1; 0 se non letto.
+	Wddm int `json:"wddm,omitempty"`
 }
 
 // Hardware è la scheda tecnica del computer. Nessun numero di serie: i
@@ -724,6 +991,34 @@ type Hardware struct {
 	// risulta alcun TPM; nil se non è stato possibile verificarlo.
 	TPM        *string `json:"tpm,omitempty"`
 	Hypervisor bool    `json:"hypervisor,omitempty"`
+	// Chipset sono le funzioni PCI che identificano il chipset (bridge
+	// host, bridge LPC/eSPI/ISA, SMBus e, per AMD, i chip Promontory): solo
+	// gli ID di produttore, dispositivo, revisione e classe, mai gli ID
+	// d'istanza. Il nome lo ricava il motore.
+	Chipset []PciFunc `json:"chipset,omitempty"`
+	// Displays sono gli schermi collegati, con la diagonale dichiarata (EDID
+	// o WmiMonitorBasicDisplayParams) e i bit per colore.
+	Displays []Display `json:"displays,omitempty"`
+}
+
+// PciFunc è una funzione PCI letta dagli hardware ID di Windows.
+type PciFunc struct {
+	Vendor string `json:"vendor"`          // "8086", "1022"
+	Device string `json:"device"`          // "7A06"
+	Rev    string `json:"rev,omitempty"`   // "11"
+	Class  string `json:"class,omitempty"` // classe e sottoclasse: "0601", "0600", "0C05"
+}
+
+// Display è uno schermo collegato.
+type Display struct {
+	Width  int `json:"width,omitempty"` // risoluzione attuale in pixel
+	Height int `json:"height,omitempty"`
+	// DiagonalIn è la diagonale in pollici calcolata dalle dimensioni in cm
+	// dichiarate dallo schermo; 0 se lo schermo non le dichiara.
+	DiagonalIn   float64 `json:"diagonalIn,omitempty"`
+	BitsPerColor int     `json:"bitsPerColor,omitempty"`
+	// Internal: schermo integrato (portatile, tablet, tutto in uno).
+	Internal bool `json:"internal,omitempty"`
 }
 
 type HwBoard struct {

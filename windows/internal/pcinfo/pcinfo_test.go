@@ -195,6 +195,17 @@ func TestSanitizeCommand(t *testing.T) {
 	if got := SanitizeCommand(`C:\Users\Mario Rossi\x.exe`, p+`\`); got != `%USERPROFILE%\x.exe` {
 		t.Errorf("barra finale nel profilo: %q", got)
 	}
+	// Lettere che in minuscolo cambiano lunghezza in byte prima del percorso:
+	// il nome non deve passare, nemmeno in parte.
+	for in, want := range map[string]string{
+		`İİ C:\Users\Mario Rossi\x.exe`:          `İİ %USERPROFILE%\x.exe`,
+		`İ "C:\Users\luca\a.exe" Ⱥ C:\Users\x\b`: `İ "C:\Users\‹utente›\a.exe" Ⱥ C:\Users\‹utente›\b`,
+		`K C:\USERS\MARIO ROSSI\y.exe`:           `K %USERPROFILE%\y.exe`,
+	} {
+		if got := SanitizeCommand(in, p); got != want {
+			t.Errorf("SanitizeCommand(%q)=%q, atteso %q", in, got, want)
+		}
+	}
 	if got := SanitizeCommand(`C:\x.exe`, ""); got != `C:\x.exe` {
 		t.Errorf("profilo vuoto: %q", got)
 	}

@@ -274,18 +274,20 @@ func SanitizeCommand(cmd, profile string) string {
 	if profile == "" || sep <= 0 {
 		return cmd
 	}
-	root, own := profile[:sep], strings.ToLower(profile[sep+1:])
+	root, own := profile[:sep], profile[sep+1:]
 	// Gli altri utenti solo con una radice vera (C:\Users), mai con "C:".
 	others := strings.ContainsAny(root, `\/`)
-	low, lowRoot := strings.ToLower(cmd), strings.ToLower(root)
 	var b strings.Builder
 	i := 0
 	for {
-		j := strings.Index(low[i:], lowRoot)
+		// Il confronto avviene sul testo originale con EqualFold: le posizioni
+		// calcolate su strings.ToLower non valgono per lettere che in
+		// minuscolo cambiano lunghezza (İ, Ⱥ, il segno del kelvin) e
+		// lascerebbero passare un pezzo del nome.
+		j := IndexFold(cmd, root, i)
 		if j < 0 {
 			break
 		}
-		j += i
 		k := j + len(root)
 		if k >= len(cmd) || (cmd[k] != '\\' && cmd[k] != '/') {
 			b.WriteString(cmd[i:k])
@@ -296,12 +298,12 @@ func SanitizeCommand(cmd, profile string) string {
 		for e < len(cmd) && !strings.ContainsRune(`\/"'`, rune(cmd[e])) {
 			e++
 		}
-		name := strings.ToLower(strings.TrimSpace(cmd[k+1 : e]))
+		name := strings.TrimSpace(cmd[k+1 : e])
 		switch {
-		case name == own:
+		case strings.EqualFold(name, own):
 			b.WriteString(cmd[i:j])
 			b.WriteString("%USERPROFILE%")
-		case others && name != "" && !publicProfiles[name]:
+		case others && name != "" && !publicProfiles[strings.ToLower(name)]:
 			b.WriteString(cmd[i : k+1])
 			b.WriteString("‹utente›")
 		default:
@@ -311,6 +313,21 @@ func SanitizeCommand(cmd, profile string) string {
 	}
 	b.WriteString(cmd[i:])
 	return b.String()
+}
+
+// IndexFold è strings.Index senza distinguere maiuscole e minuscole, con le
+// posizioni nel testo originale: cerca da from in poi e restituisce -1 se
+// non trova sub.
+func IndexFold(s, sub string, from int) int {
+	if sub == "" {
+		return -1
+	}
+	for j := from; j+len(sub) <= len(s); j++ {
+		if strings.EqualFold(s[j:j+len(sub)], sub) {
+			return j
+		}
+	}
+	return -1
 }
 
 // OSName corregge il nome commerciale: il registro di Windows 11 riporta

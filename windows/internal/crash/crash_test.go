@@ -323,6 +323,9 @@ func TestDisplayPath(t *testing.T) {
 		{`C:\Users\anna\Dumps`, `C:\Users\anna`, `%USERPROFILE%\Dumps`},
 		{`c:\users\ANNA\Dumps`, `C:\Users\anna`, `%USERPROFILE%\Dumps`},
 		{`C:\Users\annamaria\Dumps`, `C:\Users\anna`, `C:\Users\‹utente›\Dumps`},
+		// Lettere che in minuscolo cambiano lunghezza prima del percorso: il nome non passa.
+		{`İİ C:\Users\mario\x.dmp`, `C:\Users\mario`, `İİ %USERPROFILE%\x.dmp`},
+		{`İ C:\Users\luca\a.dmp`, `C:\Users\mario`, `İ C:\Users\‹utente›\a.dmp`},
 		{`D:\Users\Mario Rossi\Dump\MEMORY.DMP`, ``, `D:\Users\‹utente›\Dump\MEMORY.DMP`},
 		{`C:\Users\Public\Dumps`, ``, `C:\Users\Public\Dumps`},
 		{`C:\Documents and Settings\Luca\x.dmp`, ``, `C:\Documents and Settings\‹utente›\x.dmp`},

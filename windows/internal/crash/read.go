@@ -222,18 +222,25 @@ var profilesRE = regexp.MustCompile(`(?i)(\\(?:Users|Documents and Settings)\\)(
 func DisplayPath(p, profile string) string {
 	p = strings.TrimSpace(p)
 	if prof := strings.TrimRight(profile, `\`); len(prof) > 3 {
-		low, lp := strings.ToLower(p), strings.ToLower(prof)
+		// Confronto con EqualFold sul testo originale: le posizioni calcolate
+		// su strings.ToLower sbagliano con lettere come İ, che in minuscolo
+		// cambiano lunghezza, e lascerebbero passare un pezzo del nome.
 		var b strings.Builder
+		from := 0
 		for {
-			i := strings.Index(low, lp)
-			// Solo come cartella intera: C:\Users\anna, non C:\Users\annamaria.
-			if i < 0 || i+len(lp) < len(low) && low[i+len(lp)] != '\\' {
+			i := indexFold(p, prof, from)
+			if i < 0 {
 				b.WriteString(p)
 				break
 			}
+			// Solo come cartella intera: C:\Users\anna, non C:\Users\annamaria.
+			if end := i + len(prof); end < len(p) && p[end] != '\\' {
+				from = i + 1
+				continue
+			}
 			b.WriteString(p[:i])
 			b.WriteString("%USERPROFILE%")
-			p, low = p[i+len(lp):], low[i+len(lp):]
+			p, from = p[i+len(prof):], 0
 		}
 		p = b.String()
 	}
@@ -244,4 +251,15 @@ func DisplayPath(p, profile string) string {
 		}
 		return sub[1] + "‹utente›"
 	})
+}
+
+// indexFold è strings.Index senza distinguere maiuscole e minuscole, con le
+// posizioni nel testo originale.
+func indexFold(s, sub string, from int) int {
+	for j := from; j+len(sub) <= len(s); j++ {
+		if strings.EqualFold(s[j:j+len(sub)], sub) {
+			return j
+		}
+	}
+	return -1
 }
