@@ -73,29 +73,49 @@ func TestWinlogon(t *testing.T) {
 	}
 }
 
-// La regola di BootExecute è comune al motore (core/src/engine/autoruns.ts):
-// gli stessi esempi stanno nelle prove dei due linguaggi.
+// La regola di BootExecute è comune al motore (bootExecuteKind in
+// core/src/engine/autoruns.ts): gli stessi esempi stanno nelle prove dei due
+// linguaggi (core/test/autoruns.test.ts, «BootExecute: …»).
 func TestBootExecuteDefault(t *testing.T) {
 	for _, c := range []struct {
 		line           string
 		def, scheduled bool
 	}{
+		// Predefiniti.
 		{"autocheck autochk *", true, false},
 		{"autocheck autochk /q /v *", true, false}, // immagini di Azure
+		{"AUTOCHECK  autochk   *", true, false},
+		{"autocheck autochk /k:C *", true, false},
+		// Controlli del disco programmati da Windows (chkdsk al riavvio).
 		{`autocheck autochk /p \??\C:`, true, true},
 		{`autocheck autochk /r \??\D:`, true, true},
-		{"autocheck autochk /k:C *", true, false},
-		{"AUTOCHECK   Autochk   *", true, false},
 		{`autocheck autochk /m \DosDevices\E:`, true, true},
-		{`autocheck autochk \??\Volume{0a1b2c3d-1111-2222-3333-444455556666}`, true, true},
+		{`autocheck autochk \??\Volume{1b2c3d4e-0000-0000-0000-100000000000}`, true, true},
+		// Non predefiniti.
 		{"autocheck autochk * evil.exe", false, false},
 		{"autocheck evil", false, false},
 		{"autochk *", false, false},
 		{"autocheck autochk", false, false},
 		{"autocheck autochk /q", false, false},
-		{`autocheck autochk /x:C:\evil.exe *`, false, false},
+		{"", false, false},
+		// Altri casi, uguali nel motore: opzioni con cifre e con un valore
+		// qualsiasi (resta un argomento di autochk, che non lo esegue),
+		// volumi in maiuscolo, spazi di ogni tipo.
+		{"autocheck autochk /x /r2 *", true, false},
+		{`autocheck autochk /x:C:\evil.exe *`, true, false},
+		{`AUTOCHECK AUTOCHK \DOSDEVICES\E: \??\VOLUME{1B2C3D4E-0000-0000-0000-100000000000}`, true, true},
+		{"autocheck\tautochk\u00a0*", true, false},
+		{"autocheck autochk\ufeff*", true, false},
+		{"autocheck autochk \u0085*", false, false},
 		{`autocheck autochk \??\C:\evil.exe`, false, false},
+		{`autocheck autochk \??\C`, false, false},
 		{"autocheck autochk ** ", false, false},
+		{"autocheck autochk /: *", false, false},
+		{"autocheck autochk /x: *", false, false},
+		// Lettere che solo Unicode confonde con quelle di ASCII: per il
+		// motore (/i senza u) non sono le stesse.
+		{"autocheck autochk /\u017f *", false, false},
+		{"autocheck autochk \\??\\\u212a: *", false, false},
 	} {
 		def, sch := bootExecuteDefault(c.line)
 		if def != c.def || sch != c.scheduled || isDefaultBootExecute(c.line) != c.def {

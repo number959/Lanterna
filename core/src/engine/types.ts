@@ -1224,6 +1224,7 @@ export interface AutorunEntry {
   running?: boolean;
   unquoted?: boolean;
   interceptors?: number;
+  /** Account del servizio, solo la categoria; assente se non letto (mai presunto LocalSystem). */
   account?: 'system' | 'localservice' | 'networkservice' | 'user' | 'other';
   // estensioni
   browser?: 'chrome' | 'edge' | 'brave' | 'firefox';

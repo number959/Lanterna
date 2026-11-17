@@ -2,11 +2,11 @@ import { BookOpenText, CircleCheck, CircleHelp, CircleMinus, CircleX, Globe, Mon
 import type { LucideIcon } from 'lucide-react';
 import { m } from 'motion/react';
 import { useState, useSyncExternalStore } from 'react';
-import { dateIt, WIN11_STATUS_LABEL, win11CpuRule, win11Requirements } from '../engine';
+import { dateIt, WIN11_CHECK_BUTTON, WIN11_STATUS_LABEL, win11CpuRule, win11Requirements } from '../engine';
 import type { PcData, Scan, Severity, Win11CPUCheck, Win11Status } from '../engine';
-import { WIN11_CHECK_BUTTON } from '../engine/win11';
 import { checkWin11Cpus } from './api';
 import { SevIcon, useOpenGuide, useToast } from './components';
+import { readError } from './errors';
 import { rise } from './motion';
 import type { ViewProps } from './views';
 
@@ -142,6 +142,16 @@ function ListResult({ l }: { l: Win11CPUCheck }) {
   );
 }
 
+/**
+ * Il confronto con l'elenco ufficiale: l'esito va a onResult, l'errore a
+ * onError in italiano, con lo stesso testo della scheda Processi (un errore
+ * di rete vuol dire che Polaris non risponde, non «Failed to fetch»). Solo
+ * gli errori della richiesta: uno nato in onResult non è di rete.
+ */
+export function runWin11Check(p: Promise<Win11CPUCheck>, onResult: (r: Win11CPUCheck) => void, onError: (text: string) => void): Promise<void> {
+  return p.then(onResult, (e) => onError(readError(e)));
+}
+
 /** Requisiti di Windows 11 come Controllo integrità PC, con il confronto su richiesta con l'elenco ufficiale. */
 export function Win11Card({ scan, analysis, live, source, addWin11List }: Pick<ViewProps, 'scan' | 'analysis' | 'live' | 'source' | 'addWin11List'>) {
   const toast = useToast();
@@ -162,13 +172,14 @@ export function Win11Card({ scan, analysis, live, source, addWin11List }: Pick<V
     setError(null);
     const p: Promise<Win11CPUCheck> =
       source === 'agent' ? checkWin11Cpus() : new Promise((res) => setTimeout(() => res(simulatedWin11List(pc)), 900));
-    p.then(
+    runWin11Check(
+      p,
       (r) => {
         if (!addWin11List(r, target)) return;
         const t = listToast(r);
         toast(t.text, t.kind);
       },
-      (e) => setError(e instanceof Error ? e.message : String(e)),
+      setError,
     ).finally(() => setRunning(false));
   };
 

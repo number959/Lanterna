@@ -417,6 +417,9 @@ describe('giudizio pc.win11', () => {
     const guide = JSON.stringify(guideById('requisiti-windows-11'));
     expect(guide).toContain(WIN11_CPU_LABEL.notListed);
     expect(guide).not.toMatch(/generazione non supportata/);
+    // Tabella degli esiti come quella di win11Cpu: l'assenza dall'elenco letto dà «da verificare» solo con le serie elencate per modello o senza regola.
+    expect(guide).not.toContain('che le regole non escludono');
+    expect(guide).toContain('che le regole mettono in una serie elencata solo modello per modello (Ryzen 2000, Athlon 3000, EPYC 7002) o non riconoscono');
     expect(guideById('requisiti-windows-11')?.metrics).toContain('pc.win11');
     const txt = renderText(clinicScan, analyze(clinicScan));
     expect(txt).toContain(' Requisiti di Windows 11');

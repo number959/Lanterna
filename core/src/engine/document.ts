@@ -15,7 +15,7 @@ import { codeName, codeNameText } from './codenames';
 import { chipsetName, chipsetText } from './chipset';
 import { WIN11_STATUS_LABEL, win11Cpu, win11Requirements } from './win11';
 import { fileSeverity, folderLabel, lc1, listeners, procGroups, signatureLabel } from './procs';
-import { autorunCounts, autorunIssues, categoryLower, categoryShort } from './autoruns';
+import { autorunCounts, autorunIssues, categoryLower, categoryShort, deniedHeading } from './autoruns';
 import { dateIt } from './pc';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import { pctText, sizeText, SPACE_CATEGORY_LABEL, SPACE_HINTS, SPACE_RISK_LABEL, unattributedBytes } from './space';
@@ -542,10 +542,12 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
       const none = cnt((s) => s === 'unsigned');
       const unchecked = cnt((s) => !s || s === 'unknown' || s === 'unreadable');
       const other = groups.length - ok - none - unchecked;
+      // Da amministratore i processi che non si aprono sono protetti da Windows (decisione 5): «senza amministratore» sarebbe falso.
+      const unread = procs.unreadable
+        ? ` ${num(procs.unreadable, 'processo non leggibile', 'processi non leggibili')}${procs.elevated ? (procs.unreadable === 1 ? ', protetto da Windows' : ', protetti da Windows') : ' senza amministratore'}.`
+        : '';
       parts.push(
-        `<p>${num(items.length, 'processo', 'processi')} a fine analisi, ${num(groups.length, 'programma', 'programmi')}: ${ok} con firma verificata, ${none} senza firma${other ? `, <b>${other} con firma da controllare</b>` : ''}${unchecked ? `, ${unchecked} non verificati` : ''}.${
-          procs.unreadable ? ` ${num(procs.unreadable, 'processo non leggibile', 'processi non leggibili')} senza amministratore.` : ''
-        }</p>`,
+        `<p>${num(items.length, 'processo', 'processi')} a fine analisi, ${num(groups.length, 'programma', 'programmi')}: ${ok} con firma verificata, ${none} senza firma${other ? `, <b>${other} con firma da controllare</b>` : ''}${unchecked ? `, ${unchecked} non verificati` : ''}.${unread}</p>`,
       );
       const bad = groups.filter((g) => {
         const s = fileSeverity(g.file);
@@ -564,9 +566,12 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
         }
         parts.push(
           `<p class="pd-small">In ascolto su tutte le reti: ${
-            ls.length ? ls.map((l) => `${t(l.proc.name)} (${l.ports.slice(0, 4).join(', ')})${l.risky ? ' <b>da controllare</b>' : ''}`).join('; ') : 'nessun programma'
+            ls.length ? ls.map((l) => `${t(l.proc.name)} (${l.ports.slice(0, 4).join(', ')})${l.risky ? ' <b>da controllare</b>' : l.unverified ? ' non verificato' : ''}`).join('; ') : 'nessun programma'
           }. Connessioni TCP aperte: ${sum.internet} verso Internet, ${sum.lan} in rete locale, ${sum.local} su questo PC; gli indirizzi remoti non sono registrati.</p>`,
         );
+      } else {
+        // connsRead falso non arriva nel JSON (omitempty): tabelle non lette, non «nessun programma» (come il rapporto).
+        parts.push('<p class="pd-small">In ascolto su tutte le reti: non letto (tabelle delle connessioni non leggibili).</p>');
       }
     }
     if (autoruns) {
@@ -588,7 +593,7 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
         );
       else parts.push('<p class="pd-small">Nessuna voce di avvio automatico da controllare tra quelle lette.</p>');
       if (autoruns.denied && autoruns.denied.length)
-        parts.push(`<p class="pd-small"><b>Da verificare da amministratore:</b> ${esc(autoruns.denied.map((c) => categoryLower(c)).join(', '))}.</p>`);
+        parts.push(`<p class="pd-small"><b>${esc(deniedHeading(autoruns.elevated))}:</b> ${esc(autoruns.denied.map((c) => categoryLower(c)).join(', '))}.</p>`);
     }
     out.push(`<section><h2>Processi e avvio automatico</h2>${parts.join('')}<p class="pd-muted pd-small">Firme verificate da Windows senza accesso alla rete (la revoca dei certificati non si controlla online). Polaris non chiude processi e non disattiva voci.</p></section>`);
   }

@@ -61,7 +61,7 @@ func TestPrintProcs(t *testing.T) {
 	out = capture(t, func() { printProcs(d) })
 	for _, want := range []string{
 		"Letti come amministratore.",
-		"Non apribili: 3, processi protetti da Windows (se ne conosce solo il nome).",
+		"Non leggibili, protetti da Windows: 3 (se ne conosce solo il nome).",
 		"antivirus.exe (PID 1300) · account non leggibile, non apribile: processo protetto da Windows",
 	} {
 		if !strings.Contains(out, want) {

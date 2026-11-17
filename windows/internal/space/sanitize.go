@@ -15,8 +15,10 @@ import (
 //     alfabetico, oppure %USERNAME% se sono quelli di chi usa Polaris;
 //   - gli stessi nomi dentro i nomi di file e cartelle, come parole intere;
 //   - gli indirizzi e-mail (Outlook chiama così i file .ost e .pst);
-//   - i SID degli account nelle cartelle del Cestino, tenendo solo il numero
-//     finale dell'account.
+//   - i SID degli account nelle cartelle del Cestino: di quelli locali e di
+//     dominio (S-1-5-21-…) resta solo il numero finale dell'account, di
+//     quelli Microsoft Entra ID (S-1-12-1-…, per intero l'ID dell'oggetto
+//     della persona) nulla, come in pcinfo.Cleaner.
 //
 // Si lavora parte per parte del percorso e si confrontano i nomi senza
 // badare alle maiuscole con strings.EqualFold, senza mai usare posizioni
@@ -155,14 +157,18 @@ func (z *sanitizer) profileAlias(name string) string {
 }
 
 var (
-	sidRe   = regexp.MustCompile(`(?i)^S-1-5-21-\d+-\d+-\d+-(\d+)$`)
-	emailRe = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}`)
+	sidRe    = regexp.MustCompile(`(?i)^S-1-5-21-\d+-\d+-\d+-(\d+)$`)
+	aadSidRe = regexp.MustCompile(`(?i)^S-1-12-1-\d+-\d+-\d+-\d+$`)
+	emailRe  = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}`)
 )
 
 // part ripulisce il nome di un file o di una cartella.
 func (z *sanitizer) part(s string) string {
 	if m := sidRe.FindStringSubmatch(s); m != nil {
 		return "S-1-5-21-…-" + m[1]
+	}
+	if aadSidRe.MatchString(s) {
+		return "S-1-12-1-…"
 	}
 	if strings.Contains(s, "@") {
 		s = maskEmail(s)

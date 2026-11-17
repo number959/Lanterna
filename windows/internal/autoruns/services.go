@@ -59,11 +59,14 @@ func startName(start uint32, delayed bool) string {
 }
 
 // accountOf riduce l'account di un servizio a una categoria, mai il nome:
-// system | localservice | networkservice | user | other.
+// system | localservice | networkservice | user | other, oppure "" se
+// l'account non si è letto (decisione comune: non si presume LocalSystem).
 func accountOf(acc string) string {
 	a := strings.ToLower(strings.TrimSpace(acc))
 	switch a {
-	case "", "localsystem", ".\\localsystem", "nt authority\\system", "system":
+	case "":
+		return ""
+	case "localsystem", ".\\localsystem", "nt authority\\system", "system":
 		return "system"
 	case "nt authority\\localservice", "nt authority\\local service", "localservice":
 		return "localservice"
@@ -154,7 +157,7 @@ func (rd reader) serviceItem(s rawService) item {
 			e.Account = "user"
 		} else if cfg {
 			// Con la configurazione non letta l'account resta "" («non
-			// letto»): accountOf("") direbbe LocalSystem.
+			// letto»), come quando Windows non lo dice (accountOf("")).
 			e.Account = accountOf(s.Account)
 		}
 	}

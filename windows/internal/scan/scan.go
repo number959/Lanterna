@@ -861,7 +861,8 @@ type AutorunEntry struct {
 	// file che Windows proverebbe prima di quello giusto esistono già.
 	Unquoted     bool `json:"unquoted,omitempty"`
 	Interceptors int  `json:"interceptors,omitempty"`
-	// Account del servizio: system | localservice | networkservice | user | other.
+	// Account del servizio: system | localservice | networkservice | user | other;
+	// assente se non letto (mai presunto LocalSystem).
 	Account string `json:"account,omitempty"`
 
 	// Estensioni dei browser.

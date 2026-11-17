@@ -53,3 +53,27 @@ func TestPrintAutoruns(t *testing.T) {
 		t.Error("categoria non letta mostrata")
 	}
 }
+
+// La CLI concede all'avvio automatico lo stesso tempo della fase
+// dell'analisi (collect.AutorunsTimeout, 60 s) e lo dice: con 45 s la prima
+// lettura a freddo non bastava.
+func TestAutorunsNotice(t *testing.T) {
+	if got := autorunsNotice(); got != "Lettura dell'avvio automatico e verifica delle firme (fino a 60 secondi)..." {
+		t.Errorf("annuncio: %q", got)
+	}
+}
+
+// Decisione 4: un servizio con l'account vuoto ha l'account non letto, non
+// LocalSystem; un driver non ha account.
+func TestPrintAutorunAccount(t *testing.T) {
+	out := capture(t, func() {
+		printAutorun(scan.AutorunEntry{Category: "services", Kind: "service", Name: "Senza account", Start: "auto", Enabled: true})
+		printAutorun(scan.AutorunEntry{Category: "drivers", Kind: "driver", Name: "Driver", Start: "boot", Enabled: true})
+	})
+	if !strings.Contains(out, "  - Senza account\n") || !strings.Contains(out, "avvio auto; account non letto") {
+		t.Errorf("servizio senza account:\n%s", out)
+	}
+	if strings.Contains(out, "system") || strings.Count(out, "account") != 2 {
+		t.Errorf("account presunto o detto per un driver:\n%s", out)
+	}
+}

@@ -15,8 +15,9 @@ import (
 )
 
 // Tempi: le sorgenti e la verifica delle firme si fermano 3 secondi prima
-// della scadenza del chiamante (la fase dell'analisi ne concede 45), più 2
-// secondi di margine per una chiamata di Windows che non risponde.
+// della scadenza del chiamante (la fase dell'analisi e «polaris-cli
+// autoruns» ne concedono 60, collect.AutorunsTimeout), più 2 secondi di
+// margine per una chiamata di Windows che non risponde.
 const (
 	reserve = 3 * time.Second
 	grace   = 2 * time.Second
@@ -33,9 +34,15 @@ func Collect(ctx context.Context) (*scan.AutorunsData, error) {
 		defer cancel()
 	}
 	profile := os.Getenv("USERPROFILE")
+	// Il Checker comune (sign.Shared): la cache delle firme vale anche per
+	// i processi e per le analisi successive. I file in rete (condivisioni in
+	// tutte le forme, unità di rete collegate a una lettera) non li apre:
+	// Windows si collegherebbe a un server scelto da chi ha scritto la voce,
+	// con le credenziali dell'utente, e leggerebbe tutto il file dalla rete.
+	checker := sign.Shared()
 	rd := reader{
 		res: Resolver{Getenv: os.Getenv, Exists: func(p string) bool {
-			if onNetwork(p, profile) {
+			if checker.Folder(p) == "network" {
 				return false // nessun collegamento a una condivisione di rete
 			}
 			st, err := os.Stat(p)
@@ -43,18 +50,12 @@ func Collect(ctx context.Context) (*scan.AutorunsData, error) {
 		}},
 		cl: cleaner{profile: profile, user: os.Getenv("USERNAME")},
 	}
-	// Il Checker comune (sign.Shared): la cache delle firme vale anche per
-	// i processi e per le analisi successive.
-	checker := sign.Shared()
 	facts := func(ctx context.Context, p string) *scan.FileFacts {
-		if onNetwork(p, profile) {
-			return networkFacts(p, rd.cl.path)
-		}
 		f := checker.Facts(ctx, p)
 		f.Path = rd.cl.text(f.Path)
 		return f
 	}
-	plain := func(p string) *scan.FileFacts { return plainFacts(p, profile, rd.cl.path) }
+	plain := func(p string) *scan.FileFacts { return plainFacts(p, checker.Folder, rd.cl.path) }
 	rank := func(category, p string) int { return checkOrder(category, p, profile) }
 	sources := []source{
 		{"registry", func(ctx context.Context) sourceResult { return readRegistry(ctx, rd) }},

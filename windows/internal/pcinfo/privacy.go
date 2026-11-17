@@ -353,15 +353,29 @@ const (
 	ipAfter  = " \t\r\n:/\"')]},;<>|&?#%"
 )
 
+// NetworkRedirectors sono i dispositivi di Windows che portano a una
+// condivisione di rete, con il server subito dopo (\Device\Mup\server,
+// anche da \\?\GLOBALROOT\Device\...): il redirector comune, quello di SMB e
+// quello di WebDAV. Li usano il pulitore (shareHost) e sign.FolderOf.
+var NetworkRedirectors = []string{"mup", "lanmanredirector", "webdavredirector"}
+
 // shareHost dice se l'indirizzo che comincia in s[a] è il server di una
 // condivisione: \\host all'inizio di un percorso (non una barra raddoppiata
 // dentro un percorso, come C:\\App\\1.2.3.4\\x.exe), oppure \\?\UNC\host e
-// \Device\Mup\host.
+// \Device\Mup\host (e gli altri NetworkRedirectors).
 func shareHost(s string, a int) bool {
 	if a >= 2 && s[a-2:a] == `\\` && (a == 2 || strings.IndexByte(ipBefore, s[a-3]) >= 0) {
 		return true
 	}
-	return hasSuffixFold(s[:a], `\unc\`) || hasSuffixFold(s[:a], `\mup\`)
+	if hasSuffixFold(s[:a], `\unc\`) {
+		return true
+	}
+	for _, d := range NetworkRedirectors {
+		if hasSuffixFold(s[:a], `\`+d+`\`) {
+			return true
+		}
+	}
+	return false
 }
 
 // ipEnd dice se l'indirizzo finito in s[b] è staccato da ciò che segue: fine

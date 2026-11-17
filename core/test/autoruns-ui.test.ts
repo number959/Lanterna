@@ -69,9 +69,12 @@ describe('conteggi e testi delle voci', () => {
       ['lsa-notify', 'notifica delle password (LSA)'],
     ];
     for (const [kind, text] of kinds) expect(entryDetails(entry({ kind, category: kind.startsWith('lsa') ? 'lsa' : 'logon' }))[0], kind).toBe(text);
-    const svc = entryDetails(entry({ category: 'services', start: 'auto' }));
-    expect(svc).toContain('account non letto');
-    expect(svc.join(' ')).not.toContain('LocalSystem');
+    // Decisione 4: l'account non letto arriva vuoto («») o non arriva; mai «LocalSystem».
+    for (const account of [undefined, '' as AutorunEntry['account']]) {
+      const svc = entryDetails(entry({ category: 'services', start: 'auto', account }));
+      expect(svc).toContain('account non letto');
+      expect(svc.join(' ')).not.toContain('LocalSystem');
+    }
     expect(entryDetails(entry({ category: 'drivers', start: 'boot' })).join(' ')).not.toContain('account');
   });
 
@@ -89,7 +92,10 @@ describe('conteggi e testi delle voci', () => {
     expect(entrySignature(entry({ file: { path: 'C:\\x.exe', missing: true } }))?.text).toBe('File mancante');
     expect(entrySignature(entry({ file: { path: '%USERPROFILE%\\AppData\\x.exe', folder: 'appData', signature: { status: 'unsigned' } } }))?.tone).toBe('warn');
     const ps = entrySignature(entry({ command: 'powershell.exe -Command x', file: { path: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe', folder: 'windows', signature: { status: 'valid', microsoft: true } } }));
-    expect(ps?.text).toContain('la firma di Microsoft dell\'interprete non dice nulla');
+    expect(ps?.text).toContain('la firma di Microsoft di questo programma di Windows non dice nulla');
+    // explorer.exe, msiexec.exe e gli altri programmi dell'elenco non sono interpreti: il testo non li chiama così.
+    const shellApp = entrySignature(entry({ command: 'explorer.exe shell:AppsFolder\\X!App', file: { path: 'C:\\Windows\\explorer.exe', folder: 'windows', signature: { status: 'valid', microsoft: true } } }));
+    expect(shellApp).toMatchObject({ tone: 'info', text: 'Comando eseguito da explorer.exe: la firma di Microsoft di questo programma di Windows non dice nulla su ciò che esegue' });
     const rundll = entrySignature(
       entry({
         file: { path: 'C:\\Windows\\System32\\rundll32.exe', folder: 'windows', signature: { status: 'valid', microsoft: true } },
@@ -165,6 +171,16 @@ describe('scheda Avvio automatico', () => {
     const html = card(s);
     expect(html).toContain('le categorie lette solo in parte restano da verificare');
     expect(html).toContain('alcune categorie si leggono solo in parte (attività pianificate, sottoscrizioni WMI)');
+    // Da amministratore non si chiede di ripetere da amministratore: le voci mancanti sono protette.
+    s.pc!.autoruns!.elevated = true;
+    const admin = card(s);
+    expect(admin).toContain('Anche da amministratore alcune categorie si leggono solo in parte (attività pianificate, sottoscrizioni WMI)');
+    expect(admin).toContain('le attività sono da guardare in Utilità di pianificazione');
+    expect(admin).not.toMatch(/Senza i permessi di amministratore|avviando Polaris come amministratore/);
+    const tasks = card(s, { tab: 'tasks' });
+    expect(tasks).toContain('non si sono potute leggere nemmeno da amministratore (protette): da guardare in Utilità di pianificazione.');
+    expect(tasks).not.toContain('Senza i permessi di amministratore');
+    s.pc!.autoruns!.elevated = false;
     s.pc!.autoruns!.denied = [];
     expect(card(s)).toContain('Nessuna voce da controllare tra quelle lette.');
     const none = clone(demoScan);

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"lanterna/internal/autoruns"
+	"lanterna/internal/collect"
 	"lanterna/internal/scan"
 )
 
@@ -30,10 +31,10 @@ func runAutoruns(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	ctx, stop := context.WithTimeout(ctx, 45*time.Second)
+	ctx, stop := context.WithTimeout(ctx, collect.AutorunsTimeout)
 	defer stop()
 	if !*asJSON {
-		fmt.Fprintln(os.Stderr, "Lettura dell'avvio automatico e verifica delle firme (fino a 45 secondi)...")
+		fmt.Fprintln(os.Stderr, autorunsNotice())
 	}
 	d, err := autoruns.Collect(ctx)
 	if d == nil {
@@ -55,6 +56,13 @@ func runAutoruns(args []string) error {
 		fmt.Println("Non letto del tutto: " + err.Error())
 	}
 	return nil
+}
+
+// autorunsNotice annuncia la lettura con il suo tempo massimo, lo stesso
+// della fase dell'analisi (collect.AutorunsTimeout): a freddo le firme da
+// verificare sono centinaia.
+func autorunsNotice() string {
+	return fmt.Sprintf("Lettura dell'avvio automatico e verifica delle firme (fino a %d secondi)...", int(collect.AutorunsTimeout/time.Second))
 }
 
 var autorunCategoryText = map[string]string{
@@ -173,6 +181,10 @@ func printAutorun(e scan.AutorunEntry) {
 		}
 		if e.Account != "" {
 			detail = append(detail, "account "+e.Account)
+		} else if e.Category == "services" {
+			// Decisione 4: un account vuoto non è LocalSystem, è un dato non
+			// letto (i driver non hanno account).
+			detail = append(detail, "account non letto")
 		}
 		if e.Unquoted {
 			detail = append(detail, fmt.Sprintf("percorso con spazi senza virgolette, file intercettori presenti: %d", e.Interceptors))

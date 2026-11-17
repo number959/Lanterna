@@ -1,14 +1,14 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { analyze, win11Requirements } from '../src/engine';
+import { analyze, displaysText, documentParts, renderText, WIN11_CHECK_BUTTON, win11Requirements } from '../src/engine';
 import type { Scan, Win11CPUCheck } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { ACTIONS } from '../src/engine';
-import { WIN11_CHECK_BUTTON } from '../src/engine/win11';
 import { chipsetRow, codeNameRow, displayText, displayTitles, HardwareCard } from '../src/ui/pc';
-import { DEMO_LIST_SOURCE, listResultText, listSourceText, listToast, sameWin11Target, simulatedWin11List, Win11Card } from '../src/ui/win11';
+import { readError } from '../src/ui/procs';
+import { DEMO_LIST_SOURCE, listResultText, listSourceText, listToast, runWin11Check, sameWin11Target, simulatedWin11List, Win11Card } from '../src/ui/win11';
 
 // Scheda «Requisiti di Windows 11» (come Controllo integrità PC), confronto
 // con l'elenco ufficiale su richiesta (simulato nella demo) e righe nuove
@@ -147,6 +147,20 @@ describe('scheda Requisiti di Windows 11', () => {
     expect(sameWin11Target(undefined, clinicScan, 'agent')).toBe(false);
   });
 
+  it('agente che non risponde durante il confronto: lo stesso testo della scheda Processi, non «Failed to fetch» (F8)', async () => {
+    const out: string[] = [];
+    const results: Win11CPUCheck[] = [];
+    await runWin11Check(Promise.reject(new TypeError('Failed to fetch')), (r) => results.push(r), (t) => out.push(t));
+    expect(out).toEqual(['Polaris non risponde: controlla che il programma sia ancora aperto e riprova']);
+    expect(out[0]).toBe(readError(new TypeError('Failed to fetch')));
+    // Gli errori dell'agente (in italiano) passano così come sono.
+    await runWin11Check(Promise.reject(new Error('elenco di Microsoft non raggiungibile')), (r) => results.push(r), (t) => out.push(t));
+    expect(out[1]).toBe('elenco di Microsoft non raggiungibile');
+    await runWin11Check(Promise.resolve(listed), (r) => results.push(r), (t) => out.push(t));
+    expect(results).toEqual([listed]);
+    expect(out).toHaveLength(2);
+  });
+
   it('non compare sui server né sui rapporti senza Windows 10 o 11', () => {
     const s = clone(clinicScan);
     s.pc!.os!.server = true;
@@ -178,6 +192,17 @@ describe('scheda tecnica: nome in codice, chipset, schermi', () => {
     // Risoluzione nativa e, se diversa, quella in uso.
     expect(displayText({ width: 800, height: 600, nativeWidth: 1920, nativeHeight: 1080, diagonalIn: 15.6 })).toBe('15,6 pollici · 1920 × 1080 nativa, in uso 800 × 600');
     expect(displayText({ width: 1920, height: 1080, nativeWidth: 1920, nativeHeight: 1080 })).toBe('1920 × 1080 nativa');
+    // Rapporto e documento: la risoluzione in uso e, se diversa, la nativa.
+    expect(displaysText([{ width: 1920, height: 1080, nativeWidth: 2560, nativeHeight: 1440, diagonalIn: 14, bitsPerColor: 8, internal: true }])).toBe('14,0" 1920×1080 (nativa 2560×1440) 8 bit per colore integrato');
+    expect(displaysText([{ width: 1920, height: 1080, nativeWidth: 2560, nativeHeight: 1440 }], 'x')).toBe('1920x1080 (nativa 2560x1440)');
+    expect(displaysText([{ width: 1920, height: 1080, nativeWidth: 1920, nativeHeight: 1080 }])).toBe('1920×1080');
+    // Una sola dimensione nativa non basta, come nella scheda; senza quella in uso resta la nativa.
+    expect(displaysText([{ width: 1920, height: 1080, nativeWidth: 2560 }])).toBe('1920×1080');
+    expect(displaysText([{ nativeWidth: 2560, nativeHeight: 1440 }])).toBe('nativa 2560×1440');
+    const proj = clone(demoScan);
+    proj.pc!.hardware!.displays = [{ width: 1024, height: 768, nativeWidth: 1920, nativeHeight: 1080, diagonalIn: 15.6, bitsPerColor: 8, internal: true }];
+    expect(renderText(proj, analyze(proj))).toContain('1024x768 (nativa 1920x1080)');
+    expect(documentParts(proj, analyze(proj)).body).toContain('1024×768 (nativa 1920×1080)');
     // Portatile a doppio schermo: titoli unici (Kv usa il titolo come chiave).
     const duo = [{ internal: true, width: 2880, height: 1800 }, { internal: true, width: 2880, height: 864 }, { width: 2560, height: 1440 }];
     expect(displayTitles(duo)).toEqual(['Schermo integrato 1', 'Schermo integrato 2', 'Schermo 3']);

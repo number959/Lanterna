@@ -116,7 +116,9 @@ func TestFactsExpiredNoDisk(t *testing.T) {
 }
 
 // Le lettere di unità rimovibili e di rete sono cartelle che l'utente può
-// scrivere, come le condivisioni \\server.
+// scrivere, come le condivisioni \\server. I file in rete non si aprono:
+// fuori da Windows os.Stat su questi percorsi direbbe «mancante», e qui non
+// lo deve dire nessuno di loro.
 func TestFactsDriveFolder(t *testing.T) {
 	f := useFakes(t, func(context.Context) *scan.FileSignature { return nil }, map[byte]uint32{'z': driveRemote, 'e': driveRemovable, 'd': 3})
 	c := New(`C:\Users\anna`, nil)
@@ -127,7 +129,9 @@ func TestFactsDriveFolder(t *testing.T) {
 		`D:\Giochi\gioco.exe`:    "other",
 		`\\server\share\app.exe`: "network",
 	} {
-		if got := c.Facts(context.Background(), p); got.Folder != want || !got.Missing {
+		got := c.Facts(context.Background(), p)
+		net := want == "network"
+		if got.Folder != want || got.Missing == net || net != (got.Signature != nil && got.Signature.Status == "unknown") {
 			t.Errorf("Facts(%q): cartella %q, attesa %q (%+v)", p, got.Folder, want, got)
 		}
 	}
@@ -148,10 +152,53 @@ func TestFactsDriveFolder(t *testing.T) {
 			t.Errorf("driveFolderOf(%d) != %q", in, want)
 		}
 	}
-	for in, want := range map[string]byte{`C:\x`: 'c', `d:/x`: 'd', `\\?\E:\x`: 'e', `\\server\x`: 0, `C:x`: 0, `1:\x`: 0, ``: 0} {
+	for in, want := range map[string]byte{`C:\x`: 'c', `d:/x`: 'd', `\\?\E:\x`: 'e', `\\.\Z:\x`: 'z', `//./z:/x`: 'z', `\\server\x`: 0, `C:x`: 0, `1:\x`: 0, ``: 0} {
 		if got, ok := driveLetter(in); got != want || ok != (want != 0) {
 			t.Errorf("driveLetter(%q) = %q %v", in, got, ok)
 		}
+	}
+}
+
+// Processi e avvio automatico: un file in rete, in qualsiasi forma, non si
+// apre (né os.Stat né WinVerifyTrust né le informazioni di versione), anche
+// a tempo scaduto e anche quando esiste davvero: firma non verificabile,
+// cartella di rete, mai «mancante».
+func TestFactsNetworkNoRead(t *testing.T) {
+	f := useFakes(t, func(context.Context) *scan.FileSignature {
+		return &scan.FileSignature{Status: "valid", Signer: "Esempio Srl"}
+	}, map[byte]uint32{'z': driveRemote})
+	expired, cancel := context.WithCancel(context.Background())
+	cancel()
+	c := New(`C:\Users\anna`, func(p string) string { return "pulito:" + p })
+	for _, p := range []string{
+		`\\srv\share\x.exe`,
+		`\\srv@SSL\DavWWWRoot\x.exe`,
+		`\\?\UNC\srv\share\x.exe`,
+		`\\.\UNC\srv\share\x.exe`,
+		`\\?\GLOBALROOT\Device\Mup\srv\share\x.exe`,
+		`\\?\GLOBALROOT\Device\LanmanRedirector\srv\share\x.exe`,
+		`\\.\GLOBALROOT\Device\WebDavRedirector\srv\x.dll`,
+		`Z:\Gestionale\app.exe`,
+		`\\.\Z:\Gestionale\app.exe`,
+	} {
+		for _, ctx := range []context.Context{context.Background(), expired} {
+			got := c.Facts(ctx, p)
+			if ctx == expired && strings.Contains(p, "Z:") {
+				// A tempo scaduto il tipo dell'unità non si legge (TestFactsExpiredNoDisk).
+				continue
+			}
+			if got.Folder != "network" || got.Missing || got.Signature == nil || got.Signature.Status != "unknown" || got.Company != "" || got.Path != "pulito:"+p {
+				t.Errorf("Facts(%q): %+v", p, got)
+			}
+		}
+	}
+	if f.calls != 0 || len(c.cache) != 0 {
+		t.Errorf("file in rete verificati: %d verifiche, cache %d", f.calls, len(c.cache))
+	}
+	// Un file vero sul disco locale si verifica ancora.
+	dir, p := tempExe(t)
+	if got := New(dir, nil).Facts(context.Background(), p); got.Signature == nil || got.Signature.Status != "valid" || f.calls != 1 {
+		t.Errorf("file locale: %+v", got)
 	}
 }
 
@@ -330,6 +377,23 @@ func TestFolderOf(t *testing.T) {
 		`C:\Windows\System32\spool\drivers\color\x.exe`:      "other",
 		`C:\Windows\System32\spool\drivers\x64\3\driver.dll`: "windows",
 		`C:\Windows\TasksX\a.exe`:                            "windows",
+		// Condivisioni di rete in tutte le forme che l'avvio automatico
+		// riconosce (forme lunghe, redirector, WebDAV); le copie shadow e i
+		// volumi locali scritti per esteso no.
+		`\\?\UNC\server\share\x.exe`:                            "network",
+		`\\.\UNC\server\share\x.exe`:                            "network",
+		`\??\UNC\server\share\x.exe`:                            "network",
+		`\\?\GLOBALROOT\Device\Mup\server\share\x.exe`:          "network",
+		`\\?\GLOBALROOT\Device\LanmanRedirector\srv\s\x.exe`:    "network",
+		`\\.\GLOBALROOT\Device\WebDavRedirector\srv\x.dll`:      "network",
+		`\\?\GLOBALROOT\??\UNC\server\share\x.exe`:              "network",
+		`\Device\Mup\server\share\x.exe`:                        "network",
+		`\\server@SSL\DavWWWRoot\x.exe`:                         "network",
+		`//server/share/x.exe`:                                  "network",
+		`\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\x.exe`: "other",
+		`\\?\GLOBALROOT\Device\MupX\server\x.exe`:               "other",
+		`\Device\HarddiskVolume3\Windows\x.exe`:                 "other",
+		`\\.\C:\x.exe`:                                          "other",
 	} {
 		if got := FolderOf(path, prof); got != want {
 			t.Errorf("FolderOf(%q) = %q, atteso %q", path, got, want)

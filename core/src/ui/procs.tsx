@@ -3,8 +3,9 @@ import { m } from 'motion/react';
 import { useMemo, useState } from 'react';
 import { fileSeverity, folderLabel, isLookalike, listeners, signatureLabel, userWritable } from '../engine';
 import type { ConnSummary, ListenPort, ProcessDetail, ProcessesData, Scan, Severity } from '../engine';
-import { isKernelProc } from '../engine/procs';
+import { isKernelProc } from '../engine';
 import { readProcesses } from './api';
+import { readError } from './errors';
 import { SevIcon, Stat, TableWrap, fmtNum, useOpenGuide, useToast } from './components';
 import type { CrashTargetRef } from './crashes';
 import { rise, spring } from './motion';
@@ -48,11 +49,8 @@ export function procSignature(p: ProcessDetail, elevated = false): { text: strin
   return { text: l.text, tone: sev === 'unknown' ? l.tone : sev };
 }
 
-/** Errore di una lettura dal vivo in italiano: un errore di rete del browser vuol dire che l'agente non risponde. */
-export function readError(e: unknown): string {
-  if (e instanceof TypeError) return 'Polaris non risponde: controlla che il programma sia ancora aperto e riprova';
-  return e instanceof Error ? e.message : String(e);
-}
+/** Errore di una lettura dal vivo in italiano (in ./errors, comune con il confronto di Windows 11). */
+export { readError };
 
 const SCOPE: Record<ListenPort['scope'], string> = { all: 'tutte le reti', local: 'solo questo PC', specific: 'una rete' };
 

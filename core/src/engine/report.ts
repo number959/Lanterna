@@ -11,7 +11,7 @@ import { codeName, codeNameText } from './codenames';
 import { chipsetName, chipsetText } from './chipset';
 import { win11Requirements } from './win11';
 import { listeners, procGroups, signatureLabel } from './procs';
-import { autorunCounts, autorunIssues, categoryLower, categoryShort } from './autoruns';
+import { autorunCounts, autorunIssues, categoryLower, categoryShort, deniedHeading } from './autoruns';
 import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smartRaw } from './smart';
 import { dbmText, gatewayText, radioText, surveyAliases, surveyRooms } from './survey';
 import { speedTextLines } from './speedtest';
@@ -199,7 +199,7 @@ function procsDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
   out.push(` Processi (${num(items.length, 'processo', 'processi')} a fine analisi${data.elevated ? ', da amministratore' : ''})`);
   out.push(
     hang(
-      `Programmi: ${groups.length}; firma verificata ${ok}, senza firma ${none}${other ? `, firma da controllare ${other}` : ''}${unchecked ? `, non verificati ${unchecked}` : ''}${data.unreadable ? `; ${num(data.unreadable, 'processo non leggibile', 'processi non leggibili')}${data.elevated ? '' : ' senza amministratore'}` : ''}${data.partial ? '; lettura incompleta' : ''}`,
+      `Programmi: ${groups.length}; firma verificata ${ok}, senza firma ${none}${other ? `, firma da controllare ${other}` : ''}${unchecked ? `, non verificati ${unchecked}` : ''}${data.unreadable ? `; ${num(data.unreadable, 'processo non leggibile', 'processi non leggibili')}${data.elevated ? (data.unreadable === 1 ? ', protetto da Windows' : ', protetti da Windows') : ' senza amministratore'}` : ''}${data.partial ? '; lettura incompleta' : ''}`,
       W,
       '   ',
       '     ',
@@ -247,7 +247,7 @@ function autorunsDetails(scan: Scan, out: string[], W: number, verbose: boolean)
     if (!verbose && issues.length > 10) out.push(`     ... altre ${issues.length - 10} (con --verbose)`);
   } else out.push('   Nessuna voce da controllare tra quelle lette.');
   if (data.denied && data.denied.length)
-    out.push(hang(`Da verificare da amministratore: ${data.denied.map((c) => categoryLower(c)).join(', ')}`, W, '   ', '     '));
+    out.push(hang(`${deniedHeading(data.elevated)}: ${data.denied.map((c) => categoryLower(c)).join(', ')}`, W, '   ', '     '));
 }
 
 /** Dettagli del computer che non entrano nei giudizi: dischi, volumi, avvio, processi, eventi, test. */

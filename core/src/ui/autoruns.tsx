@@ -96,7 +96,7 @@ const whenText = (iso?: string) => {
  * giudizio sulla voce (issueSev): avviso solo per servizi e driver attivi.
  */
 export function entrySignature(e: AutorunEntry, issueSev?: Severity): { text: string; tone: Severity } | undefined {
-  if (interpretedInline(e)) return { text: `Comando eseguito da ${fileName(e.file?.path)}: la firma di Microsoft dell'interprete non dice nulla su ciò che esegue`, tone: 'info' };
+  if (interpretedInline(e)) return { text: `Comando eseguito da ${fileName(e.file?.path)}: la firma di Microsoft di questo programma di Windows non dice nulla su ciò che esegue`, tone: 'info' };
   const f = entryFile(e);
   if (!f) return undefined;
   if (f.missing) return { text: 'File mancante', tone: issueSev ?? 'unknown' };
@@ -325,10 +325,17 @@ function CategoryPart({ data, cat, flagged, scan, showTitle }: { data: AutorunsD
       {denied && (
         <div className="notice" style={{ margin: '8px 0 10px' }}>
           <ShieldAlert size={18} aria-hidden />
-          <span>
-            Senza i permessi di amministratore questa categoria si legge solo in parte: il resto è da verificare avviando Polaris come
-            amministratore.
-          </span>
+          {data.elevated ? (
+            <span>
+              Alcune voci di questa categoria non si sono potute leggere nemmeno da amministratore (protette)
+              {cat === 'tasks' ? ': da guardare in Utilità di pianificazione.' : ': da verificare.'}
+            </span>
+          ) : (
+            <span>
+              Senza i permessi di amministratore questa categoria si legge solo in parte: il resto è da verificare avviando Polaris come
+              amministratore.
+            </span>
+          )}
         </div>
       )}
       {entries.length > 0 && <EntriesTable cat={cat} entries={entries} flagged={flagged} />}
@@ -383,10 +390,18 @@ export function AutorunsCard({ scan, analysis, live, source, go, initialTab }: P
       {denied.length > 0 && (
         <div className="notice" style={{ marginBottom: 12 }}>
           <ShieldAlert size={18} aria-hidden />
-          <span>
-            Senza i permessi di amministratore {denied.length === 1 ? 'una categoria si legge' : 'alcune categorie si leggono'} solo in parte (
-            {denied.map(categoryLower).join(', ')}): il resto è da verificare avviando Polaris come amministratore, non va considerato in regola.
-          </span>
+          {data.elevated ? (
+            <span>
+              Anche da amministratore {denied.length === 1 ? 'una categoria si legge' : 'alcune categorie si leggono'} solo in parte (
+              {denied.map(categoryLower).join(', ')}): alcune voci sono protette e non si sono potute leggere. Il resto non va considerato in regola
+              {denied.indexOf('tasks') >= 0 ? ': le attività sono da guardare in Utilità di pianificazione.' : '.'}
+            </span>
+          ) : (
+            <span>
+              Senza i permessi di amministratore {denied.length === 1 ? 'una categoria si legge' : 'alcune categorie si leggono'} solo in parte (
+              {denied.map(categoryLower).join(', ')}): il resto è da verificare avviando Polaris come amministratore, non va considerato in regola.
+            </span>
+          )}
         </div>
       )}
       {data.partial && (

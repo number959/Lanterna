@@ -380,14 +380,14 @@ func (*noWifiPlatform) Wifi(context.Context, bool) (*scan.WifiData, error) {
 func TestPhaseBudget(t *testing.T) {
 	const serverScanLimit = 2 * time.Minute
 	const pcLimit = 45 * time.Second // PowerShell di "pc" fermato a 40 s, più le letture native
-	parallel := max(autorunsTimeout, pcLimit)
+	parallel := max(AutorunsTimeout, pcLimit)
 	total := parallel + time.Second /* lan */ + DefaultOptions.LoadSample + procsTimeout
 	if margin := serverScanLimit - total; margin < 20*time.Second {
 		t.Fatalf("fasi in %v su %v: margine %v, troppo poco", total, serverScanLimit, margin)
 	}
 	// Su Windows reale (CI, macchina Azure) la prima lettura a freddo
 	// dell'avvio automatico non stava in 45 s.
-	if autorunsTimeout < 60*time.Second {
-		t.Fatalf("avvio automatico: %v non bastano a freddo", autorunsTimeout)
+	if AutorunsTimeout < 60*time.Second {
+		t.Fatalf("avvio automatico: %v non bastano a freddo", AutorunsTimeout)
 	}
 }

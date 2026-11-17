@@ -149,8 +149,73 @@ export const browserLabel = (b?: AutorunEntry['browser']) => (b ? BROWSER[b] : '
 /** Il file che conta per la voce: quello eseguito da rundll32, powershell... se c'è, altrimenti il file della voce. */
 export const entryFile = (e: AutorunEntry): FileFacts | undefined => e.target || e.file;
 
-/** Programmi di Windows che eseguono altro codice (MITRE T1218): la loro firma Microsoft non dice nulla su ciò che eseguono. */
-const INTERPRETERS = ['powershell.exe', 'pwsh.exe', 'cmd.exe', 'wscript.exe', 'cscript.exe', 'mshta.exe', 'rundll32.exe', 'regsvr32.exe'];
+/**
+ * Programmi di Windows, firmati da Microsoft, che eseguono altro codice
+ * ricevuto negli argomenti: la loro firma non dice nulla su ciò che
+ * eseguono. È lo stesso elenco di proxies dell'agente
+ * (windows/internal/autoruns/resolve.go), con «.exe»: i due vanno tenuti
+ * uguali. Fonti:
+ * - MITRE ATT&CK T1218 (System Binary Proxy Execution) e le sottotecniche
+ *   .001 hh, .002 control, .003 cmstp, .004 installutil, .005 mshta,
+ *   .007 msiexec, .008 odbcconf, .009 regsvcs e regasm, .010 regsvr32,
+ *   .011 rundll32, .012 verclsid, .013 mavinject, .014 mmc;
+ * - T1059 (interpreti: cmd, powershell e pwsh, wscript e cscript), T1202
+ *   (esecuzione indiretta: pcalua, forfiles, conhost), T1127.001 (msbuild),
+ *   T1216 (script di sistema: SyncAppvPublishingServer), T1197 e T1105
+ *   (bitsadmin, certutil), T1047 (wmic), T1053.005 (schtasks);
+ * - il progetto LOLBAS (lolbas-project.github.io): explorer,
+ *   presentationhost, ieexec, infdefaultinstall, scriptrunner, atbroker,
+ *   diskshadow, ftp, register-cimprovider, wuauclt, xwizard, runas, wsl e
+ *   bash.
+ * Quando l'agente sa quale file eseguono lo mette in target, e conta quello;
+ * altrimenti la voce è un «comando interpretato» (anche un collegamento
+ * «explorer.exe shell:AppsFolder\...» di un'app dello Store): si elenca e
+ * riceve al massimo 'info'.
+ */
+export const INTERPRETERS = [
+  'rundll32.exe',
+  'regsvr32.exe',
+  'mshta.exe',
+  'wscript.exe',
+  'cscript.exe',
+  'powershell.exe',
+  'pwsh.exe',
+  'cmd.exe',
+  'conhost.exe',
+  'msiexec.exe',
+  'control.exe',
+  'explorer.exe',
+  'pcalua.exe',
+  'forfiles.exe',
+  'installutil.exe',
+  'regasm.exe',
+  'regsvcs.exe',
+  'odbcconf.exe',
+  'cmstp.exe',
+  'mmc.exe',
+  'hh.exe',
+  'msbuild.exe',
+  'wmic.exe',
+  'certutil.exe',
+  'bitsadmin.exe',
+  'schtasks.exe',
+  'verclsid.exe',
+  'xwizard.exe',
+  'mavinject.exe',
+  'wuauclt.exe',
+  'register-cimprovider.exe',
+  'presentationhost.exe',
+  'ieexec.exe',
+  'infdefaultinstall.exe',
+  'scriptrunner.exe',
+  'syncappvpublishingserver.exe',
+  'atbroker.exe',
+  'diskshadow.exe',
+  'ftp.exe',
+  'runas.exe',
+  'wsl.exe',
+  'bash.exe',
+];
 export const isInterpreter = (f?: FileFacts) => !!f && INTERPRETERS.indexOf(fileName(f.path).toLowerCase()) >= 0;
 
 /** Comando interpretato senza un file da verificare (powershell -Command, cmd /c...). */
@@ -369,7 +434,7 @@ export function autorunIssues(scan: Scan): AutorunIssue[] {
         else if (!valid || priv || e.hidden) push(e, 'tasks', 'warn', `${sigWhy(f)}${sys ? ', con privilegi di sistema' : priv ? ', con privilegi elevati' : ''}${e.hidden ? ', attività nascosta' : ''}${author}`);
         else push(e, 'tasks', 'info', `${sigWhy(f)}: di solito un aggiornatore installato per l'utente`);
       } else if (e.authorMicrosoft) continue;
-      else if (interpretedInline(e)) push(e, 'tasks', 'info', `comando eseguito da ${fileName(f.path)}: la firma di Microsoft dell'interprete non dice nulla su ciò che esegue`);
+      else if (interpretedInline(e)) push(e, 'tasks', 'info', `comando eseguito da ${fileName(f.path)}: la firma di Microsoft di questo programma di Windows non dice nulla su ciò che esegue`);
       else if (e.hidden && (e.triggers || []).some((t) => t === 'logon' || t === 'boot')) push(e, 'tasks', 'info', 'attività di un altro produttore nascosta, che parte all\'accesso o all\'avvio');
       continue;
     }
@@ -381,7 +446,7 @@ export function autorunIssues(scan: Scan): AutorunIssue[] {
       else if (userWritable(f.folder) && s.status !== 'valid') push(e, 'unsigned', PRIVILEGED_SERVICE(e) ? 'crit' : 'warn', `${sigWhy(f)}${account}`);
       else if (userWritable(f.folder) && PRIVILEGED_SERVICE(e)) push(e, 'unsigned', 'warn', `${sigWhy(f)}, con privilegi di sistema`);
       else if (SIG_WARN.indexOf(s.status) >= 0) push(e, 'unsigned', 'warn', sigWhy(f));
-      else if (interpretedInline(e)) push(e, 'unsigned', 'info', `comando eseguito da ${fileName(f.path)}: la firma di Microsoft dell'interprete non dice nulla su ciò che esegue`);
+      else if (interpretedInline(e)) push(e, 'unsigned', 'info', `comando eseguito da ${fileName(f.path)}: la firma di Microsoft di questo programma di Windows non dice nulla su ciò che esegue`);
     }
   }
   return out;
@@ -396,10 +461,31 @@ const listText = (list: AutorunIssue[], n = 4) =>
     .join('; ') + more(list.length, n);
 const byWorst = (list: AutorunIssue[]) => list.slice().sort((a, b) => RANK[b.severity] - RANK[a.severity]);
 
-/** Categorie lette solo in parte senza amministratore, in italiano. */
-function deniedText(denied: AutorunCategory[], among: AutorunCategory[]): string {
+/**
+ * Categorie lette solo in parte per i permessi, in italiano. Senza
+ * amministratore sono da verificare da amministratore; da amministratore
+ * «senza amministratore» sarebbe falso: le voci mancanti sono protette.
+ */
+function deniedText(denied: AutorunCategory[], among: AutorunCategory[], elevated: boolean): string {
   const d = denied.filter((c) => among.indexOf(c) >= 0);
-  return d.length ? `${d.map((c) => categoryLower(c)).join(', ')}: si leggono solo in parte senza amministratore, da verificare da amministratore.` : '';
+  if (!d.length) return '';
+  // Il testo segue un punto: l'iniziale va maiuscola («Servizi: ...»).
+  const low = d.map((c) => categoryLower(c)).join(', ');
+  const list = low.charAt(0).toUpperCase() + low.slice(1);
+  return elevated ? `${list}: alcune voci non si sono potute leggere nemmeno da amministratore (protette), da verificare.` : `${list}: si leggono solo in parte senza amministratore, da verificare da amministratore.`;
+}
+
+/**
+ * Categorie lette solo in parte, come intestazione di rapporto e documento:
+ * da amministratore non sono «da verificare da amministratore».
+ */
+export const deniedHeading = (elevated?: boolean) => (elevated ? 'Lette solo in parte, voci protette anche da amministratore' : 'Da verificare da amministratore');
+
+/** Attività pianificate non lette per i permessi (B10): l'agente segna «tasks» solo per l'accesso negato. */
+function tasksDeniedText(elevated: boolean): string {
+  return elevated
+    ? 'Alcune attività non si sono potute leggere (protette): da guardare in Utilità di pianificazione.'
+    : 'Senza amministratore si vedono solo le attività leggibili da questo utente: le altre sono da verificare da amministratore.';
 }
 
 /** Giudizi sull'avvio automatico esteso. */
@@ -408,6 +494,7 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
   if (!data) return;
   const issues = autorunIssues(scan);
   const denied = data.denied || [];
+  const elevated = !!data.elevated;
   const of = (k: AutorunIssueKind) => byWorst(issues.filter((x) => x.kind === k));
   const partial = data.partial ? ' La lettura non è finita in tempo: l\'elenco può essere incompleto.' : '';
 
@@ -437,7 +524,7 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
 
   // File non firmati o con firma non valida (accesso, servizi, driver).
   const uns = of('unsigned');
-  const unsDenied = deniedText(denied, ['logon', 'services', 'drivers']);
+  const unsDenied = deniedText(denied, ['logon', 'services', 'drivers'], elevated);
   {
     // Con categorie lette solo in parte non si dice mai «nessun problema».
     const sev: Severity = uns.length ? worstOf(uns) : unsDenied ? 'info' : 'ok';
@@ -452,7 +539,9 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
         : uns.length
           ? num(uns.length, 'comando interpretato', 'comandi interpretati')
           : unsDenied
-            ? 'nulla tra le voci lette, il resto da verificare da amministratore'
+            ? elevated
+              ? 'nulla tra le voci lette, alcune voci protette non lette'
+              : 'nulla tra le voci lette, il resto da verificare da amministratore'
             : 'nessuna voce da controllare',
       numeric: bad.length,
       severity: sev,
@@ -463,7 +552,7 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
               ? 'Un file alterato dopo la firma, o un programma senza firma valida in una cartella che un utente può scrivere ma avviato con i privilegi di sistema, è il caso più delicato: chiunque scriva in quella cartella può far girare codice come SYSTEM. Va controllato subito.'
               : sev === 'warn'
                 ? 'Un programma senza firma in una cartella che un utente può scrivere (AppData, Download, ProgramData, cartelle create nella radice del disco), avviato da solo, non è per forza pericoloso ma va riconosciuto: verifica da dove viene.'
-                : 'Sono comandi eseguiti da un programma di Windows (PowerShell, cmd, script): la firma di Microsoft dell\'interprete non dice nulla su ciò che eseguono.')
+                : 'Sono comandi eseguiti da un programma di Windows che esegue altro codice (PowerShell, cmd, script, msiexec e simili): la sua firma di Microsoft non dice nulla su ciò che eseguono.')
           : 'Nelle voci lette (accesso, servizi e driver) nessun programma avviato da solo è senza firma in una cartella che un utente può scrivere o con una firma alterata.') +
         (unsDenied ? ` ${unsDenied}` : '') +
         partial,
@@ -473,7 +562,7 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
 
   // Dirottamenti noti.
   const hij = of('hijack');
-  const hijDenied = deniedText(denied, ['winlogon', 'hijacks', 'lsa', 'print', 'network']);
+  const hijDenied = deniedText(denied, ['winlogon', 'hijacks', 'lsa', 'print', 'network'], elevated);
   {
     const sev: Severity = hij.length ? worstOf(hij) : hijDenied ? 'info' : 'ok';
     add({
@@ -505,7 +594,7 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
       metric: 'pc.autoruns.wmi',
       category: 'pc',
       title: 'Avvio automatico: sottoscrizioni WMI',
-      value: wmi.length ? num(wmi.length, 'sottoscrizione', 'sottoscrizioni') : 'da verificare da amministratore',
+      value: wmi.length ? num(wmi.length, 'sottoscrizione', 'sottoscrizioni') : elevated ? 'non lette, accesso negato' : 'da verificare da amministratore',
       numeric: wmi.length,
       severity: sev,
       verdict: wmi.length
@@ -513,8 +602,14 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
           (sev === 'crit'
             ? 'Una sottoscrizione WMI che esegue un comando o uno script parte da sola a ogni evento indicato, come SYSTEM, e non compare tra i programmi all\'avvio: è una tecnica nota di persistenza. A volte la usano programmi di gestione aziendali: va riconosciuta, da un tecnico.'
             : 'Sono sottoscrizioni WMI di altri programmi che non eseguono comandi, o che non sono collegate a un evento: da riconoscere, ma non partono da sole.') +
-          (denied.indexOf('wmi') >= 0 ? ' Lo spazio WMI si legge solo in parte senza amministratore: da verificare da amministratore.' : '')
-        : 'Le sottoscrizioni WMI permanenti si leggono solo avviando Polaris come amministratore: da verificare da amministratore.',
+          (denied.indexOf('wmi') >= 0
+            ? elevated
+              ? ' Una parte dello spazio WMI non si è potuta leggere nemmeno da amministratore: da verificare.'
+              : ' Lo spazio WMI si legge solo in parte senza amministratore: da verificare da amministratore.'
+            : '')
+        : elevated
+          ? 'Lo spazio WMI delle sottoscrizioni permanenti non si è potuto leggere nemmeno da amministratore (accesso negato): da verificare.'
+          : 'Le sottoscrizioni WMI permanenti si leggono solo avviando Polaris come amministratore: da verificare da amministratore.',
       actions: sev === 'crit' ? ['review-wmi-subscription', 'defender-scan-file'] : wmi.length ? ['review-wmi-subscription'] : [],
     });
   }
@@ -570,7 +665,13 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
       metric: 'pc.autoruns.tasks',
       category: 'pc',
       title: 'Attività pianificate di altri produttori',
-      value: tasks.length ? (bad.length ? num(bad.length, 'attività da controllare', 'attività da controllare') : num(tasks.length, 'attività da conoscere', 'attività da conoscere')) : 'da verificare da amministratore',
+      value: tasks.length
+        ? bad.length
+          ? num(bad.length, 'attività da controllare', 'attività da controllare')
+          : num(tasks.length, 'attività da conoscere', 'attività da conoscere')
+        : elevated
+          ? 'alcune attività protette non lette'
+          : 'da verificare da amministratore',
       numeric: bad.length,
       severity: sev,
       verdict: tasks.length
@@ -579,8 +680,10 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
             ? 'Un\'attività che esegue un programma da una cartella che un utente può scrivere, senza firma valida, nascosta o con privilegi elevati, è il modo più comune per far ripartire un programma indesiderato: verifica da dove viene.' +
               (bad.some((x) => x.entry.authorMicrosoft) ? ' L\'autore «Microsoft» scritto nell\'attività lo sceglie chi la crea: non conta, conta la firma del file.' : '')
             : 'Sono attività di altri produttori, di solito aggiornatori installati per l\'utente: da conoscere, non da togliere per forza.') +
-          (denied.indexOf('tasks') >= 0 ? ' Senza amministratore si vedono solo le attività leggibili da questo utente: le altre sono da verificare da amministratore.' : '')
-        : 'Senza amministratore si vedono solo le attività pianificate leggibili da questo utente, e tra queste non c\'è nulla da segnalare: le altre sono da verificare da amministratore.',
+          (denied.indexOf('tasks') >= 0 ? ` ${tasksDeniedText(elevated)}` : '')
+        : elevated
+          ? `Tra le attività pianificate lette non c'è nulla da segnalare. ${tasksDeniedText(true)}`
+          : 'Senza amministratore si vedono solo le attività pianificate leggibili da questo utente, e tra queste non c\'è nulla da segnalare: le altre sono da verificare da amministratore.',
       actions: sev === 'crit' ? ['defender-scan-file', 'check-file-origin', 'review-startup-entry'] : sev === 'warn' ? ['check-file-origin', 'review-startup-entry'] : tasks.length ? ['review-startup-entry'] : [],
     });
   }

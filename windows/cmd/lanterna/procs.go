@@ -157,8 +157,10 @@ func printProcs(d *scan.ProcessesData) {
 	}
 	if d.Unreadable > 0 {
 		if d.Elevated {
-			// Da amministratore restano chiusi solo i processi protetti da Windows.
-			fmt.Printf("Non apribili: %d, processi protetti da Windows (se ne conosce solo il nome).\n", d.Unreadable)
+			// Da amministratore restano chiusi solo i processi protetti da
+			// Windows: stesse parole del rapporto e del documento del motore
+			// («N processi non leggibili, protetti da Windows», decisione 5).
+			fmt.Printf("Non leggibili, protetti da Windows: %d (se ne conosce solo il nome).\n", d.Unreadable)
 		} else {
 			fmt.Printf("Non leggibili senza amministratore: %d (se ne conosce solo il nome).\n", d.Unreadable)
 		}

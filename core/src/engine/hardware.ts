@@ -93,11 +93,24 @@ export function moduleText(m: HwModule): string {
   return `${fmt(m.sizeGB, m.sizeGB % 1 ? 1 : 0)} GB${m.type ? ` ${m.type}` : ''}${m.form ? ` ${m.form}` : ''}${speed}`;
 }
 
-/** Schermi in breve: "15,6" 1920x1080 8 bit per colore integrato"; times è il segno della risoluzione (x o ×). */
+/**
+ * Risoluzione di uno schermo: quella in uso e, se l'agente ha letto la
+ * nativa (la modalità preferita dello schermo) ed è diversa, anche quella:
+ * "1920×1080 (nativa 2560×1440)". Come la scheda Computer, la nativa conta
+ * solo con tutte e due le dimensioni.
+ */
+function resolutionText(d: Display, times: string): string {
+  const inUse = d.width && d.height ? `${d.width}${times}${d.height}` : '';
+  const native = d.nativeWidth && d.nativeHeight ? `${d.nativeWidth}${times}${d.nativeHeight}` : '';
+  if (!native || native === inUse) return inUse;
+  return inUse ? `${inUse} (nativa ${native})` : `nativa ${native}`;
+}
+
+/** Schermi in breve: "15,6" 1920x1080 (nativa 2560x1440) 8 bit per colore integrato"; times è il segno della risoluzione (x o ×). */
 export function displaysText(list: Display[] | undefined, times = '×'): string {
   return (list || [])
     .map((d) =>
-      [d.diagonalIn ? `${fmt(d.diagonalIn, 1)}"` : '', d.width && d.height ? `${d.width}${times}${d.height}` : '', d.bitsPerColor ? `${d.bitsPerColor} bit per colore` : '', d.internal ? 'integrato' : '']
+      [d.diagonalIn ? `${fmt(d.diagonalIn, 1)}"` : '', resolutionText(d, times), d.bitsPerColor ? `${d.bitsPerColor} bit per colore` : '', d.internal ? 'integrato' : '']
         .filter(Boolean)
         .join(' '),
     )

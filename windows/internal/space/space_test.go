@@ -381,6 +381,11 @@ func TestHelpers(t *testing.T) {
 		`D:\Posta\archivio info@studio.it 2024.pst`:                                        `D:\Posta\archivio ‹e-mail› 2024.pst`,
 		`D:\info@studio.it`: `D:\‹e-mail›`,
 		`C:\$Recycle.Bin\S-1-5-21-3623811015-3361044348-30300820-1013\$RAB12.mkv`: `C:\$Recycle.Bin\S-1-5-21-…-1013\$RAB12.mkv`,
+		// Cestino di un utente Microsoft Entra ID: il SID è per intero l'ID
+		// della persona.
+		`C:\$Recycle.Bin\S-1-12-1-1234567890-2345678901-3456789012-4567890123\$RAB12.mkv`: `C:\$Recycle.Bin\S-1-12-1-…\$RAB12.mkv`,
+		`D:\$Recycle.Bin\s-1-12-1-11-22-33-44`:                                            `D:\$Recycle.Bin\S-1-12-1-…`,
+		`D:\Dati\S-1-12-1-11-22-33-44-55`:                                                 `D:\Dati\S-1-12-1-11-22-33-44-55`,
 		// Lettere che cambiano lunghezza in minuscolo.
 		`D:\Foto\İstanbul_mario.jpg`: `D:\Foto\İstanbul_%USERNAME%.jpg`,
 		`D:\Ⱥ\mario\Ⱥⱥ.txt`:          `D:\Ⱥ\%USERNAME%\Ⱥⱥ.txt`,
@@ -521,6 +526,7 @@ func (f *errFS) List(path string) ([]entry, error) {
 func TestScanPrivacyAndErrors(t *testing.T) {
 	sid := "S-1-5-21-3623811015-3361044348-30300820-1013"
 	other := "S-1-5-21-3623811015-3361044348-30300820-1014"
+	aad := "S-1-12-1-1234567890-2345678901-3456789012-4567890123" // utente Entra ID
 	fs := &errFS{fakeFS: &fakeFS{
 		dirs: map[string][]entry{
 			`d:\`:                                     {dir("Windows.old"), dir("$Recycle.Bin"), dir("Backup"), dir("Rotta"), dir("Sparita"), dir("Hyper-V")},
@@ -529,8 +535,9 @@ func TestScanPrivacyAndErrors(t *testing.T) {
 			`d:\windows.old\users\giulia`:             {dir("Videos"), file("giulia.rossi@studio.it.ost", 6*gb, 1)},
 			`d:\windows.old\users\giulia\videos`:      {file("matrimonio.mp4", 5*gb, 2)},
 			`d:\windows.old\users\mario`:              {file("note.txt", 2*mb, 3)},
-			`d:\$recycle.bin`:                         {dir(sid), dir(other)},
+			`d:\$recycle.bin`:                         {dir(sid), dir(other), dir(aad)},
 			`d:\$recycle.bin\` + strings.ToLower(sid): {file("$RAB12.mkv", 3*gb, 4)},
+			`d:\$recycle.bin\` + strings.ToLower(aad): {file("$RCD34.mp4", 2*gb, 7)},
 			`d:\backup`:                               {dir("WindowsImageBackup")},
 			`d:\backup\windowsimagebackup`:            {file("PC.vhdx", 40*gb, 5)},
 			`d:\hyper-v`:                              {file("vm.vhdx", 12*gb, 6)},
@@ -549,12 +556,13 @@ func TestScanPrivacyAndErrors(t *testing.T) {
 	}
 	r := res.Report
 	raw, _ := json.Marshal(r)
-	for _, leak := range []string{"Giulia", "giulia", "rossi", "studio.it", "3623811015", "mario"} {
+	for _, leak := range []string{"Giulia", "giulia", "rossi", "studio.it", "3623811015", "mario", "1234567890", "4567890123"} {
 		if strings.Contains(string(raw), leak) {
 			t.Errorf("%q nel rapporto: %s", leak, raw)
 		}
 	}
-	if !strings.Contains(string(raw), `Users\\‹utente 1›`) || !strings.Contains(string(raw), `Users\\%USERNAME%`) || !strings.Contains(string(raw), `S-1-5-21-…-1013`) || !strings.Contains(string(raw), `‹e-mail›.ost`) {
+	if !strings.Contains(string(raw), `Users\\‹utente 1›`) || !strings.Contains(string(raw), `Users\\%USERNAME%`) || !strings.Contains(string(raw), `S-1-5-21-…-1013`) || !strings.Contains(string(raw), `‹e-mail›.ost`) ||
+		!strings.Contains(string(raw), `$Recycle.Bin\\S-1-12-1-…`) {
 		t.Errorf("alias mancanti: %s", raw)
 	}
 	// I percorsi veri restano nell'agente.

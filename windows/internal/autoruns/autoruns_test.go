@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"lanterna/internal/scan"
+	"lanterna/internal/sign"
 )
 
 func msFile(folder string) *scan.FileFacts {
@@ -202,40 +203,62 @@ func TestGatherOrder(t *testing.T) {
 	}
 }
 
-// E14 e G7: fatti senza verifica.
+// E14, E15 e G7: fatti senza verifica e file in rete.
 func TestPlainAndNetworkFacts(t *testing.T) {
 	const profile = `C:\Users\anna`
 	clean := cleaner{profile: profile, user: "anna"}.path
-	if f := plainFacts(`%LOCALAPPDATA%\Vendor\upd.exe`, profile, clean); f.Folder != "" || f.Path != `%LOCALAPPDATA%\Vendor\upd.exe` {
+	// Il tipo di cartella delle voci non verificate viene da
+	// sign.Checker.Folder, che conosce anche il tipo delle unità: qui E: è
+	// una chiavetta e Z: un'unità di rete.
+	folder := func(p string) string {
+		switch strings.ToUpper(p[:2]) {
+		case "E:":
+			return "removable"
+		case "Z:":
+			return "network"
+		}
+		return sign.FolderOf(p, profile)
+	}
+	plain := func(p string) *scan.FileFacts { return plainFacts(p, folder, clean) }
+	if f := plain(`%LOCALAPPDATA%\Vendor\upd.exe`); f.Folder != "" || f.Path != `%LOCALAPPDATA%\Vendor\upd.exe` {
 		t.Errorf("percorso con le variabili di un altro utente: %+v", f)
 	}
-	if f := plainFacts(`C:\Users\anna\AppData\Local\x.exe`, profile, clean); f.Folder != "appData" || f.Path != `%USERPROFILE%\AppData\Local\x.exe` {
+	if f := plain(`C:\Users\anna\AppData\Local\x.exe`); f.Folder != "appData" || f.Path != `%USERPROFILE%\AppData\Local\x.exe` {
 		t.Errorf("percorso nel profilo: %+v", f)
 	}
-	if !onNetwork(`\\attaccante\share\y.exe`, profile) || !onNetwork(`\\host@SSL\DavWWWRoot\x.dll`, profile) || onNetwork(`C:\x.exe`, profile) {
+	if f := plain(`E:\setup.exe`); f.Folder != "removable" {
+		t.Errorf("chiavetta: %+v", f)
+	}
+	if f := plain(`Z:\Gestionale\agg.exe`); f.Folder != "network" {
+		t.Errorf("unità di rete: %+v", f)
+	}
+	// Un nome senza cartella di un'attività non verificata: cartella non letta.
+	if f := plain(`upd.exe`); f.Folder != "" {
+		t.Errorf("nome senza cartella: %+v", f)
+	}
+	// La regola dei file in rete è quella di sign, comune ai processi.
+	onNetwork := func(p string) bool { return sign.FolderOf(p, profile) == "network" }
+	if !onNetwork(`\\attaccante\share\y.exe`) || !onNetwork(`\\host@SSL\DavWWWRoot\x.dll`) || onNetwork(`C:\x.exe`) {
 		t.Error("percorsi di rete")
 	}
-	if f := networkFacts(`\\srv\share\x.exe`, clean); f.Missing || f.Folder != "network" || f.Signature == nil || f.Signature.Status != "unknown" {
+	if f := sign.New(profile, clean).Facts(context.Background(), `\\srv\share\x.exe`); f.Missing || f.Folder != "network" || f.Signature == nil || f.Signature.Status != "unknown" {
 		t.Errorf("file in rete: %+v", f)
 	}
 	// La forma lunga \\?\UNC\ diventa una condivisione, non un file di Windows.
 	r := newFakeEnv().resolver()
-	if p := r.Locate(`\\?\UNC\srv\share\x.exe`, false); !onNetwork(p, profile) {
+	if p := r.Locate(`\\?\UNC\srv\share\x.exe`, false); !onNetwork(p) {
 		t.Errorf("\\\\?\\UNC: %q", p)
 	}
 	// Anche \\.\UNC\ e i redirector raggiunti da GLOBALROOT sono in rete:
 	// non si aprono.
-	for _, p := range []string{`\\.\UNC\srv\share\x.exe`, `\\.\GLOBALROOT\Device\Mup\srv\share\x.exe`, `\\?\GLOBALROOT\Device\WebDavRedirector\srv\x.dll`} {
-		if l := r.Locate(p, false); !onNetwork(l, profile) {
+	for _, p := range []string{`\\.\UNC\srv\share\x.exe`, `\??\UNC\srv\share\x.exe`, `\\.\GLOBALROOT\Device\Mup\srv\share\x.exe`,
+		`\\?\GLOBALROOT\Device\WebDavRedirector\srv\x.dll`, `\??\GLOBALROOT\Device\LanmanRedirector\srv\s\x.dll`} {
+		if l := r.Locate(p, false); !onNetwork(l) {
 			t.Errorf("%q → %q non è in rete", p, l)
 		}
 	}
-	if onNetwork(`\\?\C:\x.exe`, profile) || onNetwork(`\\.\C:\x.exe`, profile) {
+	if onNetwork(`\\?\C:\x.exe`) || onNetwork(`\\.\C:\x.exe`) || onNetwork(r.Locate(`\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy3\x.exe`, false)) {
 		t.Error("percorso locale nella forma lunga preso per rete")
-	}
-	// Un nome senza cartella di un'attività non verificata: cartella non letta.
-	if f := plainFacts(`upd.exe`, profile, clean); f.Folder != "" {
-		t.Errorf("nome senza cartella: %+v", f)
 	}
 }
 
@@ -247,6 +270,12 @@ func TestCleaner(t *testing.T) {
 		`Backup di Anna e annabella`:         `Backup di ‹utente› e annabella`,
 		`Notifica mario.rossi@example.it ok`: `Notifica ‹e-mail› ok`,
 		`Iannacone`:                          `Iannacone`,
+		// Attività di OneDrive e di Google per un account Microsoft Entra
+		// ID: il SID è per intero l'ID della persona (pulitore comune).
+		`OneDrive Standalone Update Task-S-1-12-1-1234567890-2345678901-3456789012-4567890123`: `OneDrive Standalone Update Task-S-1-12-1-…`,
+		`OneDrive Reporting Task-S-1-12-1-11-22-33-44`:                                         `OneDrive Reporting Task-S-1-12-1-…`,
+		`GoogleUpdateTaskUserS-1-12-1-1234567890-2345678901-3456789012-4567890123Core{X}`:      `GoogleUpdateTaskUserS-1-12-1-…Core{X}`,
+		`GoogleUpdateTaskUserS-1-12-1-1-2-3-4UA`:                                               `GoogleUpdateTaskUserS-1-12-1-…UA`,
 	} {
 		if got := c.text(in); got != want {
 			t.Errorf("text(%q) = %q, atteso %q", in, got, want)
@@ -254,6 +283,17 @@ func TestCleaner(t *testing.T) {
 	}
 	if got := c.path(`"C:\Users\anna\AppData\x.exe" --profile C:\Users\luca\y`); got != `"%USERPROFILE%\AppData\x.exe" --profile C:\Users\‹utente›\y` {
 		t.Errorf("path: %q", got)
+	}
+	// Indirizzi pubblici nei comandi, anche attaccati agli operatori della
+	// riga di comando; quelli della rete locale restano.
+	for in, want := range map[string]string{
+		`cmd.exe /c ping 203.0.113.5>nul & start C:\x\a.exe`: `cmd.exe /c ping ‹indirizzo›>nul & start C:\x\a.exe`,
+		`cmd.exe /c ping -n 3 192.168.1.1>nul`:               `cmd.exe /c ping -n 3 192.168.1.1>nul`,
+		`"\\203.0.113.5\share\agent.exe" /s`:                 `"\\‹indirizzo›\share\agent.exe" /s`,
+	} {
+		if got := c.command(in); got != want {
+			t.Errorf("command(%q) = %q, atteso %q", in, got, want)
+		}
 	}
 	// Lettere che cambiano lunghezza in minuscolo prima del percorso: il
 	// profilo non deve restare in chiaro.

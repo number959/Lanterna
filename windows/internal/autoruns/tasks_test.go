@@ -280,3 +280,36 @@ func TestTasksScriptReadOnly(t *testing.T) {
 		t.Error("lo script esporta autore o utente")
 	}
 }
+
+// Attività create per un account Microsoft Entra ID (OneDrive, Google
+// Updater): il SID nel nome e nel percorso dell'attività non esce, e
+// nemmeno l'indirizzo pubblico di un comando (ping 203.0.113.5>nul).
+func TestTaskEntraID(t *testing.T) {
+	const js = `{"tasks":[
+ {"p":"\\OneDrive Standalone Update Task-S-1-12-1-1234567890-2345678901-3456789012-4567890123","en":true,"hid":false,"last":0,"res":0,"next":0,"trig":[9],
+  "exec":[{"path":"%localappdata%\\Microsoft\\OneDrive\\OneDriveStandaloneUpdater.exe","args":"","wd":""}],"com":[],"lt":3,"rl":0,"uid":"me","grp":false,"ms":false},
+ {"p":"\\GoogleSystem\\GoogleUpdater\\GoogleUpdaterTaskUserS-1-12-1-1234567890-2345678901-3456789012-4567890123{0A1B}","en":true,"hid":false,"last":0,"res":0,"next":0,"trig":[9],
+  "exec":[{"path":"C:\\Windows\\System32\\cmd.exe","args":"/c ping 203.0.113.5>nul & start C:\\Vendor\\a.exe","wd":""}],"com":[],"lt":3,"rl":0,"uid":"me","grp":false,"ms":false}
+],"folders":2,"denied":0,"unreadable":0,"errors":{}}`
+	out, err := parseTasks([]byte(js))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rd := testReader(newFakeEnv(`C:\Windows\System32\cmd.exe`))
+	loc := time.FixedZone("CET", 3600)
+	var entries []any
+	for _, x := range out.Tasks {
+		entries = append(entries, rd.taskItems(x, loc, func(string) string { return "" }).entry)
+	}
+	b, _ := json.Marshal(entries)
+	for _, bad := range []string{"1234567890", "4567890123", "203.0.113.5", "anna"} {
+		if strings.Contains(string(b), bad) {
+			t.Errorf("%q nelle voci: %s", bad, b)
+		}
+	}
+	for _, want := range []string{`"OneDrive Standalone Update Task-S-1-12-1-…"`, `GoogleUpdaterTaskUserS-1-12-1-…{0A1B}`, `ping ‹indirizzo›\u003enul`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("manca %s nelle voci: %s", want, b)
+		}
+	}
+}

@@ -59,7 +59,7 @@ func TestServicesWindows(t *testing.T) {
 	}
 	cats := map[string]int{}
 	starts := map[string]int{}
-	svchost, withFile := 0, 0
+	svchost, withFile, noAccount := 0, 0, 0
 	for _, it := range r.items {
 		e := it.entry
 		cats[e.Category]++
@@ -68,6 +68,9 @@ func TestServicesWindows(t *testing.T) {
 		case "", "system", "localservice", "networkservice", "user", "other":
 		default:
 			t.Errorf("account non ridotto a categoria: %q", e.Account)
+		}
+		if e.Category == "services" && e.Start != "" && e.Account == "" {
+			noAccount++ // configurazione letta, account vuoto: «non letto» (decisione 4)
 		}
 		if strings.Contains(strings.ToLower(e.Command), "svchost") && !strings.EqualFold(baseOf(it.file), "svchost.exe") {
 			svchost++
@@ -80,7 +83,7 @@ func TestServicesWindows(t *testing.T) {
 		t.Errorf("servizi e driver: %d voci, categorie %v, svchost con ServiceDll %d, con file %d", len(r.items), cats, svchost, withFile)
 	}
 	noPersonal(t, r.items)
-	t.Logf("%d voci, categorie %v, avvio %v, ServiceDll %d, negati %v", len(r.items), cats, starts, svchost, r.denied)
+	t.Logf("%d voci, categorie %v, avvio %v, ServiceDll %d, servizi con l'account vuoto %d, negati %v", len(r.items), cats, starts, svchost, noAccount, r.denied)
 }
 
 func TestRegistryWindows(t *testing.T) {

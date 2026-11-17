@@ -1,7 +1,14 @@
 // Package sign dice chi ha firmato un file eseguibile e che cos'è: firma
 // Authenticode verificata da Windows (WinVerifyTrust, firma incorporata o
 // catalogo), informazioni di versione e tipo di cartella. Sola lettura e
-// nessun accesso alla rete: la revoca dei certificati non si controlla online.
+// nessun accesso alla rete, per i processi come per l'avvio automatico: la
+// revoca dei certificati non si controlla online, e un file in rete (una
+// condivisione \\server in tutte le sue forme, oppure un'unità di rete
+// collegata a una lettera, come Z:) non si apre, né per sapere se esiste né
+// per la firma. Windows si collegherebbe a un server con le credenziali
+// dell'utente, leggerebbe tutto il file dalla rete e, con il server
+// irraggiungibile, si bloccherebbe per decine di secondi: il file risulta in
+// una cartella "network", con la firma "unknown" (non verificabile).
 //
 // Lo usano i processi (Process Explorer) e l'avvio automatico (Autoruns)
 // attraverso lo stesso Checker (Shared): lo stesso file si verifica una
@@ -94,6 +101,9 @@ func New(profile string, sanitize func(string) string) *Checker {
 // espanso (niente variabili d'ambiente, niente virgolette). Il percorso
 // esportato passa da Sanitize. Non restituisce mai nil.
 //
+// Un file in rete (cartella "network": condivisione o unità di rete) non si
+// apre: firma "unknown" e mai «mancante» (vedi il commento del pacchetto).
+//
 // A tempo scaduto restituisce solo percorso e cartella, senza toccare il
 // disco: os.Stat su una condivisione non più raggiungibile si bloccherebbe
 // per decine di secondi, oltre il tempo dichiarato della lettura.
@@ -102,10 +112,16 @@ func (c *Checker) Facts(ctx context.Context, path string) *scan.FileFacts {
 	if c.Sanitize != nil {
 		out.Path = c.Sanitize(path)
 	}
+	if path != "" && ctx.Err() == nil {
+		out.Folder = c.Folder(path)
+	}
+	if out.Folder == "network" {
+		out.Signature = &scan.FileSignature{Status: "unknown"}
+		return &out
+	}
 	if path == "" || ctx.Err() != nil {
 		return &out
 	}
-	out.Folder = c.Folder(path)
 	// Un processo a 32 bit su Windows a 64 bit legge System32 attraverso
 	// Sysnative, altrimenti vedrebbe i file di SysWOW64 (nativePath).
 	np := nativePath(path)
@@ -208,9 +224,12 @@ func driveFolderOf(t uint32) string {
 }
 
 // driveLetter restituisce la lettera di unità, in minuscolo, di un percorso
-// assoluto come C:\x o \\?\C:\x.
+// assoluto come C:\x, \\?\C:\x o \\.\C:\x.
 func driveLetter(p string) (byte, bool) {
-	p = strings.TrimPrefix(strings.ReplaceAll(p, "/", `\`), `\\?\`)
+	p = strings.ReplaceAll(p, "/", `\`)
+	if strings.HasPrefix(p, `\\?\`) || strings.HasPrefix(p, `\\.\`) {
+		p = p[4:]
+	}
 	if len(p) < 3 || p[1] != ':' || p[2] != '\\' {
 		return 0, false
 	}
@@ -237,17 +256,17 @@ var writableWindowsDirs = []string{`Tasks`, `Tracing`, `System32\spool\drivers\c
 // windows | programFiles | programData | appData | temp | downloads |
 // profile | removable | network | other. Si basa sul testo del percorso e
 // sulle variabili d'ambiente standard, senza leggere il disco; "removable"
-// e "network" per le lettere di unità li decide Checker.Facts (tipo di
-// unità), qui si riconoscono solo le condivisioni di rete (\\server). Le
-// sottocartelle di Windows scrivibili da tutti (writableWindowsDirs) sono
-// "other", non "windows". Lavora sulle barre rovesciate anche fuori da
-// Windows, così si prova ovunque.
+// e "network" per le lettere di unità li decide Checker.Folder (tipo di
+// unità), qui si riconoscono solo le condivisioni di rete scritte nel
+// percorso (networkPath). Le sottocartelle di Windows scrivibili da tutti
+// (writableWindowsDirs) sono "other", non "windows". Lavora sulle barre
+// rovesciate anche fuori da Windows, così si prova ovunque.
 func FolderOf(path, profile string) string {
 	p := winClean(path)
 	if p == "" {
 		return ""
 	}
-	if strings.HasPrefix(p, `\\`) && !strings.HasPrefix(p, `\\?\`) && !strings.HasPrefix(p, `\\.\`) {
+	if networkPath(p) {
 		return "network"
 	}
 	p = strings.TrimPrefix(p, `\\?\`)
@@ -317,6 +336,38 @@ func FolderOf(path, profile string) string {
 		}
 	}
 	return "other"
+}
+
+// networkPath dice se un percorso già passato da winClean sta su una
+// condivisione di rete scritta nel testo: \\server\... (anche WebDAV,
+// \\server@SSL\...), le forme lunghe \\?\UNC\..., \\.\UNC\... e \??\UNC\...,
+// e i redirector di rete (pcinfo.NetworkRedirectors) con il nome del
+// dispositivo, anche raggiunti da GLOBALROOT (\Device\Mup\...,
+// \\?\GLOBALROOT\Device\WebDavRedirector\...).
+// Le altre forme lunghe sono locali: \\?\C:\..., una copia shadow
+// \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\... È la regola unica per
+// i processi e per l'avvio automatico.
+func networkPath(p string) bool {
+	for _, pre := range []string{`\\?\`, `\\.\`, `\??\`} {
+		if rest, ok := strings.CutPrefix(p, pre); ok {
+			if strings.HasPrefix(rest, `unc\`) {
+				return true
+			}
+			if rest, ok = strings.CutPrefix(rest, `globalroot`); ok {
+				return networkPath(rest)
+			}
+			return false
+		}
+	}
+	if strings.HasPrefix(p, `\\`) {
+		return true
+	}
+	for _, d := range pcinfo.NetworkRedirectors {
+		if strings.HasPrefix(p, `\device\`+d+`\`) {
+			return true
+		}
+	}
+	return false
 }
 
 // winClean porta un percorso di Windows in minuscolo, con le sole barre

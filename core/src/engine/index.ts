@@ -191,13 +191,14 @@ export { codeName, codeNameText, cpuNameClean } from './codenames';
 export type { CodeName } from './codenames';
 export { chipsetName, chipsetText } from './chipset';
 export type { ChipsetName } from './chipset';
-export { analyzeWin11, wddmText, win11Cpu, win11CpuRule, WIN11_CPU_LABEL, WIN11_STATUS_LABEL, win11Requirements } from './win11';
+export { analyzeWin11, wddmText, win11Cpu, win11CpuRule, WIN11_CHECK_BUTTON, WIN11_CPU_LABEL, WIN11_STATUS_LABEL, win11Requirements } from './win11';
 export type { Win11CpuResult, Win11CpuVerdict, Win11Req, Win11Status } from './win11';
 export {
   analyzeProcs,
   fileName,
   fileSeverity,
   folderLabel,
+  isKernelProc,
   isLookalike,
   isMicrosoftSigned,
   lc1,
@@ -205,26 +206,31 @@ export {
   ownerLabel,
   procGroups,
   PROCS_UNREADABLE_INFO,
+  protectedFolder,
   SIG_CRIT,
   SIG_WARN,
   signatureLabel,
   SYSTEM_NAMES,
   userWritable,
 } from './procs';
-export type { ProcGroup, Tone } from './procs';
+export type { Listener, ProcGroup, Tone } from './procs';
 export {
   accountLabel,
   analyzeAutoruns,
   AUTORUN_CATEGORIES,
   autorunCounts,
   autorunIssues,
+  bootExecuteKind,
   browserLabel,
   categoryLabel,
   categoryLower,
   categoryShort,
   consumerLabel,
+  deniedHeading,
   entryFile,
   interpretedInline,
+  isDefaultShell,
+  isDefaultUserinit,
   isInterpreter,
   runAsLabel,
   sourceLabel,

@@ -1,4 +1,5 @@
 import vm from 'node:vm';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { describe, expect, it } from 'vitest';
@@ -8,17 +9,19 @@ import {
   documentParts,
   fileSeverity,
   folderLabel,
+  isKernelProc,
   isLookalike,
   listeners,
   METRICS,
   ownerLabel,
   procGroups,
+  protectedFolder,
   renderDocument,
   renderText,
   signatureLabel,
+  userWritable,
 } from '../src/engine';
-import type { FileFacts, FolderKind, ProcessDetail, Scan, SignatureStatus } from '../src/engine';
-import { isKernelProc } from '../src/engine/procs';
+import type { FileFacts, FolderKind, Listener, ProcessDetail, Scan, SignatureStatus } from '../src/engine';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { guideById } from '../src/guides';
@@ -65,6 +68,19 @@ describe('etichette', () => {
     expect(fileSeverity(file('C:\\x.exe', 'windows', 'tampered'))).toBe('crit');
     expect(fileSeverity(chrome)).toBe('ok');
     expect(fileSeverity(file('C:\\x.exe', 'other'))).toBe('unknown');
+  });
+
+  it('cartelle: protette solo Windows e Programmi, le altre scrivibili come sign.UserWritable dell\'agente (decisione 1)', () => {
+    const all: FolderKind[] = ['windows', 'programFiles', 'programData', 'appData', 'temp', 'downloads', 'profile', 'removable', 'network', 'other'];
+    for (const k of all) expect(userWritable(k), k).toBe(!protectedFolder(k));
+    expect(all.filter((k) => protectedFolder(k))).toEqual(['windows', 'programFiles']);
+    const go = readFileSync(fileURLToPath(new URL('../../windows/internal/sign/sign.go', import.meta.url)), 'utf8');
+    const fn = /func UserWritable\(folder string\) bool \{\s*switch folder \{\s*case ([^:]+):/.exec(go);
+    expect(fn, 'sign.UserWritable in sign.go').not.toBeNull();
+    const goSet = (fn![1].match(/"([^"]+)"/g) || []).map((x) => x.slice(1, -1));
+    expect(all.filter((k) => userWritable(k)).sort()).toEqual(goSet.sort());
+    expect(userWritable(undefined)).toBe(false);
+    expect(protectedFolder(undefined)).toBe(false);
   });
 
   it('nomi dei programmi di Windows fuori posto', () => {
@@ -244,6 +260,27 @@ describe('giudizi sui processi', () => {
     const txt = renderText(unread, analyze(unread));
     expect(txt).toContain('In ascolto su tutte le reti: non letto');
     expect(txt).not.toContain('In ascolto su tutte le reti: nessun programma');
+    // Lo stesso nel documento.
+    const body = documentParts(unread, analyze(unread)).body;
+    expect(body).toContain('In ascolto su tutte le reti: non letto');
+    expect(body).not.toContain('In ascolto su tutte le reti: nessun programma');
+    expect(documentParts(withProcs(items), analyze(withProcs(items))).body).toContain('In ascolto su tutte le reti: nessun programma');
+  });
+
+  it('documento: i programmi in ascolto non verificati si dicono, come nel rapporto', () => {
+    const closed = proc(30, 'vncserver.exe', undefined, { access: 'none', owner: 'unknown', listen: [{ proto: 'tcp', port: 5900, scope: 'all' }] });
+    const share = proc(20, 'share.exe', file('%USERPROFILE%\\AppData\\share.exe', 'appData', 'unsigned'), { listen: [{ proto: 'tcp', port: 8200, scope: 'all' }] });
+    const signed = proc(40, 'chrome.exe', chrome, { listen: [{ proto: 'tcp', port: 9222, scope: 'all' }] });
+    const s = withProcs([closed, share, signed]);
+    const ls: Listener[] = listeners(s);
+    expect(ls.map((l) => [l.proc.name, l.risky, l.unverified])).toEqual([
+      ['vncserver.exe', false, true],
+      ['share.exe', true, false],
+      ['chrome.exe', false, false],
+    ]);
+    const body = documentParts(s, analyze(s)).body;
+    expect(body).toContain('vncserver.exe (5900) non verificato; share.exe (8200) <b>da controllare</b>; chrome.exe (9222).');
+    expect(renderText(s, analyze(s)).replace(/\s+/g, ' ')).toContain('vncserver.exe (5900) non verificato; share.exe (8200) da controllare; chrome.exe (9222)');
   });
 
   it('programma con il nome di un file di Windows altrove', () => {
@@ -257,6 +294,21 @@ describe('giudizi sui processi', () => {
     expect(find(withProcs([proc(12, 'chrome.exe', chrome)], { unreadable: 6 }), 'pc.procs.unreadable')).toMatchObject({ severity: 'info', value: '6 processi non leggibili senza amministratore' });
     expect(find(withProcs([proc(12, 'chrome.exe', chrome)], { unreadable: 4 }), 'pc.procs.unreadable')).toBeUndefined();
     expect(find(withProcs([proc(12, 'chrome.exe', chrome)], { unreadable: 9, elevated: true }), 'pc.procs.unreadable')).toBeUndefined();
+  });
+
+  it('rapporto e documento: da amministratore i processi non apribili sono protetti da Windows (decisione 5)', () => {
+    const user = withProcs([proc(12, 'chrome.exe', chrome)], { unreadable: 6 });
+    const admin = withProcs([proc(12, 'chrome.exe', chrome)], { unreadable: 6, elevated: true });
+    const one = withProcs([proc(12, 'chrome.exe', chrome)], { unreadable: 1, elevated: true });
+    const doc = (s: Scan) => documentParts(s, analyze(s)).body;
+    const txt = (s: Scan) => renderText(s, analyze(s)).replace(/\s+/g, ' ');
+    expect(doc(user)).toContain('6 processi non leggibili senza amministratore.');
+    expect(doc(admin)).toContain('6 processi non leggibili, protetti da Windows.');
+    expect(doc(admin)).not.toContain('senza amministratore');
+    expect(doc(one)).toContain('1 processo non leggibile, protetto da Windows.');
+    expect(txt(user)).toContain('6 processi non leggibili senza amministratore');
+    expect(txt(admin)).toContain('6 processi non leggibili, protetti da Windows');
+    expect(txt(one)).toContain('1 processo non leggibile, protetto da Windows');
   });
 });
 

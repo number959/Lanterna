@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"lanterna/internal/scan"
 )
 
 // Usa il bundle prodotto da "npm run build" in core/: il test verifica che
@@ -242,5 +244,62 @@ func TestDiscoveryInGoja(t *testing.T) {
 		if !strings.Contains(txt, w) {
 			t.Errorf("manca %q nel rapporto", w)
 		}
+	}
+}
+
+// Decisione 1 nel motore incorporato: l'agente ora elenca le voci di
+// Defender, che gira da ProgramData (cartella scrivibile dagli utenti), ma
+// sono firmate da Microsoft e non diventano avvisi. Un servizio di sistema
+// senza firma nella stessa cartella invece sì: il motore guarda davvero
+// queste voci.
+func TestDefenderProgramDataInGoja(t *testing.T) {
+	e := load(t)
+	const platform = `C:\ProgramData\Microsoft\Windows Defender\Platform\4.18.24090.11-0`
+	ms := func(p string) *scan.FileFacts {
+		return &scan.FileFacts{Path: p, Folder: "programData", Signature: &scan.FileSignature{Status: "valid", Signer: "Microsoft Windows Publisher", Microsoft: true}}
+	}
+	defender := []scan.AutorunEntry{
+		{Category: "services", Kind: "service", Name: "Servizio Microsoft Defender Antivirus", Location: `HKLM\System\CurrentControlSet\Services\WinDefend`,
+			Command: `"` + platform + `\MsMpEng.exe"`, Enabled: true, Start: "auto", Running: true, Account: "system", File: ms(platform + `\MsMpEng.exe`)},
+		{Category: "tasks", Kind: "task", Name: "Windows Defender Scheduled Scan", Location: `\Microsoft\Windows\Windows Defender\Windows Defender Scheduled Scan`,
+			Command: platform + `\MpCmdRun.exe Scan -ScheduleJob -ScanTrigger 55 -IdleScheduledJob`, Enabled: true, RunAs: "system", Highest: true, AuthorMicrosoft: true,
+			Triggers: []string{"daily"}, File: ms(platform + `\MpCmdRun.exe`)},
+	}
+	unsigned := scan.AutorunEntry{Category: "services", Kind: "service", Name: "Agente Esempio", Location: `HKLM\System\CurrentControlSet\Services\AgenteEsempio`,
+		Command: `C:\ProgramData\Esempio\agent.exe`, Enabled: true, Start: "auto", Account: "system",
+		File: &scan.FileFacts{Path: `C:\ProgramData\Esempio\agent.exe`, Folder: "programData", Signature: &scan.FileSignature{Status: "unsigned"}}}
+	worst := func(entries []scan.AutorunEntry) map[string]string {
+		b, _ := json.Marshal(scan.AutorunsData{Entries: entries, Elevated: true,
+			Counts: map[string]scan.AutorunCount{"services": {Total: 200, Microsoft: 199}, "tasks": {Total: 100, Microsoft: 99}}})
+		doc := `{"schema":1,"agent":{"name":"STARNET Polaris","version":"t","platform":"windows","host":"PC","startedAt":"2026-11-17T09:00:00Z","durationMs":9000,"elevated":true},
+"adapters":[],"errors":[],"pc":{"autoruns":` + string(b) + `}}`
+		out, err := e.Analyze([]byte(doc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var a struct {
+			Findings []struct {
+				ID       string `json:"id"`
+				Severity string `json:"severity"`
+			} `json:"findings"`
+		}
+		if err := json.Unmarshal(out, &a); err != nil {
+			t.Fatal(err)
+		}
+		sev := map[string]string{}
+		for _, f := range a.Findings {
+			if strings.HasPrefix(f.ID, "pc.autoruns.") {
+				sev[f.ID] = f.Severity
+			}
+		}
+		return sev
+	}
+	for id, s := range worst(defender) {
+		if s == "warn" || s == "crit" {
+			t.Errorf("voci di Defender in ProgramData: %s %s", id, s)
+		}
+	}
+	if s := worst(append(defender, unsigned))["pc.autoruns.unsigned"]; s != "crit" {
+		t.Errorf("servizio di sistema senza firma in ProgramData: %q, atteso crit", s)
 	}
 }

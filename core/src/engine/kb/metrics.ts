@@ -964,10 +964,10 @@ const list: Metric[] = [
     id: 'pc.autoruns.unsigned',
     label: 'Avvio automatico: firme e cartelle',
     category: 'pc',
-    what: 'Per i programmi che partono all\'accesso, i servizi e i driver di altri produttori: la firma digitale del file e la cartella da cui parte. Per le voci che eseguono un comando con PowerShell, cmd, rundll32 o uno script conta il file eseguito, non il programma di Windows che lo esegue.',
+    what: 'Per i programmi che partono all\'accesso, i servizi e i driver di altri produttori: la firma digitale del file e la cartella da cui parte. Per le voci che eseguono un comando con PowerShell, cmd, rundll32, uno script o un altro programma di Windows che esegue codice ricevuto (msiexec, mshta, certutil e gli altri dell\'elenco MITRE ATT&CK T1218 e LOLBAS) conta il file eseguito, non il programma di Windows che lo esegue.',
     scale: [
       { range: 'nessuna voce da controllare', severity: 'ok', meaning: 'Nulla da segnalare.' },
-      { range: 'comandi eseguiti da un interprete di Windows senza un file da verificare, o categorie lette solo in parte senza amministratore', severity: 'info', meaning: 'Da conoscere; il resto da verificare da amministratore.' },
+      { range: 'comandi eseguiti da un programma di Windows che esegue altro codice (interprete o proxy) senza un file da verificare, o categorie lette solo in parte per i permessi', severity: 'info', meaning: 'Da conoscere; il resto da verificare: da amministratore, o con gli strumenti di Windows se le voci sono protette anche all\'amministratore.' },
       { range: 'programma senza firma valida in una cartella che un utente può scrivere (AppData, Download, Temp, profilo, ProgramData, cartelle fuori da Programmi e Windows), o firma scaduta o non riconosciuta, avviato da solo; servizio con privilegi di sistema in una di quelle cartelle', severity: 'warn', meaning: 'Da riconoscere.' },
       { range: 'file alterato dopo la firma, certificato revocato o bloccato; programma senza firma valida in una cartella che un utente può scrivere avviato con i privilegi di sistema', severity: 'crit', meaning: 'Da controllare subito.' },
     ],
@@ -981,7 +981,7 @@ const list: Metric[] = [
     what: 'I punti di Windows che decidono che cosa parte prima di tutto o al posto di altro: Shell e Userinit di Winlogon, il «debugger» di Image File Execution Options (IFEO), SilentProcessExit, BootExecute, AppInit_DLLs; per il tecnico anche le DLL di altri produttori nei pacchetti di sicurezza (LSA), nei monitor e processori di stampa e nei provider di rete.',
     scale: [
       { range: 'valori di Windows e nessuna DLL senza firma', severity: 'ok', meaning: 'Nulla da segnalare.' },
-      { range: 'DLL firmate da altri produttori in LSA, stampa o rete; AppInit impostato ma inattivo con Secure Boot; debugger IFEO firmato da Microsoft (non un interprete come cmd.exe); controllo del disco programmato da Windows in BootExecute (autocheck autochk con un volume, per esempio /r \\??\\C:)', severity: 'info', meaning: 'Normale per alcuni antivirus, VPN, stampanti e strumenti di diagnostica, o dopo un chkdsk programmato.' },
+      { range: 'DLL firmate da altri produttori in LSA, stampa o rete; AppInit impostato ma inattivo con Secure Boot; debugger IFEO firmato da Microsoft (non un programma di Windows che esegue altro codice, come cmd.exe o mshta.exe); controllo del disco programmato da Windows in BootExecute (autocheck autochk con un volume, per esempio /r \\??\\C:); nessuna voce da controllare ma categorie lette solo in parte per i permessi', severity: 'info', meaning: 'Normale per alcuni antivirus, VPN, stampanti e strumenti di diagnostica, o dopo un chkdsk programmato; le parti non lette restano da verificare.' },
       { range: 'debugger IFEO (anche uno che non esiste: blocca il programma), SilentProcessExit, righe di BootExecute diverse da quelle di Windows (autocheck autochk seguito solo da opzioni, asterisco o volumi), AppInit attivo senza Secure Boot, DLL senza firma valida in LSA, stampa o rete', severity: 'warn', meaning: 'Usati di rado anche da programmi legittimi: da riconoscere.' },
       { range: 'Shell diversa da explorer.exe della cartella di Windows o Userinit diverso da userinit.exe di System32 (altra cartella, anche una cartella Windows su un altro disco, o argomenti), oppure con il file alterato dopo la firma; debugger IFEO su uno strumento di accessibilità della schermata di accesso (sethc.exe, utilman.exe, osk.exe...); DLL alterate in LSA, stampa o rete', severity: 'crit', meaning: 'Da controllare subito, da un tecnico.' },
     ],
@@ -996,7 +996,7 @@ const list: Metric[] = [
     scale: [
       { range: 'sottoscrizioni di altri programmi che non eseguono comandi, o non collegate a un filtro', severity: 'info', meaning: 'Da conoscere: non partono da sole.' },
       { range: 'sottoscrizione collegata che esegue un comando o uno script', severity: 'crit', meaning: 'Gira come SYSTEM a ogni evento: da far controllare a un tecnico.' },
-      { range: 'spazio WMI non leggibile senza amministratore', severity: 'unknown', meaning: 'Da verificare da amministratore.' },
+      { range: 'spazio WMI non leggibile: senza amministratore, o con l\'accesso negato anche all\'amministratore', severity: 'unknown', meaning: 'Da verificare: da amministratore, se non lo si è.' },
     ],
     why: 'Un comando legato a un evento WMI parte da solo, come SYSTEM, senza comparire tra i programmi all\'avvio: è una tecnica nota di persistenza (MITRE ATT&CK T1546.003), usata anche da alcuni programmi di gestione aziendali.',
     limits: 'Il consumer «SCM Event Log Consumer» non si giudica: le regole pubbliche di rilevamento lo considerano normale, ma Microsoft non lo documenta. I permessi dello spazio WMI per un utente normale non sono documentati: senza amministratore la lettura può essere incompleta.',
@@ -1031,13 +1031,13 @@ const list: Metric[] = [
     category: 'pc',
     what: 'Le attività pianificate non di Microsoft: il programma che eseguono, con firma e cartella, quando partono (all\'accesso, all\'avvio, a orari), con quale account e se sono nascoste.',
     scale: [
-      { range: 'aggiornatori firmati nella cartella dell\'utente, comandi eseguiti da un interprete, attività nascoste che partono all\'accesso', severity: 'info', meaning: 'Da conoscere.' },
+      { range: 'aggiornatori firmati nella cartella dell\'utente, comandi eseguiti da un programma di Windows che esegue altro codice (interprete o proxy), attività nascoste che partono all\'accesso', severity: 'info', meaning: 'Da conoscere.' },
       { range: 'programma senza firma valida in una cartella che un utente può scrivere, o attività nascosta o con privilegi elevati (di un utente o di un account di servizio) che esegue da lì, anche con autore dichiarato Microsoft', severity: 'warn', meaning: 'Da riconoscere: è il modo più comune per far ripartire un programma indesiderato.' },
       { range: 'file alterato dopo la firma, o programma senza firma valida in una cartella che un utente può scrivere eseguito come SYSTEM (privilegi di sistema)', severity: 'crit', meaning: 'Da controllare subito.' },
-      { range: 'senza amministratore, nessuna attività leggibile da segnalare', severity: 'unknown', meaning: 'Le altre attività sono da verificare da amministratore.' },
+      { range: 'nessuna attività letta da segnalare, ma altre non lette per i permessi: senza amministratore, o protette anche da amministratore', severity: 'unknown', meaning: 'Le altre attività sono da verificare: da amministratore, oppure, se protette, in Utilità di pianificazione.' },
     ],
     why: 'Le attività pianificate partono anche senza nessuno all\'accesso e non compaiono tra le app di avvio: sono la persistenza più usata (MITRE ATT&CK T1053.005), ma anche il modo normale con cui i programmi si aggiornano.',
-    limits: 'Senza amministratore si vedono solo le attività leggibili da questo utente. L\'autore dichiarato di un\'attività è una dichiarazione (chi crea l\'attività lo scrive a piacere, ed è una tecnica nota di mascheramento): decide la firma del file; l\'autore serve solo a non elencare tra le voci da conoscere le attività di Windows che eseguono comandi interpretati. Il registro interno delle attività (TaskCache) non si legge, perché il suo formato non è documentato da Microsoft.',
+    limits: 'Senza amministratore si vedono solo le attività leggibili da questo utente; anche da amministratore alcune attività possono negare la lettura (protette): Polaris lo dice e rimanda a Utilità di pianificazione. L\'autore dichiarato di un\'attività è una dichiarazione (chi crea l\'attività lo scrive a piacere, ed è una tecnica nota di mascheramento): decide la firma del file; l\'autore serve solo a non elencare tra le voci da conoscere le attività di Windows che eseguono comandi interpretati. Il registro interno delle attività (TaskCache) non si legge, perché il suo formato non è documentato da Microsoft.',
   },
   {
     id: 'pc.events.shutdown',

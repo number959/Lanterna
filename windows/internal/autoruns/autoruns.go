@@ -154,8 +154,8 @@ type rankFunc func(category, path string) int
 
 // checkOrder è l'ordine in cui si verificano le firme, perché se il tempo
 // scade restino senza verifica i file meno a rischio: prima quelli nelle
-// cartelle che un utente può scrivere (sign.UserWritable, e con loro
-// programData e le altre cartelle), poi Program Files, poi la cartella di
+// cartelle che un utente può scrivere (sign.UserWritable: anche ProgramData
+// e le altre cartelle e unità), poi Program Files, poi la cartella di
 // Windows e per ultimi i driver di Windows, che sono molti.
 func checkOrder(category, path, profile string) int {
 	switch folder := sign.FolderOf(path, profile); {
@@ -338,44 +338,17 @@ func gather(ctx context.Context, sources []source, facts factsFunc, plain func(s
 }
 
 // plainFacts sono i fatti su un file non verificato: il percorso pulito e il
-// tipo di cartella, che non si dice per un percorso con le variabili di un
-// altro utente (%LOCALAPPDATA% di un'attività di SYSTEM non è il profilo di
-// chi usa Polaris) né per un nome senza cartella da cercare in una
-// cartella non espansa: l'interfaccia scrive allora «cartella non letta».
-func plainFacts(p, profile string, clean func(string) string) *scan.FileFacts {
-	folder := ""
+// tipo di cartella (folder, cioè sign.Checker.Folder: anche le chiavette e
+// le unità di rete collegate a una lettera), che non si dice per un percorso
+// con le variabili di un altro utente (%LOCALAPPDATA% di un'attività di
+// SYSTEM non è il profilo di chi usa Polaris) né per un nome senza cartella
+// da cercare in una cartella non espansa: l'interfaccia scrive allora
+// «cartella non letta». I file in rete non si aprono mai, verificati o no:
+// la regola è in sign (FolderOf e Checker.Facts).
+func plainFacts(p string, folder, clean func(string) string) *scan.FileFacts {
+	f := ""
 	if !strings.Contains(p, "%") && isAbs(p) {
-		folder = sign.FolderOf(p, profile)
+		f = folder(p)
 	}
-	return &scan.FileFacts{Path: clean(p), Folder: folder}
-}
-
-// onNetwork: un percorso su una condivisione di rete. Non si apre, né per
-// sapere se esiste né per la firma: Windows si collegherebbe a un server
-// scelto da chi ha scritto la voce, con le credenziali dell'utente, e
-// leggerebbe tutto il file dalla rete. Valgono anche le forme lunghe
-// (\\?\UNC\, \\.\UNC\) e i redirector di rete raggiunti da GLOBALROOT, che
-// sign.FolderOf non riconosce.
-func onNetwork(p, profile string) bool {
-	l := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(p), "/", `\`))
-	for _, pre := range []string{`\\?\`, `\\.\`, `\??\`} {
-		if strings.HasPrefix(l, pre) {
-			rest := l[len(pre):]
-			if strings.HasPrefix(rest, `unc\`) {
-				return true
-			}
-			for _, dev := range []string{`globalroot\device\mup\`, `globalroot\device\lanmanredirector\`, `globalroot\device\webdavredirector\`} {
-				if strings.HasPrefix(rest, dev) {
-					return true
-				}
-			}
-		}
-	}
-	return sign.FolderOf(p, profile) == "network"
-}
-
-// networkFacts sono i fatti su un file in rete, senza toccarlo: firma non
-// verificabile, e non «mancante».
-func networkFacts(p string, clean func(string) string) *scan.FileFacts {
-	return &scan.FileFacts{Path: clean(p), Folder: "network", Signature: &scan.FileSignature{Status: "unknown"}}
+	return &scan.FileFacts{Path: clean(p), Folder: f}
 }

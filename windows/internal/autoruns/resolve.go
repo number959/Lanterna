@@ -175,7 +175,7 @@ func (r Resolver) absolute(p string, wow32 bool) []string {
 		p = `\\` + p[8:]
 	case hasPrefixFold(p, `\??\GLOBALROOT\`), hasPrefixFold(p, `\\?\GLOBALROOT\`):
 		// Un dispositivo di Windows (copia shadow, redirector di rete): resta
-		// nella forma \\?\, che onNetwork riconosce.
+		// nella forma \\?\, che sign.FolderOf riconosce (rete o locale).
 		p = `\\?\` + p[4:]
 	case hasPrefixFold(p, `\??\`), hasPrefixFold(p, `\\?\`):
 		p = p[4:]

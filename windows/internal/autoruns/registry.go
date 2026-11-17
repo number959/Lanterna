@@ -3,6 +3,7 @@ package autoruns
 import (
 	"regexp"
 	"strings"
+	"unicode"
 
 	"lanterna/internal/scan"
 )
@@ -137,34 +138,58 @@ func (rd reader) winlogonItems(scope, loc, value, data string) []item {
 // DefaultBootExecute è il valore predefinito di BootExecute.
 const DefaultBootExecute = "autocheck autochk *"
 
+// Le espressioni sono le stesse del motore (BOOT_OPTION e BOOT_VOLUME in
+// core/src/engine/autoruns.ts), senza il flag i: si applicano alla parola
+// con le sole lettere A-Z portate in minuscolo (asciiLower), come fa /i in
+// JavaScript senza u. Con (?i) Go confronterebbe anche «ſ» con «s» e il
+// segno del kelvin con «k».
 var (
 	// bootOption: un'opzione di autochk, con o senza valore (/q, /v, /p,
-	// /r, /k:C, /m).
-	bootOption = regexp.MustCompile(`^/[A-Za-z]+(:[A-Za-z0-9]+)?$`)
+	// /r, /k:C, /m). Il valore resta un argomento di autochk, che non lo
+	// esegue.
+	bootOption = regexp.MustCompile(`^/[a-z0-9]+(?::\S+)?$`)
 	// bootVolume: un volume, \??\C:, \DosDevices\C: o \??\Volume{guid}.
-	bootVolume = regexp.MustCompile(`(?i)^(\\\?\?\\[a-z]:|\\dosdevices\\[a-z]:|\\\?\?\\volume\{[0-9a-f-]+\})$`)
+	bootVolume = regexp.MustCompile(`^(?:(?:\\\?\?\\|\\dosdevices\\)[a-z]:|\\\?\?\\volume\{[0-9a-f-]+\})$`)
 )
 
+// asciiLower porta in minuscolo solo le lettere A-Z.
+func asciiLower(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 'A' && r <= 'Z' {
+			return r + 'a' - 'A'
+		}
+		return r
+	}, s)
+}
+
+// jsSpace sono gli spazi di \s in JavaScript, con cui il motore divide la
+// riga in parole: quelli di Unicode (unicode.IsSpace) e U+FEFF, senza
+// U+0085.
+func jsSpace(r rune) bool {
+	return r == '\ufeff' || (unicode.IsSpace(r) && r != '\u0085')
+}
+
 // bootExecuteDefault applica la regola comune al motore
-// (core/src/engine/autoruns.ts): la riga è quella di Windows se, divisa in
-// parole senza badare a spazi e maiuscole, comincia con «autocheck
-// autochk» e il resto sono solo opzioni di autochk, l'asterisco o volumi,
-// con almeno un asterisco o un volume. Così sono di Windows anche
-// «autocheck autochk /q /v *» (immagini di Azure) e il controllo del disco
-// programmato «autocheck autochk /p \??\C:» (scheduled: c'è un volume).
+// (bootExecuteKind in core/src/engine/autoruns.ts): la riga è quella di
+// Windows se, divisa in parole senza badare a spazi e maiuscole, comincia
+// con «autocheck autochk» e il resto sono solo opzioni di autochk,
+// l'asterisco o volumi, con almeno un asterisco o un volume. Così sono di
+// Windows anche «autocheck autochk /q /v *» (immagini di Azure) e il
+// controllo del disco programmato «autocheck autochk /p \??\C:»
+// (scheduled: c'è un volume, e il motore lo dice come informazione).
 func bootExecuteDefault(v string) (def, scheduled bool) {
-	f := strings.Fields(v)
-	if len(f) < 3 || !strings.EqualFold(f[0], "autocheck") || !strings.EqualFold(f[1], "autochk") {
+	f := strings.FieldsFunc(v, jsSpace)
+	if len(f) < 3 || strings.ToLower(f[0]) != "autocheck" || strings.ToLower(f[1]) != "autochk" {
 		return false, false
 	}
 	star := false
 	for _, w := range f[2:] {
-		switch {
+		switch lw := asciiLower(w); {
 		case w == "*":
 			star = true
-		case bootVolume.MatchString(w):
+		case bootVolume.MatchString(lw):
 			scheduled = true
-		case bootOption.MatchString(w):
+		case bootOption.MatchString(lw):
 		default:
 			return false, false
 		}

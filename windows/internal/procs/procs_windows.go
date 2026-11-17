@@ -372,7 +372,8 @@ func servicesByPID() map[uint32][]string {
 // sono decine di processi con lo stesso eseguibile), con pochi file insieme.
 // Allo scadere del contesto non aspetta le verifiche in corso: i file
 // restanti hanno solo percorso e cartella, e partial è vero. Le unità
-// rimovibili e di rete collegate a una lettera le riconosce Facts.
+// rimovibili e di rete collegate a una lettera le riconosce Facts, che non
+// apre i file in rete (condivisioni e unità di rete): firma "unknown".
 func fileFacts(ctx context.Context, ps []rawProc) (map[string]*scan.FileFacts, bool) {
 	var list []string
 	seen := map[string]bool{}

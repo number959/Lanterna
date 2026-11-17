@@ -163,8 +163,9 @@ var stepDefs = []Step{
 // dichiara il risultato parziale).
 const procsTimeout = 30 * time.Second
 
-// autorunsTimeout è il tempo massimo della fase «autoruns» (attività
-// pianificate e WMI con PowerShell, firme di servizi e driver). A freddo
+// AutorunsTimeout è il tempo massimo della fase «autoruns» (attività
+// pianificate e WMI con PowerShell, firme di servizi e driver), lo stesso
+// di «polaris-cli autoruns» (cmd/lanterna). A freddo
 // le firme da verificare sono centinaia: su Windows reale (CI, macchina
 // Azure) la prima lettura non stava in 45 s, la seconda ne ha chiesti 7.
 //
@@ -174,7 +175,7 @@ const procsTimeout = 30 * time.Second
 // poi in fila "lan" (una lettura), "load" (LoadSample, 1,5 s) e "procs" (al
 // massimo 30 s). In tutto circa 92 s: restano quasi 30 s di margine
 // (TestPhaseBudget).
-const autorunsTimeout = 60 * time.Second
+const AutorunsTimeout = 60 * time.Second
 
 // Progress viene notificato a ogni cambio di stato.
 type Progress func(steps []Step)
@@ -465,7 +466,7 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 	// entra in s.PC alla fine, perché "pc" può finire dopo.
 	var autorunsData *scan.AutorunsData
 	run("autoruns", func() error {
-		actx, cancel := context.WithTimeout(ctx, autorunsTimeout)
+		actx, cancel := context.WithTimeout(ctx, AutorunsTimeout)
 		defer cancel()
 		a, err := c.Platform.Autoruns(actx)
 		mu.Lock()

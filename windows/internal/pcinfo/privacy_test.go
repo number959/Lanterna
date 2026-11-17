@@ -192,6 +192,29 @@ func TestCleaner(t *testing.T) {
 	if got := m.Path(`C:\Users\mario.rossi\AppData\x.exe /v:203.0.113.5`); got != `%USERPROFILE%\AppData\x.exe /v:‹indirizzo›` {
 		t.Errorf("profilo e indirizzo: %q", got)
 	}
+	// Un indirizzo IPv4 pubblico come server di una condivisione, nei
+	// percorsi e nei comandi, in tutte le forme di rete che sign.FolderOf
+	// riconosce; quelli privati restano.
+	for in, want := range map[string]string{
+		`\\203.0.113.5\share\x.exe`:                                  `\\‹indirizzo›\share\x.exe`,
+		`"\\203.0.113.5\share\x.exe" /quiet`:                         `"\\‹indirizzo›\share\x.exe" /quiet`,
+		`cmd.exe /c \\203.0.113.5\netlogon\logon.bat`:                `cmd.exe /c \\‹indirizzo›\netlogon\logon.bat`,
+		`rundll32.exe \\203.0.113.5\s\a.dll,Start`:                   `rundll32.exe \\‹indirizzo›\s\a.dll,Start`,
+		`\\?\UNC\203.0.113.5\share\x.exe`:                            `\\?\UNC\‹indirizzo›\share\x.exe`,
+		`\\.\UNC\203.0.113.5\share\x.exe`:                            `\\.\UNC\‹indirizzo›\share\x.exe`,
+		`\??\UNC\203.0.113.5\share\x.exe`:                            `\??\UNC\‹indirizzo›\share\x.exe`,
+		`\\?\GLOBALROOT\Device\Mup\203.0.113.5\share\x.exe`:          `\\?\GLOBALROOT\Device\Mup\‹indirizzo›\share\x.exe`,
+		`\\?\GLOBALROOT\Device\LanmanRedirector\203.0.113.5\s\x.exe`: `\\?\GLOBALROOT\Device\LanmanRedirector\‹indirizzo›\s\x.exe`,
+		`\\.\GLOBALROOT\Device\WebDavRedirector\203.0.113.5\x.dll`:   `\\.\GLOBALROOT\Device\WebDavRedirector\‹indirizzo›\x.dll`,
+		`\\203.0.113.5@SSL\DavWWWRoot\x.exe`:                         `\\‹indirizzo›@SSL\DavWWWRoot\x.exe`,
+		`\\192.168.1.10\condivisa\gest.exe`:                          `\\192.168.1.10\condivisa\gest.exe`,
+		`\\?\UNC\10.0.0.5\share\x.exe`:                               `\\?\UNC\10.0.0.5\share\x.exe`,
+		`C:\App\203.0.113.5\x.exe`:                                   `C:\App\203.0.113.5\x.exe`,
+	} {
+		if got := m.Path(in); got != want {
+			t.Errorf("Path(%q) = %q, atteso %q", in, got, want)
+		}
+	}
 	// Una seconda pulizia (l'avvio automatico ripassa Text sui percorsi) non cambia nulla.
 	for _, in := range []string{`C:\Users\luca\x.exe S-1-12-1-1-2-3-4 /v:203.0.113.5 anna@example.it`, `\\srv\home$\mario.rossi\x.exe`} {
 		once := m.Path(in)
