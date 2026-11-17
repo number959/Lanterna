@@ -71,6 +71,35 @@ jobs:
         run: |
           ./polaris-cli.exe version
           if ($LASTEXITCODE -ne 0) { throw "version fallito" }
+      - name: Avvio automatico a PC freddo, Edge Update e nome dell'utente
+        run: |
+          # Prima lettura dell'avvio automatico su questa macchina, prima di ogni altro comando che verifica firme:
+          # misura il caso «a freddo» (catalogo delle firme di Windows e cache dei file ancora vuoti), che nella
+          # run 123 aveva superato il tempo massimo con circa 800 file da verificare. Un risultato parziale è un
+          # avviso, non un errore: la macchina della CI è più lenta di un PC vero alla prima verifica.
+          $t = Measure-Command { ./polaris-cli.exe autoruns --json > ar-freddo.json 2> ar-freddo.err }
+          if ($LASTEXITCODE -ne 0) { throw "comando autoruns non riuscito: $(Get-Content ar-freddo.err -Raw)" }
+          $sec = [math]::Round($t.TotalSeconds, 1)
+          $af = Get-Content ar-freddo.json -Raw | ConvertFrom-Json
+          $afErr = (Get-Content ar-freddo.err -Raw -ErrorAction SilentlyContinue)
+          "Avvio automatico a freddo: $sec s; voci elencate $(@($af.entries).Count); parziale $([bool]$af.partial); negati '$($af.denied -join ',')'; conteggi $($af.counts | ConvertTo-Json -Compress)"
+          if ($afErr) { "Standard error: $afErr" }
+          if ($af.partial) { "::warning::avvio automatico parziale alla prima lettura ($sec s): $afErr" }
+          $nv = @($af.entries | Where-Object { $_.file -and -not $_.file.missing -and -not $_.file.signature })
+          "Voci con file non verificato: $($nv.Count); per cartella: " + (($nv | Group-Object { $_.file.folder } | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join ' ')
+          # Edge Update: nella run 123 sette voci (servizi edgeupdate ed edgeupdatem, cinque attività) risultavano
+          # «file mancante». Qui si confronta con ciò che c'è davvero sul disco.
+          $edgeFiles = @("${env:ProgramFiles(x86)}\Microsoft\EdgeUpdate\MicrosoftEdgeUpdate.exe", "$env:ProgramFiles\Microsoft\EdgeUpdate\MicrosoftEdgeUpdate.exe")
+          foreach ($p in $edgeFiles) { "$p esiste: $(Test-Path -LiteralPath $p)" }
+          sc.exe qc edgeupdate | Select-String 'BINARY_PATH_NAME|START_TYPE'
+          $edge = @($af.entries | Where-Object { $_.name -match 'edgeupdate' -or $_.command -match 'MicrosoftEdgeUpdate' })
+          "Voci di Edge Update elencate: $($edge.Count) " + (($edge | ForEach-Object { "| $($_.category)/$($_.name) file=$($_.file.path) mancante=$([bool]$_.file.missing) firma=$($_.file.signature.status)" }) -join ' ')
+          $edgeMiss = @($edge | Where-Object { $_.file.missing })
+          if ($edgeMiss.Count -and ($edgeFiles | Where-Object { Test-Path -LiteralPath $_ })) { throw "Edge Update risulta mancante ma il file c'è: $(($edgeMiss | ForEach-Object { $_.command }) -join ' | ')" }
+          # Il nome dell'utente (runneradmin) non deve comparire come parola intera, in nessun campo.
+          $who = [regex]::Escape($env:USERNAME)
+          $afLeak = [regex]::Match((Get-Content ar-freddo.json -Raw), ".{0,60}(?<![\w.-])$who(?![\w-]).{0,40}", 'IgnoreCase')
+          if ($afLeak.Success) { throw "nome dell'utente nell'avvio automatico: $($afLeak.Value)" }
       - name: Rapporto da riga di comando
         run: |
           ./polaris-cli.exe report --quick --verbose
@@ -181,9 +210,13 @@ jobs:
           "USB: $($pc.usb.read), $(@($pc.usb.controllers).Count) controller: " + ((@($pc.usb.controllers) | ForEach-Object { "$($_.name) [$($_.kind)] porte $($_.hub.portCount)" }) -join ' | ')
           if (-not $pc.usb -or $pc.usb.read -eq 'error' -or $pc.usb.partial) { throw "albero USB non letto: $($pc.usb | ConvertTo-Json -Compress)" }
           if (($pc.usb | ConvertTo-Json -Depth 20) -match '(USB|USBSTOR|PCI)\\\\(VID|VEN|DISK|ROOT_HUB)') { throw "identificativo di istanza nell'albero USB" }
-          if ($raw -match '"(name|userName|fullName)"\s*:\s*"[^"]*(runneradmin|Administrator)[^"]*"') { throw "nome di account nel rapporto" }
           # Nessun percorso della cartella dell'utente nel rapporto (solo %USERPROFILE%).
           $raw = Get-Content scan.json -Raw
+          # Il nome dell'utente (runneradmin) non deve comparire come parola intera, in nessun campo. Sostituisce il
+          # controllo sui soli campi name, userName e fullName, che leggeva $raw prima di assegnarlo e non controllava nulla.
+          $who = [regex]::Escape($env:USERNAME)
+          $userLeak = [regex]::Match($raw, ".{0,60}(?<![\w.-])$who(?![\w-]).{0,40}", 'IgnoreCase')
+          if ($userLeak.Success) { throw "nome dell'utente nel rapporto: $($userLeak.Value)" }
           $leak = [regex]::Match($raw, '.{0,60}' + [regex]::Escape($env:USERPROFILE.Replace('\', '\\')) + '.{0,40}', 'IgnoreCase')
           if ($leak.Success) { throw "cartella dell'utente nel rapporto: $($leak.Value)" }
           # Avvio automatico (come Autoruns): registro, servizi e driver, attività, WMI, estensioni.
