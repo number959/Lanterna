@@ -106,6 +106,9 @@ func Read(ctx context.Context, cpu map[uint32]float64, since time.Time) (*scan.P
 		switch {
 		case kernelPseudo(p.pid, p.parent, p.name):
 			p.nameOnly = true
+			// Solo l'ora di nascita, per il carico per PID (measured): la
+			// misura del carico conta anche Registry e Memory Compression.
+			p.created = createdOf(p.pid)
 		case ctx.Err() != nil:
 			p.nameOnly, partial = true, true
 		default:
@@ -181,10 +184,7 @@ func readProc(p *rawProc, buf []uint16, selfSID string, machineInfo bool) (gone 
 			}
 		}
 	}
-	var c, e, k, u windows.Filetime
-	if windows.GetProcessTimes(h, &c, &e, &k, &u) == nil {
-		p.created = int64(c.HighDateTime)<<32 | int64(c.LowDateTime)
-	}
+	p.created = createdOfHandle(h)
 	var m processMemoryCounters
 	m.CB = uint32(unsafe.Sizeof(m))
 	if r, _, _ := procK32GetProcessMemoryInfo.Call(uintptr(h), uintptr(unsafe.Pointer(&m)), uintptr(m.CB)); r != 0 {
@@ -202,6 +202,31 @@ func readProc(p *rawProc, buf []uint16, selfSID string, machineInfo bool) (gone 
 		tok.Close()
 	}
 	return false
+}
+
+// createdOfHandle restituisce l'ora di nascita del processo (FILETIME), 0
+// se non si legge.
+func createdOfHandle(h windows.Handle) int64 {
+	var c, e, k, u windows.Filetime
+	if windows.GetProcessTimes(h, &c, &e, &k, &u) != nil {
+		return 0
+	}
+	return int64(c.HighDateTime)<<32 | int64(c.LowDateTime)
+}
+
+// createdOf restituisce l'ora di nascita di uno pseudo-processo del nucleo
+// (Registry, Memory Compression), di cui non si legge altro; 0 per Idle e
+// System, che non si aprono, e se non si legge.
+func createdOf(pid uint32) int64 {
+	if pid == 0 || pid == 4 {
+		return 0
+	}
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return 0
+	}
+	defer windows.CloseHandle(h)
+	return createdOfHandle(h)
 }
 
 func archOfHandle(h windows.Handle, machineInfo bool) string {

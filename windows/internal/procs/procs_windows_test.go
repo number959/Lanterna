@@ -79,6 +79,29 @@ func TestReadWindows(t *testing.T) {
 	if d3, err := Read(context.Background(), nil, time.Time{}); err != nil || len(d3.Items) < 20 {
 		t.Errorf("terza lettura, senza carichi: %v", err)
 	}
+	// Gli pseudo-processi del nucleo che la misura del carico apre
+	// (Registry, Memory Compression) ricevono il loro carico: se ne legge
+	// l'ora di nascita anche se non si legge altro.
+	if list, err := snapshot(); err == nil {
+		pseudo := map[uint32]float64{}
+		for _, e := range list {
+			if e.pid != 0 && e.pid != 4 && kernelPseudo(e.pid, e.parent, e.name) && createdOf(e.pid) != 0 {
+				pseudo[e.pid] = 0.5
+			}
+		}
+		t.Logf("pseudo-processi con l'ora di nascita: %d", len(pseudo))
+		if len(pseudo) > 0 {
+			d4, err := Read(context.Background(), pseudo, time.Now())
+			if err != nil {
+				t.Fatalf("quarta lettura: %v", err)
+			}
+			for _, it := range d4.Items {
+				if _, ok := pseudo[it.PID]; ok && it.CPUPct == nil {
+					t.Errorf("pseudo-processo %d %s senza il suo carico", it.PID, it.Name)
+				}
+			}
+		}
+	}
 
 	me, system := -1, -1
 	ms, svc := 0, 0

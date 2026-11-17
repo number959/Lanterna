@@ -98,16 +98,35 @@ func unsignedStatus(lastErr uint32) string {
 // altra cartella chiamata WindowsApps (nei Download, sul Desktop, in
 // ProgramData, gli alias di esecuzione in %LOCALAPPDATA%\Microsoft) o una
 // condivisione di rete non conta: basterebbe il nome per non dirsi «non
-// firmato».
+// firmato». Sull'unità di Windows vale solo %ProgramFiles%\WindowsApps
+// (%ProgramW6432% per Polaris a 32 bit): alla radice di C:\ ogni utente può
+// creare una cartella (C:\WindowsApps), e lì Windows non mette le app.
 func packagedApp(path string) bool {
 	p := strings.TrimPrefix(winClean(path), `\\?\`)
-	if pf := winClean(os.Getenv("ProgramFiles")); pf != "" && strings.HasPrefix(p, pf+`\windowsapps\`) {
-		return true
+	pfs := []string{os.Getenv("ProgramW6432"), os.Getenv("ProgramFiles")}
+	if pfs[0] == "" && pfs[1] == "" {
+		pfs[0] = `C:\Program Files`
 	}
-	if len(p) < 4 || p[1] != ':' || p[2] != '\\' || p[0] < 'a' || p[0] > 'z' {
+	for _, pf := range pfs {
+		if pf = winClean(pf); pf != "" && strings.HasPrefix(p, pf+`\windowsapps\`) {
+			return true
+		}
+	}
+	if len(p) < 4 || p[1] != ':' || p[2] != '\\' || p[0] < 'a' || p[0] > 'z' || p[:2] == systemDrive() {
 		return false
 	}
 	return strings.HasPrefix(p[3:], `windowsapps\`) || strings.HasPrefix(p[3:], `program files\windowsapps\`)
+}
+
+// systemDrive è l'unità di Windows in minuscolo («c:»), da %SystemDrive% o
+// da %SystemRoot%.
+func systemDrive() string {
+	for _, v := range []string{os.Getenv("SystemDrive"), os.Getenv("SystemRoot")} {
+		if v = winClean(v); len(v) >= 2 && v[1] == ':' && v[0] >= 'a' && v[0] <= 'z' {
+			return v[:2]
+		}
+	}
+	return "c:"
 }
 
 // unsignedSignature è l'esito di un file senza firma propria e che nessun

@@ -208,8 +208,9 @@ func hasSuffixFold(s, suffix string) bool {
 }
 
 // driveRoot dice se il testo finisce con la radice di un'unità: «C:»,
-// «%SystemDrive%», la condivisione amministrativa «\\server\C$» oppure
-// «…\Windows.old», la copia della versione precedente di Windows.
+// «%SystemDrive%», «%HOMEDRIVE%», la condivisione amministrativa
+// «\\server\C$», «…\Windows.old», la copia della versione precedente di
+// Windows, oppure un volume indicato con il nome del dispositivo.
 func driveRoot(t string) bool {
 	n := len(t)
 	switch {
@@ -221,12 +222,15 @@ func driveRoot(t string) bool {
 		return !isWordRune(r) && r != '_'
 	case n >= 3 && t[n-1] == '$' && isASCIILetter(t[n-2]) && isSep(t[n-3]):
 		return true
-	case hasSuffixFold(t, "%systemdrive%"):
+	case hasSuffixFold(t, "%systemdrive%"), hasSuffixFold(t, "%homedrive%"):
 		return true
 	case hasSuffixFold(t, "windows.old"):
 		return n > len("windows.old") && isSep(t[n-len("windows.old")-1])
 	}
-	return false
+	// Il volume con il nome del dispositivo (\Device\HarddiskVolume3) e le
+	// copie shadow (\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1).
+	d := strings.TrimRight(t, "0123456789")
+	return len(d) < n && (hasSuffixFold(d, `\device\harddiskvolume`) || hasSuffixFold(d, `\device\harddiskvolumeshadowcopy`))
 }
 
 // profilesAt riconosce in s[j:], dove s[j] è una barra, la cartella dei
@@ -341,14 +345,45 @@ func publicIP(a netip.Addr) bool {
 	return a.IsGlobalUnicast() && !a.IsPrivate() && !cgnat.Contains(a)
 }
 
+// Caratteri che staccano un indirizzo dal resto del testo (MaskPublicIPs):
+// spazi e a capo, la punteggiatura dei comandi e gli operatori della riga
+// di comando (ping 203.0.113.5>nul, ping 203.0.113.5|find, a&b).
+const (
+	ipBefore = " \t\r\n:/@=\"'([{,;<>|&"
+	ipAfter  = " \t\r\n:/\"')]},;<>|&?#%"
+)
+
+// shareHost dice se l'indirizzo che comincia in s[a] è il server di una
+// condivisione: \\host all'inizio di un percorso (non una barra raddoppiata
+// dentro un percorso, come C:\\App\\1.2.3.4\\x.exe), oppure \\?\UNC\host e
+// \Device\Mup\host.
+func shareHost(s string, a int) bool {
+	if a >= 2 && s[a-2:a] == `\\` && (a == 2 || strings.IndexByte(ipBefore, s[a-3]) >= 0) {
+		return true
+	}
+	return hasSuffixFold(s[:a], `\unc\`) || hasSuffixFold(s[:a], `\mup\`)
+}
+
+// ipEnd dice se l'indirizzo finito in s[b] è staccato da ciò che segue: fine
+// del testo, un carattere di ipAfter, un punto che chiude la frase, oppure,
+// dopo il server di una condivisione, «\» e «@» (\\host@SSL\DavWWWRoot).
+func ipEnd(s string, b int, share bool) bool {
+	switch {
+	case b == len(s) || strings.IndexByte(ipAfter, s[b]) >= 0:
+		return true
+	case s[b] == '.':
+		return b+1 == len(s) || strings.IndexByte(" \t\r\n\"')", s[b+1]) >= 0
+	}
+	return share && (s[b] == '\\' || s[b] == '@')
+}
+
 // MaskPublicIPs sostituisce con ‹indirizzo› gli indirizzi IP pubblici di un
 // comando o di un testo (mstsc /v:203.0.113.5, admin@203.0.113.5,
 // sftp://198.51.100.20/backup, \\203.0.113.5\dati). Un indirizzo conta solo
-// se staccato dal resto: prima inizio, spazio, «:», «/», «@», «=», «"», «'»,
-// «(», «[», «,», «;» o «\\» (una condivisione); dopo fine, spazio, «:»,
-// «/», «"», «'», «)», «]», «,», «;» o «\» se viene da una condivisione.
-// Così non si toccano le versioni nei percorsi (EdgeUpdate\1.3.195.39\) né
-// nei nomi dei file.
+// se staccato dal resto: prima inizio o un carattere di ipBefore, oppure è
+// il server di una condivisione (shareHost); dopo, ipEnd. Così non si
+// toccano le versioni nei percorsi (EdgeUpdate\1.3.195.39\) né nei nomi dei
+// file (setup-8.8.8.8.exe).
 func MaskPublicIPs(s string) string {
 	if !strings.ContainsAny(s, ".:") {
 		return s
@@ -358,13 +393,11 @@ func MaskPublicIPs(s string) string {
 	for _, re := range []*regexp.Regexp{ipv4Re, ipv6Re} {
 		for _, m := range re.FindAllStringIndex(s, -1) {
 			a, b := m[0], m[1]
-			// \\host all'inizio di un percorso, non una barra raddoppiata
-			// dentro un percorso (C:\\App\\1.2.3.4\\x.exe).
-			share := a >= 2 && s[a-2:a] == `\\` && (a == 2 || strings.IndexByte(" \t\"'=(,;", s[a-3]) >= 0)
-			if !share && a > 0 && strings.IndexByte(" \t:/@=\"'([,;", s[a-1]) < 0 {
+			share := shareHost(s, a)
+			if !share && a > 0 && strings.IndexByte(ipBefore, s[a-1]) < 0 {
 				continue
 			}
-			if b < len(s) && strings.IndexByte(" \t:/\"')],;", s[b]) < 0 && !(share && s[b] == '\\') {
+			if !ipEnd(s, b, share) {
 				continue
 			}
 			if ip, err := netip.ParseAddr(s[a:b]); err == nil && publicIP(ip) {
