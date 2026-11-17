@@ -17,6 +17,11 @@ func (c cleaner) text(s string) string { return c.pc().Text(s) }
 // path pulisce un percorso o una riga di comando.
 func (c cleaner) path(s string) string { return c.pc().Path(s) }
 
+// command pulisce una riga di comando da esportare: come path, e prima
+// maschera le credenziali scritte per intero (maskSecrets), che il
+// pulitore comune leggerebbe come un indirizzo e-mail (password@host).
+func (c cleaner) command(s string) string { return c.path(maskSecrets(s)) }
+
 // commonWords sono i nomi che non si mascherano (pcinfo.CommonWords).
 var commonWords = pcinfo.CommonWords
 

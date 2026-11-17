@@ -35,6 +35,9 @@ func Collect(ctx context.Context) (*scan.AutorunsData, error) {
 	profile := os.Getenv("USERPROFILE")
 	rd := reader{
 		res: Resolver{Getenv: os.Getenv, Exists: func(p string) bool {
+			if onNetwork(p, profile) {
+				return false // nessun collegamento a una condivisione di rete
+			}
 			st, err := os.Stat(p)
 			return err == nil && !st.IsDir()
 		}},
@@ -44,13 +47,15 @@ func Collect(ctx context.Context) (*scan.AutorunsData, error) {
 	// i processi e per le analisi successive.
 	checker := sign.Shared()
 	facts := func(ctx context.Context, p string) *scan.FileFacts {
+		if onNetwork(p, profile) {
+			return networkFacts(p, rd.cl.path)
+		}
 		f := checker.Facts(ctx, p)
 		f.Path = rd.cl.text(f.Path)
 		return f
 	}
-	plain := func(p string) *scan.FileFacts {
-		return &scan.FileFacts{Path: rd.cl.path(p), Folder: sign.FolderOf(p, profile)}
-	}
+	plain := func(p string) *scan.FileFacts { return plainFacts(p, profile, rd.cl.path) }
+	rank := func(category, p string) int { return checkOrder(category, p, profile) }
 	sources := []source{
 		{"registry", func(ctx context.Context) sourceResult { return readRegistry(ctx, rd) }},
 		{"services", func(ctx context.Context) sourceResult { return readServices(ctx, rd) }},
@@ -58,7 +63,7 @@ func Collect(ctx context.Context) (*scan.AutorunsData, error) {
 		{"wmi", func(ctx context.Context) sourceResult { return readWMI(ctx, rd) }},
 		{"browser", func(ctx context.Context) sourceResult { return readBrowsers(ctx, rd) }},
 	}
-	items, denied, errs, partial := gather(ctx, sources, facts, plain, workers, grace)
+	items, denied, errs, partial := gather(ctx, sources, facts, plain, rank, workers, grace)
 	out := &scan.AutorunsData{Elevated: winapi.Elevated(), Partial: partial}
 	out.Entries, out.Counts = assemble(items)
 	seen := map[string]bool{}

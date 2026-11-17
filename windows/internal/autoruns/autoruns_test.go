@@ -3,7 +3,9 @@ package autoruns
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -40,6 +42,7 @@ func TestWindowsEntry(t *testing.T) {
 		{"comando interpretato", item{entry: scan.AutorunEntry{File: msFile("windows")}, interpreted: true}, false},
 		{"dirottamento firmato Microsoft", item{entry: scan.AutorunEntry{File: msFile("windows")}, hijack: true}, false},
 		{"profilo di un altro utente", item{entry: scan.AutorunEntry{File: msFile("windows")}, unverified: true}, false},
+		{"sempre elencata (WMI, controllo programmato)", item{entry: scan.AutorunEntry{File: msFile("windows")}, always: true}, false},
 	} {
 		if got := windowsEntry(c.it); got != c.hide {
 			t.Errorf("%s: nascosta %v, attesa %v", c.name, got, c.hide)
@@ -93,7 +96,7 @@ func TestGather(t *testing.T) {
 			return sourceResult{items: []item{{entry: scan.AutorunEntry{Category: "tasks"}, file: "f", unverified: true}}, denied: []string{"tasks"}, err: errors.New("parte mancata")}
 		}},
 	}
-	items, denied, errs, partial := gather(context.Background(), sources, facts, plain, 3, time.Second)
+	items, denied, errs, partial := gather(context.Background(), sources, facts, plain, nil, 3, time.Second)
 	if len(items) != 3 || partial || len(errs) != 1 || len(denied) != 1 || calls.Load() != 2 {
 		t.Fatalf("raccolta: %d voci, parziale %v, errori %v, negati %v, verifiche %d", len(items), partial, errs, denied, calls.Load())
 	}
@@ -120,7 +123,7 @@ func TestGather(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	items, _, _, partial = gather(ctx, slow, facts, plain, 2, 20*time.Millisecond)
+	items, _, _, partial = gather(ctx, slow, facts, plain, nil, 2, 20*time.Millisecond)
 	if !partial || len(items) != 2 || time.Since(start) > 2*time.Second {
 		t.Errorf("sorgente bloccata: %d voci, parziale %v, %v", len(items), partial, time.Since(start))
 	}
@@ -128,9 +131,111 @@ func TestGather(t *testing.T) {
 	stuck := func(ctx context.Context, p string) *scan.FileFacts { <-block; return nil }
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel2()
-	items, _, _, partial = gather(ctx2, sources[:1], stuck, plain, 1, 20*time.Millisecond)
+	items, _, _, partial = gather(ctx2, sources[:1], stuck, plain, nil, 1, 20*time.Millisecond)
 	if !partial || items[0].entry.File == nil || items[0].entry.File.Path != "solo ms:a" || items[0].entry.Target.Path != "solo t" {
 		t.Errorf("verifica bloccata: %+v %v", items[0].entry, partial)
+	}
+}
+
+// Osservazione b della CI: alla prima analisi (cache delle firme vuota) si
+// verificano prima i file più a rischio, così se il tempo scade restano
+// senza verifica quelli di Windows e i suoi driver. Ogni percorso si
+// verifica una volta sola; le altre azioni delle attività si verificano.
+func TestGatherOrder(t *testing.T) {
+	const profile = `C:\Users\anna`
+	var mu sync.Mutex
+	var calls []string
+	facts := func(ctx context.Context, p string) *scan.FileFacts {
+		mu.Lock()
+		calls = append(calls, p)
+		mu.Unlock()
+		return &scan.FileFacts{Path: "verificato " + p}
+	}
+	plain := func(p string) *scan.FileFacts { return &scan.FileFacts{Path: "solo " + p} }
+	rank := func(category, p string) int { return checkOrder(category, p, profile) }
+	sources := []source{{"tutto", func(context.Context) sourceResult {
+		return sourceResult{items: []item{
+			{entry: scan.AutorunEntry{Category: "drivers"}, file: `C:\Windows\System32\drivers\a.sys`},
+			{entry: scan.AutorunEntry{Category: "services"}, file: `C:\Windows\System32\svc.dll`},
+			{entry: scan.AutorunEntry{Category: "services"}, file: `C:\Program Files\Vendor\v.exe`},
+			{entry: scan.AutorunEntry{Category: "logon"}, file: `C:\Windows\System32\rundll32.exe`, target: `C:\Users\anna\AppData\Roaming\x.dll`},
+			{entry: scan.AutorunEntry{Category: "tasks"}, file: `C:\Windows\System32\rundll32.exe`,
+				others: []item{{entry: scan.AutorunEntry{Category: "tasks"}, file: `C:\Users\anna\Downloads\y.exe`}}},
+			{entry: scan.AutorunEntry{Category: "drivers"}, file: `C:\Vendor\drv.sys`},
+		}}
+	}}}
+	items, _, _, partial := gather(context.Background(), sources, facts, plain, rank, 1, time.Second)
+	if partial {
+		t.Fatal("parziale")
+	}
+	want := []string{
+		`C:\Users\anna\AppData\Roaming\x.dll`, `C:\Users\anna\Downloads\y.exe`, `C:\Vendor\drv.sys`,
+		`C:\Program Files\Vendor\v.exe`,
+		`C:\Windows\System32\svc.dll`, `C:\Windows\System32\rundll32.exe`,
+		`C:\Windows\System32\drivers\a.sys`,
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Errorf("ordine delle verifiche:\n%q\natteso\n%q", calls, want)
+	}
+	// rundll32.exe una volta sola, ma i fatti arrivano a tutte e due le voci;
+	// l'altra azione dell'attività è verificata.
+	if items[3].entry.File.Path != `verificato C:\Windows\System32\rundll32.exe` || items[4].entry.File.Path != items[3].entry.File.Path ||
+		items[4].others[0].entry.File.Path != `verificato C:\Users\anna\Downloads\y.exe` {
+		t.Errorf("fatti condivisi: %+v %+v", items[3].entry.File, items[4])
+	}
+	if items[3].entry.File == items[4].entry.File {
+		t.Error("le voci condividono lo stesso oggetto dei fatti")
+	}
+	for c, want := range map[[2]string]int{
+		{"logon", `C:\Users\anna\AppData\x.exe`}:         0,
+		{"logon", `C:\ProgramData\x.exe`}:                0,
+		{"logon", `D:\Strumenti\x.exe`}:                  0,
+		{"logon", `\\srv\share\x.exe`}:                   0,
+		{"services", `C:\Program Files (x86)\V\x.exe`}:   1,
+		{"services", `C:\Windows\System32\x.dll`}:        2,
+		{"drivers", `C:\Windows\System32\drivers\x.sys`}: 3,
+		{"drivers", `C:\Program Files\V\x.sys`}:          1,
+	} {
+		if got := checkOrder(c[0], c[1], profile); got != want {
+			t.Errorf("checkOrder(%q, %q) = %d, atteso %d", c[0], c[1], got, want)
+		}
+	}
+}
+
+// E14 e G7: fatti senza verifica.
+func TestPlainAndNetworkFacts(t *testing.T) {
+	const profile = `C:\Users\anna`
+	clean := cleaner{profile: profile, user: "anna"}.path
+	if f := plainFacts(`%LOCALAPPDATA%\Vendor\upd.exe`, profile, clean); f.Folder != "" || f.Path != `%LOCALAPPDATA%\Vendor\upd.exe` {
+		t.Errorf("percorso con le variabili di un altro utente: %+v", f)
+	}
+	if f := plainFacts(`C:\Users\anna\AppData\Local\x.exe`, profile, clean); f.Folder != "appData" || f.Path != `%USERPROFILE%\AppData\Local\x.exe` {
+		t.Errorf("percorso nel profilo: %+v", f)
+	}
+	if !onNetwork(`\\attaccante\share\y.exe`, profile) || !onNetwork(`\\host@SSL\DavWWWRoot\x.dll`, profile) || onNetwork(`C:\x.exe`, profile) {
+		t.Error("percorsi di rete")
+	}
+	if f := networkFacts(`\\srv\share\x.exe`, clean); f.Missing || f.Folder != "network" || f.Signature == nil || f.Signature.Status != "unknown" {
+		t.Errorf("file in rete: %+v", f)
+	}
+	// La forma lunga \\?\UNC\ diventa una condivisione, non un file di Windows.
+	r := newFakeEnv().resolver()
+	if p := r.Locate(`\\?\UNC\srv\share\x.exe`, false); !onNetwork(p, profile) {
+		t.Errorf("\\\\?\\UNC: %q", p)
+	}
+	// Anche \\.\UNC\ e i redirector raggiunti da GLOBALROOT sono in rete:
+	// non si aprono.
+	for _, p := range []string{`\\.\UNC\srv\share\x.exe`, `\\.\GLOBALROOT\Device\Mup\srv\share\x.exe`, `\\?\GLOBALROOT\Device\WebDavRedirector\srv\x.dll`} {
+		if l := r.Locate(p, false); !onNetwork(l, profile) {
+			t.Errorf("%q → %q non è in rete", p, l)
+		}
+	}
+	if onNetwork(`\\?\C:\x.exe`, profile) || onNetwork(`\\.\C:\x.exe`, profile) {
+		t.Error("percorso locale nella forma lunga preso per rete")
+	}
+	// Un nome senza cartella di un'attività non verificata: cartella non letta.
+	if f := plainFacts(`upd.exe`, profile, clean); f.Folder != "" {
+		t.Errorf("nome senza cartella: %+v", f)
 	}
 }
 

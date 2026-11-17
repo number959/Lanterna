@@ -136,7 +136,10 @@ func serviceKey(name string) string {
 // l'account come categoria e il controllo del percorso senza virgolette.
 func (rd reader) serviceItem(s rawService) item {
 	drv := isDriver(s.Type)
-	e := scan.AutorunEntry{Category: "services", Kind: "service", Name: s.Name, Location: serviceKey(s.Name)}
+	// La configurazione si è letta se il modo di avvio è uno dei valori di
+	// Windows (0-4): altrimenti resta «sconosciuto» (readServices).
+	cfg := s.Start <= 4
+	e := scan.AutorunEntry{Category: "services", Kind: "service", Name: rd.cl.text(s.Name), Location: rd.cl.text(serviceKey(s.Name))}
 	if drv {
 		e.Category, e.Kind = "drivers", "driver"
 	}
@@ -149,15 +152,20 @@ func (rd reader) serviceItem(s rawService) item {
 	if !drv {
 		if s.Type&svcUserService != 0 {
 			e.Account = "user"
-		} else {
+		} else if cfg {
+			// Con la configurazione non letta l'account resta "" («non
+			// letto»): accountOf("") direbbe LocalSystem.
 			e.Account = accountOf(s.Account)
 		}
 	}
 	it := item{entry: e}
-	it.entry.Command = rd.cl.path(s.Image)
+	it.entry.Command = rd.cl.command(s.Image)
 	image := strings.TrimSpace(s.Image)
 	if image == "" {
-		if drv {
+		// Il percorso si indovina solo se la configurazione si è letta e
+		// ImagePath manca davvero: con la lettura negata il .sys può stare
+		// altrove (drivers\wd, DriverStore) e risulterebbe mancante per errore.
+		if drv && cfg {
 			// Driver senza ImagePath: Windows lo carica da
 			// System32\drivers\<nome>.sys (forma osservata, non documentata
 			// nelle pagine lette).

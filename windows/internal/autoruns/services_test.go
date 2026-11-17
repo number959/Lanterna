@@ -72,13 +72,23 @@ func TestServiceItem(t *testing.T) {
 		if e.Category != c.cat || it.file != c.file || e.Start != c.start || e.Account != c.account || e.Unquoted != c.unquoted || e.Interceptors != c.inter || it.hijack != c.hijack {
 			t.Errorf("%s: %+v (file %q, dirottamento %v)", c.raw.Name, e, it.file, it.hijack)
 		}
-		if e.Enabled != (c.start != "disabled") || !strings.HasSuffix(e.Location, `\Services\`+c.raw.Name) {
+		if e.Enabled != (c.start != "disabled") || !strings.HasSuffix(e.Location, `\Services\`+c.raw.Name) || e.Name != c.raw.Name {
 			t.Errorf("%s: attivo %v, chiave %q", c.raw.Name, e.Enabled, e.Location)
 		}
 	}
-	// Configurazione non letta: modo di avvio sconosciuto, non «boot».
-	if it := rd.serviceItem(rawService{Name: "x", Type: 0x10, Start: ^uint32(0)}); it.entry.Start != "" || !it.entry.Enabled || it.file != "" {
+	// Configurazione non letta: modo di avvio sconosciuto, non «boot», e
+	// account non letto, non LocalSystem (decisione comune n. 4).
+	if it := rd.serviceItem(rawService{Name: "x", Type: 0x10, Start: ^uint32(0)}); it.entry.Start != "" || !it.entry.Enabled || it.file != "" || it.entry.Account != "" {
 		t.Errorf("configurazione non letta: %+v", it)
+	}
+	// Driver con la configurazione non letta: il percorso non si indovina
+	// (il .sys può stare in drivers\wd o in DriverStore).
+	if it := rd.serviceItem(rawService{Name: "WdFilter", Type: 0x2, Start: ^uint32(0)}); it.file != "" || it.entry.Category != "drivers" {
+		t.Errorf("driver con la configurazione non letta: %+v", it)
+	}
+	// Servizio senza nome visualizzato: nome e chiave passano dal pulitore.
+	if it := rd.serviceItem(rawService{Name: "Backup anna", Type: 0x10, Start: 3, Image: `C:\x\b.exe`}); strings.Contains(it.entry.Name+it.entry.Location, "anna") {
+		t.Errorf("nome dell'utente nel servizio: %+v", it.entry)
 	}
 	// Servizio che avvia un interprete con un comando scritto per intero.
 	it := rd.serviceItem(rawService{Name: "ps", Type: 0x10, Start: 2, Image: `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -c "x"`})

@@ -1,6 +1,7 @@
 package autoruns
 
 import (
+	"regexp"
 	"strings"
 
 	"lanterna/internal/scan"
@@ -17,16 +18,26 @@ type reader struct {
 // argomenti e, per i programmi di sistema che eseguono altro, il file
 // eseguito davvero.
 func (rd reader) commandItem(e scan.AutorunEntry, cmd string, wow32 bool) item {
-	it := item{entry: e}
-	it.entry.Command = rd.cl.path(cmd)
 	file, args, _ := rd.res.Split(cmd, wow32)
+	return rd.execItem(e, cmd, file, args, wow32)
+}
+
+// execItem prepara una voce con il programma e gli argomenti già separati
+// (da Split, o dai campi Path e Arguments di un'attività); cmd è il comando
+// mostrato. Se il programma esegue altro (ProxyTarget), target è il file
+// eseguito davvero; se non c'è un file da verificare la voce è un comando
+// interpretato, che non si nasconde mai.
+func (rd reader) execItem(e scan.AutorunEntry, cmd, file, args string, wow32 bool) item {
+	it := item{entry: e}
+	it.entry.Command = rd.cl.command(cmd)
+	file = strings.TrimSpace(strings.Trim(strings.TrimSpace(file), `"`))
 	if file == "" {
 		return it
 	}
 	it.file = rd.res.Locate(file, wow32)
 	if target, proxy := ProxyTarget(file, args); proxy {
 		if target == "" {
-			it.interpreted = args != ""
+			it.interpreted = strings.TrimSpace(args) != ""
 		} else {
 			it.target = rd.res.Locate(target, wow32)
 		}
@@ -126,10 +137,48 @@ func (rd reader) winlogonItems(scope, loc, value, data string) []item {
 // DefaultBootExecute è il valore predefinito di BootExecute.
 const DefaultBootExecute = "autocheck autochk *"
 
-// isDefaultBootExecute confronta con «autocheck autochk *» senza badare a
-// spazi e maiuscole.
+var (
+	// bootOption: un'opzione di autochk, con o senza valore (/q, /v, /p,
+	// /r, /k:C, /m).
+	bootOption = regexp.MustCompile(`^/[A-Za-z]+(:[A-Za-z0-9]+)?$`)
+	// bootVolume: un volume, \??\C:, \DosDevices\C: o \??\Volume{guid}.
+	bootVolume = regexp.MustCompile(`(?i)^(\\\?\?\\[a-z]:|\\dosdevices\\[a-z]:|\\\?\?\\volume\{[0-9a-f-]+\})$`)
+)
+
+// bootExecuteDefault applica la regola comune al motore
+// (core/src/engine/autoruns.ts): la riga è quella di Windows se, divisa in
+// parole senza badare a spazi e maiuscole, comincia con «autocheck
+// autochk» e il resto sono solo opzioni di autochk, l'asterisco o volumi,
+// con almeno un asterisco o un volume. Così sono di Windows anche
+// «autocheck autochk /q /v *» (immagini di Azure) e il controllo del disco
+// programmato «autocheck autochk /p \??\C:» (scheduled: c'è un volume).
+func bootExecuteDefault(v string) (def, scheduled bool) {
+	f := strings.Fields(v)
+	if len(f) < 3 || !strings.EqualFold(f[0], "autocheck") || !strings.EqualFold(f[1], "autochk") {
+		return false, false
+	}
+	star := false
+	for _, w := range f[2:] {
+		switch {
+		case w == "*":
+			star = true
+		case bootVolume.MatchString(w):
+			scheduled = true
+		case bootOption.MatchString(w):
+		default:
+			return false, false
+		}
+	}
+	if !star && !scheduled {
+		return false, false
+	}
+	return true, scheduled
+}
+
+// isDefaultBootExecute: la riga è quella di Windows (bootExecuteDefault).
 func isDefaultBootExecute(v string) bool {
-	return strings.EqualFold(strings.Join(strings.Fields(v), " "), DefaultBootExecute)
+	def, _ := bootExecuteDefault(v)
+	return def
 }
 
 // bootExecuteFile: BootExecute avvia programmi nativi di System32;
@@ -160,7 +209,11 @@ func (rd reader) bootExecuteItems(loc string, values []string) []item {
 		}
 		it := rd.fileItem(scan.AutorunEntry{Category: "hijacks", Kind: "bootexecute", Scope: "machine", Name: "BootExecute", Location: loc, Enabled: true}, bootExecuteFile(v), false)
 		it.entry.Command = rd.cl.path(v)
-		it.hijack = !isDefaultBootExecute(v)
+		def, scheduled := bootExecuteDefault(v)
+		it.hijack = !def
+		// Un controllo del disco programmato da Windows non è un
+		// dirottamento, ma si elenca: il motore lo dice come informazione.
+		it.always = scheduled
 		out = append(out, it)
 	}
 	return out
@@ -198,7 +251,9 @@ func (rd reader) lsaItems(kind, loc string, names []string) []item {
 		if n == "" {
 			continue
 		}
-		out = append(out, rd.fileItem(scan.AutorunEntry{Category: "lsa", Kind: kind, Scope: "machine", Name: n, Location: loc, Enabled: true}, lsaFile(n), false))
+		// Il nome è quello della DLL: un percorso completo (accettato da
+		// Security Packages) resta, pulito, nel comando e nel file.
+		out = append(out, rd.fileItem(scan.AutorunEntry{Category: "lsa", Kind: kind, Scope: "machine", Name: rd.cl.text(baseOf(n)), Location: loc, Enabled: true}, lsaFile(n), false))
 	}
 	return out
 }
@@ -223,15 +278,18 @@ func (rd reader) printProcFile(driver string, dirs []string) string {
 }
 
 // shortcutItem prepara una voce della cartella Esecuzione automatica: per un
-// collegamento .lnk il file è la sua destinazione.
+// collegamento .lnk il file è la sua destinazione. Un collegamento senza un
+// file di destinazione (solo l'elenco della shell, come quelli alle app
+// dello Store) o non leggibile si mostra senza verificarlo: il .lnk non è
+// il programma, e verificarlo darebbe «senza firma» per errore.
 func (rd reader) shortcutItem(e scan.AutorunEntry, path string, lnk []byte) item {
-	if !strings.EqualFold(extOf(path), ".lnk") || lnk == nil {
-		it := rd.fileItem(e, path, false)
-		return it
+	if !strings.EqualFold(extOf(path), ".lnk") {
+		return rd.fileItem(e, path, false)
 	}
 	sc, ok := parseLnk(lnk)
 	if !ok {
 		it := rd.fileItem(e, path, false)
+		it.unverified = true
 		return it
 	}
 	target := sc.Target

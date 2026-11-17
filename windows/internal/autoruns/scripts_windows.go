@@ -46,22 +46,7 @@ func readTasks(ctx context.Context, rd reader) sourceResult {
 	if err != nil {
 		return sourceResult{err: fmt.Errorf("attività pianificate: %w", err)}
 	}
-	var res sourceResult
-	if c := t.Errors["connect"]; c != "" {
-		if deniedCode(c) {
-			res.denied = []string{"tasks"}
-			return res
-		}
-		res.err = fmt.Errorf("attività pianificate: Utilità di pianificazione non raggiungibile (%s)", c)
-		return res
-	}
-	for _, x := range t.Tasks {
-		res.items = append(res.items, rd.taskItems(x, time.Local, comDLL))
-	}
-	if t.Denied > 0 || t.Unreadable > 0 {
-		res.denied = []string{"tasks"}
-	}
-	return res
+	return rd.tasksSource(t, time.Local, comDLL)
 }
 
 // readWMI legge le sottoscrizioni WMI permanenti con WMIScript.

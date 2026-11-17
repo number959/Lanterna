@@ -97,7 +97,20 @@ func TestChromiumExtensions(t *testing.T) {
 	writeFile(t, filepath.Join(ud, "Crashpad", "settings.dat"), "x")
 
 	rd := testReader(newFakeEnv())
-	items := rd.chromiumItems(osReader(), chromiumBrowser{ID: "chrome", UserData: ud}, []string{"it_IT", "it"}, map[string]bool{"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee": true, "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz": true})
+	// Ogni file Preferences (anche di vari MB) si legge una volta sola.
+	fs := osReader()
+	reads := map[string]int{}
+	read := fs.read
+	fs.read = func(p string) ([]byte, error) {
+		reads[p]++
+		return read(p)
+	}
+	items := rd.chromiumItems(fs, chromiumBrowser{ID: "chrome", UserData: ud}, []string{"it_IT", "it"}, map[string]bool{"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee": true, "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz": true})
+	for p, n := range reads {
+		if n > 1 {
+			t.Errorf("%s letto %d volte", p, n)
+		}
+	}
 	got := map[string]item{}
 	for _, it := range items {
 		got[it.entry.ExtID] = it
