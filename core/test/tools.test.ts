@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ACTIONS } from '../src/engine';
-import { ACTION_TOOLS, TOOLS, WINDOWS_TOOLS } from '../src/tools';
+import { ACTION_APPS, ACTION_TOOLS, TOOLS, WINDOWS_TOOLS } from '../src/tools';
 
 describe('cassetta degli attrezzi', () => {
   it('identificativi unici, siti https e licenza dichiarata', () => {
@@ -44,5 +45,28 @@ describe('cassetta degli attrezzi', () => {
       expect(actions.has(action), action).toBe(true);
       for (const id of list) expect(tools.has(id), `${action}: ${id}`).toBe(true);
     }
+  });
+
+  it('«Polaris fa già» rimanda a sezioni che esistono nella vista Computer', () => {
+    const pc = readFileSync(new URL('../src/ui/pc.tsx', import.meta.url), 'utf-8');
+    const sections = new Set([...pc.matchAll(/<Section title="([^"]+)"/g)].map((m) => m[1]));
+    expect(sections.has('Processi')).toBe(true);
+    for (const t of TOOLS) {
+      for (const m of (t.polaris ?? '').matchAll(/Computer > ((?:(?! e Computer)[^:;,.])+)/g)) expect(sections.has(m[1].trim()), `${t.id}: ${m[1]}`).toBe(true);
+    }
+    const ref = (id: string) => TOOLS.find((t) => t.id === id)!.polaris!;
+    expect(ref('process-explorer')).toMatch(/^Computer > Processi:/);
+    expect(ref('tcpview')).toMatch(/^Computer > Processi:/);
+    expect(ref('autoruns')).toMatch(/^Computer > Avvio automatico:/);
+    expect(ref('process-monitor')).toContain('Computer > Processi');
+    expect(ref('pc-health-check')).toMatch(/^Computer > Requisiti di Windows 11:/);
+    // La scheda Processi ha l'albero: non si dice più che serve Process Explorer per vederlo.
+    expect(ref('process-explorer')).not.toMatch(/per l'albero/);
+  });
+
+  it('TCPView e Process Monitor compaiono nelle azioni su connessioni, avvio e servizi', () => {
+    expect(ACTION_APPS['review-listening-app']).toContain('tcpview');
+    expect(ACTION_APPS['review-startup-entry']).toContain('process-monitor');
+    expect(ACTION_APPS['fix-unquoted-service-path']).toContain('process-monitor');
   });
 });

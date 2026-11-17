@@ -25,11 +25,16 @@ import type { Analysis, EventKind, Finding, ReachResult, Scan, Severity } from '
 const TAG: Record<Severity, string> = { ok: '[ OK ]', info: '[INFO]', warn: '[ !! ]', crit: '[CRIT]', unknown: '[ ?? ]' };
 
 function wrap(text: string, width: number, indent: string): string {
-  const words = text.split(/\s+/);
+  // Le parole più lunghe della riga (percorsi dello Store, comandi) si spezzano a pezzi di width caratteri.
+  const words: string[] = [];
+  for (const w of text.split(/\s+/)) {
+    if (w.length <= width || width < 1) words.push(w);
+    else for (let i = 0; i < w.length; i += width) words.push(w.slice(i, i + width));
+  }
   const lines: string[] = [];
   let line = '';
   for (const w of words) {
-    if ((line + ' ' + w).trim().length > width) {
+    if (line && (line + ' ' + w).trim().length > width) {
       lines.push(line);
       line = w;
     } else line = (line ? line + ' ' : '') + w;
@@ -176,7 +181,7 @@ function procsDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
   out.push(` Processi (${num(items.length, 'processo', 'processi')} a fine analisi${data.elevated ? ', da amministratore' : ''})`);
   out.push(
     hang(
-      `Programmi: ${groups.length}; firma verificata ${ok}, senza firma ${none}${other ? `, firma da controllare ${other}` : ''}${unchecked ? `, non verificati ${unchecked}` : ''}${data.unreadable ? `; ${num(data.unreadable, 'processo non leggibile', 'processi non leggibili')} senza amministratore` : ''}${data.partial ? '; lettura incompleta' : ''}`,
+      `Programmi: ${groups.length}; firma verificata ${ok}, senza firma ${none}${other ? `, firma da controllare ${other}` : ''}${unchecked ? `, non verificati ${unchecked}` : ''}${data.unreadable ? `; ${num(data.unreadable, 'processo non leggibile', 'processi non leggibili')}${data.elevated ? '' : ' senza amministratore'}` : ''}${data.partial ? '; lettura incompleta' : ''}`,
       W,
       '   ',
       '     ',
@@ -186,7 +191,7 @@ function procsDetails(scan: Scan, out: string[], W: number, verbose: boolean) {
     const ls = listeners(scan);
     out.push(
       hang(
-        `In ascolto su tutte le reti: ${ls.length ? ls.map((l) => `${l.proc.name} (${l.ports.slice(0, 4).join(', ')})${l.risky ? ' da controllare' : ''}`).join('; ') : 'nessun programma'}`,
+        `In ascolto su tutte le reti: ${ls.length ? ls.map((l) => `${l.proc.name} (${l.ports.slice(0, 4).join(', ')})${l.risky ? ' da controllare' : l.unverified ? ' non verificato' : ''}`).join('; ') : 'nessun programma'}`,
         W,
         '   ',
         '     ',

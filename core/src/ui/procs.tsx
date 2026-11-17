@@ -3,6 +3,7 @@ import { m } from 'motion/react';
 import { useMemo, useState } from 'react';
 import { fileSeverity, folderLabel, isLookalike, listeners, signatureLabel, userWritable } from '../engine';
 import type { ConnSummary, ListenPort, ProcessDetail, ProcessesData, Scan, Severity } from '../engine';
+import { isKernelProc } from '../engine/procs';
 import { readProcesses } from './api';
 import { SevIcon, Stat, TableWrap, fmtNum, useOpenGuide, useToast } from './components';
 import type { CrashTargetRef } from './crashes';
@@ -21,10 +22,6 @@ export const PROCS_SHOWN = 60;
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** Processi del nucleo di Windows senza un file da verificare. */
-const KERNEL = ['system', 'registry', 'memory compression', 'secure system', '[system process]', 'system idle process', 'idle', 'memcompression', 'vmmem'];
-const isKernel = (p: ProcessDetail) => p.pid === 0 || p.pid === 4 || KERNEL.indexOf(p.name.toLowerCase()) >= 0;
-
 /** Tipo di account del processo, per categoria: il nome non lo legge nessuno. */
 const OWNER: Record<NonNullable<ProcessDetail['owner']>, string> = { self: 'Tu', system: 'Sistema', other: 'Altro account', unknown: 'Non leggibile' };
 
@@ -33,16 +30,28 @@ export function ownerText(p: ProcessDetail): string {
   return `${OWNER[p.owner]}${p.elevated && p.owner === 'self' ? ', come amministratore' : ''}`;
 }
 
-/** Firma del processo con il tono: gli stessi criteri dei giudizi, più i casi senza file. */
-export function procSignature(p: ProcessDetail): { text: string; tone: Severity } {
-  if (p.access === 'none') return { text: 'Non leggibile senza amministratore', tone: 'unknown' };
+/**
+ * Firma del processo con il tono: gli stessi criteri dei giudizi, più i casi
+ * senza file. Un processo che non si apre anche con Polaris da
+ * amministratore è protetto da Windows (o di un altro account, senza il
+ * privilegio di debug che Polaris non chiede): «senza amministratore»
+ * sarebbe falso.
+ */
+export function procSignature(p: ProcessDetail, elevated = false): { text: string; tone: Severity } {
+  if (p.access === 'none') return { text: elevated ? 'Non apribile: processo protetto da Windows' : 'Non apribile senza amministratore', tone: 'unknown' };
   const f = p.file;
-  if (!f || !f.path) return isKernel(p) ? { text: 'Nucleo di Windows: nessun file da verificare', tone: 'info' } : { text: 'File non letto', tone: 'unknown' };
+  if (!f || !f.path) return isKernelProc(p) ? { text: 'Nucleo di Windows: nessun file da verificare', tone: 'info' } : { text: 'File non letto', tone: 'unknown' };
   if (f.missing) return { text: 'File non più presente', tone: 'unknown' };
   const l = signatureLabel(f.signature);
   const sev = fileSeverity(f);
-  if (f.signature && f.signature.status === 'unsigned' && userWritable(f.folder)) return { text: 'Nessuna firma, in una cartella che l\'utente può scrivere', tone: sev };
+  if (f.signature && f.signature.status === 'unsigned' && userWritable(f.folder)) return { text: 'Nessuna firma, in una cartella che un utente può scrivere', tone: sev };
   return { text: l.text, tone: sev === 'unknown' ? l.tone : sev };
+}
+
+/** Errore di una lettura dal vivo in italiano: un errore di rete del browser vuol dire che l'agente non risponde. */
+export function readError(e: unknown): string {
+  if (e instanceof TypeError) return 'Polaris non risponde: controlla che il programma sia ancora aperto e riprova';
+  return e instanceof Error ? e.message : String(e);
 }
 
 const SCOPE: Record<ListenPort['scope'], string> = { all: 'tutte le reti', local: 'solo questo PC', specific: 'una rete' };
@@ -88,10 +97,11 @@ export interface ProcCheck {
 const RANK: Record<Severity, number> = { unknown: 0, ok: 1, info: 2, warn: 3, crit: 4 };
 
 /**
- * Da controllare: firma grave o da guardare, senza firma in una cartella
- * dell'utente, nome di un programma di Windows fuori posto, in ascolto su
- * tutte le reti senza firma o da una cartella dell'utente (come i giudizi).
- * I processi di Polaris non si giudicano.
+ * Da controllare: firma grave o da guardare, senza firma in una cartella che
+ * un utente può scrivere, nome di un programma di Windows fuori posto, in
+ * ascolto su tutte le reti senza firma valida o da una cartella che un
+ * utente può scrivere (come i giudizi). I processi di Polaris non si
+ * giudicano.
  */
 export function procCheck(p: ProcessDetail, riskyListen: number[]): ProcCheck {
   if (p.polaris) return { sev: 'ok', why: [] };
@@ -101,7 +111,7 @@ export function procCheck(p: ProcessDetail, riskyListen: number[]): ProcCheck {
   if (fs === 'crit' || fs === 'warn') {
     sev = fs;
     const s = p.file!.signature!;
-    why.push(s.status === 'unsigned' ? 'senza firma in una cartella dell\'utente' : fs === 'crit' ? 'firma alterata o revocata' : 'firma da guardare');
+    why.push(s.status === 'unsigned' ? 'senza firma in una cartella che un utente può scrivere' : fs === 'crit' ? 'firma alterata o revocata' : 'firma da guardare');
   }
   if (isLookalike(p)) {
     if (RANK.warn > RANK[sev]) sev = 'warn';
@@ -205,10 +215,12 @@ export function procRows(scan: Scan, v: ProcView): ProcRow[] {
   for (const r of all) {
     if (!keep(r)) continue;
     shown[r.p.pid] = true;
+    // Corrisponde al filtro: mai contesto, anche se la risalita da un figlio venuto prima l'aveva segnato così.
+    r.ctx = false;
     let up = parentIn(r.p, byPid);
     for (let guard = 0; up && guard < 64 && !shown[up.pid]; guard++) {
       shown[up.pid] = true;
-      rowOf[up.pid].ctx = true;
+      rowOf[up.pid].ctx = !keep(rowOf[up.pid]);
       up = parentIn(up, byPid);
     }
   }
@@ -221,6 +233,22 @@ export function procRows(scan: Scan, v: ProcView): ProcRow[] {
       r.parent = par;
       (children[par.pid] = children[par.pid] ?? []).push(r);
     } else roots.push(r);
+  }
+  // Due processi che si indicano a vicenda come padre (PID riusati, ore di
+  // avvio non lette) non hanno radice: sparirebbero dall'albero con i loro
+  // discendenti. Ogni riga mostrata ma non raggiunta diventa una radice.
+  const reach: { [pid: number]: boolean } = {};
+  const mark = (r: ProcRow) => {
+    if (reach[r.p.pid]) return;
+    reach[r.p.pid] = true;
+    for (const c of children[r.p.pid] ?? []) mark(c);
+  };
+  roots.forEach(mark);
+  for (const r of all) {
+    if (!shown[r.p.pid] || reach[r.p.pid]) continue;
+    r.parent = undefined;
+    roots.push(r);
+    mark(r);
   }
   const out: ProcRow[] = [];
   const done: { [pid: number]: boolean } = {};
@@ -259,9 +287,9 @@ const COLS: { k: ProcSortKey; label: string; first: 1 | -1 }[] = [
   { k: 'cpu', label: 'CPU', first: -1 },
 ];
 
-function Row({ r, tree }: { r: ProcRow; tree: boolean }) {
+function Row({ r, tree, elevated }: { r: ProcRow; tree: boolean; elevated: boolean }) {
   const p = r.p;
-  const sig = procSignature(p);
+  const sig = procSignature(p, elevated);
   const f = p.file;
   const listen = listenText(p.listen);
   const conns = connText(p.conns);
@@ -363,6 +391,8 @@ export function ProcsCard({ scan, live, source, addProcs }: Pick<ViewProps, 'sca
     return {
       total: base.length,
       check: base.filter((r) => r.check.why.length > 0).length,
+      // Il caso più grave tra quelli da controllare: una firma alterata è critica, non solo da controllare.
+      sev: base.reduce<Severity>((s, r) => (r.check.why.length && RANK[r.check.sev] > RANK[s] ? r.check.sev : s), 'ok'),
       listen: base.filter((r) => listensOut(r.p)).length,
       polaris: base.filter((r) => r.p.polaris).length,
     };
@@ -379,7 +409,7 @@ export function ProcsCard({ scan, live, source, addProcs }: Pick<ViewProps, 'sca
           if (!addProcs(r, target)) return;
           toast(`Processi aggiornati · ${plural(r.items.length, 'processo', 'processi')}`, 'ok');
         },
-        (e) => setError(e instanceof Error ? e.message : String(e)),
+        (e) => setError(readError(e)),
       )
       .finally(() => setBusy(false));
   };
@@ -434,8 +464,8 @@ export function ProcsCard({ scan, live, source, addProcs }: Pick<ViewProps, 'sca
         <>
           <div className="stats procs-stats">
             <Stat k="Processi" v={String(counts.total)} />
-            <Stat k="Da controllare" v={String(counts.check)} sev={counts.check ? 'warn' : 'ok'} />
-            <Stat k="In ascolto sulla rete" v={String(counts.listen)} />
+            <Stat k="Da controllare" v={String(counts.check)} sev={counts.sev} />
+            <Stat k="In ascolto sulla rete" v={data.connsRead ? String(counts.listen) : 'non letto'} sev={data.connsRead ? undefined : 'unknown'} />
             <Stat k="Non leggibili" v={String(data.unreadable ?? 0)} sev={data.unreadable && !data.elevated ? 'unknown' : undefined} />
           </div>
 
@@ -449,12 +479,13 @@ export function ProcsCard({ scan, live, source, addProcs }: Pick<ViewProps, 'sca
               </span>
             </div>
           )}
-          {(data.partial || data.connsRead === false) && (
+          {/* connsRead falso non arriva nel JSON (omitempty): assente vuol dire non letto. */}
+          {(data.partial || !data.connsRead) && (
             <div className="notice" style={{ marginTop: 12 }}>
               <TriangleAlert size={18} aria-hidden />
               <span>
                 {data.partial ? 'La lettura non è finita in tempo: l\'elenco o le firme possono essere incompleti. ' : ''}
-                {data.connsRead === false ? 'Le tabelle delle connessioni non si sono potute leggere: porte e connessioni non sono indicate.' : ''}
+                {!data.connsRead ? 'Le tabelle delle connessioni non si sono potute leggere: porte e connessioni non sono indicate.' : ''}
               </span>
             </div>
           )}
@@ -464,7 +495,7 @@ export function ProcsCard({ scan, live, source, addProcs }: Pick<ViewProps, 'sca
               className="field"
               type="search"
               placeholder="Cerca un processo o un servizio"
-              aria-label="Cerca un processo"
+              aria-label="Cerca un processo o un servizio"
               value={view.query}
               onChange={(e) => setView({ ...view, query: e.target.value })}
             />
@@ -473,7 +504,7 @@ export function ProcsCard({ scan, live, source, addProcs }: Pick<ViewProps, 'sca
                 [
                   ['all', `Tutti (${counts.total})`],
                   ['check', `Solo da controllare (${counts.check})`],
-                  ['listen', `In ascolto sulla rete (${counts.listen})`],
+                  ['listen', `In ascolto sulla rete (${data.connsRead ? counts.listen : 'non letto'})`],
                 ] as [ProcFilter, string][]
               ).map(([id, label]) => (
                 <button key={id} className="chip" aria-pressed={view.filter === id} onClick={() => setView({ ...view, filter: id })}>
@@ -486,7 +517,7 @@ export function ProcsCard({ scan, live, source, addProcs }: Pick<ViewProps, 'sca
             </button>
           </div>
           <p className="sr-only" aria-live="polite">
-            {plural(rows.length, 'processo mostrato', 'processi mostrati')}
+            {all || rows.length <= PROCS_SHOWN ? plural(rows.length, 'processo mostrato', 'processi mostrati') : `${PROCS_SHOWN} di ${rows.length} processi mostrati`}
           </p>
 
           {rows.length ? (
@@ -497,7 +528,7 @@ export function ProcsCard({ scan, live, source, addProcs }: Pick<ViewProps, 'sca
                 </thead>
                 <tbody>
                   {shown.map((r) => (
-                    <Row key={r.p.pid} r={r} tree={view.tree} />
+                    <Row key={r.p.pid} r={r} tree={view.tree} elevated={!!data.elevated} />
                   ))}
                 </tbody>
               </table>
@@ -507,7 +538,9 @@ export function ProcsCard({ scan, live, source, addProcs }: Pick<ViewProps, 'sca
               {view.filter === 'check' && !view.query
                 ? 'Nessun processo da controllare tra quelli letti.'
                 : view.filter === 'listen' && !view.query
-                  ? 'Nessun processo in ascolto da altri dispositivi.'
+                  ? data.connsRead
+                    ? 'Nessun processo in ascolto da altri dispositivi.'
+                    : 'Le connessioni non sono state lette: non si sa quali processi sono in ascolto.'
                   : 'Nessun processo corrisponde alla ricerca.'}
             </p>
           )}

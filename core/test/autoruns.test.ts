@@ -18,6 +18,7 @@ import {
   triggerLabel,
 } from '../src/engine';
 import type { AutorunEntry, FileFacts, FolderKind, Scan, SignatureStatus } from '../src/engine';
+import { bootExecuteKind, isDefaultShell, isDefaultUserinit } from '../src/engine/autoruns';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { guideById } from '../src/guides';
@@ -114,11 +115,14 @@ describe('voci da guardare', () => {
   });
 
   it('dirottamenti noti: Shell, Userinit, IFEO, BootExecute, AppInit, LSA e stampa', () => {
+    // Shell e Userinit come li scrive l'agente: una voce per ogni programma dell'elenco.
     const s = withAutoruns([
       entry('winlogon', 'Shell', undefined, { kind: 'shell', command: 'explorer.exe' }),
-      entry('winlogon', 'Shell2', undefined, { kind: 'shell', command: 'explorer.exe, C:\\ProgramData\\x\\run.exe' }),
-      entry('winlogon', 'Userinit', undefined, { kind: 'userinit', command: 'C:\\Windows\\system32\\userinit.exe,' }),
-      entry('winlogon', 'Userinit2', undefined, { kind: 'userinit', command: 'C:\\Windows\\system32\\userinit.exe,C:\\Users\\Public\\x.exe' }),
+      entry('winlogon', 'ShellPath', undefined, { kind: 'shell', command: '"C:\\Windows\\explorer.exe"' }),
+      entry('winlogon', 'ShellSosia', file('%USERPROFILE%\\AppData\\Roaming\\explorer.exe', 'appData', 'unsigned'), { kind: 'shell', command: '%USERPROFILE%\\AppData\\Roaming\\explorer.exe' }),
+      entry('winlogon', 'ShellArgs', ms('C:\\Windows\\explorer.exe'), { kind: 'shell', command: 'explorer.exe /factory' }),
+      entry('winlogon', 'Userinit', undefined, { kind: 'userinit', command: 'C:\\Windows\\system32\\userinit.exe' }),
+      entry('winlogon', 'UserinitSosia', file('C:\\Users\\Public\\userinit.exe', 'other', 'unsigned'), { kind: 'userinit', command: 'C:\\Users\\Public\\userinit.exe' }),
       entry('hijacks', 'sethc.exe', file('C:\\Tools\\cmd.exe', 'other', 'unsigned'), { kind: 'ifeo' }),
       entry('hijacks', 'taskmgr.exe', { path: 'C:\\Tools\\procexp64.exe', folder: 'other', signature: { status: 'valid', signer: 'Microsoft Corporation', microsoft: true } }, { kind: 'ifeo' }),
       entry('hijacks', 'BootExecute', undefined, { kind: 'bootexecute', command: 'autocheck  autochk *' }),
@@ -130,9 +134,10 @@ describe('voci da guardare', () => {
     ]);
     s.pc!.hardware!.secureBoot = false;
     expect(autorunIssues(s).map((x) => [x.entry.name, x.severity])).toEqual([
-      ['Shell2', 'crit'],
-      ['Userinit2', 'crit'],
-      ['sethc.exe', 'warn'],
+      ['ShellSosia', 'crit'],
+      ['ShellArgs', 'crit'],
+      ['UserinitSosia', 'crit'],
+      ['sethc.exe', 'crit'],
       ['taskmgr.exe', 'info'],
       ['BootExecute2', 'warn'],
       ['AppInit', 'warn'],
@@ -205,9 +210,122 @@ describe('voci da guardare', () => {
       ['Updater', 'tasks', 'info'],
       ['AsSystem', 'tasks', 'crit'],
       ['Highest', 'tasks', 'warn'],
+      ['Windows', 'tasks', 'warn'],
       ['Inline', 'tasks', 'info'],
       ['Quiet', 'tasks', 'info'],
     ]);
+  });
+
+  it('attività: l\'autore dichiarato «Microsoft» non salva un file senza firma; critico solo come SYSTEM', () => {
+    const fake = file('%USERPROFILE%\\AppData\\Roaming\\Upd\\upd.exe', 'appData', 'unsigned');
+    const task = (name: string, extra: Partial<AutorunEntry>) => entry('tasks', name, fake, { hidden: true, triggers: ['logon'], ...extra });
+    expect(
+      issues([
+        // La stessa attività, con e senza l'autore dichiarato: decide la firma del file (MITRE T1036.004).
+        task('Finta', { runAs: 'system', highest: true, authorMicrosoft: true }),
+        task('Vera', { runAs: 'system', highest: true }),
+        // Privilegi elevati di un utente o account di servizio: avviso, non critico (scala di pc.autoruns.tasks).
+        task('Utente', { runAs: 'user', highest: true }),
+        task('Servizio', { runAs: 'service' }),
+        // Le attività di Windows con un comando interpretato non si elencano tra quelle da conoscere.
+        entry('tasks', 'WinInline', ms('C:\\Windows\\System32\\cmd.exe'), { command: 'cmd /c echo', authorMicrosoft: true }),
+        // ProgramData e le cartelle nella radice del disco sono scrivibili da un utente.
+        entry('tasks', 'Dati', file('C:\\ProgramData\\xyz\\svc.exe', 'programData', 'unsigned'), { runAs: 'system' }),
+        entry('tasks', 'Radice', file('C:\\Tools\\nc.exe', 'other', 'unsigned'), { runAs: 'user' }),
+      ]),
+    ).toEqual([
+      ['Finta', 'tasks', 'crit'],
+      ['Vera', 'tasks', 'crit'],
+      ['Utente', 'tasks', 'warn'],
+      ['Servizio', 'tasks', 'warn'],
+      ['Dati', 'tasks', 'crit'],
+      ['Radice', 'tasks', 'warn'],
+    ]);
+    const why = autorunIssues(withAutoruns([task('Finta', { runAs: 'system', authorMicrosoft: true })]))[0].why;
+    expect(why).toContain('con privilegi di sistema');
+    expect(why).toContain('autore dichiarato Microsoft');
+    expect(autorunIssues(withAutoruns([task('Utente', { runAs: 'user', highest: true })]))[0].why).toContain('con privilegi elevati');
+  });
+});
+
+describe('regole dell\'agente rifatte nel motore', () => {
+  it('BootExecute: le righe di Windows come isDefaultBootExecute dell\'agente (stessi esempi della prova Go)', () => {
+    // Predefinite: nessun giudizio.
+    for (const v of ['autocheck autochk *', 'autocheck autochk /q /v *', 'AUTOCHECK  autochk   *', 'autocheck autochk /k:C *']) expect(bootExecuteKind(v), v).toBe('default');
+    // Controllo del disco programmato da Windows su un volume (chkdsk al riavvio): al massimo informazione.
+    for (const v of ['autocheck autochk /p \\??\\C:', 'autocheck autochk /r \\??\\D:', 'autocheck autochk /m \\DosDevices\\E:', 'autocheck autochk \\??\\Volume{1b2c3d4e-0000-0000-0000-100000000000}']) expect(bootExecuteKind(v), v).toBe('scheduled');
+    // Tutto il resto non è di Windows.
+    for (const v of ['autocheck autochk * evil.exe', 'autocheck evil', 'autochk *', 'autocheck autochk', 'autocheck autochk /q', '']) expect(bootExecuteKind(v), v).toBe('other');
+    const list = (cmds: string[]) => issues(cmds.map((command, i) => entry('hijacks', `BootExecute${i}`, ms('C:\\Windows\\System32\\autochk.exe'), { kind: 'bootexecute', command })));
+    expect(list(['autocheck autochk /q /v *', 'autocheck autochk /k:C *'])).toEqual([]);
+    expect(list(['autocheck autochk /p \\??\\C:', 'autocheck autochk /r \\??\\D:'])).toEqual([
+      ['BootExecute0', 'hijack', 'info'],
+      ['BootExecute1', 'hijack', 'info'],
+    ]);
+    expect(autorunIssues(withAutoruns([entry('hijacks', 'BootExecute', undefined, { kind: 'bootexecute', command: 'autocheck autochk /r \\??\\D:' })]))[0].why).toContain('controllo del disco programmato');
+    expect(list(['autocheck autochk * evil.exe', 'autocheck evil', 'autochk *']).map((x) => x[2])).toEqual(['warn', 'warn', 'warn']);
+  });
+
+  it('Shell e Userinit: solo i programmi di Windows nella loro cartella, senza argomenti (come l\'agente)', () => {
+    for (const v of ['explorer.exe', 'explorer', 'Explorer.EXE', 'C:\\Windows\\explorer.exe', '%SystemRoot%\\explorer.exe', '%windir%\\explorer.exe', '"C:\\Windows\\explorer.exe"', ' explorer.exe ']) expect(isDefaultShell(v), v).toBe(true);
+    for (const v of ['explorer.exe /factory', '%USERPROFILE%\\AppData\\Roaming\\explorer.exe', 'C:\\Windows\\System32\\explorer.exe', 'C:\\Windows\\explorer', '"C:\\Windows\\explorer.exe" /x', 'explorer.exe, C:\\ProgramData\\x\\run.exe', 'cmd.exe', '']) expect(isDefaultShell(v), v).toBe(false);
+    for (const v of ['userinit.exe', 'userinit', 'C:\\Windows\\system32\\userinit.exe', '%SystemRoot%\\System32\\userinit.exe', 'C:\\Windows\\system32\\userinit.exe,']) expect(isDefaultUserinit(v), v).toBe(true);
+    for (const v of ['C:\\Users\\Public\\userinit.exe', 'userinit.exe /x', 'C:\\Windows\\userinit.exe', 'C:\\Windows\\system32\\userinit.exe,C:\\Users\\Public\\x.exe', '']) expect(isDefaultUserinit(v), v).toBe(false);
+  });
+
+  it('IFEO: strumenti di accessibilità sostituiti gravi, debugger mancante che blocca il programma, interpreti non rassicurano', () => {
+    const cmd = ms('C:\\Windows\\System32\\cmd.exe');
+    const gone = file('C:\\nonexistent.exe', 'other', undefined, undefined, { missing: true });
+    expect(
+      issues([
+        entry('hijacks', 'sethc.exe', cmd, { kind: 'ifeo', command: 'C:\\Windows\\System32\\cmd.exe' }),
+        entry('hijacks', 'Utilman.exe', cmd, { kind: 'ifeo', command: 'cmd.exe' }),
+        entry('hijacks', 'MsMpEng.exe', gone, { kind: 'ifeo', command: 'C:\\nonexistent.exe' }),
+        entry('hijacks', 'notepad.exe', cmd, { kind: 'ifeo', command: 'cmd.exe' }),
+      ]),
+    ).toEqual([
+      ['sethc.exe', 'hijack', 'crit'],
+      ['Utilman.exe', 'hijack', 'crit'],
+      ['MsMpEng.exe', 'hijack', 'warn'],
+      ['notepad.exe', 'hijack', 'warn'],
+    ]);
+    const s = withAutoruns([entry('hijacks', 'MsMpEng.exe', gone, { kind: 'ifeo' })]);
+    expect(autorunIssues(s)[0].why).toBe('MsMpEng.exe non può partire: il «debugger» impostato non esiste');
+    expect(find(s, 'pc.autoruns.missing')).toBeUndefined();
+    const crit = find(withAutoruns([entry('hijacks', 'sethc.exe', cmd, { kind: 'ifeo' })]), 'pc.autoruns.hijack');
+    expect(crit?.severity).toBe('crit');
+    expect(crit?.verdict).toContain('strumenti di accessibilità');
+  });
+
+  it('ProgramData e le altre cartelle fuori da Programmi e Windows sono scrivibili da un utente', () => {
+    expect(
+      issues([
+        entry('logon', 'Dati', file('C:\\ProgramData\\xyz\\svc.exe', 'programData', 'unsigned')),
+        entry('logon', 'Radice', file('C:\\Tools\\nc.exe', 'other', 'unsigned')),
+        entry('logon', 'Programmi', file('C:\\Program Files\\Acme\\a.exe', 'programFiles', 'unsigned')),
+        entry('services', 'SvcDati', file('C:\\ProgramData\\xyz\\svc.exe', 'programData', 'unsigned'), { account: 'system', start: 'auto' }),
+        entry('services', 'SvcAccount', file('C:\\ProgramData\\xyz\\svc2.exe', 'programData', 'unsigned'), { start: 'auto' }),
+        // Defender gira da ProgramData ed è di Microsoft: nessun giudizio.
+        entry('services', 'WinDefend', { path: 'C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18\\MsMpEng.exe', folder: 'programData', signature: { status: 'valid', signer: 'Microsoft Corporation', microsoft: true } }, { account: 'system', start: 'auto' }),
+      ]),
+    ).toEqual([
+      ['Dati', 'unsigned', 'warn'],
+      ['Radice', 'unsigned', 'warn'],
+      ['SvcDati', 'unsigned', 'crit'],
+      ['SvcAccount', 'unsigned', 'warn'],
+    ]);
+    // Account non letto: non si presume LocalSystem.
+    const why = autorunIssues(withAutoruns([entry('services', 'SvcAccount', file('C:\\ProgramData\\xyz\\svc2.exe', 'programData', 'unsigned'), { start: 'auto' })]))[0].why;
+    expect(why).toContain('account non letto');
+    expect(why).not.toContain('LocalSystem');
+  });
+
+  it('estensioni imposte da criteri fuori da un dominio: normali con Intune o Entra ID, altrimenti da riconoscere', () => {
+    const f = find(withAutoruns([entry('browser', 'Forced', undefined, { browser: 'chrome', source: 'policy' })]), 'pc.autoruns.extensions');
+    expect(f?.severity).toBe('warn');
+    expect(f?.verdict).toContain('dominio Active Directory');
+    expect(f?.verdict).toContain('Intune');
+    expect(f?.verdict).not.toContain('non gestito da un\'organizzazione');
   });
 });
 
@@ -255,5 +373,9 @@ describe('giudizi e categorie da verificare', () => {
     for (const s of ACTIONS['review-wmi-subscription'].steps) if (typeof s !== 'string' && s.cmd) expect(s.cmd).not.toMatch(/Remove-|Set-|Invoke-/);
     const table = guideById('avvio-processi')!.blocks.find((b) => b.t === 'table');
     expect(JSON.stringify(table)).toContain('sì, in Avvio automatico');
+    // Nella guida le sigle e i nomi propri restano come sono (categoryLower, non toLowerCase).
+    const guide = JSON.stringify(guideById('avvio-automatico')!.blocks);
+    expect(guide).toContain('sottoscrizioni WMI; estensioni dei browser; Winlogon; dirottamenti noti (IFEO, BootExecute, AppInit); pacchetti di sicurezza (LSA)');
+    expect(guide).not.toMatch(/sottoscrizioni wmi|\(ifeo, bootexecute/);
   });
 });

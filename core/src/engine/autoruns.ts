@@ -5,10 +5,11 @@ import type { AutorunCategory, AutorunEntry, FileFacts, Finding, Scan, Severity 
 // Avvio automatico esteso, come Autoruns: ciò che parte da solo oltre alle
 // chiavi Run (pc.startup resta il conteggio dei programmi all'accesso).
 // L'agente elenca le voci non di Microsoft, quelle con il file mancante e
-// quelle in cartelle dell'utente; le voci di Windows firmate da Microsoft si
-// contano soltanto (come «Hide Windows Entries» di Autoruns). Polaris non
-// disattiva e non cancella nulla. I giudizi descrivono un fatto e invitano a
-// verificare: mai «malware». Ricerca del 17/11/2026, fonti:
+// quelle in cartelle che un utente può scrivere; le voci di Windows firmate
+// da Microsoft si contano soltanto (come «Hide Windows Entries» di
+// Autoruns). Polaris non disattiva e non cancella nulla. I giudizi
+// descrivono un fatto e invitano a verificare: mai «malware». Ricerca del
+// 17/11/2026, fonti:
 // - Autoruns su Microsoft Learn (categorie); Run e RunOnce, AppInit e
 //   Secure Boot, ordine di ricerca di CreateProcess (Microsoft Learn);
 // - MITRE ATT&CK: T1547.001 (Run, BootExecute), T1547.004 (Winlogon Shell e
@@ -155,7 +156,7 @@ export const isInterpreter = (f?: FileFacts) => !!f && INTERPRETERS.indexOf(file
 /** Comando interpretato senza un file da verificare (powershell -Command, cmd /c...). */
 export const interpretedInline = (e: AutorunEntry) => !e.target && isInterpreter(e.file);
 
-/** Voce di Microsoft: autore dichiarato e firma Microsoft del file che conta. */
+/** Voce di Microsoft: firma Microsoft del file che conta (mai l'autore dichiarato), senza comandi interpretati. */
 const microsoftEntry = (e: AutorunEntry) => {
   const f = entryFile(e);
   return !interpretedInline(e) && !!f && isMicrosoftSigned(f.signature);
@@ -176,34 +177,111 @@ const ACTIVE_START = (e: AutorunEntry) => e.enabled && (e.start === 'auto' || e.
 
 const sigWhy = (f: FileFacts) => `${lc1(signatureLabel(f.signature).text)}, ${folderLabel(f.folder)}`;
 
-/** Nome del file del comando (per Shell, Userinit, BootExecute). */
-const cmdFiles = (cmd: string) =>
+/**
+ * Il programma e gli argomenti di un comando di Winlogon, come Split
+ * dell'agente: fra virgolette il programma è il testo fra le virgolette;
+ * senza virgolette un comando con spazi ha degli argomenti (o un percorso
+ * con spazi, che non è mai quello di Windows).
+ */
+function splitCommand(cmd: string): { file: string; args: string } {
+  const c = cmd.trim();
+  if (c.charAt(0) !== '"') return { file: c, args: '' };
+  const end = c.indexOf('"', 1);
+  return end < 0 ? { file: c.slice(1).trim(), args: '' } : { file: c.slice(1, end), args: c.slice(end + 1).trim() };
+}
+
+/** Le parti di un valore separate da virgole (l'agente fa già una voce per programma: qui per i dati più vecchi). */
+const commaParts = (cmd: string) =>
   cmd
     .split(',')
-    .map((x) => fileName(x.trim().replace(/^"|"$/g, '').split(' ')[0]).toLowerCase())
+    .map((x) => x.trim())
     .filter(Boolean);
+
+/** Una parte del comando è esattamente il programma indicato, senza argomenti. */
+const exactly = (part: string, re: RegExp) => {
+  const c = splitCommand(part);
+  return !c.args && re.test(c.file);
+};
+
+/** Il programma di Windows nella cartella di Windows: C:\Windows, %SystemRoot% o %windir%. */
+const SHELL_RE = /^(?:explorer(?:\.exe)?|(?:[a-z]:\\windows|%systemroot%|%windir%)\\explorer\.exe)$/i;
+const USERINIT_RE = /^(?:userinit(?:\.exe)?|(?:[a-z]:\\windows|%systemroot%|%windir%)\\system32\\userinit\.exe)$/i;
+
+/**
+ * Shell di Winlogon come quella di Windows, con la regola dell'agente
+ * (defaultShell): «explorer.exe» o «explorer» senza cartella, oppure
+ * explorer.exe nella cartella di Windows, sempre senza argomenti.
+ */
+export function isDefaultShell(cmd: string): boolean {
+  const parts = commaParts(cmd);
+  return parts.length > 0 && parts.every((p) => exactly(p, SHELL_RE));
+}
+
+/**
+ * Userinit come quello di Windows, con la regola dell'agente
+ * (defaultUserinit): «userinit.exe» o «userinit» senza cartella, oppure
+ * userinit.exe in System32 della cartella di Windows, senza argomenti.
+ */
+export function isDefaultUserinit(cmd: string): boolean {
+  const parts = commaParts(cmd);
+  return parts.length > 0 && parts.every((p) => exactly(p, USERINIT_RE));
+}
+
+/** Opzione di autochk: «/q», «/k:C». */
+const BOOT_OPTION = /^\/[a-z0-9]+(?::\S+)?$/i;
+/** Volume: \??\C:, \DosDevices\C:, \??\Volume{guid}. */
+const BOOT_VOLUME = /^(?:(?:\\\?\?\\|\\dosdevices\\)[a-z]:|\\\?\?\\volume\{[0-9a-f-]+\})$/i;
+
+/**
+ * Riga di BootExecute di Windows, con la stessa regola dell'agente
+ * (isDefaultBootExecute): divisa in parole senza badare a spazi e maiuscole,
+ * inizia con «autocheck autochk» e il resto sono solo opzioni («/q»,
+ * «/k:C»), l'asterisco o volumi (\??\C:, \DosDevices\C:, \??\Volume{guid}),
+ * con almeno un asterisco o un volume. «default»: la riga predefinita
+ * (con l'asterisco); «scheduled»: un controllo del disco programmato da
+ * Windows su un volume (chkdsk al riavvio); «other»: qualsiasi altra riga.
+ */
+export function bootExecuteKind(cmd: string): 'default' | 'scheduled' | 'other' {
+  const w = cmd.trim().split(/\s+/);
+  if (w.length < 3 || w[0].toLowerCase() !== 'autocheck' || w[1].toLowerCase() !== 'autochk') return 'other';
+  let star = false;
+  let volume = false;
+  for (const x of w.slice(2)) {
+    if (x === '*') star = true;
+    else if (BOOT_VOLUME.test(x)) volume = true;
+    else if (!BOOT_OPTION.test(x)) return 'other';
+  }
+  return volume ? 'scheduled' : star ? 'default' : 'other';
+}
+
+/** Strumenti di accessibilità che si aprono dalla schermata di accesso, prima di entrare (come SYSTEM). */
+const ACCESSIBILITY = ['sethc.exe', 'utilman.exe', 'osk.exe', 'magnify.exe', 'narrator.exe', 'displayswitch.exe', 'atbroker.exe'];
 
 function hijackIssue(e: AutorunEntry, secureBoot?: boolean): AutorunIssue | undefined {
   const cmd = (e.command || (e.file && e.file.path) || '').trim();
   const f = entryFile(e);
   const issue = (severity: Severity, why: string): AutorunIssue => ({ entry: e, kind: 'hijack', severity, why });
   switch (e.kind) {
-    case 'shell': {
-      const files = cmdFiles(cmd);
-      return files.length === 1 && files[0] === 'explorer.exe' ? undefined : issue('crit', `la shell di Windows non è solo explorer.exe (${cmd || 'vuota'})`);
-    }
-    case 'userinit': {
-      const files = cmdFiles(cmd);
-      return files.length >= 1 && files.every((x) => x === 'userinit.exe') ? undefined : issue('crit', `Userinit avvia anche altro oltre a userinit.exe (${cmd || 'vuoto'})`);
-    }
+    case 'shell':
+      return isDefaultShell(cmd) ? undefined : issue('crit', `la shell di Windows non è explorer.exe della cartella di Windows (${cmd || 'vuota'})`);
+    case 'userinit':
+      return isDefaultUserinit(cmd) ? undefined : issue('crit', `Userinit non è userinit.exe della cartella di sistema (${cmd || 'vuoto'})`);
     case 'ifeo':
-      return f && isMicrosoftSigned(f.signature)
+      // Il «debugger» di uno strumento di accessibilità parte dalla schermata di accesso come SYSTEM, senza password (MITRE T1546.008).
+      if (ACCESSIBILITY.indexOf(e.name.toLowerCase()) >= 0) return issue('crit', `uno strumento di accessibilità della schermata di accesso (${e.name}) è sostituito da un altro programma (debugger IFEO): dalla schermata di accesso partirebbe quello, con i privilegi di sistema`);
+      // Un debugger che non esiste impedisce al programma indicato di partire (si usa per bloccare antivirus e strumenti).
+      if (f && f.missing) return issue('warn', `${e.name} non può partire: il «debugger» impostato non esiste`);
+      return f && isMicrosoftSigned(f.signature) && !isInterpreter(f)
         ? issue('info', 'un programma firmato da Microsoft è impostato come «debugger» di un altro (per esempio Process Explorer al posto di Gestione attività)')
         : issue('warn', 'un altro programma parte al posto di quello indicato (debugger IFEO)');
     case 'silentexit':
       return issue('warn', 'un programma viene avviato quando un altro si chiude (SilentProcessExit)');
-    case 'bootexecute':
-      return /^autocheck\s+autochk\s+\*$/i.test(cmd.replace(/\s+/g, ' ')) ? undefined : issue('warn', `BootExecute diverso da «autocheck autochk *» (${cmd})`);
+    case 'bootexecute': {
+      const k = bootExecuteKind(cmd);
+      if (k === 'default') return undefined;
+      if (k === 'scheduled') return issue('info', `controllo del disco programmato da Windows al prossimo riavvio, come chkdsk (${cmd})`);
+      return issue('warn', `BootExecute diverso da quello di Windows, «autocheck autochk *» (${cmd})`);
+    }
     case 'appinit':
       if (!e.enabled || !cmd) return undefined;
       return secureBoot ? issue('info', 'AppInit_DLLs impostato ma inattivo, perché Secure Boot è attivo') : issue('warn', 'AppInit_DLLs attivo: una DLL viene caricata in ogni programma con interfaccia grafica');
@@ -230,8 +308,8 @@ export function autorunIssues(scan: Scan): AutorunIssue[] {
   for (const e of data.entries) {
     const f = entryFile(e);
     const s = f && f.signature;
-    // File mancante (tutte le categorie tranne le estensioni).
-    if (e.category !== 'browser' && f && f.missing) {
+    // File mancante (tutte le categorie tranne le estensioni; per un debugger IFEO mancante decide hijackIssue: blocca il programma).
+    if (e.category !== 'browser' && e.kind !== 'ifeo' && f && f.missing) {
       const svc = (e.category === 'services' || e.category === 'drivers') && ACTIVE_START(e);
       push(e, 'missing', svc ? 'warn' : 'info', `file mancante${e.scope === 'machine32' ? ' (voce a 32 bit: da verificare anche in Program Files (x86))' : ''}`);
       continue;
@@ -256,7 +334,7 @@ export function autorunIssues(scan: Scan): AutorunIssue[] {
         e.enabled &&
         ((e.source === 'policy' && !managed) || e.source === 'unpacked' || e.source === 'sideload' || (!!e.allSites && (e.source === 'external' || e.source === 'other')));
       const sites = e.allSites ? ', può leggere e modificare tutti i siti' : '';
-      push(e, 'extensions', risky ? 'warn' : 'info', `${browserLabel(e.browser)}: ${sourceLabel(e.source)}${e.source === 'policy' && !managed ? ' su un PC non in un dominio' : ''}${sites}${e.enabled ? '' : ', disattivata'}`);
+      push(e, 'extensions', risky ? 'warn' : 'info', `${browserLabel(e.browser)}: ${sourceLabel(e.source)}${e.source === 'policy' && !managed ? ' su un PC che non è in un dominio Active Directory' : ''}${sites}${e.enabled ? '' : ', disattivata'}`);
       continue;
     }
     if (e.category === 'services' && e.unquoted) {
@@ -264,24 +342,32 @@ export function autorunIssues(scan: Scan): AutorunIssue[] {
     }
     if (!f || !s) continue;
     if (e.category === 'tasks') {
-      const nonMs = !e.authorMicrosoft && !microsoftEntry(e);
+      // Decide la firma del file: l'autore dichiarato («Microsoft») lo scrive
+      // chi crea l'attività, ed è una tecnica nota di mascheramento (MITRE
+      // T1036.004). Serve solo a non elencare tra le voci da conoscere le
+      // attività di Windows che eseguono comandi interpretati o sono nascoste.
       if (SIG_CRIT.indexOf(s.status) >= 0) push(e, 'tasks', 'crit', sigWhy(f));
-      else if (!e.enabled || !nonMs) continue;
-      else if (SIG_WARN.indexOf(s.status) >= 0) push(e, 'tasks', 'warn', sigWhy(f));
+      else if (!e.enabled || microsoftEntry(e)) continue;
+      else if (SIG_WARN.indexOf(s.status) >= 0) push(e, 'tasks', 'warn', `${sigWhy(f)}${e.authorMicrosoft ? ', autore dichiarato Microsoft' : ''}`);
       else if (userWritable(f.folder)) {
-        const priv = e.runAs === 'system' || e.runAs === 'service' || !!e.highest;
+        const sys = e.runAs === 'system';
+        const priv = sys || e.runAs === 'service' || !!e.highest;
         const valid = s.status === 'valid';
-        if (!valid && priv) push(e, 'tasks', 'crit', `${sigWhy(f)}, con privilegi ${e.runAs === 'system' ? 'di sistema' : 'elevati'}`);
-        else if (!valid || priv || e.hidden) push(e, 'tasks', 'warn', `${sigWhy(f)}${priv ? ', con privilegi elevati' : ''}${e.hidden ? ', attività nascosta' : ''}`);
+        const author = e.authorMicrosoft ? ', autore dichiarato Microsoft' : '';
+        if (!valid && sys) push(e, 'tasks', 'crit', `${sigWhy(f)}, con privilegi di sistema${author}`);
+        else if (!valid || priv || e.hidden) push(e, 'tasks', 'warn', `${sigWhy(f)}${sys ? ', con privilegi di sistema' : priv ? ', con privilegi elevati' : ''}${e.hidden ? ', attività nascosta' : ''}${author}`);
         else push(e, 'tasks', 'info', `${sigWhy(f)}: di solito un aggiornatore installato per l'utente`);
-      } else if (interpretedInline(e)) push(e, 'tasks', 'info', `comando eseguito da ${fileName(f.path)}: la firma di Microsoft dell'interprete non dice nulla su ciò che esegue`);
+      } else if (e.authorMicrosoft) continue;
+      else if (interpretedInline(e)) push(e, 'tasks', 'info', `comando eseguito da ${fileName(f.path)}: la firma di Microsoft dell'interprete non dice nulla su ciò che esegue`);
       else if (e.hidden && (e.triggers || []).some((t) => t === 'logon' || t === 'boot')) push(e, 'tasks', 'info', 'attività di un altro produttore nascosta, che parte all\'accesso o all\'avvio');
       continue;
     }
     if (e.category === 'logon' || e.category === 'services' || e.category === 'drivers') {
+      // Account di un servizio non letto: non si sa se gira come SYSTEM, e non lo si presume.
+      const account = PRIVILEGED_SERVICE(e) ? ', con privilegi di sistema' : e.category === 'services' && !e.account ? ', account non letto' : '';
       if (SIG_CRIT.indexOf(s.status) >= 0) push(e, 'unsigned', 'crit', sigWhy(f));
       else if (!e.enabled || microsoftEntry(e)) continue;
-      else if (userWritable(f.folder) && s.status !== 'valid') push(e, 'unsigned', PRIVILEGED_SERVICE(e) ? 'crit' : 'warn', `${sigWhy(f)}${PRIVILEGED_SERVICE(e) ? ', con privilegi di sistema' : ''}`);
+      else if (userWritable(f.folder) && s.status !== 'valid') push(e, 'unsigned', PRIVILEGED_SERVICE(e) ? 'crit' : 'warn', `${sigWhy(f)}${account}`);
       else if (userWritable(f.folder) && PRIVILEGED_SERVICE(e)) push(e, 'unsigned', 'warn', `${sigWhy(f)}, con privilegi di sistema`);
       else if (SIG_WARN.indexOf(s.status) >= 0) push(e, 'unsigned', 'warn', sigWhy(f));
       else if (interpretedInline(e)) push(e, 'unsigned', 'info', `comando eseguito da ${fileName(f.path)}: la firma di Microsoft dell'interprete non dice nulla su ciò che esegue`);
@@ -363,11 +449,11 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
         (uns.length
           ? `${listText(uns)}. ` +
             (sev === 'crit'
-              ? 'Un file alterato dopo la firma, o un programma senza firma valida in una cartella che l\'utente può scrivere ma avviato con i privilegi di sistema, è il caso più delicato: chiunque scriva in quella cartella può far girare codice come SYSTEM. Va controllato subito.'
+              ? 'Un file alterato dopo la firma, o un programma senza firma valida in una cartella che un utente può scrivere ma avviato con i privilegi di sistema, è il caso più delicato: chiunque scriva in quella cartella può far girare codice come SYSTEM. Va controllato subito.'
               : sev === 'warn'
-                ? 'Un programma senza firma in una cartella che l\'utente può scrivere, avviato da solo, non è per forza pericoloso ma va riconosciuto: verifica da dove viene.'
+                ? 'Un programma senza firma in una cartella che un utente può scrivere (AppData, Download, ProgramData, cartelle create nella radice del disco), avviato da solo, non è per forza pericoloso ma va riconosciuto: verifica da dove viene.'
                 : 'Sono comandi eseguiti da un programma di Windows (PowerShell, cmd, script): la firma di Microsoft dell\'interprete non dice nulla su ciò che eseguono.')
-          : 'Nelle voci lette (accesso, servizi e driver) nessun programma avviato da solo è senza firma in una cartella dell\'utente o con una firma alterata.') +
+          : 'Nelle voci lette (accesso, servizi e driver) nessun programma avviato da solo è senza firma in una cartella che un utente può scrivere o con una firma alterata.') +
         (unsDenied ? ` ${unsDenied}` : '') +
         partial,
       actions: sev === 'crit' ? ['defender-scan-file', 'check-file-origin', 'review-startup-entry'] : sev === 'warn' ? ['check-file-origin', 'defender-scan-file', 'review-startup-entry'] : [],
@@ -390,10 +476,10 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
       verdict: hij.length
         ? `${listText(hij)}. ` +
           (sev === 'crit'
-            ? 'Shell e Userinit decidono che cosa parte a ogni accesso: valori diversi da quelli di Windows sono una tecnica nota per far partire un programma prima di tutto il resto. Va controllato subito, da un tecnico.'
+            ? 'Shell e Userinit di Winlogon, gli strumenti di accessibilità della schermata di accesso e le DLL dei componenti di sistema decidono che cosa parte all\'accesso o dentro Windows: un valore diverso da quello di Windows, o un file alterato, è una tecnica nota per far partire un programma prima di tutto il resto o con i privilegi di sistema. Va controllato subito, da un tecnico.'
             : sev === 'warn'
               ? 'Sono punti di Windows usati anche da programmi legittimi (antivirus, strumenti di disco o di diagnostica), ma raramente: ogni voce va riconosciuta, da un tecnico.'
-              : 'Sono voci di altri produttori in punti delicati di Windows: normali per alcuni antivirus, VPN e stampanti, da controllare se non le riconosci.')
+              : 'Sono voci da conoscere in punti delicati di Windows: un controllo del disco programmato da Windows, un «debugger» firmato da Microsoft, DLL di altri produttori normali per alcuni antivirus, VPN e stampanti. Da controllare se non le riconosci.')
         : `Shell e Userinit di Winlogon sono quelli di Windows; nessun debugger IFEO, BootExecute diverso da quello di Windows o AppInit attivo, e nessuna DLL senza firma nei pacchetti di sicurezza, nella stampa o nei provider di rete.${hijDenied ? ` ${hijDenied}` : ''}`,
       actions: sev === 'crit' || sev === 'warn' ? ['review-startup-entry', 'defender-scan-file'] : hij.length ? ['review-startup-entry'] : [],
     });
@@ -436,7 +522,7 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
       numeric: risky.length,
       severity: risky.length ? 'warn' : 'info',
       verdict: risky.length
-        ? `${listText(risky)}. Un'estensione imposta da criteri su un PC non gestito da un'organizzazione non si può togliere dal browser ed è un modo noto per installare pubblicità o spiare la navigazione; una caricata in modalità sviluppatore o dalla riga di comando non è passata dallo store. Se non la riconosci, toglila.`
+        ? `${listText(risky)}. Un'estensione imposta da criteri non si può togliere dal browser: su un PC che non è in un dominio Active Directory è normale se il PC è gestito dall'organizzazione con Intune o Microsoft Entra ID, altrimenti è un modo noto per installare pubblicità o spiare la navigazione. Una caricata in modalità sviluppatore o dalla riga di comando non è passata dallo store. Se non la riconosci, toglila.`
         : `${num(active, 'estensione attiva', 'estensioni attive')} nei browser di questo utente, nessuna con segnali da controllare. Ogni estensione vede le pagine su cui ha permessi: tieni solo quelle che usi.`,
       actions: risky.length ? ['remove-browser-extension'] : [],
     });
@@ -479,7 +565,7 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
       verdict: tasks.length
         ? `${listText(byWorst(tasks))}. ` +
           (sev === 'crit' || sev === 'warn'
-            ? 'Un\'attività di un altro produttore che esegue un programma da una cartella che l\'utente può scrivere, senza firma valida, nascosta o con privilegi elevati, è il modo più comune per far ripartire un programma indesiderato: verifica da dove viene.'
+            ? 'Un\'attività che esegue un programma da una cartella che un utente può scrivere, senza firma valida, nascosta o con privilegi elevati, è il modo più comune per far ripartire un programma indesiderato, anche quando l\'autore dichiarato è Microsoft: verifica da dove viene.'
             : 'Sono attività di altri produttori, di solito aggiornatori installati per l\'utente: da conoscere, non da togliere per forza.') +
           (denied.indexOf('tasks') >= 0 ? ' Senza amministratore si vedono solo le attività leggibili da questo utente: le altre sono da verificare da amministratore.' : '')
         : 'Senza amministratore si vedono solo le attività pianificate leggibili da questo utente, e tra queste non c\'è nulla da segnalare: le altre sono da verificare da amministratore.',

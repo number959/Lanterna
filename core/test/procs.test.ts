@@ -88,12 +88,56 @@ describe('giudizi sui processi', () => {
     expect(f?.verdict).not.toMatch(/virus|malware/i);
   });
 
-  it('senza firma: avviso solo da una cartella dell\'utente', () => {
+  it('senza firma: avviso solo da una cartella che un utente può scrivere', () => {
     const s = withProcs([proc(10, 'tool.exe', file('C:\\Program Files\\Tool\\tool.exe', 'programFiles', 'unsigned')), proc(12, 'chrome.exe', chrome)]);
     expect(find(s, 'pc.procs.signature')).toMatchObject({ severity: 'ok', value: '1 su 2 con firma verificata' });
-    expect(find(s, 'pc.procs.signature')?.verdict).toContain('salvo 1 programma senza firma installato in cartelle protette');
+    expect(find(s, 'pc.procs.signature')?.verdict).toBe(
+      '1 programma su 2 ha una firma digitale valida; 1 programma senza firma è installato in Programmi o nella cartella di Windows, dove scrive solo l\'amministratore.',
+    );
     const u = withProcs([proc(10, 'tool.exe', file('%USERPROFILE%\\Downloads\\tool.exe', 'downloads', 'unsigned'))]);
     expect(find(u, 'pc.procs.signature')?.severity).toBe('warn');
+  });
+
+  it('ProgramData e le cartelle fuori da Programmi e Windows non sono «protette»', () => {
+    // C:\ProgramData: BUILTIN\Users crea file e cartelle; C:\Tools: Authenticated Users può modificare.
+    expect(fileSeverity(file('C:\\ProgramData\\xyz\\evil.exe', 'programData', 'unsigned'))).toBe('warn');
+    expect(fileSeverity(file('C:\\Tools\\nc.exe', 'other', 'unsigned'))).toBe('warn');
+    expect(fileSeverity(file('C:\\Windows\\x.exe', 'windows', 'unsigned'))).toBe('info');
+    const s = withProcs([
+      proc(10, 'evil.exe', file('C:\\ProgramData\\xyz\\evil.exe', 'programData', 'unsigned')),
+      proc(11, 'httpd.exe', file('C:\\xampp\\apache\\bin\\httpd.exe', 'other', 'unsigned')),
+      proc(12, 'chrome.exe', chrome),
+    ]);
+    const f = find(s, 'pc.procs.signature');
+    expect(f).toMatchObject({ severity: 'warn', value: '2 programmi da controllare su 3' });
+    expect(f?.verdict).not.toContain('cartelle protette');
+    expect(f?.verdict).toContain('ProgramData');
+  });
+
+  it('il verdetto senza problemi segue i conteggi: firme «policy», nessuna firma verificata', () => {
+    // Firma non attendibile per le impostazioni del PC: informazione, mai «firma valida».
+    const pol = withProcs([proc(10, 'acme.exe', file('C:\\Program Files\\Acme\\acme.exe', 'programFiles', 'policy')), proc(12, 'chrome.exe', chrome)]);
+    const f = find(pol, 'pc.procs.signature');
+    expect(f).toMatchObject({ severity: 'info', value: '1 su 2 con firma verificata', actions: ['check-file-origin'] });
+    expect(f?.verdict).toContain('1 programma non è attendibile per le impostazioni di questo PC');
+    expect(f?.verdict).not.toContain('I programmi in esecuzione hanno una firma digitale valida');
+    // Nessuna firma verificata e nessun file da controllare: non si sa.
+    const none = withProcs([proc(10, 'a.exe', file('C:\\Program Files\\A\\a.exe', 'programFiles', 'unreadable')), proc(11, 'b.exe', file('C:\\Program Files\\B\\b.exe', 'programFiles', 'unknown'))]);
+    expect(find(none, 'pc.procs.signature')).toMatchObject({ severity: 'unknown', value: '0 su 2 con firma verificata' });
+    expect(find(none, 'pc.procs.signature')?.verdict).not.toMatch(/firma digitale valida\./);
+    // Tutti con firma valida.
+    expect(find(withProcs([proc(12, 'chrome.exe', chrome)]), 'pc.procs.signature')?.verdict).toBe('I programmi in esecuzione hanno una firma digitale valida.');
+  });
+
+  it('lo stesso percorso ripulito con esiti diversi resta in due gruppi (più utenti sullo stesso PC)', () => {
+    // C:\Users\a\... e C:\Users\b\... diventano lo stesso percorso ripulito.
+    const path = 'C:\\Users\\‹utente›\\AppData\\Local\\Programs\\App\\app.exe';
+    const s = withProcs([proc(10, 'app.exe', file(path, 'appData', 'valid', 'Acme')), proc(11, 'app.exe', file(path, 'appData', 'tampered', 'Acme')), proc(12, 'app.exe', file(path, 'appData', 'valid', 'Acme'))]);
+    expect(procGroups(s.pc!.procs!.items).map((g) => [g.file.signature!.status, g.count])).toEqual([
+      ['valid', 2],
+      ['tampered', 1],
+    ]);
+    expect(find(s, 'pc.procs.signature')).toMatchObject({ severity: 'crit', value: '1 programma da controllare su 2' });
   });
 
   it('STARNET Polaris e la sua finestra sono esclusi', () => {
@@ -121,6 +165,46 @@ describe('giudizi sui processi', () => {
     const crit = find(withProcs(items, {}, true), 'pc.procs.listen');
     expect(crit).toMatchObject({ severity: 'crit', value: '1 programma da controllare, firewall spento' });
     expect(crit?.actions[0]).toBe('enable-firewall');
+  });
+
+  it('in ascolto senza verifica (processo non apribile, firma non verificata): mai «firmati», informazione', () => {
+    const items = [
+      proc(4, 'System', undefined, { listen: [{ proto: 'tcp', port: 445, scope: 'all' }] }),
+      // Servizio di un altro account: senza amministratore non si apre (l'agente non mette il file).
+      proc(30, 'vncserver.exe', undefined, { access: 'none', owner: 'unknown', listen: [{ proto: 'tcp', port: 5900, scope: 'all' }] }),
+      // Verifica della firma non finita in tempo: il file c'è, la firma no.
+      proc(31, 'agent.exe', file('C:\\Program Files\\Acme\\agent.exe', 'programFiles'), { listen: [{ proto: 'tcp', port: 8080, scope: 'all' }] }),
+      proc(32, 'svc.exe', file('C:\\Program Files\\Acme\\svc.exe', 'programFiles', 'unreadable'), { listen: [{ proto: 'tcp', port: 7000, scope: 'all' }] }),
+      proc(21, 'chrome.exe', chrome, { listen: [{ proto: 'tcp', port: 9222, scope: 'all' }] }),
+    ];
+    expect(listeners(withProcs(items)).map((l) => [l.proc.name, l.risky, l.unverified, l.kernel])).toEqual([
+      ['System', false, false, true],
+      ['vncserver.exe', false, true, false],
+      ['agent.exe', false, true, false],
+      ['svc.exe', false, true, false],
+      ['chrome.exe', false, false, false],
+    ]);
+    const f = find(withProcs(items), 'pc.procs.listen');
+    expect(f).toMatchObject({ severity: 'info', value: '5 programmi in ascolto, 3 non verificati', actions: [] });
+    expect(f?.verdict).toContain('3 programmi che non si sono potuti verificare');
+    expect(f?.verdict).toContain('vncserver.exe (porta 5900)');
+    expect(f?.verdict).toContain('1 programma in ascolto su tutte le reti ha una firma valida e sta in Programmi o nella cartella di Windows');
+    expect(f?.verdict).toContain('System, il nucleo di Windows (porta 445), non ha un file da verificare');
+    expect(f?.verdict).not.toMatch(/sono firmati|cartelle protette/);
+    // Con uno da controllare, i non verificati si dicono a parte.
+    const share = proc(20, 'share.exe', file('%USERPROFILE%\\AppData\\share.exe', 'appData', 'unsigned'), { listen: [{ proto: 'tcp', port: 8200, scope: 'all' }] });
+    const w = find(withProcs([...items, share]), 'pc.procs.listen');
+    expect(w?.severity).toBe('warn');
+    expect(w?.verdict).toContain('Altri 3 programmi in ascolto non si sono potuti verificare');
+    // Solo programmi verificati: a posto, senza parlare di cartelle protette.
+    const ok = find(withProcs([items[0], items[4]]), 'pc.procs.listen');
+    expect(ok).toMatchObject({ severity: 'ok', value: '2 programmi in ascolto, nessuno da controllare' });
+  });
+
+  it('in ascolto da ProgramData o da un\'altra cartella: da controllare anche con la firma valida', () => {
+    const svc = proc(40, 'vendorsvc.exe', file('C:\\ProgramData\\Vendor\\vendorsvc.exe', 'programData', 'valid', 'Vendor'), { listen: [{ proto: 'tcp', port: 7070, scope: 'all' }] });
+    expect(listeners(withProcs([svc]))[0].risky).toBe(true);
+    expect(find(withProcs([svc]), 'pc.procs.listen')?.severity).toBe('warn');
   });
 
   it('UDP, ascolto locale e tabelle non lette non si giudicano', () => {
@@ -165,12 +249,18 @@ describe('demo, rapporto, documento e privacy', () => {
   });
 
   it('rapporto entro 90 colonne e documento senza IP pubblici né IPv6 globali', () => {
-    for (const s of [demoScan, clinicScan]) {
+    // Un percorso dello Store più lungo della riga: va spezzato, non sforato.
+    const long = clone(clinicScan);
+    long.pc!.procs!.items.push(
+      proc(9100, 'WindowsTerminal.exe', file('C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal_1.21.2361.0_x64__8wekyb3d8bbwe\\WindowsTerminal.exe', 'programFiles', 'unsigned')),
+    );
+    for (const s of [demoScan, clinicScan, long]) {
       const txt = renderText(s, analyze(s), { verbose: true });
       expect(txt).toContain(' Processi (');
       expect(txt).toContain('In ascolto su tutte le reti:');
       for (const line of txt.split('\n')) expect(line.length).toBeLessThanOrEqual(90);
     }
+    expect(renderText(long, analyze(long), { verbose: true })).toContain('WindowsTerminal.exe');
     const doc = documentParts(demoScan, analyze(demoScan)).body;
     expect(doc).toContain('<h2>Processi e avvio automatico</h2>');
     expect(doc).toContain('acmeshare.exe (8200) <b>da controllare</b>');
@@ -193,6 +283,14 @@ describe('demo, rapporto, documento e privacy', () => {
     for (const id of ['check-file-origin', 'defender-scan-file', 'review-listening-app']) expect(ACTIONS[id], id).toBeDefined();
     // Niente servizi esterni a cui caricare i file: al più si cerca il nome.
     expect(ACTIONS['check-file-origin'].steps.join(' ')).not.toMatch(/virustotal/i);
+    // La guida dice la stessa gravità del giudizio: un nome di Windows fuori posto è «da controllare» (avviso).
+    const guide = JSON.stringify(guideById('processi-firme')!.blocks);
+    expect(guide).toContain('Polaris lo segnala come da controllare.');
+    expect(guide).not.toContain('da controllare subito.');
+    expect(guide).toContain('ProgramData');
+    // La riga di comando elenca i comandi della 0.14.0.
+    const cli = JSON.stringify(guideById('riga-di-comando')!.blocks);
+    for (const c of ['polaris-cli procs [--json]', 'polaris-cli autoruns [--json]', 'polaris-cli win11 [--json]']) expect(cli, c).toContain(c);
   });
 
   it('il motore della riga di comando (ES2015, goja) dà gli stessi giudizi sulla clinica', async () => {
