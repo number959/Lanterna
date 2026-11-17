@@ -155,7 +155,7 @@ const tasksFixJSON = `{"tasks":[
    {"path":"C:\\Windows\\System32\\rundll32.exe","args":"C:\\Users\\anna\\AppData\\Local\\evil.dll,Start","wd":""}],"com":[],"lt":3,"rl":0,"uid":"me","grp":false,"ms":false},
  {"p":"\\Due\\TutteInWindows","en":true,"hid":false,"last":0,"res":0,"next":0,"trig":[9],"exec":[
    {"path":"C:\\Windows\\System32\\notepad.exe","args":"","wd":""},
-   {"path":"C:\\Windows\\Tasks\\upd.exe","args":"","wd":""}],"com":[],"lt":3,"rl":0,"uid":"me","grp":false,"ms":false},
+   {"path":"C:\\Windows\\System32\\upd.exe","args":"","wd":""}],"com":[],"lt":3,"rl":0,"uid":"me","grp":false,"ms":false},
  {"p":"\\AltroUtente\\CartellaDiLavoro","en":true,"hid":false,"last":0,"res":0,"next":0,"trig":[9],"exec":[
    {"path":"upd.exe","args":"","wd":"%LOCALAPPDATA%\\Vendor"},
    {"path":"powershell.exe","args":"-File agg.ps1","wd":"%APPDATA%\\Vendor"},
@@ -203,16 +203,17 @@ func TestTaskFixes(t *testing.T) {
 		t.Errorf("azione con rundll32: %+v", p)
 	}
 	// B6: tutte le azioni in Windows; dopo la verifica la seconda è senza
-	// firma e si mostra quella, non la prima di Microsoft.
+	// firma e si mostra quella, non la prima di Microsoft. (C:\Windows\Tasks
+	// non conta più come Windows: un utente può scriverci, vedi sign.FolderOf.)
 	w := items[6]
 	if w.file != `C:\Windows\System32\notepad.exe` || len(w.others) != 1 {
 		t.Fatalf("due azioni in Windows: %+v", w)
 	}
 	w.entry.File = msFile("windows")
-	w.others[0].entry.File = &scan.FileFacts{Path: `C:\Windows\Tasks\upd.exe`, Folder: "windows", Signature: &scan.FileSignature{Status: "unsigned"}}
+	w.others[0].entry.File = &scan.FileFacts{Path: `C:\Windows\System32\upd.exe`, Folder: "windows", Signature: &scan.FileSignature{Status: "unsigned"}}
 	entries, counts := assemble([]item{w})
-	if len(entries) != 1 || entries[0].File.Path != `C:\Windows\Tasks\upd.exe` || counts["tasks"].Microsoft != 0 ||
-		!strings.HasPrefix(entries[0].Command, `C:\Windows\Tasks\upd.exe`) {
+	if len(entries) != 1 || entries[0].File.Path != `C:\Windows\System32\upd.exe` || counts["tasks"].Microsoft != 0 ||
+		!strings.HasPrefix(entries[0].Command, `C:\Windows\System32\upd.exe`) {
 		t.Errorf("seconda azione senza firma nascosta: %+v %+v", entries, counts)
 	}
 	// Attività di un altro utente con la cartella di lavoro nel suo profilo:
