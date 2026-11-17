@@ -155,7 +155,11 @@ const tasksFixJSON = `{"tasks":[
    {"path":"C:\\Windows\\System32\\rundll32.exe","args":"C:\\Users\\anna\\AppData\\Local\\evil.dll,Start","wd":""}],"com":[],"lt":3,"rl":0,"uid":"me","grp":false,"ms":false},
  {"p":"\\Due\\TutteInWindows","en":true,"hid":false,"last":0,"res":0,"next":0,"trig":[9],"exec":[
    {"path":"C:\\Windows\\System32\\notepad.exe","args":"","wd":""},
-   {"path":"C:\\Windows\\Tasks\\upd.exe","args":"","wd":""}],"com":[],"lt":3,"rl":0,"uid":"me","grp":false,"ms":false}
+   {"path":"C:\\Windows\\Tasks\\upd.exe","args":"","wd":""}],"com":[],"lt":3,"rl":0,"uid":"me","grp":false,"ms":false},
+ {"p":"\\AltroUtente\\CartellaDiLavoro","en":true,"hid":false,"last":0,"res":0,"next":0,"trig":[9],"exec":[
+   {"path":"upd.exe","args":"","wd":"%LOCALAPPDATA%\\Vendor"},
+   {"path":"powershell.exe","args":"-File agg.ps1","wd":"%APPDATA%\\Vendor"},
+   {"path":"cmd.exe","args":"/c C:\\ProgramData\\Vendor\\run.bat","wd":"%LOCALAPPDATA%\\Vendor"}],"com":[],"lt":3,"rl":0,"uid":"other","grp":false,"ms":false}
 ],"folders":3,"denied":0,"unreadable":0,"broken":0,"errors":{}}`
 
 func TestTaskFixes(t *testing.T) {
@@ -210,6 +214,22 @@ func TestTaskFixes(t *testing.T) {
 	if len(entries) != 1 || entries[0].File.Path != `C:\Windows\Tasks\upd.exe` || counts["tasks"].Microsoft != 0 ||
 		!strings.HasPrefix(entries[0].Command, `C:\Windows\Tasks\upd.exe`) {
 		t.Errorf("seconda azione senza firma nascosta: %+v %+v", entries, counts)
+	}
+	// Attività di un altro utente con la cartella di lavoro nel suo profilo:
+	// il programma senza cartella e lo script relativo non si cercano con il
+	// profilo di chi usa Polaris; il resto si verifica.
+	env.files[strings.ToLower(`C:\Users\anna\AppData\Local\Vendor\upd.exe`)] = true
+	env.files[strings.ToLower(`C:\Users\anna\AppData\Roaming\Vendor\agg.ps1`)] = true
+	o := rd.taskItems(out.Tasks[7], loc, nil)
+	byFile := map[string]item{}
+	for _, a := range append([]item{o}, o.others...) {
+		byFile[a.file] = a
+	}
+	up, ps, cm := byFile["upd.exe"], byFile["powershell.exe"], byFile[`C:\Windows\System32\cmd.exe`]
+	if len(byFile) != 3 || !up.unverified || !ps.unverified || ps.target != "agg.ps1" || cm.unverified || cm.target != `C:\ProgramData\Vendor\run.bat` {
+		for f, a := range byFile {
+			t.Errorf("azione di un altro utente: file %q, target %q, non verificata %v", f, a.target, a.unverified)
+		}
 	}
 	// Tutte di Microsoft: la voce si nasconde.
 	w.others[0].entry.File = msFile("windows")

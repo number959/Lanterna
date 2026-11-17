@@ -315,7 +315,13 @@ func (rd reader) taskItems(t psTask, loc *time.Location, com func(string) string
 		}
 		file := strings.TrimSpace(strings.Trim(prog, `"`))
 		raw, proxy := ProxyTarget(file, args)
-		if !own && usesUserVars(prog+" "+args) {
+		wd := strings.TrimRight(strings.TrimSpace(x.WD), `\`)
+		// Un programma senza cartella che non sta in quelle di sistema, o il
+		// file relativo che un interprete esegue, si cerca nella cartella di
+		// lavoro: con le variabili di un altro utente anche quella non si
+		// può espandere.
+		otherWD := !own && usesUserVars(wd) && (proxy && relativeName(raw) || !strings.ContainsAny(file, `\/`) && !rd.res.exists(rd.res.Locate(file, false)))
+		if !own && usesUserVars(prog+" "+args) || otherWD {
 			// Il percorso si mostra come è scritto, senza espanderlo e senza
 			// verificarlo.
 			it := item{entry: e, unverified: true, file: file}
@@ -330,7 +336,7 @@ func (rd reader) taskItems(t psTask, loc *time.Location, com func(string) string
 		// Nella cartella di lavoro dell'attività si cercano prima un programma
 		// indicato senza cartella e il file relativo che un interprete esegue
 		// (powershell -File update.ps1, wscript x.vbs, cmd /c avvio.bat).
-		if wd := strings.TrimRight(strings.TrimSpace(x.WD), `\`); wd != "" {
+		if wd != "" {
 			if !strings.ContainsAny(file, `\/`) {
 				if p := rd.res.Locate(wd+`\`+file, false); rd.res.exists(p) {
 					it.file = p

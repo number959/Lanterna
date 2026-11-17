@@ -1,6 +1,7 @@
 package autoruns
 
 import (
+	"path"
 	"strings"
 )
 
@@ -168,9 +169,14 @@ func (r Resolver) absolute(p string, wow32 bool) []string {
 	p = strings.TrimSpace(p)
 	sys := r.sysRoot()
 	switch {
-	case hasPrefixFold(p, `\??\UNC\`), hasPrefixFold(p, `\\?\UNC\`):
-		// Condivisione di rete nella forma lunga: \\?\UNC\server\... è \\server\...
+	case hasPrefixFold(p, `\??\UNC\`), hasPrefixFold(p, `\\?\UNC\`), hasPrefixFold(p, `\\.\UNC\`):
+		// Condivisione di rete nelle forme lunghe: \\?\UNC\server\... (e
+		// \\.\UNC\server\...) è \\server\...
 		p = `\\` + p[8:]
+	case hasPrefixFold(p, `\??\GLOBALROOT\`), hasPrefixFold(p, `\\?\GLOBALROOT\`):
+		// Un dispositivo di Windows (copia shadow, redirector di rete): resta
+		// nella forma \\?\, che onNetwork riconosce.
+		p = `\\?\` + p[4:]
 	case hasPrefixFold(p, `\??\`), hasPrefixFold(p, `\\?\`):
 		p = p[4:]
 	}
@@ -275,7 +281,7 @@ func (r Resolver) Locate(p string, wow32 bool) string {
 // CreateProcess: fra virgolette il file è il testo fra le virgolette; senza
 // virgolette è il prefisso più corto che esiste, altrimenti il primo con
 // un'estensione eseguibile (il file manca), altrimenti il primo pezzo. Il
-// file non va oltre un pezzo che non può continuare un nome di file: un
+// file che manca non va oltre un pezzo che non può continuare un nome: un
 // argomento che comincia con «-», «/» o con le virgolette, o che contiene
 // «:» (un percorso con l'unità, un indirizzo), così «powershell -File
 // C:\x.ps1» ha come file powershell e non tutta la riga. quoted dice se il
@@ -291,16 +297,24 @@ func (r Resolver) Split(cmd string, wow32 bool) (file, args string, quoted bool)
 		}
 		return strings.TrimSpace(cmd[1:]), "", true
 	}
+	// cuts sono tutti i punti in cui il file può finire; quelli fino a limit
+	// (il primo pezzo che non può continuare un nome) valgono anche per un
+	// file che manca. Un prefisso che esiste vale comunque, come per
+	// CreateProcess: «C:\Program Files\Foo -Bar Baz\a.exe» esiste anche se
+	// «-Bar» sembra un'opzione.
 	var cuts []int
-	stop := false
-	for i := 0; i < len(cmd) && !stop; i++ {
+	limit := -1
+	for i := 0; i < len(cmd); i++ {
 		if cmd[i] == ' ' || cmd[i] == '\t' {
 			cuts = append(cuts, i)
-			stop = argumentStart(cmd[i+1:])
+			if limit < 0 && argumentStart(cmd[i+1:]) {
+				limit = len(cuts)
+			}
 		}
 	}
-	if !stop {
-		cuts = append(cuts, len(cmd))
+	cuts = append(cuts, len(cmd))
+	if limit < 0 {
+		limit = len(cuts)
 	}
 	for _, c := range cuts {
 		for _, x := range r.Candidates(cmd[:c], wow32) {
@@ -309,7 +323,7 @@ func (r Resolver) Split(cmd string, wow32 bool) (file, args string, quoted bool)
 			}
 		}
 	}
-	for _, c := range cuts {
+	for _, c := range cuts[:limit] {
 		if hasExecExt(cmd[:c]) {
 			return cmd[:c], strings.TrimSpace(cmd[c:]), false
 		}
@@ -474,20 +488,72 @@ func isOption(s string) bool {
 }
 
 // systemPath: un nome senza cartella (Windows lo cerca nelle cartelle di
-// sistema) o un percorso dentro la cartella di Windows. Solo allora un
-// programma o una DLL con il nome di uno di Windows si tratta come quello:
-// una copia altrove è il file eseguito e si verifica.
+// sistema) o un percorso in una delle cartelle di Windows che contengono i
+// suoi programmi: la cartella di Windows, System32 e SysWOW64 (con wbem e
+// WindowsPowerShell\v1.0), Microsoft.NET\Framework*\v... e gli script di
+// stampa. Solo allora un programma o una DLL con il nome di uno di Windows
+// si tratta come quello: una copia altrove, anche in una sottocartella di
+// Windows scrivibile dagli utenti (Temp, Tasks, tracing...), è il file
+// eseguito e si verifica.
 func systemPath(p string) bool {
+	p = strings.Trim(strings.TrimSpace(p), `"`)
 	if !strings.ContainsAny(p, `\/`) {
 		return true
 	}
 	l := strings.ToLower(strings.ReplaceAll(p, "/", `\`))
-	for _, pre := range []string{`%systemroot%\`, `%windir%\`, `\systemroot\`, `system32\`, `syswow64\`} {
-		if strings.HasPrefix(l, pre) {
+	rest := ""
+	switch {
+	case strings.HasPrefix(l, `%systemroot%\`), strings.HasPrefix(l, `%windir%\`), strings.HasPrefix(l, `\systemroot\`):
+		rest = l[strings.IndexByte(l[1:], '\\')+2:]
+	case strings.HasPrefix(l, `system32\`), strings.HasPrefix(l, `syswow64\`):
+		rest = l
+	case len(l) > 3 && l[1] == ':' && strings.HasPrefix(l[2:], `\windows\`):
+		rest = l[len(`c:\windows\`):]
+	default:
+		return false
+	}
+	// «..» e «.» si risolvono: C:\Windows\Temp\..\System32 è System32,
+	// C:\Windows\..\x non è più nella cartella di Windows.
+	rest = path.Clean(strings.ReplaceAll(rest, `\`, "/"))
+	if rest == ".." || strings.HasPrefix(rest, "../") {
+		return false
+	}
+	dir := strings.ReplaceAll(dirOf(rest), "/", `\`)
+	if dir == "." {
+		dir = ""
+	}
+	switch dir {
+	case "", "system32", "syswow64", `system32\wbem`, `syswow64\wbem`, `system32\windowspowershell\v1.0`, `syswow64\windowspowershell\v1.0`:
+		return true
+	}
+	// Una sola cartella sotto queste (la versione, la lingua).
+	for _, pre := range []string{`microsoft.net\framework\`, `microsoft.net\framework64\`, `system32\printing_admin_scripts\`, `syswow64\printing_admin_scripts\`} {
+		if strings.HasPrefix(dir, pre) && !strings.Contains(dir[len(pre):], `\`) && len(dir) > len(pre) {
 			return true
 		}
 	}
-	return len(l) > 3 && l[1] == ':' && strings.HasPrefix(l[2:], `\windows\`)
+	return false
+}
+
+// proxyPath: dove un programma avviato da un altro (cmd /c ..., conhost,
+// ShellExec_RunDLL) è quello di Windows con quel nome: le cartelle di
+// sistema (systemPath) e, per PowerShell 7, la sua cartella in Program Files.
+func proxyPath(p string) bool {
+	if systemPath(p) {
+		return true
+	}
+	l := strings.ToLower(strings.ReplaceAll(strings.Trim(strings.TrimSpace(p), `"`), "/", `\`))
+	if stem(l) != "pwsh" {
+		return false
+	}
+	d := dirOf(l) + `\`
+	for _, pre := range []string{`%programfiles%\powershell\`, `c:\program files\powershell\`} {
+		// Una sola cartella sotto, la versione (PowerShell\7\pwsh.exe).
+		if v := strings.TrimSuffix(strings.TrimPrefix(d, pre), `\`); strings.HasPrefix(d, pre) && v != "" && !strings.Contains(v, `\`) {
+			return true
+		}
+	}
+	return false
 }
 
 // ProxyTarget estrae dagli argomenti di un programma di sistema che esegue
@@ -524,7 +590,7 @@ func proxyTarget(file, args string, depth int) (string, bool) {
 	}
 	switch name {
 	case "rundll32":
-		return rundll32Target(t), true
+		return rundll32Target(args, t, depth), true
 	case "regsvr32":
 		return regsvr32Target(t), true
 	case "mshta":
@@ -558,7 +624,7 @@ func proxyTarget(file, args string, depth int) (string, bool) {
 		// /select,..., /factory,...) si saltano.
 		for _, x := range t {
 			if !isOption(x.text) {
-				return fileArg(x.text), true
+				return launched(x.text, "", depth), true
 			}
 		}
 		return "", true
@@ -573,8 +639,9 @@ func proxyTarget(file, args string, depth int) (string, bool) {
 		}
 		return "", true
 	case "pcalua":
+		// pcalua -a programma [-c argomenti].
 		if v, ok := valueAfter(t, "-a"); ok {
-			return fileArg(v), true
+			return launched(v, "", depth), true
 		}
 		return "", true
 	case "installutil", "regasm", "regsvcs":
@@ -623,6 +690,21 @@ func fileArg(s string) string {
 	return ""
 }
 
+// launched: il file eseguito quando un programma ne apre un altro, x, con
+// gli argomenti rest (rundll32 shell32.dll,ShellExec_RunDLL, explorer,
+// pcalua -a). Se x è a sua volta un programma di Windows che esegue altro
+// (cmd.exe /c ..., powershell.exe -enc ...), conta ciò che esegue quello:
+// senza i suoi argomenti è un comando interpretato.
+func launched(x, rest string, depth int) string {
+	f := fileArg(x)
+	if f != "" && depth < maxProxyDepth && proxyPath(f) {
+		if inner, proxy := proxyTarget(f, rest, depth+1); proxy {
+			return inner
+		}
+	}
+	return f
+}
+
 // valueAfter: il valore che segue l'opzione indicata (senza maiuscole).
 func valueAfter(t []token, option string) (string, bool) {
 	for i, x := range t {
@@ -639,8 +721,9 @@ func valueAfter(t []token, option string) (string, bool) {
 // rundll32Target: la DLL, dopo le opzioni (/d nelle attività di Windows:
 // «/d srrstr.dll,ExecuteScheduledSPPCreation»). -sta e -localserver
 // attivano un oggetto COM dal CLSID: il file non è negli argomenti. Con una
-// DLL lanciatrice di Windows (launchers) il file eseguito è l'argomento.
-func rundll32Target(t []token) string {
+// DLL lanciatrice di Windows (launchers) il file eseguito è l'argomento
+// (launched). args è il testo a cui si riferiscono le posizioni di t.
+func rundll32Target(args string, t []token, depth int) string {
 	for len(t) > 0 && !t[0].quoted && isOption(t[0].text) {
 		if o := strings.ToLower(t[0].text); o == "-sta" || o == "-localserver" {
 			return ""
@@ -668,7 +751,7 @@ func rundll32Target(t []token) string {
 		fn = strings.ToLower(strings.TrimSpace(fn))
 		for _, f := range launchers[stem(dll)] {
 			if fn == f {
-				return fileArg(rest[0].text)
+				return launched(rest[0].text, args[rest[0].end:], depth)
 			}
 		}
 	}
@@ -832,7 +915,7 @@ func runTarget(rest string, in []token, depth int) string {
 	if hasScheme(x) {
 		return ""
 	}
-	if depth < maxProxyDepth && systemPath(x) {
+	if depth < maxProxyDepth && proxyPath(x) {
 		if inner, proxy := proxyTarget(x, rest[in[0].end:], depth+1); proxy {
 			return inner
 		}

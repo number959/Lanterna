@@ -340,10 +340,11 @@ func gather(ctx context.Context, sources []source, facts factsFunc, plain func(s
 // plainFacts sono i fatti su un file non verificato: il percorso pulito e il
 // tipo di cartella, che non si dice per un percorso con le variabili di un
 // altro utente (%LOCALAPPDATA% di un'attività di SYSTEM non è il profilo di
-// chi usa Polaris): l'interfaccia scrive allora «cartella non letta».
+// chi usa Polaris) né per un nome senza cartella da cercare in una
+// cartella non espansa: l'interfaccia scrive allora «cartella non letta».
 func plainFacts(p, profile string, clean func(string) string) *scan.FileFacts {
 	folder := ""
-	if !strings.Contains(p, "%") {
+	if !strings.Contains(p, "%") && isAbs(p) {
 		folder = sign.FolderOf(p, profile)
 	}
 	return &scan.FileFacts{Path: clean(p), Folder: folder}
@@ -352,8 +353,24 @@ func plainFacts(p, profile string, clean func(string) string) *scan.FileFacts {
 // onNetwork: un percorso su una condivisione di rete. Non si apre, né per
 // sapere se esiste né per la firma: Windows si collegherebbe a un server
 // scelto da chi ha scritto la voce, con le credenziali dell'utente, e
-// leggerebbe tutto il file dalla rete.
+// leggerebbe tutto il file dalla rete. Valgono anche le forme lunghe
+// (\\?\UNC\, \\.\UNC\) e i redirector di rete raggiunti da GLOBALROOT, che
+// sign.FolderOf non riconosce.
 func onNetwork(p, profile string) bool {
+	l := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(p), "/", `\`))
+	for _, pre := range []string{`\\?\`, `\\.\`, `\??\`} {
+		if strings.HasPrefix(l, pre) {
+			rest := l[len(pre):]
+			if strings.HasPrefix(rest, `unc\`) {
+				return true
+			}
+			for _, dev := range []string{`globalroot\device\mup\`, `globalroot\device\lanmanredirector\`, `globalroot\device\webdavredirector\`} {
+				if strings.HasPrefix(rest, dev) {
+					return true
+				}
+			}
+		}
+	}
 	return sign.FolderOf(p, profile) == "network"
 }
 

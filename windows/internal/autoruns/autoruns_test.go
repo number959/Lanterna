@@ -223,6 +223,20 @@ func TestPlainAndNetworkFacts(t *testing.T) {
 	if p := r.Locate(`\\?\UNC\srv\share\x.exe`, false); !onNetwork(p, profile) {
 		t.Errorf("\\\\?\\UNC: %q", p)
 	}
+	// Anche \\.\UNC\ e i redirector raggiunti da GLOBALROOT sono in rete:
+	// non si aprono.
+	for _, p := range []string{`\\.\UNC\srv\share\x.exe`, `\\.\GLOBALROOT\Device\Mup\srv\share\x.exe`, `\\?\GLOBALROOT\Device\WebDavRedirector\srv\x.dll`} {
+		if l := r.Locate(p, false); !onNetwork(l, profile) {
+			t.Errorf("%q → %q non è in rete", p, l)
+		}
+	}
+	if onNetwork(`\\?\C:\x.exe`, profile) || onNetwork(`\\.\C:\x.exe`, profile) {
+		t.Error("percorso locale nella forma lunga preso per rete")
+	}
+	// Un nome senza cartella di un'attività non verificata: cartella non letta.
+	if f := plainFacts(`upd.exe`, profile, clean); f.Folder != "" {
+		t.Errorf("nome senza cartella: %+v", f)
+	}
 }
 
 func TestCleaner(t *testing.T) {

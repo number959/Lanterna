@@ -213,6 +213,22 @@ func TestCommandSecrets(t *testing.T) {
 		{`sc.exe config Svc obj= .\backup password= Quinta5`, `sc.exe config Svc obj= .\backup password= ‹password›`},
 		{`C:\App\db.exe "Server=x;User Id=sa;Password=Sesta6;"`, `C:\App\db.exe "Server=x;User Id=sa;Password=‹password›;"`},
 		{`schtasks /run /s srv /u admin /p Settima7 /tn x`, `schtasks /run /s srv /u admin /p ‹password› /tn x`},
+		// net use con la password dopo /user:, o con la condivisione fra
+		// virgolette; valori fra apici; password attaccata a -p di 7-Zip e
+		// MySQL; ConvertTo-SecureString; --user=.
+		{`cmd /c net use Z: \\nas\backup /user:NAS\backupuser Ottava8 && robocopy C:\Dati Z:\`, `cmd /c net use Z: \\nas\backup /user:‹utente› ‹password› && robocopy C:\Dati Z:\`},
+		{`net use Z: "\\nas\back up" Nona9 /user:NAS\backup`, `net use Z: "\\nas\back up" ‹password› /user:‹utente›`},
+		{`net use Z: \\nas\x /user:NAS\backup "Decima 10"&dir Z:`, `net use Z: \\nas\x /user:‹utente› ‹password›&dir Z:`},
+		{`C:\x\backup.exe -Password 'Undici 11' -Log C:\x\b.log`, `C:\x\backup.exe -Password ‹password› -Log C:\x\b.log`},
+		{`"C:\Program Files\7-Zip\7z.exe" a -tzip -pDodici12 C:\b.zip C:\Dati`, `"C:\Program Files\7-Zip\7z.exe" a -tzip -p‹password› C:\b.zip C:\Dati`},
+		{`cmd /c mysqldump -u root -pTredici13 gestionale > C:\b.sql`, `cmd /c mysqldump -u root -p‹password› gestionale > C:\b.sql`},
+		{`powershell -c "$c = ConvertTo-SecureString 'Quattordici14' -AsPlainText -Force"`, `powershell -c "$c = ConvertTo-SecureString ‹password› -AsPlainText -Force"`},
+		{`curl.exe --user=admin:Quindici15 https://nas.local`, `curl.exe --user=‹utente›:‹password› https://nas.local`},
+		{`net use Z: \\nas\x /p:yes`, `net use Z: \\nas\x /p:yes`},
+		{`net use Z: \\nas\x * /user:NAS\backup`, `net use Z: \\nas\x * /user:‹utente›`},
+		{`net use Z: /delete /y`, `net use Z: /delete /y`},
+		{`C:\Tools\app.exe -print -port 80`, `C:\Tools\app.exe -print -port 80`},
+		{`powershell -c "ConvertTo-SecureString $env:PW -AsPlainText"`, `powershell -c "ConvertTo-SecureString $env:PW -AsPlainText"`},
 		// Nessuna credenziale: nulla cambia.
 		{`C:\Windows\system32\svchost.exe -k netsvcs -p`, `C:\Windows\system32\svchost.exe -k netsvcs -p`},
 		{`C:\Windows\system32\svchost.exe -k UnistackSvcGroup -p -s CDPUserSvc`, `C:\Windows\system32\svchost.exe -k UnistackSvcGroup -p -s CDPUserSvc`},

