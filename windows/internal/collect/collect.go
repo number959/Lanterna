@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"lanterna/internal/autoruns"
 	"lanterna/internal/netdisc"
 	"lanterna/internal/pcinfo"
 	"lanterna/internal/probe"
@@ -35,6 +36,9 @@ type Platform interface {
 	// SampleLoad misura carico della CPU e processi più pesanti per la
 	// durata indicata.
 	SampleLoad(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo)
+	// Autoruns legge ciò che si avvia da solo (come Autoruns): può
+	// restituire dati parziali insieme a un errore.
+	Autoruns(ctx context.Context) (*scan.AutorunsData, error)
 }
 
 // readRoutes legge la tabella di instradamento (sostituibile nei test).
@@ -56,6 +60,7 @@ func (Native) PC(ctx context.Context) (*scan.PcData, error)             { return
 func (Native) SampleLoad(ctx context.Context, d time.Duration) (*float64, []scan.ProcessInfo) {
 	return pcinfo.SampleLoad(ctx, d)
 }
+func (Native) Autoruns(ctx context.Context) (*scan.AutorunsData, error) { return autoruns.Collect(ctx) }
 
 // Network raccoglie le dipendenze di rete sostituibili nei test.
 type Network struct {
@@ -131,8 +136,13 @@ var stepDefs = []Step{
 	{ID: "firewall", Label: "Firewall di Windows"},
 	{ID: "lan", Label: "Dispositivi in rete"},
 	{ID: "pc", Label: "Computer: sistema, dischi ed eventi"},
+	{ID: "autoruns", Label: "Computer: avvio automatico"},
 	{ID: "load", Label: "Computer: carico e processi"},
 }
+
+// autorunsTimeout è il tempo massimo della fase «autoruns» (attività
+// pianificate e WMI con PowerShell, firme di servizi e driver).
+const autorunsTimeout = 45 * time.Second
 
 // Progress viene notificato a ogni cambio di stato.
 type Progress func(steps []Step)
@@ -418,7 +428,23 @@ func (c *Collector) Run(ctx context.Context, progress Progress) *scan.Scan {
 		mu.Unlock()
 		return nil
 	})
+
+	// Avvio automatico (come Autoruns), in parallelo ai dati del computer;
+	// entra in s.PC alla fine, perché "pc" può finire dopo.
+	var autorunsData *scan.AutorunsData
+	run("autoruns", func() error {
+		actx, cancel := context.WithTimeout(ctx, autorunsTimeout)
+		defer cancel()
+		a, err := c.Platform.Autoruns(actx)
+		mu.Lock()
+		autorunsData = a
+		mu.Unlock()
+		return err
+	})
 	wg.Wait()
+	if s.PC != nil && autorunsData != nil {
+		s.PC.Autoruns = autorunsData
+	}
 
 	// 3. Tabella dei vicini per ultima: dopo ping e UPnP è più completa.
 	step("lan", func() error {

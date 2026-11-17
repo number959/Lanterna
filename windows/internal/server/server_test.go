@@ -50,6 +50,9 @@ func (stubPlatform) PC(context.Context) (*scan.PcData, error) {
 func (stubPlatform) SampleLoad(context.Context, time.Duration) (*float64, []scan.ProcessInfo) {
 	return nil, nil
 }
+func (stubPlatform) Autoruns(context.Context) (*scan.AutorunsData, error) {
+	return nil, errors.New("avvio automatico disponibile solo su Windows")
+}
 
 type stubPinger struct{}
 

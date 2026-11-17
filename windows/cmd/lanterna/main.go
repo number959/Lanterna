@@ -118,6 +118,13 @@ Uso:
                                  indizio, impostazioni dei dump; i file si leggono solo
                                  avviando il Prompt dei comandi come amministratore
       --json                     stampa il risultato in JSON
+  polaris-cli autoruns           ciò che si avvia da solo (come Autoruns): chiavi Run e
+                                 cartelle Esecuzione automatica, Winlogon, servizi,
+                                 driver, attività pianificate, sottoscrizioni WMI,
+                                 estensioni dei browser, dirottamenti noti, con la firma
+                                 digitale dei file; le voci di Windows firmate da
+                                 Microsoft si contano e non si elencano. Sola lettura
+      --json                     stampa il risultato in JSON
   polaris-cli wifi-survey STANZA misura il Wi-Fi nel punto in cui ti trovi, per la mappa
                                  per stanza: segnale una volta al secondo, cambi di access
                                  point, ping al router ogni 200 ms, poi una scansione.
@@ -202,6 +209,8 @@ func main() {
 		err = runCerts(args[1:])
 	case args[0] == "crashes":
 		err = runCrashes(args[1:])
+	case args[0] == "autoruns":
+		err = runAutoruns(args[1:])
 	case args[0] == "wifi-survey":
 		err = runWifiSurvey(args[1:])
 	case args[0] == "speedtest":

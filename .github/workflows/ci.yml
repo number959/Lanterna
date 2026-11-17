@@ -180,6 +180,14 @@ jobs:
           $raw = Get-Content scan.json -Raw
           $leak = [regex]::Match($raw, '.{0,60}' + [regex]::Escape($env:USERPROFILE.Replace('\', '\\')) + '.{0,40}', 'IgnoreCase')
           if ($leak.Success) { throw "cartella dell'utente nel rapporto: $($leak.Value)" }
+          # Avvio automatico (come Autoruns): registro, servizi e driver, attività, WMI, estensioni.
+          $ar = $pc.autoruns
+          "Avvio automatico: $(@($ar.entries).Count) voci elencate; conteggi $($ar.counts | ConvertTo-Json -Compress); negati '$($ar.denied -join ',')'; parziale $($ar.partial); amministratore $($ar.elevated)"
+          "Prime voci: " + ((@($ar.entries) | Select-Object -First 10 | ForEach-Object { "$($_.category)/$($_.kind) $($_.name) [$($_.file.signature.status) $($_.file.signature.signer)$(if ($_.file.missing) { ' mancante' })]" }) -join ' | ')
+          if (-not $ar) { throw "avvio automatico non letto" }
+          if ($ar.counts.services.total -lt 50) { throw "servizi non letti: $($ar.counts.services | ConvertTo-Json -Compress)" }
+          $arLeak = [regex]::Match(($ar | ConvertTo-Json -Depth 20 -Compress), '.{0,60}' + [regex]::Escape($env:USERPROFILE.Replace('\', '\\')) + '.{0,40}', 'IgnoreCase')
+          if ($arLeak.Success) { throw "cartella dell'utente nell'avvio automatico: $($arLeak.Value)" }
           "Defender: $($pc.defender | ConvertTo-Json -Compress)"
           "Minacce: $(if ($null -eq $pc.threats) { 'non lette' } else { "$(@($pc.threats).Count)" })"
       - name: Velocità dei core in tempo reale (contatori di Windows)
@@ -951,8 +959,8 @@ jobs:
       - name: Prove native dell'agente su Windows reale
         working-directory: sorgenti/windows
         run: |
-          # Letture native (registro eventi, dispositivi, servizi, volumi) con dati veri.
-          go test ./internal/winevt/ ./internal/pcinfo/ -run 'Windows$' -count=1 -v
+          # Letture native (registro eventi, dispositivi, servizi, volumi, avvio automatico) con dati veri.
+          go test ./internal/winevt/ ./internal/pcinfo/ ./internal/autoruns/ -run 'Windows$' -count=1 -v
           if ($LASTEXITCODE -ne 0) { throw "prove native non riuscite" }
           # La modalità test letta da Polaris deve coincidere con quella di bcdedit (qui siamo amministratori).
           $bcd = (bcdedit /enum '{current}' | Select-String -Pattern '^testsigning\s+(\w+)').Matches.Groups[1].Value

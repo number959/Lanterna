@@ -85,6 +85,10 @@ func (f *fakePlatform) PC(context.Context) (*scan.PcData, error) {
 func (f *fakePlatform) SampleLoad(context.Context, time.Duration) (*float64, []scan.ProcessInfo) {
 	return scan.Ptr(12.5), []scan.ProcessInfo{{Name: "prova.exe", Count: 2, CPUPct: scan.Ptr(4.0), MemoryMB: 300}}
 }
+func (f *fakePlatform) Autoruns(context.Context) (*scan.AutorunsData, error) {
+	return &scan.AutorunsData{Entries: []scan.AutorunEntry{{Category: "logon", Kind: "run", Name: "Prova", Enabled: true}},
+		Counts: map[string]scan.AutorunCount{"logon": {Total: 1}, "services": {Total: 120, Microsoft: 115}}}, nil
+}
 
 func fakeNetwork(tcpOK bool) Network {
 	return Network{
@@ -157,6 +161,9 @@ func TestRunHealthyNetwork(t *testing.T) {
 	}
 	if s.PC == nil || s.PC.OS.Name != "Windows 11 Pro" || s.PC.CPU.LoadPct == nil || *s.PC.CPU.LoadPct != 12.5 || len(s.PC.Processes) != 1 {
 		t.Fatalf("dati del computer: %+v", s.PC)
+	}
+	if a := s.PC.Autoruns; a == nil || len(a.Entries) != 1 || a.Counts["services"].Total != 120 {
+		t.Fatalf("avvio automatico: %+v", a)
 	}
 	last := updates[len(updates)-1]
 	for _, st := range last {
