@@ -143,6 +143,8 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 	// Schermate blu (minidump e impostazioni), in parallelo e con un tempo
 	// massimo: di solito sono pochi file piccoli.
 	crashes := crash.Start(ctx, crashTimeout, crash.Read)
+	// RAM installata, TPM, schermi, WDDM, verdetto di Windows Update (0.14.0).
+	hwx := startHardwareExtra(ctx)
 
 	pc.OS = osInfo()
 	pc.CPU = cpuInfo()
@@ -232,6 +234,7 @@ func Collect(ctx context.Context) (*scan.PcData, error) {
 			pc.Notes = append(pc.Notes, "La lettura dei dispositivi non è finita in tempo: l'elenco può essere incompleto.")
 		}
 	}
+	finishHardwareExtra(pc, hwx, ps, devRaw, devErr == nil)
 	return pc, nil
 }
 

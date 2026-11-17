@@ -9,6 +9,7 @@
 //	polaris-cli.exe space [C:]         cosa occupa spazio su un'unità
 //	polaris-cli.exe speedtest          test di velocità di Internet con M-Lab
 //	polaris-cli.exe discover ...       altre reti e VLAN (rotte, switch, AD, SNMP)
+//	polaris-cli.exe win11              processore nell'elenco ufficiale di Windows 11
 //	polaris-cli.exe version
 //
 // Polaris.exe è compilato come applicazione grafica, polaris-cli.exe per la
@@ -56,6 +57,7 @@ import (
 	"lanterna/internal/speedtest"
 	"lanterna/internal/survey"
 	"lanterna/internal/tools"
+	"lanterna/internal/win11"
 	"lanterna/internal/winapi"
 )
 
@@ -151,6 +153,10 @@ Uso:
       --v3                       SNMPv3 (predefinito SNMPv2c)
       --auth SHA256|SHA|...      autenticazione SNMPv3; --priv AES|DES cifratura
   polaris-cli discover ... --json  stampa il risultato in JSON
+  polaris-cli win11              confronta il processore con l'elenco ufficiale dei processori
+                                 supportati da Windows 11: scarica la pagina di Microsoft
+                                 (learn.microsoft.com), la legge e la scarta
+      --json                     stampa il risultato in JSON
   polaris-cli tools status       versioni portable scaricate (su questo PC e nel kit)
   polaris-cli tools kit [ID...]  prepara il kit per l'uso senza Internet: scarica dai
                                  siti ufficiali e verifica i programmi nella cartella
@@ -208,6 +214,8 @@ func main() {
 		err = runSpeedTest(args[1:])
 	case args[0] == "discover":
 		err = runDiscover(args[1:])
+	case args[0] == "win11":
+		err = runWin11(args[1:])
 	case args[0] == "version" || args[0] == "--version":
 		eng, e := engine.Load(nil)
 		ev := "non incluso"
@@ -380,6 +388,9 @@ func startServer(port int) (*server.Server, string, error) {
 			opt := speedOptions(c)
 			opt.Progress = p
 			return speedtest.Run(ctx, opt)
+		},
+		Win11CPUs: func(ctx context.Context) *scan.Win11CPUCheck {
+			return win11.Check(ctx, win11Options(fetcher))
 		},
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}

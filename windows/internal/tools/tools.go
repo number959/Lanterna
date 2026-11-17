@@ -106,6 +106,9 @@ var Programs = map[string]Program{
 	"windirstat":      {Site: "https://windirstat.net/", Names: []string{"windirstat"}, Exes: []string{"windirstat.exe"}},
 	"bluescreenview":  {Site: "https://www.nirsoft.net/utils/blue_screen_view.html", Names: []string{"bluescreenview"}, Exes: []string{"BlueScreenView.exe"}},
 	"pc-health-check": {Site: "https://support.microsoft.com/it-it/windows/come-usare-l-app-controllo-integrit%C3%A0-pc-9c8abd9b-03ba-4e67-81ef-36f37caa7844", Names: []string{"pc health check", "controllo integrità pc"}, Exes: []string{"PCHealthCheck.exe"}},
+	// Aggiunti con la 0.14.0; siti verificati il 17 novembre 2026.
+	"tcpview":         {Site: "https://learn.microsoft.com/it-it/sysinternals/downloads/tcpview"},
+	"process-monitor": {Site: "https://learn.microsoft.com/it-it/sysinternals/downloads/procmon"},
 }
 
 // Installed è un programma trovato tra quelli installati.

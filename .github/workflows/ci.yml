@@ -126,6 +126,12 @@ jobs:
           if (-not $hw.firmware) { throw "tipo di firmware non letto" }
           if ($null -eq $hw.tpm) { throw "dispositivi di sicurezza non letti (PowerShell)" }
           "Bus nominale (SMBIOS): $($hw.cpu.busMhz) MHz"
+          # Chipset, schermi, modello del driver video, RAM installata e requisiti di Windows 11
+          # (0.14.0): solo stampati, le macchine della CI sono virtuali (niente TPM, schermo virtuale).
+          "Chipset: " + ((@($hw.chipset) | ForEach-Object { "$($_.vendor):$($_.device) rev $($_.rev) classe $($_.class)" }) -join ' | ')
+          "Schermi: " + ((@($hw.displays) | ForEach-Object { "$($_.width)x$($_.height), $($_.diagonalIn) pollici, $($_.bitsPerColor) bit, interno $($_.internal)" }) -join ' | ')
+          "WDDM: " + ((@($pc.gpus) | ForEach-Object { "$($_.name)=$($_.wddm)" }) -join ' | ') + "; RAM installata $($pc.memory.installedMB) MB (vista da Windows $($pc.memory.totalMB) MB)"
+          "Windows 11: $($pc.win11 | ConvertTo-Json -Compress -Depth 4)"
           # Dispositivi e driver (come Gestione dispositivi), letti con SetupAPI.
           $dv = $pc.devices
           "Dispositivi: $($dv.total) presenti, $($dv.problems) con problemi; classi: " + (($dv.classes | Select-Object -First 12 | ForEach-Object { "$($_.class)=$($_.count)" }) -join ' ')
@@ -931,6 +937,34 @@ jobs:
             $env:LOCALAPPDATA = $saved
             Remove-Item -Recurse -Force $kit -ErrorAction SilentlyContinue
           }
+      - name: TCPView, Process Monitor ed elenco dei processori di Windows 11 (prova non bloccante)
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          # Elenco ufficiale dei processori, scaricato da learn.microsoft.com, letto e scartato.
+          ./polaris-cli.exe win11
+          $w = ./polaris-cli.exe win11 --json | ConvertFrom-Json
+          "Elenco $($w.version) ($($w.kind)): $($w.rows) righe; esito $($w.result) '$($w.match)'; errore '$($w.error)'"
+          if ($w.error -or $w.rows -lt 3) { throw "elenco dei processori non letto: $($w.error)" }
+          $p = Start-Process -FilePath ./polaris-cli.exe -ArgumentList 'serve','--port','8742' -PassThru -NoNewWindow
+          try {
+            Start-Sleep 2
+            $api = 'http://127.0.0.1:8742/api'
+            $r = Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{}' -TimeoutSec 40 "$api/win11/cpus"
+            "API: esito $($r.result) da $($r.source), $($r.rows) righe"
+            if ((Invoke-RestMethod "$api/win11/cpus").result -ne $r.result) { throw "ultimo esito diverso" }
+            # Si scaricano e se ne verifica la firma, senza avviarli: Process Monitor
+            # chiede l'amministratore e carica un proprio driver.
+            foreach ($id in 'tcpview', 'process-monitor') {
+              Invoke-RestMethod -Method Post -ContentType 'application/json' -Body "{`"tool`":`"$id`"}" "$api/tools/fetch" | Out-Null
+              $t0 = 0
+              do { Start-Sleep 1; $t0++; $st = Invoke-RestMethod "$api/tools" } while ($st.fetch.running -and $t0 -lt 120)
+              if ($st.fetch.running -or $st.fetch.error) { throw "$id`: download non riuscito: $($st.fetch.error)" }
+              $d = $st.portable.$id
+              "$id`: scaricato $([math]::Round($st.fetch.done / 1MB, 1)) MB, versione $($d.version), firma di $($d.signer)"
+              if ($d.signer -ne 'Microsoft Corporation' -or $d.problem) { throw "$id non verificato: $($d | ConvertTo-Json -Compress)" }
+            }
+          } finally { Stop-Process $p -ErrorAction SilentlyContinue }
       - name: Test della RAM con Windows acceso (versione breve)
         run: |
           $r = ./polaris-cli.exe bench ram --quick --json | ConvertFrom-Json
@@ -952,7 +986,7 @@ jobs:
         working-directory: sorgenti/windows
         run: |
           # Letture native (registro eventi, dispositivi, servizi, volumi) con dati veri.
-          go test ./internal/winevt/ ./internal/pcinfo/ -run 'Windows$' -count=1 -v
+          go test ./internal/winevt/ ./internal/pcinfo/ ./internal/win11/ -run 'Windows$' -count=1 -v
           if ($LASTEXITCODE -ne 0) { throw "prove native non riuscite" }
           # La modalità test letta da Polaris deve coincidere con quella di bcdedit (qui siamo amministratori).
           $bcd = (bcdedit /enum '{current}' | Select-String -Pattern '^testsigning\s+(\w+)').Matches.Groups[1].Value

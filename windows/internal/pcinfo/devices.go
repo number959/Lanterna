@@ -32,6 +32,9 @@ type rawDevice struct {
 	Date        string // AAAA-MM-GG
 	Inf         string
 	File        string // file del driver, dal registro dei servizi
+
+	// CompatibleIDs servono solo a riconoscere il chipset (classe PCI).
+	CompatibleIDs []string
 }
 
 // Codici di Gestione dispositivi usati qui (CM_PROB_* in cfg.h).
