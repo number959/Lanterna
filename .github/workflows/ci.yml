@@ -227,6 +227,18 @@ jobs:
           if ($ar.counts.services.total -lt 50) { throw "servizi non letti: $($ar.counts.services | ConvertTo-Json -Compress)" }
           $arLeak = [regex]::Match(($ar | ConvertTo-Json -Depth 20 -Compress), '.{0,60}' + [regex]::Escape($env:USERPROFILE.Replace('\', '\\')) + '.{0,40}', 'IgnoreCase')
           if ($arLeak.Success) { throw "cartella dell'utente nell'avvio automatico: $($arLeak.Value)" }
+          # Attività di Windows con «rundll32 /d» (opzione prima della DLL): non devono risultare mancanti.
+          $srMiss = @($ar.entries | Where-Object { $_.location -in '\Microsoft\Windows\SystemRestore\SR', '\Microsoft\Windows\Autochk\Proxy' -and ($_.file.missing -or $_.target.missing) })
+          if ($srMiss.Count) { throw "attività di Windows con rundll32 /d segnate mancanti: $(($srMiss | ForEach-Object { $_.location }) -join ', ')" }
+          # BootExecute di Windows (anche «autocheck autochk /q /v *» delle immagini Azure): contato, non elencato.
+          "BootExecute: $((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager').BootExecute -join ' | ')"
+          $beListed = @($ar.entries | Where-Object { $_.kind -eq 'bootexecute' -and $_.command -match '^autocheck\s+autochk(\s+/[A-Za-z0-9]+(:\S+)?)*\s+\*$' })
+          if ($beListed.Count) { throw "BootExecute di Windows elencato come voce: $($beListed[0].command)" }
+          # Nessun comando di Windows reso «interpretato» dall'elenco ampliato dei proxy: da confrontare tra un'esecuzione e l'altra.
+          "Voci interpretate (senza file eseguito, programma di Microsoft): " + ((@($ar.entries | Where-Object { -not $_.target -and $_.file.signature.microsoft -and $_.command }) | Select-Object -First 15 | ForEach-Object { "$($_.category)/$($_.name)" }) -join ' | ')
+          # Nessun SID intero di un account (locale, di dominio o di Entra ID) in tutto il rapporto.
+          $sidAll = [regex]::Match($raw, '(?i)S-1-(5-21|12-1)(-\d+){4}')
+          if ($sidAll.Success) { throw "SID nel rapporto: $($sidAll.Value)" }
           "Defender: $($pc.defender | ConvertTo-Json -Compress)"
           "Minacce: $(if ($null -eq $pc.threats) { 'non lette' } else { "$(@($pc.threats).Count)" })"
           # Processi con firma digitale e connessioni (come Process Explorer e TCPView).
@@ -1055,6 +1067,13 @@ jobs:
           $ts = [bool]$s.pc.devices.codeIntegrity.testSigning
           "bcdedit testsigning: '$bcd'; Polaris: $ts (opzioni $($s.pc.devices.codeIntegrity.options))"
           if (($bcd -eq 'Yes') -ne $ts) { throw "modalità test diversa da bcdedit" }
+      - name: Prove a 32 bit della lettura degli schermi
+        working-directory: sorgenti/windows
+        run: |
+          # La struttura di DisplayConfig ha allineamenti diversi a 32 bit: le prove pure girano anche così.
+          $env:GOARCH = '386'
+          go test ./internal/pcinfo/ -run 'TestParseDisplayConfig|TestParsePreferredMode|TestBuildDisplays|TestLeaksDeviceIDs' -count=1 -v
+          if ($LASTEXITCODE -ne 0) { throw "prove a 32 bit non riuscite" }
       - name: Microsoft Defender da riga di comando (prova non bloccante)
         continue-on-error: true
         timeout-minutes: 12
