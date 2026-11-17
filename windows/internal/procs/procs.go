@@ -7,7 +7,7 @@
 // remoti. Gli indirizzi delle tabelle TCP e UDP restano dentro il pacchetto:
 // ne escono solo porte, ambito delle porte in ascolto e conteggi per
 // destinazione (questo PC, rete locale, Internet). I percorsi passano da
-// pcinfo.SanitizeCommand.
+// pulitore comune (pcinfo.Cleaner).
 //
 // La parte che non dipende da Windows (indirizzi, aggregazione delle
 // connessioni, albero di Polaris, ordinamento) sta qui ed è provata ovunque;
@@ -19,15 +19,12 @@ import (
 	"errors"
 	"math"
 	"net/netip"
-	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
-	"lanterna/internal/pcinfo"
 	"lanterna/internal/scan"
 	"lanterna/internal/sign"
 )
@@ -569,17 +566,8 @@ func verifyOrder(paths []string, profile string) {
 	})
 }
 
-// Il Checker delle firme è condiviso tra le letture: lo stesso file si
-// verifica una volta sola finché non cambia.
-var (
-	checkerOnce sync.Once
-	checker     *sign.Checker
-)
-
-func fileChecker() *sign.Checker {
-	checkerOnce.Do(func() {
-		prof := os.Getenv("USERPROFILE")
-		checker = sign.New(prof, func(p string) string { return pcinfo.SanitizeCommand(p, prof) })
-	})
-	return checker
-}
+// Il Checker delle firme è quello comune (sign.Shared), condiviso con
+// l'avvio automatico: lo stesso file si verifica una volta sola finché non
+// cambia, e i percorsi passano dal pulitore comune (profili, nome
+// dell'utente, SID, e-mail).
+func fileChecker() *sign.Checker { return sign.Shared() }

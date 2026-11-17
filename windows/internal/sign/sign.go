@@ -3,9 +3,10 @@
 // catalogo), informazioni di versione e tipo di cartella. Sola lettura e
 // nessun accesso alla rete: la revoca dei certificati non si controlla online.
 //
-// Lo usano i processi (Process Explorer) e l'avvio automatico (Autoruns):
-// lo stesso file si verifica una volta sola grazie alla cache, che si
-// rinnova se cambiano dimensione o data del file.
+// Lo usano i processi (Process Explorer) e l'avvio automatico (Autoruns)
+// attraverso lo stesso Checker (Shared): lo stesso file si verifica una
+// volta sola per tutta la vita del programma, anche tra un'analisi e
+// l'altra, e la cache si rinnova se cambiano dimensione o data del file.
 package sign
 
 import (
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"lanterna/internal/pcinfo"
 	"lanterna/internal/scan"
 )
 
@@ -36,6 +38,22 @@ type cached struct {
 	size  int64
 	mod   time.Time
 	facts scan.FileFacts
+}
+
+var (
+	sharedOnce sync.Once
+	shared     *Checker
+)
+
+// Shared restituisce il Checker comune a tutto il programma, con il profilo
+// e il pulitore di chi usa Polaris (pcinfo.DefaultCleaner): processi e
+// avvio automatico ne condividono la cache.
+func Shared() *Checker {
+	sharedOnce.Do(func() {
+		cl := pcinfo.DefaultCleaner()
+		shared = New(cl.Profile, cl.Path)
+	})
+	return shared
 }
 
 // New prepara un Checker.

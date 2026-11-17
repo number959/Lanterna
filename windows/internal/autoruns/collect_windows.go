@@ -9,7 +9,6 @@ import (
 	"sort"
 	"time"
 
-	"lanterna/internal/pcinfo"
 	"lanterna/internal/scan"
 	"lanterna/internal/sign"
 	"lanterna/internal/winapi"
@@ -41,7 +40,9 @@ func Collect(ctx context.Context) (*scan.AutorunsData, error) {
 		}},
 		cl: cleaner{profile: profile, user: os.Getenv("USERNAME")},
 	}
-	checker := sign.New(profile, func(p string) string { return pcinfo.SanitizeCommand(p, profile) })
+	// Il Checker comune (sign.Shared): la cache delle firme vale anche per
+	// i processi e per le analisi successive.
+	checker := sign.Shared()
 	facts := func(ctx context.Context, p string) *scan.FileFacts {
 		f := checker.Facts(ctx, p)
 		f.Path = rd.cl.text(f.Path)
