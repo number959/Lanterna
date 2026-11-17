@@ -1063,8 +1063,12 @@ export interface PciFunc {
 }
 
 export interface Display {
+  /** Risoluzione in uso (desktop) in pixel. */
   width?: number;
   height?: number;
+  /** Risoluzione nativa: la modalità preferita che lo schermo dichiara a Windows; assente se non letta. */
+  nativeWidth?: number;
+  nativeHeight?: number;
   /** Diagonale in pollici dalle dimensioni dichiarate dallo schermo; assente se non le dichiara. */
   diagonalIn?: number;
   bitsPerColor?: number;
@@ -1240,7 +1244,7 @@ export interface Win11Data {
   /** Versione del TPM da Tbsi_GetDeviceInfo: "2.0", "1.2", "" = nessuno. */
   tpmVersion?: string;
   /** Verdetto già calcolato da Windows Update (chiave non documentata: indizio). */
-  appraiser?: { target?: string; verdict?: 'green' | 'yellow' | 'red' | ''; reasons?: string[]; at?: string };
+  appraiser?: { target?: string; verdict?: 'green' | 'yellow' | 'orange' | 'red' | ''; reasons?: string[]; at?: string };
 }
 
 export interface Win11CPUCheck {

@@ -58,7 +58,10 @@ describe('chipset AMD', () => {
     expect(chipsetName(hw(amd('43E9', '43EC')))?.name).toBe('AMD A520');
     expect(chipsetName(hw(amd('43E9', '43EE')))?.name).toBe('AMD B550');
     expect(chipsetName(hw(amd('57AD', '149C')))?.name).toBe('AMD X570 (o X570S)');
-    expect(chipsetName(hw(amd('57AD'), { cpu: { vendor: 'AuthenticAMD', family: 23, model: 0x31 } }))).toMatchObject({ name: 'AMD TRX40', uncertain: true });
+    // Famiglia 23 modello 0x31: Threadripper 3000 (TRX40) o PRO 3000WX (WRX80, ThinkStation P620): decide lo zoccolo.
+    expect(chipsetName(hw(amd('57AD'), { cpu: { vendor: 'AuthenticAMD', family: 23, model: 0x31 } }))).toMatchObject({ name: 'AMD TRX40 o WRX80', uncertain: true });
+    expect(chipsetName(hw(amd('57AD'), { cpu: { vendor: 'AuthenticAMD', family: 23, model: 0x31, socket: 'sWRX8' } }))).toMatchObject({ name: 'AMD WRX80', uncertain: true });
+    expect(chipsetName(hw(amd('57AD'), { cpu: { vendor: 'AuthenticAMD', family: 23, model: 0x31, socket: 'sTRX4' } }))).toMatchObject({ name: 'AMD TRX40', uncertain: true });
     expect(chipsetName(hw(amd('43C8')))).toMatchObject({ name: 'serie 400 (X470 o B450)', uncertain: true });
     expect(chipsetName(hw(amd('43B8')))?.name).toBe('AMD A320');
     expect(chipsetName(hw(amd('43B9')))?.name).toBe('AMD X370');

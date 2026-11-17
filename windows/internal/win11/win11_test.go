@@ -2,10 +2,16 @@ package win11
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -166,6 +172,8 @@ func TestIntelSeries(t *testing.T) {
 		"Intel(R) Core(TM) 7 150U":                        "core processors (series 1)",
 		"Intel(R) N100":                                   "n100 series",
 		"Intel(R) N95":                                    "n90 series",
+		"Intel(R) N150":                                   "n150 series", // Twin Lake: non è la serie N100
+		"Intel(R) Processor N250":                         "n250 series",
 		"Intel(R) Processor N200":                         "n200 series",
 		"Intel(R) Processor U300":                         "u300 series",
 		"Intel(R) Processor 300":                          "intel 300 processor for desktop",
@@ -247,6 +255,9 @@ func TestCompare(t *testing.T) {
 		{"intel", "Intel(R) Celeron(R) N4120 CPU @ 1.10GHz", "listed", "Celeron N4000 Series"},
 		{"intel", "Intel(R) Pentium(R) Gold 6405U CPU @ 2.40GHz", "listed", "Pentium Gold 6000 Series"},
 		{"intel", "Intel(R) N97", "listed", "N90 Series"},
+		{"intel", "Intel(R) N100", "listed", "N100 Series"},
+		// Twin Lake: la riga «N100 Series» non lo comprende.
+		{"intel", "Intel(R) N150", "notListed", ""},
 		{"intel", "Intel(R) Processor 300", "listed", "Intel 300 Processor for Desktop"},
 		{"intel", "Intel(R) Xeon(R) Gold 6248R CPU @ 3.00GHz", "listed", "2nd Generation Xeon Scalable Processors"},
 		// Serie dell'elenco troppo larghe: decide il modello, da verificare.
@@ -361,5 +372,55 @@ func TestCheck(t *testing.T) {
 		if !strings.HasPrefix(l.URL, "https://learn.microsoft.com/") || l.Vendor != v || (l.Kind != "model" && l.Kind != "series") {
 			t.Errorf("elenco %s: %+v", v, l)
 		}
+	}
+}
+
+// Gli errori di rete diventano frasi fisse in italiano: niente testo di Go,
+// URL o indirizzi IP del server o del proxy nel rapporto.
+func TestNetText(t *testing.T) {
+	ip := &net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.IPv4(13, 107, 246, 45), Port: 443}, Err: errors.New("connectex: timeout")}
+	for _, c := range []struct {
+		err  error
+		want string
+	}{
+		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: &net.OpError{Op: "proxyconnect", Net: "tcp", Addr: &net.TCPAddr{IP: net.IPv4(203, 0, 113, 7), Port: 3128}, Err: errors.New("connect: connection refused")}}, "proxy di sistema non risponde"},
+		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: &net.OpError{Op: "proxyconnect", Net: "tcp", Err: errors.New("Proxy Authentication Required")}}, "autenticazione"},
+		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "learn.microsoft.com"}}}, "nome del sito non risolto"},
+		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}}, "connessione cifrata non verificabile"},
+		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: x509.HostnameError{Host: "learn.microsoft.com"}}, "connessione cifrata non verificabile"},
+		{&url.Error{Op: "Get", URL: "https://learn.microsoft.com/x", Err: ip}, "connessione non riuscita"},
+	} {
+		got := netText(c.err)
+		if !strings.Contains(got, c.want) {
+			t.Errorf("netText(%v) = %q, atteso %q", c.err, got, c.want)
+		}
+		if regexp.MustCompile(`\d+\.\d+\.\d+\.\d+|dial|Get "|https?:`).MatchString(got) {
+			t.Errorf("testo tecnico o indirizzo nell'errore: %q", got)
+		}
+	}
+}
+
+func TestCheckNetworkErrors(t *testing.T) {
+	ipv4 := regexp.MustCompile(`\d+\.\d+\.\d+\.\d+`)
+	clean := func(what, e string) {
+		t.Helper()
+		if e == "" || ipv4.MatchString(e) || strings.Contains(e, "dial") || strings.Contains(e, `Get "`) || strings.Contains(e, "127.0.0.1") {
+			t.Errorf("%s: errore %q", what, e)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	// Connessione rifiutata: porta chiusa sull'indirizzo locale.
+	r := Check(ctx, Options{CPU: "Intel(R) Core(TM) i5-8250U", Vendor: "GenuineIntel", Hosts: []string{"127.0.0.1"}, URL: "https://127.0.0.1:1/elenco"})
+	clean("connessione rifiutata", r.Error)
+	if r.Result != "unknown" || r.Rows != 0 || !strings.HasPrefix(r.Error, "learn.microsoft.com non raggiungibile") {
+		t.Errorf("connessione rifiutata: %+v", r)
+	}
+	// Proxy di sistema che non risponde.
+	proxy, _ := url.Parse("http://127.0.0.1:1")
+	r = Check(ctx, Options{Transport: &http.Transport{Proxy: http.ProxyURL(proxy)}, CPU: "Intel(R) Core(TM) i5-8250U", Vendor: "GenuineIntel"})
+	clean("proxy", r.Error)
+	if !strings.Contains(r.Error, "proxy") {
+		t.Errorf("proxy che non risponde: %+v", r)
 	}
 }

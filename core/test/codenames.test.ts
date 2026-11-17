@@ -36,6 +36,19 @@ describe('nome in codice: Intel', () => {
     expect(nameOf(intel(142, 12), 'Intel(R) Core(TM) i5-10210U CPU @ 1.60GHz')).toBe('Comet Lake-U');
     expect(nameOf(intel(142, 12), 'Intel(R) Core(TM) i7-10510Y CPU @ 1.20GHz')).toBe('Amber Lake-Y');
     expect(nameOf(intel(142, 12), 'Intel(R) Core(TM) i5-8365U CPU @ 1.60GHz')).toBe('Whiskey Lake-U');
+    // libcpuid, stepping 12: Celeron 5###U e Pentium Gold 6###U sono Comet Lake-U, Celeron 4###U e Pentium 5###U Whiskey Lake-U.
+    expect(codeName(intel(142, 12), 'Intel(R) Celeron(R) 5205U CPU @ 1.90GHz')).toMatchObject({ name: 'Comet Lake-U' });
+    expect(codeName(intel(142, 12), 'Intel(R) Celeron(R) 5205U CPU @ 1.90GHz')?.uncertain).toBeFalsy();
+    expect(nameOf(intel(142, 12), 'Intel(R) Pentium(R) Gold 6405U CPU @ 2.40GHz')).toBe('Comet Lake-U');
+    expect(nameOf(intel(142, 12), 'Intel(R) Celeron(R) CPU 4205U @ 1.80GHz')).toBe('Whiskey Lake-U');
+    expect(nameOf(intel(142, 12), 'Intel(R) Pentium(R) CPU 5405U @ 2.30GHz')).toBe('Whiskey Lake-U');
+  });
+
+  it('modello 0xA5: gli Xeon W-10000M sono Comet Lake-H per workstation mobili, non W-1200', () => {
+    expect(codeName(intel(165, 2), 'Intel(R) Xeon(R) W-10885M CPU @ 2.40GHz')).toMatchObject({ name: 'Comet Lake-H (Xeon W-10000M)', segment: 'workstation mobili' });
+    expect(codeName(intel(165, 5), 'Intel(R) Xeon(R) W-1290P CPU @ 3.70GHz')).toMatchObject({ name: 'Comet Lake (Xeon W-1200)', segment: 'workstation' });
+    expect(nameOf(intel(165, 2), 'Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz')).toBe('Comet Lake-H');
+    expect(nameOf(intel(165, 5), 'Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz')).toBe('Comet Lake-S');
     expect(codeName(intel(142))).toMatchObject({ uncertain: true }); // senza stepping
   });
 

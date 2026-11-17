@@ -5,8 +5,6 @@ package pcinfo
 import (
 	"context"
 	"encoding/json"
-	"regexp"
-	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -51,7 +49,10 @@ func TestHardwareWin11Windows(t *testing.T) {
 	disp, err := readDisplays()
 	t.Logf("schermi (QueryDisplayConfig): %d, errore %v", len(disp), err)
 	for _, d := range disp {
-		t.Logf("  %dx%d, collegamento %#x, %d bit, percorso letto: %v", d.Width, d.Height, d.Tech, d.Bits, d.Path != "")
+		t.Logf("  %dx%d (nativa %dx%d), collegamento %#x, %d bit, percorso letto: %v", d.Width, d.Height, d.NativeWidth, d.NativeHeight, d.Tech, d.Bits, d.Path != "")
+		if (d.NativeWidth == 0) != (d.NativeHeight == 0) {
+			t.Errorf("risoluzione nativa a metà: %+v", d)
+		}
 	}
 	for _, a := range readWddm() {
 		t.Logf("scheda video %q: software %v, WDDM %d", a.Name, a.Software, a.Version)
@@ -77,7 +78,7 @@ func TestHardwareWin11Windows(t *testing.T) {
 	}
 	pc := &scan.PcData{Memory: mem, Hardware: hardwareNative()}
 	applyHardwareExtra(pc, x, ok, nil, raw, true, true)
-	js, _ := json.Marshal(pc)
+	js := privacyJSON(t, pc)
 	t.Logf("chipset %+v; schermi %+v; Windows 11 %s", pc.Hardware.Chipset, pc.Hardware.Displays, win11JSON(pc.Win11))
 	if len(pc.Hardware.Chipset) == 0 {
 		t.Log("nessuna funzione del chipset (macchina virtuale senza bridge PCI?)")
@@ -87,7 +88,8 @@ func TestHardwareWin11Windows(t *testing.T) {
 			t.Errorf("funzione PCI non valida: %+v", f)
 		}
 	}
-	if regexp.MustCompile(`\\\\[0-9A-F]&[0-9A-F]{6,}&|UID\d|DISPLAY#|\\\\\?\\\\`).Match(js) || strings.Contains(string(js), "SUBSYS") {
+	// Controllo provato anche su Linux (TestLeaksDeviceIDs in win11_test.go).
+	if leaksDeviceIDs(js) {
 		t.Errorf("identificativi nel JSON: %s", js)
 	}
 }

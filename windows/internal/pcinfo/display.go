@@ -15,7 +15,8 @@ import (
 // sullo schermo (720p, almeno 9 pollici, 8 bit per canale). Due fonti:
 //   - QueryDisplayConfig e DisplayConfigGetDeviceInfo (user32, lettura
 //     nativa in display_windows.go): percorsi attivi, risoluzione del
-//     desktop, tipo di collegamento, bit per canale;
+//     desktop, risoluzione nativa (modalità preferita dello schermo), tipo
+//     di collegamento, bit per canale;
 //   - WmiMonitorBasicDisplayParams e WmiMonitorConnectionParams (root\wmi,
 //     nello script PowerShell): dimensioni dichiarate in cm.
 //
@@ -32,21 +33,29 @@ import (
 // height a 20), DISPLAYCONFIG_DEVICE_INFO_HEADER 20 byte (type, size,
 // adapterId a 8, id a 16), DISPLAYCONFIG_TARGET_DEVICE_NAME 420 byte
 // (outputTechnology a 24, monitorDevicePath[128] a 164),
-// DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO 32 byte (bitsPerColorChannel a 28).
+// DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO 32 byte (bitsPerColorChannel a 28),
+// DISPLAYCONFIG_TARGET_PREFERRED_MODE 80 byte (width a 20, height a 24;
+// targetMode a 32, allineato a 8 per il UINT64 di
+// DISPLAYCONFIG_VIDEO_SIGNAL_INFO).
 const (
 	dcPathSize        = 72
 	dcModeSize        = 64
 	dcHeaderSize      = 20
 	dcTargetNameSize  = 420
 	dcAdvColorSize    = 32
+	dcPrefModeSize    = 80
 	dcModeTypeSource  = 1
 	dcModeIdxInvalid  = 0xFFFFFFFF
 	dcInfoTargetName  = 2 // DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME
+	dcInfoPrefMode    = 3 // DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_PREFERRED_MODE
 	dcInfoAdvColor    = 9 // DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO
 	dcTargetPathAt    = 164
 	dcTargetPathChars = 128
 	dcTargetTechAt    = 24
 	dcAdvColorBitsAt  = 28
+	dcPrefWidthAt     = 20
+	dcPrefHeightAt    = 24
+	maxPixels         = 32768
 	maxDisplays       = 8
 )
 
@@ -68,7 +77,10 @@ type rawDisplay struct {
 	HasTech     bool
 	Width       int
 	Height      int
-	Bits        int
+	// NativeWidth e NativeHeight: modalità preferita dello schermo (0 se non letta).
+	NativeWidth  int
+	NativeHeight int
+	Bits         int
 	// Path è monitorDevicePath ("\\?\DISPLAY#DELA0B2#5&...#{e6f07b5f-...}"):
 	// solo per l'abbinamento, non esce dal processo.
 	Path string
@@ -99,11 +111,13 @@ func parseDisplayConfig(paths []byte, np int, modes []byte, nm int) []rawDisplay
 			Tech:        le.Uint32(p[36:]),
 			HasTech:     true,
 		}
-		if idx := le.Uint32(p[12:]); idx != dcModeIdxInvalid && int(idx) < nm && (int(idx)+1)*dcModeSize <= len(modes) {
-			m := modes[int(idx)*dcModeSize:]
+		// Confronti in uint64: con GOARCH=386 int(idx) di un indice da
+		// 0x80000000 in su sarebbe negativo e il controllo traboccherebbe.
+		if idx := uint64(le.Uint32(p[12:])); idx != dcModeIdxInvalid && nm > 0 && idx < uint64(nm) && (idx+1)*dcModeSize <= uint64(len(modes)) {
+			m := modes[idx*dcModeSize:]
 			if le.Uint32(m) == dcModeTypeSource {
 				w, h := le.Uint32(m[16:]), le.Uint32(m[20:])
-				if w > 0 && h > 0 && w <= 32768 && h <= 32768 {
+				if w > 0 && h > 0 && w <= maxPixels && h <= maxPixels {
 					d.Width, d.Height = int(w), int(h)
 				}
 			}
@@ -147,6 +161,20 @@ func parseAdvancedColor(b []byte) int {
 		return 0
 	}
 	return int(v)
+}
+
+// parsePreferredMode legge da DISPLAYCONFIG_TARGET_PREFERRED_MODE la
+// risoluzione preferita dello schermo, cioè quella nativa del pannello;
+// 0, 0 se il buffer è corto o i valori non sono plausibili.
+func parsePreferredMode(b []byte) (w, h int) {
+	if len(b) < dcPrefModeSize {
+		return 0, 0
+	}
+	pw, ph := binary.LittleEndian.Uint32(b[dcPrefWidthAt:]), binary.LittleEndian.Uint32(b[dcPrefHeightAt:])
+	if pw == 0 || ph == 0 || pw > maxPixels || ph > maxPixels {
+		return 0, 0
+	}
+	return int(pw), int(ph)
 }
 
 // utf16At legge una stringa UTF-16 di al massimo n caratteri, fino al primo NUL.
@@ -202,7 +230,7 @@ func diagonalIn(wcm, hcm int) float64 {
 }
 
 // BuildDisplays unisce le due fonti: per ogni percorso attivo la
-// risoluzione, i bit per canale e il tipo di collegamento; dalla lettura WMI
+// risoluzione in uso e quella nativa, i bit per canale e il tipo di collegamento; dalla lettura WMI
 // dello stesso schermo la diagonale. Senza lettura nativa (sessione senza
 // desktop, Windows che non risponde) restano gli schermi WMI, e la
 // risoluzione solo se c'è un solo schermo e una sola scheda video che la
@@ -217,7 +245,7 @@ func BuildDisplays(native []rawDisplay, wmi []psMonitor, gpus []scan.PcGPU) []sc
 	var out []scan.Display
 	if len(native) > 0 {
 		for _, n := range native {
-			d := scan.Display{Width: n.Width, Height: n.Height, BitsPerColor: n.Bits}
+			d := scan.Display{Width: n.Width, Height: n.Height, NativeWidth: n.NativeWidth, NativeHeight: n.NativeHeight, BitsPerColor: n.Bits}
 			if n.HasTech {
 				d.Internal = internalTech(n.Tech)
 			}

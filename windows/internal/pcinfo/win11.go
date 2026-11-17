@@ -83,14 +83,15 @@ func latestAppraiserKey(names []string) (key, target string) {
 
 var reasonRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,39}$`)
 
-// AppraiserOf costruisce il verdetto dai valori UpgEx (Red, Yellow, Green)
-// e RedReason (motivi separati da spazi, "None" se nessuno) della chiave;
-// at è l'ora dell'ultima scrittura della chiave. nil se la chiave non dice
-// nulla.
+// AppraiserOf costruisce il verdetto dai valori UpgEx (Red, Orange, Yellow,
+// Green, come li documenta Configuration Manager: Orange vuol dire app o
+// driver da aggiornare dopo l'aggiornamento, non un blocco) e RedReason
+// (motivi separati da spazi, "None" se nessuno) della chiave; at è l'ora
+// dell'ultima scrittura della chiave. nil se la chiave non dice nulla.
 func AppraiserOf(target, upgEx, redReason string, at time.Time) *scan.Win11Appraiser {
 	a := &scan.Win11Appraiser{Target: target}
 	switch v := strings.ToLower(strings.TrimSpace(upgEx)); v {
-	case "green", "yellow", "red":
+	case "green", "yellow", "orange", "red":
 		a.Verdict = v
 	}
 	seen := map[string]bool{}

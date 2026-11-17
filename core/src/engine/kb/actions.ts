@@ -2074,6 +2074,7 @@ const list: Action[] = [
     why: 'Microsoft decide se un processore è supportato da Windows 11 con una tabella che non pubblica: Polaris usa regole proprie ricavate dagli elenchi per serie, che non bastano per i casi incerti. Lo strumento ufficiale è l\'app Controllo integrità PC.',
     steps: [
       'Installa e apri Controllo integrità PC, tra i programmi utili dell\'azione, e avvia la verifica di Windows 11: dice quali requisiti mancano, processore compreso.',
+      'In Polaris, nella scheda «Requisiti di Windows 11», premi «Controlla nell\'elenco ufficiale Microsoft»: questo PC scarica da learn.microsoft.com l\'elenco dei processori del produttore e lo confronta con il nome del processore. Un processore assente non è per forza escluso: l\'elenco è quello di una sola versione e non comprende tutti i modelli.',
       'Per un controllo a mano, confronta il nome del processore (in Polaris, nella scheda tecnica) con l\'elenco dei processori supportati per la versione di Windows 11 che ti interessa, sul sito Microsoft Learn: gli elenchi Intel sono per serie, quelli AMD per modello o per serie.',
       'Se il processore non è supportato: su Windows 10 valuta il programma Extended Security Updates per il tempo necessario o la sostituzione del PC; con Windows 11 installato senza i requisiti, Microsoft non garantisce gli aggiornamenti.',
     ],

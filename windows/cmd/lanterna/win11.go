@@ -83,7 +83,8 @@ func printWin11(r *scan.Win11CPUCheck) {
 		fmt.Printf("Esito: nell'elenco (riga «%s»).\n", r.Match)
 	case r.Result == "notListed":
 		fmt.Println("Esito: non compare nell'elenco.")
-		fmt.Println("Microsoft considera supportati anche i processori usciti dopo l'elenco: per la conferma usa Controllo integrità PC.")
+		fmt.Println("Non vuol dire che sia escluso: l'elenco di una sola versione non comprende tutti i modelli, e Microsoft considera")
+		fmt.Println("supportati anche i processori usciti dopo l'elenco. Per la conferma usa Controllo integrità PC.")
 	case r.Match != "":
 		fmt.Printf("Esito: da verificare. La serie «%s» è nell'elenco, ma comprende anche modelli di generazioni non supportate.\n", r.Match)
 		fmt.Println("Per la conferma usa Controllo integrità PC.")

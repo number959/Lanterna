@@ -16,10 +16,13 @@ package win11
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"html"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -93,8 +96,9 @@ type Options struct {
 }
 
 var (
-	errHost   = errors.New("la pagina è passata da un sito diverso da learn.microsoft.com e non è stata letta")
-	errFormat = errors.New("la pagina di Microsoft non ha la tabella attesa: forse è cambiato il formato")
+	errHost      = errors.New("la pagina è passata da un sito diverso da learn.microsoft.com e non è stata letta")
+	errFormat    = errors.New("la pagina di Microsoft non ha la tabella attesa: forse è cambiato il formato")
+	errRedirects = errors.New("learn.microsoft.com ha rimandato troppe volte a un'altra pagina")
 )
 
 func allowed(u *url.URL, hosts []string) error {
@@ -132,7 +136,7 @@ func fetch(ctx context.Context, opt Options, raw string) (string, error) {
 		Transport: tr,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
-				return errors.New("troppi reindirizzamenti")
+				return errRedirects
 			}
 			return allowed(req.URL, hosts)
 		},
@@ -150,10 +154,13 @@ func fetch(ctx context.Context, opt Options, raw string) (string, error) {
 		if errors.Is(err, errHost) {
 			return "", errHost
 		}
+		if errors.Is(err, errRedirects) {
+			return "", errRedirects
+		}
 		if ctx.Err() != nil {
 			return "", errors.New("learn.microsoft.com non ha risposto in tempo")
 		}
-		return "", fmt.Errorf("learn.microsoft.com non raggiungibile: %w", err)
+		return "", errors.New("learn.microsoft.com non raggiungibile: " + netText(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -167,12 +174,43 @@ func fetch(ctx context.Context, opt Options, raw string) (string, error) {
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxPage+1))
 	if err != nil {
-		return "", fmt.Errorf("lettura della pagina interrotta: %w", err)
+		if ctx.Err() != nil {
+			return "", errors.New("learn.microsoft.com non ha risposto in tempo")
+		}
+		return "", errors.New("lettura della pagina interrotta: " + netText(err))
 	}
 	if len(b) > maxPage {
 		return "", errors.New("la pagina di Microsoft è più grande del previsto e non è stata letta")
 	}
 	return string(b), nil
+}
+
+// netText descrive in italiano semplice un errore di rete. Il testo di Go
+// («Get "https://…": dial tcp 13.107.x.x:443: connectex: …») non esce:
+// contiene l'indirizzo IP del server o del proxy ed è in inglese, e finisce
+// nell'interfaccia e nel rapporto (pc.win11List.error).
+func netText(err error) string {
+	var dns *net.DNSError
+	var cert *tls.CertificateVerificationError
+	var unknownCA x509.UnknownAuthorityError
+	var host x509.HostnameError
+	var invalid x509.CertificateInvalidError
+	var op *net.OpError
+	var ne net.Error
+	switch {
+	case errors.As(err, &op) && op.Op == "proxyconnect":
+		if strings.Contains(err.Error(), "407") || strings.Contains(strings.ToLower(err.Error()), "proxy authentication") {
+			return "il proxy di sistema chiede un'autenticazione"
+		}
+		return "il proxy di sistema non risponde"
+	case errors.As(err, &dns):
+		return "nome del sito non risolto (rete assente o DNS non disponibile)"
+	case errors.As(err, &cert), errors.As(err, &unknownCA), errors.As(err, &host), errors.As(err, &invalid):
+		return "connessione cifrata non verificabile (un proxy o un antivirus che ispeziona le connessioni può causarlo)"
+	case errors.As(err, &ne) && ne.Timeout():
+		return "tempo scaduto"
+	}
+	return "connessione non riuscita (rete assente, firewall o proxy)"
 }
 
 // Check scarica l'elenco del produttore del processore e lo confronta con
@@ -577,8 +615,14 @@ func IntelSeries(name string) []string {
 	case intelCore.MatchString(n):
 		return []string{"core processors (series " + intelCore.FindStringSubmatch(n)[2] + ")"}
 	case intelNSer.MatchString(n):
+		// N100 e N200 hanno la loro riga; N150 e N250 (Twin Lake, 2025) no:
+		// con tre cifre conta il numero esatto, mai la serie più vicina. Le due
+		// cifre (N95, N97) vanno nella serie N90 (attribuzione di Polaris).
 		m := intelNSer.FindStringSubmatch(n)
-		return []string{"n" + m[1] + strings.Repeat("0", len(m[2])) + " series"}
+		if len(m[2]) == 2 {
+			return []string{"n" + m[1] + m[2] + " series"}
+		}
+		return []string{"n" + m[1] + "0 series"}
 	case intelU300.MatchString(n):
 		return []string{"u300 series"}
 	case intel300.MatchString(n):

@@ -1,14 +1,68 @@
 package pcinfo
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"lanterna/internal/scan"
 )
+
+// privacyJSON serializza come l'agente ma senza le fughe HTML: json.Marshal
+// scriverebbe '&' come \u0026 e il controllo degli ID d'istanza non
+// troverebbe mai nulla.
+func privacyJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// deviceIDs riconosce gli identificativi dei dispositivi nel JSON: ID
+// d'istanza (\3&11583659&0&F8, anche in minuscolo), UID, percorsi degli
+// schermi, ID PCI completi (VEN_8086&) e percorsi \\?\.
+var deviceIDs = regexp.MustCompile(`(?i)\\\\[0-9a-f]+&[0-9a-f]{6,}&|UID\d|DISPLAY#|VEN_[0-9a-f]{4}&|\\\\\?\\\\`)
+
+// leaksDeviceIDs dice se il JSON contiene identificativi dei dispositivi.
+func leaksDeviceIDs(js []byte) bool {
+	return deviceIDs.Match(js) || strings.Contains(strings.ToUpper(string(js)), "SUBSYS")
+}
+
+// Il controllo di privacy della prova su Windows deve trovare davvero gli
+// identificativi: con json.Marshal e la classe solo maiuscola non li
+// vedeva.
+func TestLeaksDeviceIDs(t *testing.T) {
+	type rec struct{ ID string }
+	for _, id := range []string{
+		`PCI\VEN_8086&DEV_A305\3&11583659&0&F8`,
+		`ACPI\PNP0A08\3&2411e6fe&0`,
+		`DISPLAY\DELA0B2\5&2a0c4b4&0&UID4353`,
+		`\\?\DISPLAY#DELA0B2#5&2a0c4b4&0&UID4353#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}`,
+		`pci\ven_8086&dev_a305`,
+	} {
+		if !leaksDeviceIDs(privacyJSON(t, rec{id})) {
+			t.Errorf("identificativo non trovato: %s", id)
+		}
+	}
+	// Con json.Marshal la '&' diventa \u0026: la vecchia espressione non trovava l'ID d'istanza.
+	plain, _ := json.Marshal(rec{`ACPI\PNP0A08\3&2411e6fe&0`})
+	if regexp.MustCompile(`\\\\[0-9A-F]&[0-9A-F]{6,}&`).Match(plain) {
+		t.Errorf("json.Marshal non ha cambiato la &: %s", plain)
+	}
+	// I dati che l'agente esporta davvero non danno falsi allarmi.
+	ok := scan.Hardware{Chipset: []scan.PciFunc{{Vendor: "8086", Device: "7A06", Class: "0601"}}, Displays: []scan.Display{{Width: 1920, Height: 1080, NativeWidth: 1920, NativeHeight: 1080, Internal: true}}}
+	if js := privacyJSON(t, ok); leaksDeviceIDs(js) {
+		t.Errorf("falso allarme: %s", js)
+	}
+}
 
 func TestTpmVersionOf(t *testing.T) {
 	str := func(p *string) string {
@@ -53,8 +107,13 @@ func TestAppraiser(t *testing.T) {
 	if got == nil || got.Verdict != "green" || got.Reasons != nil || got.At != "" {
 		t.Errorf("verdetto verde: %+v", got)
 	}
+	// Orange (app o driver da aggiornare) è documentato: senza motivi il verdetto non sparisce.
+	got = AppraiserOf("25H2", "Orange", "None", at)
+	if got == nil || got.Verdict != "orange" || got.Reasons != nil {
+		t.Errorf("verdetto arancione: %+v", got)
+	}
 	// Valori sconosciuti o testo strano: si scartano.
-	got = AppraiserOf("24H2", "Orange", `C:\Users\anna x<y Ram`, at)
+	got = AppraiserOf("24H2", "Purple", `C:\Users\anna x<y Ram`, at)
 	if got == nil || got.Verdict != "" || !reflect.DeepEqual(got.Reasons, []string{"Ram"}) {
 		t.Errorf("valori non previsti: %+v", got)
 	}

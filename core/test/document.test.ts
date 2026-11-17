@@ -54,6 +54,21 @@ describe('documento stampabile sullo stato del PC', () => {
     expect(body).toContain('&lt;b&gt;x&lt;/b&gt;');
   });
 
+  it('niente IPv6 globali, anche a fine frase o seguiti da due punti', () => {
+    const scan = clone(clinicScan);
+    const a = analyze(scan);
+    a.findings[0] = {
+      ...a.findings[0],
+      verdict: 'Risposte lente. Server: 2a01:e00:ffff::53. Indirizzo globale 2a02:a03f:8d4c:6d00:1c5e:3f2a:9b11:47d3: la rete; compresso 2a00:1450::200e: fine. Restano fe80::1. e ::1. alle 10:30:45. e std::string.',
+    };
+    const { body } = documentParts(scan, a);
+    expect(body).not.toContain('2a01:e00');
+    expect(body).not.toContain('2a02:a03f');
+    expect(body).not.toContain('2a00:1450');
+    expect(body).toContain('Server: [IP pubblico]. Indirizzo globale [IP pubblico]: la rete; compresso [IP pubblico]: fine.');
+    expect(body).toContain('Restano fe80::1. e ::1. alle 10:30:45. e std::string.');
+  });
+
   it('senza dati del computer resta un documento sulla rete', () => {
     const scan = clone(demoScan);
     delete scan.pc;
