@@ -42,7 +42,8 @@ import type { MonitorEvent, MonitorSession } from './monitor';
 import type { SpaceTarget } from './space';
 import type { CertTargetRef } from './certs';
 import type { CrashTargetRef } from './crashes';
-import type { CrashData } from '../engine';
+import type { CrashData, ProcessesData, Win11CPUCheck } from '../engine';
+import type { Win11TargetRef } from './win11';
 import { WifiMapCard } from './wifimap';
 import type { SurveyTargetRef } from './wifimap';
 import { SpeedCard } from './speedtest';
@@ -110,6 +111,19 @@ export interface ViewProps {
    * altrimenti lo dice all'utente e restituisce false.
    */
   addCrashes: (r: CrashData, target: CrashTargetRef) => boolean;
+  /**
+   * Sostituisce i processi del rapporto con una nuova lettura, solo se il
+   * rapporto mostrato è ancora quello dell'agente e dell'analisi su cui è
+   * partita; altrimenti lo dice all'utente e restituisce false.
+   */
+  addProcs: (r: ProcessesData, target: CrashTargetRef) => boolean;
+  /**
+   * Unisce al rapporto il confronto del processore con l'elenco ufficiale dei
+   * processori di Windows 11, solo se il rapporto mostrato è ancora quello
+   * del PC e dell'analisi su cui è partito (nella demo, l'esito simulato);
+   * altrimenti lo dice all'utente e restituisce false.
+   */
+  addWin11List: (r: Win11CPUCheck, target: Win11TargetRef) => boolean;
   /**
    * Unisce al rapporto una misura della mappa del Wi-Fi (nella sua stanza),
    * solo se il rapporto mostrato è ancora della rete su cui è partita;

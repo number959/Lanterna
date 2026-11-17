@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Scan, SpeedTest, WifiSurvey } from '../src/engine';
+import type { ProcessesData, Scan, SpeedTest, WifiSurvey, Win11CPUCheck } from '../src/engine';
 import { surveyForExport } from '../src/engine';
 import { carryOver } from '../src/ui/App';
 import { base } from './fixtures';
@@ -126,6 +126,42 @@ describe('nuova analisi: che cosa resta del rapporto mostrato', () => {
     const other = report('PC-2', 'Casa-Rossi');
     other.pc = { ...other.pc };
     expect(carryOver(prev, 'agent', other).pc!.bench).toBeUndefined();
+  });
+
+  it("il confronto con l'elenco di Windows 11 passa solo da un rapporto dell'agente dello stesso PC con lo stesso processore", () => {
+    const cpu = '12th Gen Intel(R) Core(TM) i5-12500T';
+    const list: Win11CPUCheck = { at: '2026-11-17T09:00:00Z', source: 'https://learn.microsoft.com/x', version: '25H2', kind: 'series', result: 'listed', match: 'Intel Core 12th Gen', cpu };
+    const pcScan = (host: string, name = cpu, withList = false) => {
+      const s = report(host, 'Casa-Rossi');
+      s.pc = { cpu: { name }, ...(withList ? { win11List: clone(list) } : {}) };
+      return s;
+    };
+    const prev = pcScan('PC-1', cpu, true);
+    expect(carryOver(prev, 'agent', pcScan('PC-1')).pc!.win11List).toEqual(list);
+    // Anche su un'altra rete: riguarda il processore, non la rete.
+    const elsewhere = pcScan('PC-1');
+    elsewhere.wifi!.connected!.ssid = 'Ufficio-Bianchi';
+    expect(carryOver(prev, 'agent', elsewhere).pc!.win11List).toEqual(list);
+    // Altro processore (scheda madre cambiata), altro PC, rapporto importato o demo: no.
+    expect(carryOver(prev, 'agent', pcScan('PC-1', 'AMD Ryzen 5 5600X 6-Core Processor')).pc!.win11List).toBeUndefined();
+    expect(carryOver(prev, 'agent', pcScan('PC-2')).pc!.win11List).toBeUndefined();
+    expect(carryOver(prev, 'file', pcScan('PC-1')).pc!.win11List).toBeUndefined();
+    expect(carryOver(prev, 'demo', pcScan('PC-1')).pc!.win11List).toBeUndefined();
+    // Un confronto già nella nuova analisi non si tocca.
+    const fresh = pcScan('PC-1', cpu, true);
+    fresh.pc!.win11List!.at = '2026-11-18T09:00:00Z';
+    expect(carryOver(prev, 'agent', fresh).pc!.win11List!.at).toBe('2026-11-18T09:00:00Z');
+  });
+
+  it('i processi letti dal vivo non passano alla nuova analisi, che ha i suoi', () => {
+    const prev = report('PC-1', 'Casa-Rossi');
+    const procs: ProcessesData = { at: '2026-11-17T09:00:00Z', items: [{ pid: 10, name: 'prova.exe', conns: { internet: 3, remotePorts: [{ port: 443, count: 3 }] } }] };
+    prev.pc = { procs };
+    const fresh = report('PC-1', 'Casa-Rossi');
+    fresh.pc = {};
+    expect(carryOver(prev, 'agent', fresh).pc!.procs).toBeUndefined();
+    // Nei dati dei processi nessun indirizzo remoto: solo conteggi e porte, anche nell'esportazione.
+    expect(JSON.stringify(surveyForExport(prev).pc!.procs)).not.toMatch(/"(?:remote|remoteAddr|address|ip)"\s*:/);
   });
 
   it('senza rapporto precedente la nuova analisi resta com\'è', () => {

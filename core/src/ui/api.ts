@@ -1,5 +1,5 @@
 import type { CertData, CertTarget, CpuBench, DefenderInfo, DiskBench, Inventory, RamTest, ReachData, ReachTarget, Scan, SpaceReport, SpeedServer, SpeedTest, SurveySample, Threat } from '../engine';
-import type { ADSubnets, CrashData, L2Discovery, SnmpResult } from '../engine';
+import type { ADSubnets, CrashData, L2Discovery, ProcessesData, SnmpResult, Win11CPUCheck } from '../engine';
 
 // Comunicazione con l'agente locale (Polaris.exe serve / finestra).
 // L'interfaccia è servita dallo stesso agente, quindi i percorsi sono relativi.
@@ -250,6 +250,25 @@ export async function readCrashes(): Promise<CrashData> {
   if (!r.ok) throw await errorOf(r);
   return (await r.json()) as CrashData;
 }
+
+/**
+ * Rilegge subito i processi con file, firma e connessioni riassunte (solo
+ * letture, mai indirizzi remoti); 501 se l'agente non lo offre. Il carico del
+ * processore si misura solo durante l'analisi: qui non c'è.
+ */
+export async function readProcesses(): Promise<ProcessesData> {
+  const r = await fetch('api/processes', { cache: 'no-store' });
+  if (!r.ok) throw await errorOf(r);
+  return (await r.json()) as ProcessesData;
+}
+
+/**
+ * Confronta il processore con l'elenco ufficiale dei processori supportati da
+ * Windows 11: il PC scarica la pagina da learn.microsoft.com solo ora, la
+ * legge e la scarta (409 se un confronto è già in corso, 501 se l'agente non
+ * lo offre). L'esito può essere "unknown" con il motivo in `error`.
+ */
+export const checkWin11Cpus = () => postJson<Win11CPUCheck>('api/win11/cpus', {});
 
 // ---- Mappa del Wi-Fi per stanza: una misura alla volta, su richiesta.
 

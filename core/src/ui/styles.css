@@ -1702,6 +1702,74 @@ a.btn { text-decoration: none; }
 .protect-card .dev-h:first-of-type { margin-top: 4px; }
 .printers-card .pc-table td { vertical-align: top; }
 
+/* Processi (come Process Explorer e TCPView): tabella ordinabile, filtri, albero */
+.procs-card .dev-h, .autoruns-card .dev-h, .win11-card .dev-h { display: flex; align-items: center; gap: 6px; margin: 18px 0 10px; }
+.procs-toolbar { margin: 14px 0 12px; }
+.chip[role='switch'] { display: inline-flex; align-items: center; gap: 6px; }
+.chip[role='switch'][aria-checked='true'] { color: var(--accent-text); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.procs-table td { vertical-align: top; }
+.procs-table th, .procs-table td { padding: 9px 10px; }
+.procs-table th:first-child, .procs-table td:first-child { padding-left: 14px; }
+.procs-table th.num, .procs-table td.num { text-align: right; }
+.procs-table th.num button { flex-direction: row-reverse; }
+.procs-table td.proc-name { white-space: normal; min-width: 190px; max-width: 320px; }
+.proc-title { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; }
+.proc-title .mono { font-size: 11.5px; }
+.proc-branch { color: var(--text-3); margin-right: -2px; }
+.proc-desc { display: block; font-size: 12.5px; margin-top: 2px; overflow-wrap: anywhere; }
+.proc-tags { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 5px; }
+.proc-tags .sev { white-space: normal; font-size: 11.5px; padding: 2px 8px 2px 6px; }
+td.proc-sig { white-space: normal; min-width: 150px; max-width: 240px; font-size: 13px; }
+td.proc-sig > span:first-child { display: inline-flex; align-items: flex-start; gap: 6px; }
+td.proc-sig svg { flex: none; margin-top: 2px; }
+td.proc-folder { white-space: normal; min-width: 130px; max-width: 220px; font-size: 13px; }
+td.proc-folder .mono { display: block; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.proc-net { white-space: normal; min-width: 140px; max-width: 220px; font-size: 13px; }
+@media (max-width: 560px) {
+  .procs-table td.proc-name, .ar-table td.ar-name { min-width: 150px; }
+}
+td.proc-net > span { display: block; }
+tr.proc-polaris td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+tr.proc-ctx td { color: var(--text-3); }
+
+/* Avvio automatico (come Autoruns) */
+.ar-tabs { margin: 0 0 12px; }
+.ar-tabs .seg { display: flex; flex-wrap: wrap; }
+.ar-tab-n { display: inline-block; min-width: 1.6em; margin-left: 4px; padding: 0 6px; border-radius: 999px; font: 600 11.5px/1.6 var(--mono); text-align: center; background: var(--surface-3); color: var(--text-2); }
+.ar-panel .ar-cat + .ar-cat { margin-top: 8px; }
+.ar-count { font-size: 13px; margin: 0 0 8px; }
+.ar-issues .cert-item p { margin: 6px 0 0; }
+.ar-why { font-size: 14px; }
+.ar-where { font-size: 12px; overflow-wrap: anywhere; }
+.ar-table td { vertical-align: top; }
+.ar-table td.ar-name { white-space: normal; min-width: 170px; max-width: 280px; }
+.ar-table td.ar-name b { display: block; overflow-wrap: anywhere; }
+.ar-table td.ar-name .sev { margin-top: 4px; white-space: normal; font-size: 11.5px; padding: 2px 8px 2px 6px; }
+.ar-loc, .ar-target, .ar-folder { display: block; font-size: 11.5px; margin-top: 3px; overflow-wrap: anywhere; }
+.ar-table td.ar-details { white-space: normal; min-width: 200px; max-width: 360px; font-size: 13px; }
+
+/* Requisiti di Windows 11 (come Controllo integrità PC) */
+.w11-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.w11-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.w11-row:last-child { border-bottom: 0; }
+.w11-ico { display: flex; padding-top: 1px; }
+.w11-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; }
+.w11-head b { font-weight: 620; }
+.w11-status { font-size: 12.5px; font-weight: 650; }
+.w11-value { display: block; font-size: 13px; margin-top: 2px; overflow-wrap: anywhere; }
+.w11-detail { margin: 4px 0 0; font-size: 13px; }
+.w11-official { margin-top: 6px; }
+.w11-result { border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: var(--radius-s); padding: 10px 12px; background: var(--surface-2); }
+.w11-result[data-sev='ok'] { border-left-color: var(--ok); }
+.w11-result[data-sev='warn'] { border-left-color: var(--warn); }
+.w11-result p { margin: 0; }
+.w11-result p + p { margin-top: 4px; font-size: 12.5px; }
+.w11-result svg { vertical-align: -3px; }
+.w11-check { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 12px; }
+.w11-check .faint { flex: 1 1 320px; margin: 0; font-size: 13px; }
+.hw-sub { display: block; font-family: var(--font); font-size: 12.5px; margin-top: 2px; }
+
 
 /* Test della RAM con Windows acceso */
 .ram-card .seg { margin: 10px 0; }

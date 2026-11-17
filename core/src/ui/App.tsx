@@ -48,7 +48,9 @@ import { sameCertTarget } from './certs';
 import type { CertTargetRef } from './certs';
 import { sameCrashTarget } from './crashes';
 import type { CrashTargetRef } from './crashes';
-import type { CrashData } from '../engine';
+import type { CrashData, ProcessesData, Win11CPUCheck } from '../engine';
+import { sameWin11Target } from './win11';
+import type { Win11TargetRef } from './win11';
 import { mergeSample, surveyRefusal } from './wifimap';
 import type { SurveyTargetRef } from './wifimap';
 import { sameSpeedTarget } from './speedtest';
@@ -163,6 +165,12 @@ export function carryOver(prev: Scan | null, from: Source, s: Scan): Scan {
     next = { ...next, wifi: { ...next.wifi, survey: prev.wifi.survey } };
   // E il test di velocità di Internet, se PC e rete sono gli stessi.
   if (net && prev.internet?.speed && next.internet && !next.internet.speed) next = { ...next, internet: { ...next.internet, speed: prev.internet.speed } };
+  // E il confronto del processore con l'elenco ufficiale di Windows 11, letto
+  // su richiesta: vale finché PC e processore sono gli stessi. I processi no:
+  // la nuova analisi ha i suoi, e una lettura dal vivo vale solo per la sua.
+  const list = prev.pc?.win11List;
+  if (agent && list && next.pc && !next.pc.win11List && prev.agent.host === next.agent.host && (!list.cpu || !next.pc.cpu?.name || list.cpu === next.pc.cpu.name))
+    next = { ...next, pc: { ...next.pc, win11List: list } };
   return next;
 }
 
@@ -398,6 +406,35 @@ function Shell() {
     [toast],
   );
 
+  // Una nuova lettura dei processi, come quella delle schermate blu, si unisce
+  // solo al rapporto dell'agente dello stesso PC e della stessa analisi.
+  const addProcs = useCallback(
+    (r: ProcessesData, target: CrashTargetRef) => {
+      if (!sameCrashTarget(target, scanRef.current, sourceRef.current)) {
+        toast('Lettura dei processi finita, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto', 'warn');
+        return false;
+      }
+      setScan((s) => (s && s.pc && s.agent.host === target.host && s.agent.startedAt === target.startedAt ? { ...s, pc: { ...s.pc, procs: r } } : s));
+      return true;
+    },
+    [toast],
+  );
+
+  // Il confronto con l'elenco dei processori di Windows 11 riguarda questo PC:
+  // si unisce al rapporto dello stesso PC e della stessa analisi (simulato
+  // nella demo), mai a un rapporto importato.
+  const addWin11List = useCallback(
+    (r: Win11CPUCheck, target: Win11TargetRef) => {
+      if (!sameWin11Target(target, scanRef.current, sourceRef.current)) {
+        toast('Confronto con l\'elenco dei processori finito, ma il rapporto mostrato è un altro: il risultato non è stato aggiunto', 'warn');
+        return false;
+      }
+      setScan((s) => (s && s.pc && s.agent.host === target.host && s.agent.startedAt === target.startedAt ? { ...s, pc: { ...s.pc, win11List: r } } : s));
+      return true;
+    },
+    [toast],
+  );
+
   // La misura del Wi-Fi riguarda una rete: come per i certificati, si unisce
   // solo se il rapporto mostrato è ancora quello della stessa rete (PC,
   // gateway e nome della rete Wi-Fi) e se la misura è stata fatta su quella.
@@ -519,7 +556,7 @@ function Shell() {
   const scanning = busy || (agent === undefined && slow);
   const props: ViewProps | null =
     effective && analysis
-      ? { scan: effective, analysis, go, focus, live, source, setInfra, mergeInfra, addBench, addSpace, addCerts, addCrashes, addSurvey, setSurvey, addSpeed, patchPc, assessment, monitor, gwMacChange, rescan: busy ? undefined : scanNow }
+      ? { scan: effective, analysis, go, focus, live, source, setInfra, mergeInfra, addBench, addSpace, addCerts, addCrashes, addProcs, addWin11List, addSurvey, setSurvey, addSpeed, patchPc, assessment, monitor, gwMacChange, rescan: busy ? undefined : scanNow }
       : null;
   const pickDemo = (k: DemoKind) => {
     setDemoKind(k);
