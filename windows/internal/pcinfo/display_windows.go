@@ -21,7 +21,9 @@ var (
 const qdcOnlyActivePaths = 0x2
 
 // readDisplays legge gli schermi in uso con le API di configurazione dello
-// schermo (Windows 7 e successivi; i bit per canale da Windows 10 1709).
+// schermo (Windows 7 e successivi; i bit per canale da Windows 10 1709):
+// risoluzione in uso, risoluzione nativa (modalità preferita), percorso del
+// dispositivo per l'abbinamento e bit per canale.
 // Solo letture: SetDisplayConfig non si usa.
 func readDisplays() ([]rawDisplay, error) {
 	if procQueryDisplayConfig.Find() != nil || procGetDisplayConfigBufferSizes.Find() != nil {
@@ -62,6 +64,15 @@ func readDisplays() ([]rawDisplay, error) {
 				if path, _, ok := parseTargetName(nb); ok {
 					list[i].Path = path
 				}
+			}
+			// Risoluzione nativa: la modalità preferita dello schermo
+			// (DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_PREFERRED_MODE), che non
+			// cambia con lo schermo duplicato o con una risoluzione più bassa.
+			pref := make([]uint64, dcPrefModeSize/8)
+			fb := unsafe.Slice((*byte)(unsafe.Pointer(&pref[0])), dcPrefModeSize)
+			dcHeader(fb, dcInfoPrefMode, dcPrefModeSize, list[i])
+			if r, _, _ := procDisplayConfigGetDeviceInfo.Call(uintptr(unsafe.Pointer(&pref[0]))); r == 0 {
+				list[i].NativeWidth, list[i].NativeHeight = parsePreferredMode(fb)
 			}
 			color := make([]uint64, dcAdvColorSize/8)
 			cb := unsafe.Slice((*byte)(unsafe.Pointer(&color[0])), dcAdvColorSize)

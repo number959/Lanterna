@@ -189,12 +189,14 @@ const INTEL: Row[] = [
     year: 2019,
     segment: 'portatili',
     uncertain: true,
+    // libcpuid (recog_intel.c), stepping 12: Celeron 4###U e Pentium 5###U
+    // sono Whiskey Lake; Celeron 5###U e Pentium Gold 6###U sono Comet Lake-U.
     pick: (n) =>
       /\b(?:i[357]|m3)-(?:10\d{3}|8\d{3})Y\b/i.test(n)
         ? { name: 'Amber Lake-Y', uncertain: false }
-        : /\bi[357]-10\d{3}U\b/i.test(n)
+        : /\bi[357]-10\d{3}U\b|\bCeleron 5\d{3}U\b|\bPentium (?:Gold )?6\d{3}U\b/i.test(n)
           ? { name: 'Comet Lake-U', uncertain: false }
-          : /\bi[357]-8\d{2}5U\b|\b[456]\d{2}5U\b/i.test(n)
+          : /\bi[357]-8\d{2}5U\b|\bCeleron 4\d{3}U\b|\bPentium (?:Gold )?5\d{3}U\b/i.test(n)
             ? { name: 'Whiskey Lake-U', year: 2018, uncertain: false }
             : undefined,
   },
@@ -244,7 +246,15 @@ const INTEL: Row[] = [
     name: 'Comet Lake',
     year: 2020,
     segment: 'desktop e portatili',
-    pick: (n, c) => (isXeon(n) ? { name: 'Comet Lake (Xeon W-1200)', segment: 'workstation' } : c.stepping === 2 || MOBILE.test(n) ? { name: 'Comet Lake-H', segment: 'portatili' } : { name: 'Comet Lake-S', segment: 'desktop' }),
+    // Xeon W-10000M (W-10885M, W-10855M): Comet Lake-H delle workstation mobili, non W-1200.
+    pick: (n, c) =>
+      /\bW-10\d{3}M\b/i.test(n)
+        ? { name: 'Comet Lake-H (Xeon W-10000M)', segment: 'workstation mobili' }
+        : isXeon(n)
+          ? { name: 'Comet Lake (Xeon W-1200)', segment: 'workstation' }
+          : c.stepping === 2 || MOBILE.test(n)
+            ? { name: 'Comet Lake-H', segment: 'portatili' }
+            : { name: 'Comet Lake-S', segment: 'desktop' },
   },
   { f: 6, m: one(0xa6), name: 'Comet Lake-U', year: 2019, segment: 'portatili' },
   // Rocket Lake, Tiger Lake, Lakefield (ICSV A0671, 806C1, 806C2, 806D1; SDM4; LNX).

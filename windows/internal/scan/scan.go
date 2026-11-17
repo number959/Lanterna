@@ -900,7 +900,8 @@ type Win11Data struct {
 
 type Win11Appraiser struct {
 	Target string `json:"target,omitempty"` // versione per cui vale, es. "25H2"
-	// Verdict: green (aggiornabile) | yellow | red (bloccato) | "".
+	// Verdict: green (aggiornabile) | yellow (app da disinstallare) | orange
+	// (app o driver da aggiornare) | red (bloccato) | "".
 	Verdict string `json:"verdict,omitempty"`
 	// Reasons sono i motivi del blocco come li scrive Windows (CpuFms, Tpm,
 	// UefiSecureBoot, Ram, SystemDriveSize...).
@@ -1013,6 +1014,10 @@ type PciFunc struct {
 type Display struct {
 	Width  int `json:"width,omitempty"` // risoluzione attuale in pixel
 	Height int `json:"height,omitempty"`
+	// NativeWidth e NativeHeight sono la risoluzione nativa: la modalità
+	// preferita che lo schermo dichiara a Windows; 0 se non letta.
+	NativeWidth  int `json:"nativeWidth,omitempty"`
+	NativeHeight int `json:"nativeHeight,omitempty"`
 	// DiagonalIn è la diagonale in pollici calcolata dalle dimensioni in cm
 	// dichiarate dallo schermo; 0 se lo schermo non le dichiara.
 	DiagonalIn   float64 `json:"diagonalIn,omitempty"`

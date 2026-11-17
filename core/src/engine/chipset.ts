@@ -180,7 +180,15 @@ function amdChipset(funcs: PciFunc[], hw: Hardware): ChipsetName | undefined {
   if (any('57AD', '57A3', '57A4')) {
     // Lo stesso chip fa da TRX40 e WRX80 con i Threadripper.
     const c = hw.cpu;
-    if (c && c.family === 23 && c.model === 0x31) return { name: 'AMD TRX40', detail: 'chipset separato derivato dal die di Matisse', uncertain: true };
+    // Famiglia 23 modello 0x31 sono sia i Threadripper 3000 (TRX40) sia i
+    // Threadripper PRO 3000WX (Castle Peak, WRX80): decide lo zoccolo
+    // dichiarato dal firmware, se c'è.
+    if (c && c.family === 23 && c.model === 0x31) {
+      const socket = (c.socket || '').toUpperCase();
+      if (/WRX8/.test(socket)) return { name: 'AMD WRX80', detail: 'chipset separato derivato dal die di Matisse, zoccolo sWRX8', uncertain: true };
+      if (/TRX4/.test(socket)) return { name: 'AMD TRX40', detail: 'chipset separato derivato dal die di Matisse, zoccolo sTRX4', uncertain: true };
+      return { name: 'AMD TRX40 o WRX80', detail: 'chipset separato derivato dal die di Matisse; WRX80 con i Threadripper PRO 3000WX', uncertain: true };
+    }
     if (c && c.family === 25 && c.model === 0x08) return { name: 'AMD WRX80', detail: 'chipset separato derivato dal die di Matisse', uncertain: true };
     return { name: 'AMD X570 (o X570S)', detail: 'chipset separato derivato dal die di Matisse' };
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ACTIONS, analyze, documentParts, METRICS, renderText, WIN11_CPU_LABEL, win11Cpu, win11CpuRule, win11Requirements } from '../src/engine';
-import type { PcData, Scan, Win11Req } from '../src/engine';
+import type { PcData, Scan, Win11CPUCheck, Win11Req } from '../src/engine';
+import { WIN11_CHECK_BUTTON } from '../src/engine/win11';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { guideById } from '../src/guides';
@@ -22,7 +23,10 @@ describe('generazione del processore: regole del progetto', () => {
     expect(win11CpuRule('Intel(R) Core(TM) i7-7700HQ CPU @ 2.80GHz')).toEqual({ result: 'notListed', series: 'Core i7 di 7ª generazione', note: undefined });
     expect(resultOf('Intel(R) Core(TM) i7-7820HQ CPU @ 2.90GHz')).toBe('unknown'); // solo alcuni sistemi
     expect(resultOf('Intel(R) Core(TM) i7-7740X CPU @ 4.30GHz')).toBe('unknown'); // Core X solo fino alla 22H2
-    expect(resultOf('Intel(R) Core(TM) i9-10900X CPU @ 3.70GHz')).toBe('listed');
+    // Criterio unico: le serie solo negli elenchi fino alla 22H2 (Core X, Xeon W-2100/2200/3100) sono da verificare.
+    expect(win11CpuRule('Intel(R) Core(TM) i9-10900X CPU @ 3.70GHz')).toMatchObject({ result: 'unknown', series: 'Core X serie 10000X', note: expect.stringContaining('fino alla 22H2') });
+    expect(resultOf('Intel(R) Core(TM) i9-9900X CPU @ 3.50GHz')).toBe('unknown');
+    expect(win11CpuRule('Intel(R) Xeon(R) W-2295 CPU @ 3.00GHz')).toMatchObject({ result: 'unknown', note: expect.stringContaining('fino alla 22H2') });
     expect(resultOf('Intel(R) Core(TM) i7 CPU         860  @ 2.80GHz')).toBe('notListed');
     expect(resultOf('Intel(R) Core(TM)2 Duo CPU     E8400  @ 3.00GHz')).toBe('notListed');
     expect(resultOf('Intel(R) Core(TM) m3-8100Y CPU @ 1.10GHz')).toBe('listed');
@@ -104,17 +108,84 @@ describe('generazione del processore: regole del progetto', () => {
     expect(win11Cpu({ cpu: { name: 'CPU di prova' } })).toMatchObject({ result: 'unknown', source: 'none' });
   });
 
-  it('l\'elenco ufficiale letto dal PC viene prima delle regole', () => {
-    const list = (result: 'listed' | 'notListed' | 'unknown', name: string): PcData => ({
+  it('l\'elenco ufficiale letto dal PC: «nell\'elenco» conferma, l\'assenza si unisce alle regole', () => {
+    const list = (result: 'listed' | 'notListed' | 'unknown', name: string, version = '25H2', kind: 'model' | 'series' = 'series'): PcData => ({
       cpu: { name },
-      win11List: { at: '2026-11-17T10:00:00Z', source: 'https://learn.microsoft.com/', version: '25H2', kind: 'series', result, match: result === 'listed' ? 'Intel Core i5 (8th Generation)' : undefined },
+      win11List: { at: '2026-11-17T10:00:00Z', source: 'https://learn.microsoft.com/', version, kind, result, match: result === 'listed' ? 'Intel Core i5 (8th Generation)' : undefined },
     });
+    const amd = (result: 'listed' | 'notListed' | 'unknown', name: string) => list(result, name, '24H2', 'model');
     expect(win11Cpu(list('listed', 'Intel(R) Core(TM) i5-8250U'))).toMatchObject({ result: 'listed', source: 'list' });
+    // Assente dall'elenco e anteriore secondo le regole: l'unico «non rispettato».
     expect(win11Cpu(list('notListed', 'Intel(R) Core(TM) i5-7200U'))).toMatchObject({ result: 'notListed', source: 'list' });
-    // Una generazione uscita dopo l'elenco resta «più recente», non «non supportata».
+    expect(win11Cpu(amd('notListed', 'AMD Ryzen 7 1700 Eight-Core Processor'))).toMatchObject({ result: 'notListed', source: 'list' });
+    // Una generazione uscita dopo l'elenco resta «più recente».
     expect(win11Cpu(list('notListed', 'Intel(R) Core(TM) Ultra 5 445H'))).toMatchObject({ result: 'newer', source: 'rules' });
+    expect(win11Cpu(list('notListed', 'Intel(R) N150'))).toMatchObject({ result: 'newer', source: 'rules' });
+    // Processori attuali assenti dall'elenco AMD per modello della 24H2 o dall'elenco Intel 25H2: le regole li danno supportati.
+    for (const n of ['AMD Ryzen 9 9950X 16-Core Processor', 'AMD Ryzen AI 9 HX 370 w/ Radeon 890M', 'AMD Ryzen 7 8845HS w/ Radeon 780M Graphics', 'AMD Ryzen Threadripper 3970X 32-Core Processor', 'AMD Ryzen 7 260 w/ Radeon 780M Graphics'])
+      expect(win11Cpu(amd('notListed', n)), n).toMatchObject({ result: 'listed', source: 'rules' });
+    expect(win11Cpu(list('notListed', 'Intel(R) Pentium(R) Gold G6400 CPU @ 4.00GHz'))).toMatchObject({ result: 'listed', source: 'rules' });
+    // Il dettaglio non dice che la serie è negli elenchi più recenti (la serie Pentium Gold G6000 non c'è): lo dicono le regole.
+    expect(win11Cpu(list('notListed', 'Intel(R) Pentium(R) Gold G6400 CPU @ 4.00GHz')).detail).toContain('le regole di Polaris lo collocano nella generazione supportata (Pentium Gold G6000)');
+    // Athlon 300/3000/4000 e AMD 3015e/3020e: Microsoft li elenca solo per modello (24H2), la 25H2 per serie non li ha.
+    expect(win11CpuRule('AMD Athlon Silver 3050U with Radeon Graphics')).toMatchObject({ result: 'listed', note: expect.stringContaining('per modello') });
+    expect(win11CpuRule('AMD 3020e with Radeon Graphics')).toMatchObject({ result: 'listed', note: expect.stringContaining('per modello') });
+    expect(win11CpuRule('AMD Athlon Gold 7220U')).toMatchObject({ result: 'listed', note: undefined });
+    for (const n of ['AMD Athlon PRO 3145U Mobile Processor with Radeon Graphics', 'AMD Athlon Gold PRO 4150GE with Radeon Graphics', 'AMD 3015e with Radeon Graphics'])
+      expect(win11Cpu(amd('notListed', n)), n).toMatchObject({ result: 'unknown', source: 'list' });
+    expect(win11Cpu(amd('notListed', 'AMD EPYC 7302 16-Core Processor')).detail).toContain('non lo escludono (EPYC 7002, negli elenchi per modello fino alla 24H2, non nella 25H2)');
+    // Serie solo negli elenchi vecchi, serie con nota, nomi sconosciuti: da verificare, mai «non rispettato».
+    for (const p of [
+      list('notListed', 'Intel(R) Core(TM) i9-10900X CPU @ 3.70GHz'),
+      list('notListed', 'Intel(R) Core(TM) i9-10980XE CPU @ 3.00GHz'),
+      list('notListed', 'Intel(R) Core(TM) i7-9800X CPU @ 3.80GHz'),
+      list('notListed', 'Intel(R) Xeon(R) W-2295 CPU @ 3.00GHz'),
+      list('notListed', 'Intel(R) Xeon(R) W-2133 CPU @ 3.60GHz'),
+      amd('notListed', 'AMD Ryzen 5 2600 Six-Core Processor'),
+      amd('notListed', 'AMD Eng Sample: 100-000000163_43/29_Y'),
+      amd('notListed', 'AMD Custom APU 0405'),
+      list('notListed', 'Intel(R) N50'),
+    ]) {
+      const v = win11Cpu(p);
+      expect(v, p.cpu!.name).toMatchObject({ result: 'unknown', source: 'list' });
+      expect(v.detail, p.cpu!.name).toContain('Non compare nell\'elenco ufficiale Microsoft');
+    }
     expect(win11Cpu(list('unknown', 'Intel(R) Core(TM) i5-8250U'))).toMatchObject({ result: 'listed', source: 'rules' });
     for (const k of Object.keys(WIN11_CPU_LABEL)) expect(WIN11_CPU_LABEL[k as keyof typeof WIN11_CPU_LABEL].length).toBeGreaterThan(5);
+    // Mai «non supportato» nelle etichette.
+    for (const v of Object.values(WIN11_CPU_LABEL)) expect(v).not.toMatch(/non supportat/);
+  });
+
+  it('con l\'elenco letto, il requisito non diventa mai «non rispettato» per un processore supportato secondo le regole', () => {
+    const notListed: Win11CPUCheck = { at: '2026-11-17T10:00:00Z', source: 'https://learn.microsoft.com/x', version: '24H2', kind: 'model', result: 'notListed', rows: 399 };
+    const s = goodScan();
+    s.pc!.win11List = notListed;
+    for (const name of ['AMD Ryzen 9 9950X 16-Core Processor', 'AMD Ryzen AI 9 HX 370 w/ Radeon 890M']) {
+      s.pc!.cpu!.name = name;
+      expect(req(s, 'cpu-gen')?.status, name).toBe('ok');
+      expect(win11Of(s)?.severity, name).toBe('ok');
+    }
+    s.pc!.win11List = { ...notListed, version: '25H2', kind: 'series' };
+    for (const name of ['Intel(R) Core(TM) i9-10900X CPU @ 3.70GHz', 'Intel(R) Xeon(R) W-2295 CPU @ 3.00GHz']) {
+      s.pc!.cpu!.name = name;
+      const r = req(s, 'cpu-gen');
+      expect(r?.status, name).toBe('unknown');
+      expect(r?.value, name).toContain('non nell\'elenco Microsoft 25H2: da verificare');
+      const f = win11Of(s);
+      expect(f?.severity, name).toBe('info');
+      expect(f?.verdict, name).not.toContain('garanzia di ricevere aggiornamenti');
+    }
+    s.pc!.cpu!.name = 'Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz';
+    expect(req(s, 'cpu-gen')).toMatchObject({ status: 'fail', value: 'Core i5 di 7ª generazione, generazione anteriore a quelle elencate' });
+  });
+
+  it('esito simulato della demo: il dettaglio non dichiara una lettura', () => {
+    const pc: PcData = { cpu: { name: 'Intel(R) Core(TM) i5-8250U' }, win11List: { at: '2026-11-17T10:00:00Z', source: 'simulazione della demo', version: '25H2', kind: 'series', result: 'listed', match: 'Core i5 di 8ª generazione' } };
+    expect(win11Cpu(pc).detail).not.toContain('letto su richiesta');
+    expect(win11Cpu(pc).detail).toContain('esito simulato nella demo');
+    pc.win11List = { ...pc.win11List!, result: 'notListed', match: undefined };
+    pc.cpu!.name = 'Intel(R) Core(TM) i5-7200U';
+    expect(win11Cpu(pc).detail).toContain('esito simulato nella demo');
   });
 });
 
@@ -195,6 +266,15 @@ describe('requisiti di Windows 11, uno per riga', () => {
     const s = goodScan();
     s.pc!.hardware!.displays = [{ width: 1280, height: 800, diagonalIn: 8, bitsPerColor: 8, internal: true }];
     expect(req(s, 'display')?.status).toBe('fail');
+    // Pannello da 15,6" usato a 800×600 (duplicato su un proiettore): senza la risoluzione nativa è da verificare, non «non rispettato».
+    s.pc!.hardware!.displays = [{ width: 800, height: 600, diagonalIn: 15.6, bitsPerColor: 8, internal: true }];
+    expect(req(s, 'display')?.status).toBe('unknown');
+    expect(req(s, 'display')?.detail).toContain('da verificare');
+    // Con la risoluzione nativa letta decide quella.
+    s.pc!.hardware!.displays = [{ width: 800, height: 600, nativeWidth: 1920, nativeHeight: 1080, diagonalIn: 15.6, bitsPerColor: 8, internal: true }];
+    expect(req(s, 'display')).toMatchObject({ status: 'ok', value: '15,6", 1920×1080 (in uso 800×600), 8 bit per colore' });
+    s.pc!.hardware!.displays = [{ width: 1024, height: 600, nativeWidth: 1024, nativeHeight: 600, diagonalIn: 10.1, bitsPerColor: 8, internal: true }];
+    expect(req(s, 'display')).toMatchObject({ status: 'fail', value: '10,1", 1024×600, 8 bit per colore' });
     s.pc!.hardware!.displays = [{ width: 1366, height: 768, diagonalIn: 11.6, bitsPerColor: 6, internal: true }];
     expect(req(s, 'display')?.status).toBe('unknown');
     s.pc!.hardware!.displays = [{ width: 1920, height: 1080, diagonalIn: 27 }];
@@ -211,6 +291,14 @@ describe('requisiti di Windows 11, uno per riga', () => {
     expect(req(s, 'instr')?.status).toBe('fail');
     s.pc!.os!.arch = 'arm64';
     expect(req(s, 'instr')?.status).toBe('na');
+  });
+
+  it('verdetto di Windows Update: arancione con avvertenze, motivi senza badare alle maiuscole', () => {
+    const s = goodScan('Windows 10 Pro', 19045);
+    s.pc!.win11 = { tpmVersion: '2.0', appraiser: { target: '25H2', verdict: 'orange' } };
+    expect(req(s, 'appraiser')).toMatchObject({ status: 'unknown', value: 'con avvertenze (app o driver da aggiornare) alla 25H2' });
+    s.pc!.win11 = { tpmVersion: '2.0', appraiser: { target: '25H2', verdict: 'red', reasons: ['TPM', 'UEFISecureBoot', 'cpufms', 'constructor'] } };
+    expect(req(s, 'appraiser')?.value).toBe('bloccato alla 25H2: TPM 2.0 assente, Secure Boot non supportato, processore non nella generazione approvata, constructor');
   });
 
   it('verdetto di Windows Update come indizio, con i motivi tradotti', () => {
@@ -237,8 +325,58 @@ describe('giudizio pc.win11', () => {
     const f = win11Of(old);
     expect(f?.severity).toBe('warn');
     expect(f?.value).toBe('2 requisiti mancanti');
-    expect(f?.verdict).toContain('generazione del processore (Core i7 di 7ª generazione, generazione non supportata)');
+    expect(f?.verdict).toContain('generazione del processore (Core i7 di 7ª generazione, generazione anteriore a quelle elencate)');
     expect(f?.actions).toEqual(['firmware-security', 'check-win11-cpu', 'upgrade-windows']);
+  });
+
+  it('Windows 10: il rimando a Controllo integrità PC compare una volta sola', () => {
+    const f = win11Of(goodScan('Windows 10 Pro', 19045));
+    expect(f?.verdict.split('Controllo integrità PC').length).toBe(2);
+    const s = goodScan('Windows 10 Pro', 19045);
+    s.pc!.win11List = { at: '2026-11-17T10:00:00Z', source: 'https://learn.microsoft.com/x', version: '25H2', kind: 'series', result: 'listed', match: '11th Generation Core i5 Processors', rows: 87 };
+    expect(win11Of(s)?.verdict.split('Controllo integrità PC').length).toBe(2);
+  });
+
+  it('schermo o scheda video sotto i requisiti: solo informazione, mai aggiornamenti non garantiti', () => {
+    // Console portatile da 7" venduta con Windows 11 (ROG Ally, MSI Claw).
+    const s = goodScan();
+    s.pc!.hardware!.displays = [{ diagonalIn: 7, width: 1920, height: 1080, bitsPerColor: 8, internal: true }];
+    let f = win11Of(s);
+    expect(f?.severity).toBe('info');
+    expect(f?.value).toBe('1 requisito non rispettato');
+    expect(f?.verdict).not.toContain('garanzia di ricevere aggiornamenti');
+    expect(f?.verdict).toContain('né Windows Update né Controllo integrità PC');
+    s.pc!.gpus = [{ name: 'Acme Graphics', wddm: 1300 }];
+    expect(win11Of(s)?.severity).toBe('info');
+    // Su Windows 10 lo stesso: informazione, non avviso.
+    const w10 = goodScan('Windows 10 Pro', 19045);
+    w10.pc!.hardware!.displays = [{ diagonalIn: 7, width: 1920, height: 1080, bitsPerColor: 8, internal: true }];
+    f = win11Of(w10);
+    expect(f?.severity).toBe('info');
+    expect(f?.verdict).toContain('rispetta i requisiti di Windows 11 che Windows Update controlla.');
+    expect(f?.verdict).toContain('non blocca l\'aggiornamento a Windows 11');
+    // Con un requisito controllato da Windows Update ancora da verificare (TPM non letto) non si dice «rispettati» senza riserve.
+    w10.pc!.win11 = {};
+    delete w10.pc!.hardware!.tpm;
+    f = win11Of(w10);
+    expect(f?.verdict).toContain('che Windows Update controlla, tra quelli verificabili da qui. Non rispettato: schermo integrato');
+    expect(f?.verdict).toContain('Da verificare: TPM 2.0 (non letto)');
+    const w11u = goodScan();
+    w11u.pc!.hardware!.displays = [{ diagonalIn: 7, width: 1920, height: 1080, bitsPerColor: 8, internal: true }];
+    w11u.pc!.win11 = {};
+    delete w11u.pc!.hardware!.tpm;
+    expect(win11Of(w11u)?.verdict).toMatch(/^I requisiti verificabili che Windows Update controlla sono rispettati\. Non rispettato: schermo integrato .* non blocca gli aggiornamenti\. Da verificare: TPM 2\.0 \(non letto\)\./);
+    // Su Windows 10 con un requisito vero mancante: avviso, e lo schermo «anche».
+    w10.pc!.cpu!.name = 'Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz';
+    f = win11Of(w10);
+    expect(f?.severity).toBe('warn');
+    expect(f?.verdict).toContain('. Non rispettato anche: schermo integrato');
+    // Con un requisito vero mancante resta l'avviso, e lo schermo si dice a parte.
+    s.pc!.cpu!.name = 'Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz';
+    f = win11Of(s);
+    expect(f?.severity).toBe('warn');
+    expect(f?.verdict).toContain('garanzia di ricevere aggiornamenti');
+    expect(f?.verdict).toContain('Non rispettato anche: scheda video con driver WDDM 2.0 (WDDM 1.3); schermo integrato (7,0", 1920×1080, 8 bit per colore). Sono requisiti che Microsoft indica');
   });
 
   it('Windows 11 su hardware non supportato: aggiornamenti non garantiti', () => {
@@ -271,7 +409,14 @@ describe('giudizio pc.win11', () => {
 
   it('knowledge base, azioni, guida, rapporto e documento', () => {
     expect(METRICS['pc.win11'].limits).toContain('non sono incorporati');
+    expect(METRICS['pc.win11'].limits).not.toMatch(/generazione non supportata/);
+    expect((METRICS['pc.win11'].scale || []).map((x) => x.range).join(' ')).toContain('schermo o scheda video');
     expect(ACTIONS['check-win11-cpu']).toBeDefined();
+    // L'azione cita il pulsante della scheda con la sua etichetta esatta.
+    expect(ACTIONS['check-win11-cpu'].steps.map((x) => (typeof x === 'string' ? x : x.text)).join(' ')).toContain(`«${WIN11_CHECK_BUTTON}»`);
+    const guide = JSON.stringify(guideById('requisiti-windows-11'));
+    expect(guide).toContain(WIN11_CPU_LABEL.notListed);
+    expect(guide).not.toMatch(/generazione non supportata/);
     expect(guideById('requisiti-windows-11')?.metrics).toContain('pc.win11');
     const txt = renderText(clinicScan, analyze(clinicScan));
     expect(txt).toContain(' Requisiti di Windows 11');
@@ -280,5 +425,12 @@ describe('giudizio pc.win11', () => {
     const doc = documentParts(clinicScan, analyze(clinicScan)).body;
     expect(doc).toContain('<h2>Requisiti di Windows 11</h2>');
     expect(doc).toContain('non incorpora gli elenchi dei processori');
+    expect(doc).toContain('valutata con regole proprie');
+    // Con l'esito dall'elenco letto su richiesta, la nota lo dice.
+    const s = clone(clinicScan);
+    s.pc!.win11List = { at: '2026-11-17T10:00:00Z', source: 'https://learn.microsoft.com/x', version: '25H2', kind: 'series', result: 'listed', match: '12th Generation Core i5 Processors', rows: 87 };
+    const doc2 = documentParts(s, analyze(s)).body;
+    expect(doc2).toContain('confrontata con l\'elenco ufficiale (versione 25H2) letto su richiesta da questo PC');
+    expect(doc2).not.toContain('valutata con regole proprie');
   });
 });

@@ -49,6 +49,44 @@ func TestParseDisplayConfig(t *testing.T) {
 	if got := parseDisplayConfig(paths, 2, modes[:dcModeSize], 2); got[0].Width != 0 {
 		t.Errorf("modalità fuori dal buffer usata: %+v", got[0])
 	}
+	// Indici anomali (da 0x80000000 in su): con GOARCH=386 int(idx) era
+	// negativo e lo slicing andava in panic. Nessun panic, nessuna modalità.
+	for _, idx := range []uint32{0x82000000, 0x80000000, 0xFFFFFFFE, 0x04000001} {
+		dcPath(paths[0:], 0x1234, 0, 0x1100, 5, idx)
+		got := parseDisplayConfig(paths, 2, modes, 2)
+		if len(got) != 2 || got[0].Width != 0 || got[0].Height != 0 {
+			t.Errorf("indice %#x: %+v", idx, got)
+		}
+	}
+	if got := parseDisplayConfig(paths, 2, modes, -1); len(got) != 2 || got[0].Width != 0 {
+		t.Errorf("numero di modalità negativo: %+v", got)
+	}
+}
+
+func TestParsePreferredMode(t *testing.T) {
+	d := rawDisplay{AdapterLow: 1, TargetID: 0x1101}
+	b := make([]byte, dcPrefModeSize)
+	dcHeader(b, dcInfoPrefMode, dcPrefModeSize, d)
+	le := binary.LittleEndian
+	if le.Uint32(b[0:]) != 3 || le.Uint32(b[4:]) != 80 {
+		t.Errorf("intestazione della modalità preferita: % x", b[:20])
+	}
+	le.PutUint32(b[dcPrefWidthAt:], 1920)
+	le.PutUint32(b[dcPrefHeightAt:], 1080)
+	if w, h := parsePreferredMode(b); w != 1920 || h != 1080 {
+		t.Errorf("modalità preferita: %dx%d", w, h)
+	}
+	if w, h := parsePreferredMode(b[:dcPrefModeSize-1]); w != 0 || h != 0 {
+		t.Errorf("buffer corto accettato: %dx%d", w, h)
+	}
+	le.PutUint32(b[dcPrefHeightAt:], 0)
+	if w, h := parsePreferredMode(b); w != 0 || h != 0 {
+		t.Errorf("altezza zero accettata: %dx%d", w, h)
+	}
+	le.PutUint32(b[dcPrefHeightAt:], 70000)
+	if w, h := parsePreferredMode(b); w != 0 || h != 0 {
+		t.Errorf("valore non plausibile accettato: %dx%d", w, h)
+	}
 }
 
 func TestDisplayDeviceInfo(t *testing.T) {
@@ -116,7 +154,8 @@ func TestBuildDisplays(t *testing.T) {
 	vot := func(v int64) *int64 { return &v }
 	native := []rawDisplay{
 		{TargetID: 1, Tech: 10, HasTech: true, Width: 2560, Height: 1440, Bits: 10, Path: `\\?\DISPLAY#GSM5B7F#5&1&0&UID256#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}`},
-		{TargetID: 2, Tech: techInternal, HasTech: true, Width: 1920, Height: 1080, Bits: 8, Path: `\\?\DISPLAY#LGD06A5#4&2&0&UID8388688#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}`},
+		// Pannello da 1080p duplicato su un proiettore a 800×600: la risoluzione nativa resta.
+		{TargetID: 2, Tech: techInternal, HasTech: true, Width: 800, Height: 600, NativeWidth: 1920, NativeHeight: 1080, Bits: 8, Path: `\\?\DISPLAY#LGD06A5#4&2&0&UID8388688#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}`},
 		{TargetID: 3, Tech: 17, HasTech: true, Width: 1024, Height: 768}, // schermo virtuale: niente dimensioni
 	}
 	wmi := []psMonitor{
@@ -125,7 +164,7 @@ func TestBuildDisplays(t *testing.T) {
 	}
 	got := BuildDisplays(native, wmi, nil)
 	want := []scan.Display{
-		{Width: 1920, Height: 1080, DiagonalIn: 15.3, BitsPerColor: 8, Internal: true},
+		{Width: 800, Height: 600, NativeWidth: 1920, NativeHeight: 1080, DiagonalIn: 15.3, BitsPerColor: 8, Internal: true},
 		{Width: 2560, Height: 1440, DiagonalIn: 27.2, BitsPerColor: 10},
 		{Width: 1024, Height: 768},
 	}

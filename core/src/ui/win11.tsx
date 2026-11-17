@@ -4,6 +4,7 @@ import { m } from 'motion/react';
 import { useState, useSyncExternalStore } from 'react';
 import { dateIt, WIN11_STATUS_LABEL, win11CpuRule, win11Requirements } from '../engine';
 import type { PcData, Scan, Severity, Win11CPUCheck, Win11Status } from '../engine';
+import { WIN11_CHECK_BUTTON } from '../engine/win11';
 import { checkWin11Cpus } from './api';
 import { SevIcon, useOpenGuide, useToast } from './components';
 import { rise } from './motion';
@@ -81,22 +82,48 @@ const hostOf = (src: string) => {
   return m_ ? m_[1] : '';
 };
 
-/** Esito del confronto in una frase, con il tono. */
+/**
+ * Esito del confronto in una frase, con il tono. «Non nell'elenco» non è un
+ * giudizio: l'elenco è quello di una sola versione e non comprende tutti i
+ * modelli; il requisito lo unisce alle regole di Polaris (engine/win11.ts).
+ */
 export function listResultText(l: Win11CPUCheck): { text: string; sev: Severity } {
   const which = `per Windows 11 ${l.version}${l.kind === 'model' ? ' (elenco per modello)' : ' (elenco per serie)'}`;
   if (l.result === 'listed') return { text: `Il processore è nell'elenco ufficiale Microsoft ${which}${l.match ? `: ${l.match}` : ''}.`, sev: 'ok' };
   if (l.result === 'notListed')
     return {
-      text: `Il processore non compare nell'elenco ufficiale Microsoft ${which}. Gli elenchi sono pensati per i PC nuovi e Microsoft considera supportate anche le generazioni uscite dopo: la verifica definitiva è Controllo integrità PC.`,
-      sev: 'warn',
+      text: `Il processore non compare nell'elenco ufficiale Microsoft ${which}. Non vuol dire che sia escluso: gli elenchi sono pensati per i PC nuovi, cambiano a ogni versione e non comprendono tutti i modelli, e Microsoft considera supportate anche le generazioni uscite dopo. La riga «Generazione del processore» unisce questo esito alle regole di Polaris; la verifica definitiva è Controllo integrità PC.`,
+      sev: 'unknown',
     };
-  return { text: `Confronto non concluso: da verificare con Controllo integrità PC${l.error ? ` (${l.error})` : ''}.`, sev: 'unknown' };
+  // Lettura non riuscita: il motivo viene dall'agente, già in italiano semplice.
+  if (l.error) return { text: `Confronto non concluso: ${l.error}. Da verificare con Controllo integrità PC.`, sev: 'unknown' };
+  // Pagina letta, serie trovata ma troppo ampia (Celeron 3000, Pentium Gold 4000U): decide il modello.
+  if (l.match)
+    return {
+      text: `La serie «${l.match}» è nell'elenco ufficiale Microsoft ${which}, ma comprende anche modelli di generazioni non supportate: decide il modello, da verificare con Controllo integrità PC.`,
+      sev: 'unknown',
+    };
+  return { text: 'Dal nome del processore non si può dire (processore virtuale o modello non riconosciuto): da verificare con Controllo integrità PC.', sev: 'unknown' };
+}
+
+/** Avviso a comparsa alla fine del confronto: «non concluso» solo se la lettura non è riuscita. */
+export function listToast(l: Win11CPUCheck): { text: string; kind: 'ok' | 'warn' } {
+  if (l.result === 'listed') return { text: 'Processore trovato nell\'elenco ufficiale Microsoft', kind: 'ok' };
+  if (l.result === 'notListed') return { text: 'Processore non presente nell\'elenco ufficiale Microsoft: vedi la riga del processore', kind: 'warn' };
+  if (l.error) return { text: 'Confronto con l\'elenco ufficiale non concluso: da verificare', kind: 'warn' };
+  return { text: 'Confronto concluso: esito da verificare con Controllo integrità PC', kind: 'warn' };
+}
+
+/** Da dove viene l'esito: la pagina si dice letta solo se l'agente ne ha letto la tabella (rows). */
+export function listSourceText(l: Win11CPUCheck): string {
+  if (l.source === DEMO_LIST_SOURCE) return 'Esito simulato nella demo: nessuna pagina è stata letta';
+  const host = hostOf(l.source);
+  if (l.rows) return `Pagina letta da ${host || l.source}`;
+  return host ? `Pagina di ${host} non letta` : 'Nessuna pagina letta';
 }
 
 function ListResult({ l }: { l: Win11CPUCheck }) {
   const r = listResultText(l);
-  const demo = l.source === DEMO_LIST_SOURCE;
-  const host = hostOf(l.source);
   return (
     <div className="w11-result" data-sev={r.sev}>
       <p>
@@ -106,8 +133,8 @@ function ListResult({ l }: { l: Win11CPUCheck }) {
         {r.text}
       </p>
       <p className="faint">
-        {demo ? 'Esito simulato nella demo: nessuna pagina è stata letta' : `Pagina letta da ${host || l.source}`}
-        {l.at ? ` il ${whenText(l.at)}` : ''}
+        {listSourceText(l)}
+        {l.at ? ` · confronto del ${whenText(l.at)}` : ''}
         {l.rows ? ` · ${l.rows} righe nell'elenco` : ''}
         {l.cpu ? ` · processore confrontato: ${l.cpu}` : ''}.
       </p>
@@ -138,9 +165,8 @@ export function Win11Card({ scan, analysis, live, source, addWin11List }: Pick<V
     p.then(
       (r) => {
         if (!addWin11List(r, target)) return;
-        if (r.result === 'listed') toast('Processore trovato nell\'elenco ufficiale Microsoft', 'ok');
-        else if (r.result === 'notListed') toast('Processore non presente nell\'elenco ufficiale Microsoft', 'warn');
-        else toast('Confronto con l\'elenco ufficiale non concluso: da verificare', 'warn');
+        const t = listToast(r);
+        toast(t.text, t.kind);
       },
       (e) => setError(e instanceof Error ? e.message : String(e)),
     ).finally(() => setRunning(false));
@@ -211,7 +237,7 @@ export function Win11Card({ scan, analysis, live, source, addWin11List }: Pick<V
           <div className="w11-check">
             <button className="btn small" onClick={check} disabled={busy} aria-describedby="w11-check-note">
               <Globe size={15} className={busy ? 'spin' : undefined} aria-hidden />
-              {busy ? 'Lettura dell\'elenco in corso…' : list ? 'Controlla di nuovo nell\'elenco ufficiale Microsoft' : 'Controlla nell\'elenco ufficiale Microsoft'}
+              {busy ? 'Lettura dell\'elenco in corso…' : list ? 'Controlla di nuovo nell\'elenco ufficiale Microsoft' : WIN11_CHECK_BUTTON}
             </button>
             <p id="w11-check-note" className="faint">
               {source === 'demo'

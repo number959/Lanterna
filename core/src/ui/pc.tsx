@@ -1753,13 +1753,22 @@ export function chipsetRow(hw: Hardware): ReactNode | undefined {
   );
 }
 
-const displayTitle = (d: Display, i: number, n: number) => (d.internal ? 'Schermo integrato' : n > 1 ? `Schermo ${i + 1}` : 'Schermo');
+/**
+ * Titolo di ogni schermo, unico (Kv usa il titolo come chiave): i portatili a
+ * doppio schermo hanno due schermi integrati, che l'agente mette per primi.
+ */
+export function displayTitles(list: Display[]): string[] {
+  const inner = list.filter((d) => d.internal).length;
+  return list.map((d, i) => (d.internal ? (inner > 1 ? `Schermo integrato ${i + 1}` : 'Schermo integrato') : list.length > 1 ? `Schermo ${i + 1}` : 'Schermo'));
+}
 
-/** Diagonale, risoluzione e colore: niente numero di serie né nome del modello. */
+/** Diagonale, risoluzione (nativa, e quella in uso se diversa) e colore: niente numero di serie né nome del modello. */
 export function displayText(d: Display): string {
+  const inUse = d.width && d.height ? `${d.width} × ${d.height}` : '';
+  const native = d.nativeWidth && d.nativeHeight ? `${d.nativeWidth} × ${d.nativeHeight}` : '';
   const parts = [
     d.diagonalIn ? `${fmtNum(d.diagonalIn, 1)} pollici` : '',
-    d.width && d.height ? `${d.width} × ${d.height}` : '',
+    native ? `${native} nativa${inUse && inUse !== native ? `, in uso ${inUse}` : ''}` : inUse,
     d.bitsPerColor ? `${d.bitsPerColor} bit per colore` : '',
   ].filter(Boolean);
   return parts.length ? parts.join(' · ') : 'dimensioni non dichiarate';
@@ -1931,7 +1940,7 @@ export function HardwareCard({ pc, live, source, initialTab = 'cpu' }: { pc: PcD
         {tab === 'gpu' && (hw.displays ?? []).length > 0 && (
           <div className="hw-block">
             <h3>Schermi</h3>
-            <Kv rows={hw.displays!.map((d, i): [string, ReactNode] => [displayTitle(d, i, hw.displays!.length), displayText(d)])} />
+            <Kv rows={displayTitles(hw.displays!).map((t, i): [string, ReactNode] => [t, displayText(hw.displays![i])])} />
           </div>
         )}
       </div>

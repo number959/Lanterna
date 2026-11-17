@@ -13,7 +13,7 @@ import { discoveredNets, netLabel, switchPort } from './discovery';
 import { cacheText, channelMode, coreLayout, cpuVendor, displaysText, memVendor, moduleText } from './hardware';
 import { codeName, codeNameText } from './codenames';
 import { chipsetName, chipsetText } from './chipset';
-import { WIN11_STATUS_LABEL, win11Requirements } from './win11';
+import { WIN11_STATUS_LABEL, win11Cpu, win11Requirements } from './win11';
 import { fileSeverity, folderLabel, lc1, listeners, procGroups, signatureLabel } from './procs';
 import { autorunCounts, autorunIssues, categoryLower, categoryShort } from './autoruns';
 import { dateIt } from './pc';
@@ -21,7 +21,7 @@ import { attrState, bytesText, diskStatus, isFlashDisk, smartId, smartName, smar
 import { pctText, sizeText, SPACE_CATEGORY_LABEL, SPACE_HINTS, SPACE_RISK_LABEL, unattributedBytes } from './space';
 import { dbmText, gatewayText, radioText, rssiWord, surveyAliases, surveyRooms } from './survey';
 import { SPEED_LEGAL_NOTE, speedDocRows } from './speedtest';
-import type { Analysis, EventKind, Finding, Scan, Severity, SurveySample } from './types';
+import type { Analysis, EventKind, Finding, PcData, Scan, Severity, SurveySample } from './types';
 
 // Documento stampabile ed esportabile sullo stato del PC (e della rete): HTML
 // autonomo in formato A4, con gli stessi giudizi del programma. Lo usano
@@ -88,19 +88,35 @@ function scrub(s: string): string {
 // Indirizzi IPv6 globali (2000::/3): restano loopback, link-local (fe80::/10),
 // locali unici (fc00::/7) e multicast (ff00::/8). Un candidato deve avere
 // "::" oppure otto gruppi, così gli orari (10:30:45) non si toccano; i MAC
-// sono già stati tolti. Niente lookbehind: il motore gira anche in goja.
-const IPV6 = /(^|[^0-9a-z:_.])([0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7})(?![0-9a-z:_.])/gi;
+// sono già stati tolti. Dopo l'indirizzo può venire la punteggiatura di fine
+// frase («Server: 2a01:e00:ffff::53.», «…:47d3: la rete»), ma non un altro
+// pezzo di indirizzo o di nome. Niente lookbehind: il motore gira anche in
+// goja (i lookahead sono ES2015).
+const IPV6 = /(^|[^0-9a-z:_.])([0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7})(?=$|[^0-9a-z_.:]|[.:](?![0-9a-z]))/gi;
 function scrub6(s: string): string {
-  return s.replace(IPV6, (m: string, pre: string, addr: string) => {
+  return s.replace(IPV6, (m: string, pre: string, found: string) => {
+    // Un solo «:» in fondo è punteggiatura («…:47d3: la rete»), «::» fa parte dell'indirizzo.
+    const tail = /[^:]:$/.test(found) ? ':' : '';
+    const addr = tail ? found.slice(0, -1) : found;
     const parts = addr.split(':');
     const double = addr.indexOf('::');
     if (double < 0 ? parts.length !== 8 : addr.indexOf('::', double + 1) >= 0) return m;
     if (!/[0-9a-f]/i.test(addr) || parts.some((p) => p.length > 4)) return m;
     const first = addr.slice(0, 2) === '::' ? 0 : parseInt(parts[0], 16);
-    return first >= 0x2000 && first <= 0x3fff ? `${pre}[IP pubblico]` : m;
+    return first >= 0x2000 && first <= 0x3fff ? `${pre}[IP pubblico]${tail}` : m;
   });
 }
 const t = (s: unknown) => esc(scrub6(scrub(String(s === undefined || s === null ? '' : s))));
+
+/** Da dove viene il giudizio sulla generazione del processore, per la nota sotto i requisiti. */
+function win11CpuSourceText(pc: PcData): string {
+  const l = pc.win11List;
+  if (win11Cpu(pc).source === 'list' && l)
+    return /^https?:\/\//i.test(l.source || '')
+      ? `la generazione del processore è confrontata con l'elenco ufficiale (versione ${l.version}) letto su richiesta da questo PC`
+      : 'la generazione del processore viene da un esito simulato nella demo, senza leggere alcuna pagina';
+  return 'la generazione del processore è valutata con regole proprie';
+}
 
 const sev = (s: Severity) => `<span class="pd-sev pd-${s}"><b aria-hidden="true">${SEV[s].mark}</b> ${SEV[s].label}</span>`;
 const n1 = (v: number) => fmt(v, v < 10 ? 1 : 0);
@@ -310,7 +326,7 @@ export function documentParts(scan: Scan, a: Analysis, opts: DocOptions = {}): {
     out.push(
       `<section><h2>Requisiti di Windows 11</h2><table class="pd-table"><thead><tr><th>Requisito</th><th>Su questo PC</th><th><span class="pd-sr">Esito</span></th></tr></thead><tbody>${reqs
         .map((r) => `<tr><td>${t(r.label)}${r.detail ? `<br><span class="pd-small">${t(r.detail)}</span>` : ''}</td><td>${t(r.value)}</td><td class="pd-c">${mark(r.status)}</td></tr>`)
-        .join('')}</tbody></table><p class="pd-muted pd-small">Polaris non incorpora gli elenchi dei processori di Microsoft: la generazione del processore è valutata con regole proprie. La verifica ufficiale è l'app Controllo integrità PC.</p></section>`,
+        .join('')}</tbody></table><p class="pd-muted pd-small">Polaris non incorpora gli elenchi dei processori di Microsoft: ${win11CpuSourceText(pc!)}. La verifica ufficiale è l'app Controllo integrità PC.</p></section>`,
     );
   }
 

@@ -31,7 +31,10 @@ import type { Finding, PcData, PcGpu, Scan, Severity } from './types';
 //   listed». L'esito vero lo dà Windows (CpuFms, famiglia, modello e
 //   stepping), che non pubblica la sua tabella: per questo c'è Controllo
 //   integrità PC. Se l'utente ha fatto leggere l'elenco ufficiale dal suo PC
-//   (pc.win11List), quell'esito viene prima delle regole.
+//   (pc.win11List), un processore nell'elenco è confermato; uno assente
+//   resta giudicato con le regole (tabella in win11Cpu), perché l'elenco di
+//   una sola versione non comprende tutti i modelli: l'assenza da sola non
+//   dà mai «non rispettato».
 
 type Add = (f: Omit<Finding, 'actions'> & { actions?: string[] }) => void;
 
@@ -40,9 +43,13 @@ export type Win11CpuResult = 'listed' | 'newer' | 'notListed' | 'unknown';
 export const WIN11_CPU_LABEL: Record<Win11CpuResult, string> = {
   listed: 'nella generazione supportata',
   newer: 'più recente degli elenchi: probabilmente supportato',
-  notListed: 'generazione non supportata',
+  // Mai «non supportato»: lo dice con certezza solo Windows (CpuFms).
+  notListed: 'generazione anteriore a quelle elencate',
   unknown: 'da verificare con Controllo integrità PC',
 };
+
+/** Etichetta del pulsante che avvia il confronto con l'elenco ufficiale (scheda e azione check-win11-cpu). */
+export const WIN11_CHECK_BUTTON = 'Controlla nell\'elenco ufficiale Microsoft';
 
 export interface Win11CpuVerdict {
   result: Win11CpuResult;
@@ -64,7 +71,15 @@ const newer = (series: string, note?: string): Rule => ({ result: 'newer', serie
 const notListed = (series: string, note?: string): Rule => ({ result: 'notListed', series, note });
 const unknown = (series?: string, note?: string): Rule => ({ result: 'unknown', series, note });
 
+// Criterio unico per le serie tolte dagli elenchi recenti: se la serie è solo
+// negli elenchi fino alla 22H2 (Core X 7000X, 9000X e 10000X, Xeon W-2100,
+// W-2200 e W-3100, primi Snapdragon) l'esito è «da verificare»; se è ancora
+// negli elenchi per modello della 24H2 ma non nella 25H2 per serie (Ryzen
+// 2000, EPYC 7002, Athlon 300, 3000 e 4000, AMD 3015e e 3020e) è «nella
+// generazione supportata», con la nota: Microsoft li elenca modello per
+// modello, quindi un modello assente dall'elenco letto è da verificare.
 const OLD_LISTS = 'presente negli elenchi Microsoft fino alla 22H2, non in quelli successivi';
+const MODEL_LISTS = 'negli elenchi per modello fino alla 24H2, non nella 25H2';
 
 function intelRule(n: string): Rule | undefined {
   let m: RegExpExecArray | null;
@@ -80,10 +95,9 @@ function intelRule(n: string): Rule | undefined {
     const gen = d.length === 5 || d[0] === '1' ? +d.slice(0, 2) : +d[0];
     const series = `Core i${m[1]} di ${gen}ª generazione`;
     if (/^7820HQ$/i.test(d + suf)) return unknown(series, 'Microsoft lo ammette solo su alcuni sistemi indicati per modello');
-    if (suf === 'X' || suf === 'XE') {
-      if (gen >= 9) return listed(`Core X serie ${gen}000X`);
-      return unknown(`Core X serie ${gen}000X`, OLD_LISTS);
-    }
+    // Core X (7000X, 9000X, 10000X): serie solo negli elenchi fino alla 22H2,
+    // come gli Xeon W-2100 e W-2200 della stessa generazione.
+    if (suf === 'X' || suf === 'XE') return unknown(`Core X serie ${gen}000X`, OLD_LISTS);
     if (gen >= 8 && gen <= 14) return listed(series);
     if (gen > 14) return newer(series);
     return notListed(series);
@@ -183,7 +197,7 @@ function amdRule(n: string): Rule | undefined {
     const s = +m[1];
     const g = +m[2];
     const series = `EPYC ${s}00${g}`;
-    if (s === 7) return g === 1 ? notListed(series) : g === 2 ? listed(series, 'negli elenchi per modello fino alla 24H2, non nella 25H2') : g === 3 ? listed(series) : newer(series);
+    if (s === 7) return g === 1 ? notListed(series) : g === 2 ? listed(series, MODEL_LISTS) : g === 3 ? listed(series) : newer(series);
     if (s === 9 || s === 4) return g === 4 || g === 5 ? listed(series) : g > 5 ? newer(series) : unknown(series);
     if (s === 8) return g === 4 ? listed(series) : g > 4 ? newer(series) : unknown(series);
     if (s === 3) return g === 1 ? notListed(series) : unknown(series);
@@ -205,7 +219,7 @@ function amdRule(n: string): Rule | undefined {
     const suf = m[3].toUpperCase();
     const series = `Ryzen ${s}000`;
     if (s === 1) return notListed(series);
-    if (s === 2) return /[GUH]/.test(suf) ? notListed('Ryzen 2000 con grafica integrata') : listed(series, 'negli elenchi per modello fino alla 24H2, non nella 25H2');
+    if (s === 2) return /[GUH]/.test(suf) ? notListed('Ryzen 2000 con grafica integrata') : listed(series, MODEL_LISTS);
     return listed(series);
   }
   if ((m = /\bRyzen\s+[3579]\s+(?:PRO\s+)?([12])\d{2}\b/i.exec(n))) return listed(`Ryzen ${m[1]}00`);
@@ -213,11 +227,13 @@ function amdRule(n: string): Rule | undefined {
     if ((m = /\bAthlon\s+(?:(?:Gold|Silver|PRO)\s+)*(\d)(\d{2,3})[A-Z]*\b/i.exec(n))) {
       const g = +m[1];
       if (g === 2 && m[2].length === 2) return notListed('Athlon 200 (Raven Ridge)');
-      if (g === 3 || g === 4 || g === 7) return listed(`Athlon ${g}${m[2].length === 2 ? '00' : '000'}`);
+      // Athlon 300, 3000 e 4000: solo negli elenchi per modello (la 25H2 per serie ha solo gli Athlon 7000).
+      if (g === 3 || g === 4) return listed(`Athlon ${g}${m[2].length === 2 ? '00' : '000'}`, MODEL_LISTS);
+      if (g === 7) return listed(`Athlon ${g}${m[2].length === 2 ? '00' : '000'}`);
     }
     return notListed('Athlon anteriore alla serie 3000');
   }
-  if (/\bAMD\s+30[12][05]e\b/i.test(n)) return listed('AMD 3015e/3020e');
+  if (/\bAMD\s+30[12][05]e\b/i.test(n)) return listed('AMD 3015e/3020e', MODEL_LISTS);
   if (/\b(?:A\d{1,2}(?:-PRO)?-\d{4}|FX-\d{4}|E\d?-\d{4})|\bPhenom\b|\bSempron\b|\bOpteron\b|\bTurion\b/i.test(n)) return notListed('processore AMD anteriore ai Ryzen');
   return undefined;
 }
@@ -237,26 +253,69 @@ export function win11CpuRule(name?: string): Rule | undefined {
   return qualcommRule(n) || (/\bAMD\b|\bRyzen\b|\bEPYC\b|\bAthlon\b/i.test(n) ? amdRule(n) : intelRule(n));
 }
 
-/** Processore e generazione supportata: prima l'elenco ufficiale letto dal PC, poi le regole del progetto. */
+/**
+ * Processore e generazione supportata, dall'elenco ufficiale letto dal PC
+ * (pc.win11List) e dalle regole del progetto. L'elenco è quello OEM di una
+ * sola versione (AMD per modello 24H2, Intel e Qualcomm per serie 25H2):
+ * «notListed» vuol dire «non è in quell'elenco», mai «non supportato».
+ *
+ *   elenco      regola                   esito       fonte   requisito
+ *   listed      qualsiasi                listed      list    rispettato
+ *   notListed   newer                    newer       rules   rispettato
+ *   notListed   listed senza nota        listed      rules   rispettato
+ *   notListed   listed con nota          unknown     list    da verificare
+ *   notListed   notListed                notListed   list    non rispettato
+ *   notListed   unknown o nessuna        unknown     list    da verificare
+ *   unknown     qualsiasi                (regola)    rules   (dalla regola)
+ *   nessuno     nessuna                  unknown     none    da verificare
+ *
+ * Una regola «listed» senza nota dice che la serie o la generazione è
+ * supportata secondo gli elenchi più recenti (25H2 per serie; Pentium Gold
+ * G6000 per generazione, come i Core di 10ª): l'elenco per modello della
+ * 24H2 e quello di una sola versione non comprendono i modelli usciti dopo
+ * né quelli dimenticati
+ * (Ryzen 9000, Ryzen AI 300, Ryzen 7 8845HS). Una regola con nota (serie
+ * solo negli elenchi di versioni precedenti, o negli elenchi per modello)
+ * non basta contro l'assenza dal modello: da verificare.
+ */
 export function win11Cpu(pc: PcData): Win11CpuVerdict {
   const rule = win11CpuRule(pc.cpu && pc.cpu.name);
   const list = pc.win11List;
-  const ruleText = (r: Rule) => `${r.series ? `${r.series}: ` : ''}${WIN11_CPU_LABEL[r.result]}${r.note ? ` (${r.note})` : ''}.`;
+  // Nel dettaglio basta «da verificare»: il rimando a Controllo integrità PC lo aggiunge la riga del requisito.
+  const ruleText = (r: Rule) => `${r.series ? `${r.series}: ` : ''}${r.result === 'unknown' ? 'da verificare' : WIN11_CPU_LABEL[r.result]}${r.note ? ` (${r.note})` : ''}`;
+  // Nella demo l'esito è simulato: nessuna pagina letta (la fonte non è un indirizzo).
+  const read = list && /^https?:\/\//i.test(list.source || '') ? 'letto su richiesta da questo PC' : 'esito simulato nella demo, nessuna pagina letta';
   if (list && list.result === 'listed')
-    return { result: 'listed', series: list.match, source: 'list', detail: `Nell'elenco ufficiale Microsoft dei processori supportati per la versione ${list.version}${list.match ? ` (${list.match})` : ''}, letto su richiesta da questo PC.` };
+    return { result: 'listed', series: list.match, source: 'list', detail: `Nell'elenco ufficiale Microsoft dei processori supportati per la versione ${list.version}${list.match ? ` (${list.match})` : ''}, ${read}.` };
   if (list && list.result === 'notListed') {
+    const absent = `Non compare nell'elenco ufficiale Microsoft per la versione ${list.version} (${list.kind === 'model' ? 'per modello' : 'per serie'}, ${read})`;
     if (rule && rule.result === 'newer')
       return {
         result: 'newer',
         series: rule.series,
         source: 'rules',
-        detail: `Non è nell'elenco Microsoft per la versione ${list.version}, ma è di una generazione successiva: Microsoft considera supportate anche le generazioni uscite dopo gli elenchi, se rispettano gli stessi principi.`,
+        detail: `${absent}, ma è di una generazione successiva: Microsoft considera supportate anche le generazioni uscite dopo gli elenchi, se rispettano gli stessi principi.`,
       };
+    if (rule && rule.result === 'listed' && !rule.note)
+      return {
+        result: 'listed',
+        series: rule.series,
+        source: 'rules',
+        detail: `${absent}, ma le regole di Polaris lo collocano nella generazione supportata${rule.series ? ` (${rule.series})` : ''}. Gli elenchi sono scritti per i PC nuovi, cambiano a ogni versione e non comprendono tutti i modelli.`,
+      };
+    if (rule && rule.result === 'notListed')
+      return {
+        result: 'notListed',
+        series: rule.series,
+        source: 'list',
+        detail: `${absent}, e le regole di Polaris lo collocano in una generazione anteriore a quelle elencate${rule.series ? ` (${rule.series})` : ''}.`,
+      };
+    // Regola incerta, con nota o assente (anche «AMD Eng Sample», «AMD Custom APU»): mai «non rispettato».
     return {
-      result: 'notListed',
+      result: 'unknown',
       series: rule && rule.series,
       source: 'list',
-      detail: `Non compare nell'elenco ufficiale Microsoft per la versione ${list.version}, letto su richiesta da questo PC. Gli elenchi sono pensati per i PC nuovi: la verifica definitiva resta Controllo integrità PC.`,
+      detail: `${absent}, ma le regole di Polaris non lo escludono${rule && rule.series ? ` (${rule.series}${rule.note ? `, ${rule.note}` : ''})` : ''}. Gli elenchi cambiano a ogni versione e non comprendono tutti i modelli: l'assenza da sola non basta per escluderlo.`,
     };
   }
   if (rule)
@@ -264,7 +323,7 @@ export function win11Cpu(pc: PcData): Win11CpuVerdict {
       result: rule.result,
       series: rule.series,
       source: 'rules',
-      detail: `${ruleText(rule)} Regole di Polaris ricavate dalle serie degli elenchi Microsoft, che Polaris non incorpora.`,
+      detail: `${ruleText(rule)}. Regole di Polaris ricavate dalle serie degli elenchi Microsoft, che Polaris non incorpora.`,
     };
   return { result: 'unknown', source: 'none', detail: 'Il nome del processore non corrisponde alle regole di Polaris.' };
 }
@@ -297,17 +356,16 @@ const REQ_SHORT: Record<Win11Req['id'], string> = {
 
 export const WIN11_STATUS_LABEL: Record<Win11Status, string> = { ok: 'rispettato', fail: 'non rispettato', unknown: 'da verificare', na: 'non si applica' };
 
-/** Motivi di blocco di Windows Update (Configuration Manager, readiness dashboard), in italiano. */
+/** Motivi di blocco di Windows Update (Configuration Manager, readiness dashboard), in italiano; chiavi in minuscolo. */
 const APPRAISER_REASON: Record<string, string> = {
-  CpuFms: 'processore non nella generazione approvata',
-  Cpu: 'meno di 2 core o meno di 1 GHz',
-  CPU: 'meno di 2 core o meno di 1 GHz',
-  Tpm: 'TPM 2.0 assente',
-  UefiSecureBoot: 'Secure Boot non supportato',
-  Memory: 'meno di 4 GB di RAM',
-  Ram: 'meno di 4 GB di RAM',
-  SystemDriveSize: 'disco di sistema sotto i 64 GB',
-  SModeState: 'modalità S',
+  cpufms: 'processore non nella generazione approvata',
+  cpu: 'meno di 2 core o meno di 1 GHz',
+  tpm: 'TPM 2.0 assente',
+  uefisecureboot: 'Secure Boot non supportato',
+  memory: 'meno di 4 GB di RAM',
+  ram: 'meno di 4 GB di RAM',
+  systemdrivesize: 'disco di sistema sotto i 64 GB',
+  smodestate: 'modalità S',
 };
 
 /** Versione del modello dei driver video: 2000 → "2.0", 3100 → "3.1". */
@@ -346,11 +404,13 @@ export function win11Requirements(scan: Scan): Win11Req[] {
   });
 
   const cpu = win11Cpu(pc);
+  // Da verificare per l'assenza dall'elenco letto: la riga lo dice, con la versione dell'elenco.
+  const fromList = cpu.result === 'unknown' && cpu.source === 'list' && pc.win11List ? `non nell'elenco Microsoft ${pc.win11List.version}: da verificare` : '';
   out.push({
     id: 'cpu-gen',
     label: 'Generazione del processore supportata',
     status: cpu.result === 'listed' || cpu.result === 'newer' ? 'ok' : cpu.result === 'notListed' ? 'fail' : 'unknown',
-    value: `${cpu.series ? `${cpu.series}, ` : ''}${WIN11_CPU_LABEL[cpu.result]}`,
+    value: `${cpu.series ? `${cpu.series}, ` : ''}${fromList || WIN11_CPU_LABEL[cpu.result]}`,
     detail: `${cpu.detail} La verifica definitiva è Controllo integrità PC.`,
   });
 
@@ -428,18 +488,29 @@ export function win11Requirements(scan: Scan): Win11Req[] {
     out.push({ id: 'display', label: 'Schermo integrato oltre 9 pollici, 720p, 8 bit per colore', status: 'unknown', value: 'non letto' });
   } else {
     const d = inner[0];
-    const short = d.width && d.height ? Math.min(d.width, d.height) : undefined;
-    const fail = (d.diagonalIn !== undefined && d.diagonalIn < 9) || (short !== undefined && short < 720);
-    const unsure = d.diagonalIn === undefined || short === undefined || d.bitsPerColor === undefined || d.bitsPerColor < 8;
+    // La risoluzione nativa (modalità preferita dichiarata dallo schermo) decide. Senza, quella in
+    // uso basta solo per dire «sì»: un portatile duplicato su un proiettore a 800×600 ha un
+    // pannello che può arrivare a 1080p, quindi sotto le 720 righe resta da verificare.
+    const cur = d.width && d.height ? Math.min(d.width, d.height) : undefined;
+    const nat = d.nativeWidth && d.nativeHeight ? Math.min(d.nativeWidth, d.nativeHeight) : undefined;
+    const fail = (d.diagonalIn !== undefined && d.diagonalIn < 9) || (nat !== undefined && nat < 720);
+    const lowInUse = nat === undefined && cur !== undefined && cur < 720;
+    const unsure = d.diagonalIn === undefined || (nat === undefined && cur === undefined) || lowInUse || d.bitsPerColor === undefined || d.bitsPerColor < 8;
+    const inUse = d.width && d.height ? `${d.width}×${d.height}` : '';
+    const res = nat !== undefined ? `${d.nativeWidth}×${d.nativeHeight}${inUse && inUse !== `${d.nativeWidth}×${d.nativeHeight}` ? ` (in uso ${inUse})` : ''}` : inUse;
     out.push({
       id: 'display',
       label: 'Schermo integrato oltre 9 pollici, 720p, 8 bit per colore',
       status: fail ? 'fail' : unsure ? 'unknown' : 'ok',
-      value: [d.diagonalIn ? `${fmt(d.diagonalIn, 1)}"` : '', d.width && d.height ? `${d.width}×${d.height}` : '', d.bitsPerColor ? `${d.bitsPerColor} bit per colore` : ''].filter(Boolean).join(', ') || 'non letto',
+      value: [d.diagonalIn ? `${fmt(d.diagonalIn, 1)}"` : '', res, d.bitsPerColor ? `${d.bitsPerColor} bit per colore` : ''].filter(Boolean).join(', ') || 'non letto',
       detail:
         d.bitsPerColor !== undefined && d.bitsPerColor < 8
           ? 'Con meno di 8 bit per colore Microsoft ammette 6 bit con il dithering: da verificare.'
-          : 'La risoluzione è quella in uso durante l\'analisi, non per forza quella massima dello schermo.',
+          : nat !== undefined
+            ? 'Risoluzione nativa: la modalità preferita che lo schermo dichiara a Windows.'
+            : lowInUse
+              ? 'La risoluzione letta è quella in uso durante l\'analisi (per esempio con lo schermo duplicato su un proiettore): lo schermo può arrivare a 720p o più, da verificare.'
+              : 'La risoluzione è quella in uso durante l\'analisi, non per forza quella massima dello schermo.',
     });
   }
 
@@ -456,12 +527,25 @@ export function win11Requirements(scan: Scan): Win11Req[] {
   // Indizio: il verdetto che Windows Update ha già calcolato (chiave non documentata).
   const ap = w11.appraiser;
   if (ap && (ap.verdict || (ap.reasons && ap.reasons.length))) {
-    const reasons = (ap.reasons || []).map((r) => APPRAISER_REASON[r] || r);
+    // I motivi si cercano senza badare alle maiuscole: la grafia di Windows non è documentata ovunque.
+    const reasonText = (r: string) => (Object.prototype.hasOwnProperty.call(APPRAISER_REASON, r.toLowerCase()) ? APPRAISER_REASON[r.toLowerCase()] : r);
+    const reasons = (ap.reasons || []).map(reasonText).filter((r, i, a) => a.indexOf(r) === i);
+    // Configuration Manager: Orange e Yellow non riguardano l'hardware (app o driver da aggiornare, app da disinstallare).
+    const verdict =
+      ap.verdict === 'green'
+        ? 'aggiornabile'
+        : ap.verdict === 'red'
+          ? 'bloccato'
+          : ap.verdict === 'orange'
+            ? 'con avvertenze (app o driver da aggiornare)'
+            : ap.verdict === 'yellow'
+              ? 'con avvertenze (app da disinstallare)'
+              : 'non indicato';
     out.push({
       id: 'appraiser',
       label: 'Verdetto di Windows Update (indizio)',
       status: ap.verdict === 'green' ? 'ok' : ap.verdict === 'red' ? 'fail' : 'unknown',
-      value: `${ap.verdict === 'green' ? 'aggiornabile' : ap.verdict === 'red' ? 'bloccato' : ap.verdict === 'yellow' ? 'con avvertenze' : 'non indicato'}${ap.target ? ` alla ${ap.target}` : ''}${reasons.length ? `: ${reasons.join(', ')}` : ''}`,
+      value: `${verdict}${ap.target ? ` alla ${ap.target}` : ''}${reasons.length ? `: ${reasons.join(', ')}` : ''}`,
       detail: 'Dal controllo di compatibilità di Windows Update, letto da una chiave del registro che Microsoft non documenta: è un indizio, non una prova.',
     });
   }
@@ -491,16 +575,30 @@ export function analyzeWin11(scan: Scan, add: Add) {
   const cpu = reqs.find((r) => r.id === 'cpu-gen')!;
   const hw = pc.hardware;
   const list = (rs: Win11Req[]) => rs.map((r) => `${REQ_SHORT[r.id]} (${r.value})`).join('; ');
+  // Schermo e scheda video: requisiti che Microsoft indica, ma che né Windows Update (motivi di
+  // blocco: Tpm, UefiSecureBoot, Memory, CPU, CpuFms, SModeState, SystemDriveSize) né Controllo
+  // integrità PC controllano. Mancano anche su PC venduti con Windows 11 (console portatili da
+  // 7"): solo informazione, mai la frase sugli aggiornamenti non garantiti.
+  const isSoft = (r: Win11Req) => r.id === 'display' || r.id === 'gpu';
+  const soft = fail.filter(isSoft);
+  const hard = fail.filter((r) => !isSoft(r));
+  // Con requisiti controllati da Windows Update ancora da verificare (TPM non letto, processore incerto)
+  // non si può dire che siano rispettati: solo quelli verificabili.
+  const hardUnsure = unsure.some((r) => !isSoft(r));
+  const softText = soft.length
+    ? `${list(soft)}. ${soft.length > 1 ? 'Sono requisiti' : 'È un requisito'} che Microsoft indica, ma che né Windows Update né Controllo integrità PC controllano, e non ${soft.length > 1 ? 'bloccano' : 'blocca'} ${isWin10(pc) ? 'l\'aggiornamento a Windows 11' : 'gli aggiornamenti'}.`
+    : '';
   const actions: string[] = [];
   if ([...fail, ...unsure].some((r) => r.id === 'tpm' || r.id === 'uefi' || r.id === 'secureboot') || (hw.secureBoot === false && hw.firmware === 'uefi')) actions.push('firmware-security');
   if (cpu.status !== 'ok') actions.push('check-win11-cpu');
   const sb = reqs.find((r) => r.id === 'secureboot');
   const sbOff = sb && sb.status === 'ok' && hw.secureBoot === false ? ' Secure Boot è supportato ma spento: va attivato nel firmware.' : '';
   const apText = ap ? ` Windows Update, come indizio, lo considera ${ap.status === 'ok' ? 'aggiornabile' : ap.status === 'fail' ? 'non aggiornabile' : 'da verificare'}${ap.status === 'fail' && ap.value.indexOf(':') > 0 ? ` (${ap.value.slice(ap.value.indexOf(':') + 2)})` : ''}.` : '';
+  const unsureText = unsure.length ? ` Da verificare: ${list(unsure)}.` : '';
 
   if (isWin10(pc)) {
     actions.push('upgrade-windows');
-    const sev: Severity = fail.length ? 'warn' : 'info';
+    const sev: Severity = hard.length ? 'warn' : 'info';
     add({
       id: 'pc.win11',
       metric: 'pc.win11',
@@ -512,18 +610,24 @@ export function analyzeWin11(scan: Scan, add: Add) {
           ? num(unsure.length, 'requisito da verificare', 'requisiti da verificare')
           : 'aggiornabile secondo i requisiti verificabili',
       severity: sev,
+      // Il rimando a Controllo integrità PC è già nel dettaglio del processore: una volta sola.
       verdict:
-        (fail.length ? `Il PC non rispetta questi requisiti di Windows 11: ${list(fail)}.` : 'Il PC rispetta i requisiti di Windows 11 verificabili da qui.') +
-        (unsure.length ? ` Da verificare: ${list(unsure)}.` : '') +
+        (hard.length
+          ? `Il PC non rispetta questi requisiti di Windows 11: ${list(hard)}.`
+          : soft.length
+            ? `Il PC rispetta i requisiti di Windows 11 che Windows Update controlla${hardUnsure ? ', tra quelli verificabili da qui' : ''}.`
+            : 'Il PC rispetta i requisiti di Windows 11 verificabili da qui.') +
+        (soft.length ? ` Non rispettato${hard.length ? ' anche' : ''}: ${softText}` : '') +
+        unsureText +
         sbOff +
         apText +
-        ` Processore: ${cpu.detail} La verifica ufficiale è quella dell'app Controllo integrità PC.`,
+        ` Processore: ${cpu.detail}`,
       actions,
     });
     return;
   }
   // Windows 11 già installato.
-  const sev: Severity = fail.length ? 'warn' : unsure.length ? 'info' : 'ok';
+  const sev: Severity = hard.length ? 'warn' : soft.length || unsure.length ? 'info' : 'ok';
   add({
     id: 'pc.win11',
     metric: 'pc.win11',
@@ -531,11 +635,13 @@ export function analyzeWin11(scan: Scan, add: Add) {
     title: 'Requisiti di Windows 11',
     value: fail.length ? num(fail.length, 'requisito non rispettato', 'requisiti non rispettati') : unsure.length ? num(unsure.length, 'requisito da verificare', 'requisiti da verificare') : 'rispettati',
     severity: sev,
-    verdict: fail.length
-      ? `Windows 11 è installato su un PC che non rispetta questi requisiti: ${list(fail)}. Secondo Microsoft i PC installati senza i requisiti non hanno garanzia di ricevere aggiornamenti, compresi quelli di sicurezza, e non hanno assistenza; sul desktop può comparire una filigrana.${sbOff}${apText}`
-      : unsure.length
-        ? `I requisiti verificabili sono rispettati; da verificare: ${list(unsure)}.${sbOff}${apText}`
-        : `Il PC rispetta i requisiti di Windows 11 verificabili da qui.${sbOff}`,
+    verdict: hard.length
+      ? `Windows 11 è installato su un PC che non rispetta questi requisiti: ${list(hard)}. Secondo Microsoft i PC installati senza i requisiti non hanno garanzia di ricevere aggiornamenti, compresi quelli di sicurezza, e non hanno assistenza; sul desktop può comparire una filigrana.${soft.length ? ` Non rispettato anche: ${softText}` : ''}${unsureText}${sbOff}${apText}`
+      : soft.length
+        ? `I requisiti ${hardUnsure ? 'verificabili ' : ''}che Windows Update controlla sono rispettati. Non rispettato: ${softText}${unsureText}${sbOff}${apText}`
+        : unsure.length
+          ? `I requisiti verificabili sono rispettati; da verificare: ${list(unsure)}.${sbOff}${apText}`
+          : `Il PC rispetta i requisiti di Windows 11 verificabili da qui.${sbOff}`,
     actions: sev === 'ok' ? [] : actions,
   });
 }
