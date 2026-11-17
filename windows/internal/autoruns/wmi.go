@@ -91,11 +91,16 @@ func ConsumerKind(class string) string {
 
 // consumerItem prepara la voce di un consumatore WMI. Il nome è scelto da
 // chi l'ha creato e passa dal pulitore; dello script si dicono solo il
-// motore e la lunghezza.
+// motore e la lunghezza. Le sottoscrizioni permanenti si elencano tutte
+// (always), anche se il programma che avviano è di Windows (msiexec,
+// certutil, bitsadmin...): su un Windows pulito c'è solo «SCM Event Log
+// Consumer», che il motore riconosce, e una sottoscrizione collegata che
+// esegue un comando è da guardare comunque (T1546.003).
 func (rd reader) consumerItem(c psConsumer) item {
 	e := scan.AutorunEntry{Category: "wmi", Kind: "wmi", Name: rd.cl.text(c.Name), Enabled: c.Bound, Bound: c.Bound,
 		Consumer: ConsumerKind(c.Class), Namespace: strings.ReplaceAll(c.NS, "/", `\`)}
 	e.Location = e.Namespace
+	it := item{entry: e}
 	switch e.Consumer {
 	case "commandline":
 		cmd := strings.TrimSpace(c.Cmd)
@@ -103,28 +108,19 @@ func (rd reader) consumerItem(c psConsumer) item {
 		if cmd == "" {
 			cmd = exe
 		}
-		it := rd.commandItem(e, cmd, false)
-		if exe != "" {
+		if exe == "" {
+			it = rd.commandItem(e, cmd, false)
+		} else {
 			// ExecutablePath, se c'è, è il programma avviato; il modello del
-			// comando ne contiene gli argomenti.
-			it.file = rd.res.Locate(exe, false)
+			// comando ne contiene gli argomenti dopo il nome del programma.
 			_, args, _ := rd.res.Split(cmd, false)
-			if target, proxy := ProxyTarget(exe, args); proxy {
-				it.target, it.interpreted = "", false
-				if target == "" {
-					it.interpreted = args != ""
-				} else {
-					it.target = rd.res.Locate(target, false)
-				}
-			}
+			it = rd.execItem(e, cmd, exe, args, false)
 		}
-		return it
 	case "activescript":
 		engine := strings.TrimSpace(c.Engine)
 		if engine == "" {
 			engine = "motore non indicato"
 		}
-		it := item{entry: e}
 		if f := strings.TrimSpace(c.SFile); f != "" {
 			it.entry.Command = engine + ": " + rd.cl.path(f)
 			it.file = rd.res.Locate(f, false)
@@ -132,7 +128,7 @@ func (rd reader) consumerItem(c psConsumer) item {
 			it.entry.Command = engine + ": script incorporato di " + strconv.Itoa(c.Len) + " caratteri (testo non letto)"
 			it.interpreted = true
 		}
-		return it
 	}
-	return item{entry: e}
+	it.always = true
+	return it
 }

@@ -62,6 +62,13 @@ func regPath(root registry.Key, path string, view uint32) string {
 	return r + `\` + path
 }
 
+// regLoc è regPath passato dal pulitore: le sottochiavi (IFEO,
+// SilentProcessExit, RunOnceEx, stampa, provider di rete) hanno nomi scelti
+// da chi le ha create, puliti come il nome della voce.
+func (rd reader) regLoc(root registry.Key, path string, view uint32) string {
+	return rd.cl.text(regPath(root, path, view))
+}
+
 func scopeOf(root registry.Key, view uint32) string {
 	switch {
 	case root == registry.CURRENT_USER:
@@ -127,7 +134,8 @@ func readRegistry(ctx context.Context, rd reader) sourceResult {
 	var items []item
 	for _, f := range []func(reader) []item{logonItems, startupFolderItems, winlogonRegItems, hijackItems, lsaRegItems, printItems, networkItems} {
 		if ctx.Err() != nil {
-			return sourceResult{items: dedupe(items), err: ctx.Err()}
+			// Tempo scaduto: Collect lo dice già, in italiano (Partial).
+			return sourceResult{items: dedupe(items)}
 		}
 		items = append(items, f(rd)...)
 	}
@@ -173,7 +181,7 @@ func logonItems(rd reader) []item {
 				continue
 			}
 			en, found := ok2[strings.ToLower(n)]
-			e := scan.AutorunEntry{Category: "logon", Kind: rk.kind, Scope: scope, Name: rd.cl.text(runName(n)), Location: regPath(rk.key.root, rk.key.path, rk.key.view), Enabled: !found || en}
+			e := scan.AutorunEntry{Category: "logon", Kind: rk.kind, Scope: scope, Name: rd.cl.text(runName(n)), Location: rd.regLoc(rk.key.root, rk.key.path, rk.key.view), Enabled: !found || en}
 			out = append(out, rd.commandItem(e, cmd, scope == "machine32"))
 		}
 		k.Close()
@@ -195,10 +203,10 @@ func logonItems(rd reader) []item {
 				if err != nil || strings.TrimSpace(v) == "" {
 					continue
 				}
-				e := scan.AutorunEntry{Category: "logon", Kind: "runonceex", Scope: scope, Name: rd.cl.text(sub + `\` + n), Location: regPath(rk.root, rk.path+`\`+sub, rk.view), Enabled: true}
+				e := scan.AutorunEntry{Category: "logon", Kind: "runonceex", Scope: scope, Name: rd.cl.text(sub + `\` + n), Location: rd.regLoc(rk.root, rk.path+`\`+sub, rk.view), Enabled: true}
 				if cmd, dll := runOnceExFile(v); dll {
 					it := rd.fileItem(e, cmd, scope == "machine32")
-					it.entry.Command = rd.cl.path(v)
+					it.entry.Command = rd.cl.command(v)
 					out = append(out, it)
 				} else {
 					out = append(out, rd.commandItem(e, cmd, scope == "machine32"))
@@ -211,7 +219,7 @@ func logonItems(rd reader) []item {
 	const winKey = `Software\Microsoft\Windows NT\CurrentVersion\Windows`
 	if v, ok := stringValue(hkcu, winKey, "load", viewNative); ok {
 		for _, cmd := range splitList(v) {
-			e := scan.AutorunEntry{Category: "logon", Kind: "load", Scope: "user", Name: "load", Location: regPath(hkcu, winKey, viewNative), Enabled: true}
+			e := scan.AutorunEntry{Category: "logon", Kind: "load", Scope: "user", Name: "load", Location: rd.regLoc(hkcu, winKey, viewNative), Enabled: true}
 			out = append(out, rd.commandItem(e, cmd, false))
 		}
 	}
@@ -296,7 +304,7 @@ func hijackItems(rd reader) []item {
 			}
 			for _, p := range paths {
 				if dbg, ok := stringValue(hklm, p, "Debugger", view); ok && strings.TrimSpace(dbg) != "" {
-					e := scan.AutorunEntry{Category: "hijacks", Kind: "ifeo", Scope: scope, Name: rd.cl.text(exe), Location: regPath(hklm, p, view), Enabled: true}
+					e := scan.AutorunEntry{Category: "hijacks", Kind: "ifeo", Scope: scope, Name: rd.cl.text(exe), Location: rd.regLoc(hklm, p, view), Enabled: true}
 					it := rd.commandItem(e, dbg, view == view32)
 					it.hijack = true
 					out = append(out, it)
@@ -307,7 +315,7 @@ func hijackItems(rd reader) []item {
 	const spe = `SOFTWARE\Microsoft\Windows NT\CurrentVersion\SilentProcessExit`
 	for _, exe := range subKeys(hklm, spe, viewNative) {
 		if mon, ok := stringValue(hklm, spe+`\`+exe, "MonitorProcess", viewNative); ok && strings.TrimSpace(mon) != "" {
-			e := scan.AutorunEntry{Category: "hijacks", Kind: "silentexit", Scope: "machine", Name: rd.cl.text(exe), Location: regPath(hklm, spe+`\`+exe, viewNative), Enabled: true}
+			e := scan.AutorunEntry{Category: "hijacks", Kind: "silentexit", Scope: "machine", Name: rd.cl.text(exe), Location: rd.regLoc(hklm, spe+`\`+exe, viewNative), Enabled: true}
 			it := rd.commandItem(e, mon, false)
 			it.hijack = true
 			out = append(out, it)
@@ -377,7 +385,7 @@ func printItems(rd reader) []item {
 	const mon = `SYSTEM\CurrentControlSet\Control\Print\Monitors`
 	for _, m := range subKeys(hklm, mon, viewNative) {
 		if drv, ok := stringValue(hklm, mon+`\`+m, "Driver", viewNative); ok && strings.TrimSpace(drv) != "" {
-			e := scan.AutorunEntry{Category: "print", Kind: "printmon", Scope: "machine", Name: rd.cl.text(m), Location: regPath(hklm, mon+`\`+m, viewNative), Enabled: true}
+			e := scan.AutorunEntry{Category: "print", Kind: "printmon", Scope: "machine", Name: rd.cl.text(m), Location: rd.regLoc(hklm, mon+`\`+m, viewNative), Enabled: true}
 			out = append(out, rd.fileItem(e, drv, false))
 		}
 	}
@@ -395,7 +403,7 @@ func printItems(rd reader) []item {
 	}
 	for _, p := range subKeys(hklm, procs, viewNative) {
 		if drv, ok := stringValue(hklm, procs+`\`+p, "Driver", viewNative); ok && strings.TrimSpace(drv) != "" {
-			e := scan.AutorunEntry{Category: "print", Kind: "printproc", Scope: "machine", Name: rd.cl.text(p), Location: regPath(hklm, procs+`\`+p, viewNative), Enabled: true}
+			e := scan.AutorunEntry{Category: "print", Kind: "printproc", Scope: "machine", Name: rd.cl.text(p), Location: rd.regLoc(hklm, procs+`\`+p, viewNative), Enabled: true}
 			it := item{entry: e}
 			it.entry.Command = rd.cl.path(drv)
 			it.file = rd.printProcFile(drv, dirs)
@@ -419,7 +427,7 @@ func networkItems(rd reader) []item {
 		if !ok || strings.TrimSpace(p) == "" {
 			continue
 		}
-		e := scan.AutorunEntry{Category: "network", Kind: "netprovider", Scope: "machine", Name: rd.cl.text(name), Location: regPath(hklm, key, viewNative), Enabled: true}
+		e := scan.AutorunEntry{Category: "network", Kind: "netprovider", Scope: "machine", Name: rd.cl.text(name), Location: rd.regLoc(hklm, key, viewNative), Enabled: true}
 		out = append(out, rd.fileItem(e, p, false))
 	}
 	return out

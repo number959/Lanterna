@@ -88,7 +88,7 @@ func readBrowsers(ctx context.Context, rd reader) sourceResult {
 			{chromiumBrowser{"brave", filepath.Join(local, `BraveSoftware\Brave-Browser\User Data`)}, ""},
 		} {
 			if ctx.Err() != nil {
-				res.err = ctx.Err()
+				// Tempo scaduto: Collect lo dice già, in italiano (Partial).
 				return res
 			}
 			forced := map[string]bool{}

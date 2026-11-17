@@ -168,6 +168,9 @@ func (r Resolver) absolute(p string, wow32 bool) []string {
 	p = strings.TrimSpace(p)
 	sys := r.sysRoot()
 	switch {
+	case hasPrefixFold(p, `\??\UNC\`), hasPrefixFold(p, `\\?\UNC\`):
+		// Condivisione di rete nella forma lunga: \\?\UNC\server\... è \\server\...
+		p = `\\` + p[8:]
 	case hasPrefixFold(p, `\??\`), hasPrefixFold(p, `\\?\`):
 		p = p[4:]
 	}
@@ -269,10 +272,14 @@ func (r Resolver) Locate(p string, wow32 bool) string {
 }
 
 // Split separa il file dagli argomenti in una riga di comando, come
-// CreateProcess: fra virgolette il file è il testo fra le virgolette;
-// senza virgolette finisce alla prima estensione eseguibile seguita da uno
-// spazio o dalla fine, altrimenti al primo prefisso che esiste, altrimenti
-// al primo spazio. quoted dice se il file era fra virgolette.
+// CreateProcess: fra virgolette il file è il testo fra le virgolette; senza
+// virgolette è il prefisso più corto che esiste, altrimenti il primo con
+// un'estensione eseguibile (il file manca), altrimenti il primo pezzo. Il
+// file non va oltre un pezzo che non può continuare un nome di file: un
+// argomento che comincia con «-», «/» o con le virgolette, o che contiene
+// «:» (un percorso con l'unità, un indirizzo), così «powershell -File
+// C:\x.ps1» ha come file powershell e non tutta la riga. quoted dice se il
+// file era fra virgolette.
 func (r Resolver) Split(cmd string, wow32 bool) (file, args string, quoted bool) {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
@@ -285,16 +292,15 @@ func (r Resolver) Split(cmd string, wow32 bool) (file, args string, quoted bool)
 		return strings.TrimSpace(cmd[1:]), "", true
 	}
 	var cuts []int
-	for i := 0; i < len(cmd); i++ {
+	stop := false
+	for i := 0; i < len(cmd) && !stop; i++ {
 		if cmd[i] == ' ' || cmd[i] == '\t' {
 			cuts = append(cuts, i)
+			stop = argumentStart(cmd[i+1:])
 		}
 	}
-	cuts = append(cuts, len(cmd))
-	for _, c := range cuts {
-		if hasExecExt(cmd[:c]) {
-			return cmd[:c], strings.TrimSpace(cmd[c:]), false
-		}
+	if !stop {
+		cuts = append(cuts, len(cmd))
 	}
 	for _, c := range cuts {
 		for _, x := range r.Candidates(cmd[:c], wow32) {
@@ -303,7 +309,35 @@ func (r Resolver) Split(cmd string, wow32 bool) (file, args string, quoted bool)
 			}
 		}
 	}
+	for _, c := range cuts {
+		if hasExecExt(cmd[:c]) {
+			return cmd[:c], strings.TrimSpace(cmd[c:]), false
+		}
+	}
 	return cmd[:cuts[0]], strings.TrimSpace(cmd[cuts[0]:]), false
+}
+
+// argumentStart: il pezzo che inizia s (dopo gli spazi) non può essere il
+// seguito di un nome di file con spazi: le virgolette e «/» non stanno nei
+// nomi, «:» solo dopo l'unità; «-» è un'opzione se segue una lettera o un
+// altro «-» e il pezzo non ha cartelle («C:\Program Files\Foo - Bar\a.exe»
+// e «C:\x\-Backup\a.exe» continuano).
+func argumentStart(s string) bool {
+	s = strings.TrimLeft(s, " \t")
+	if s == "" {
+		return false
+	}
+	if i := strings.IndexAny(s, " \t"); i >= 0 {
+		s = s[:i]
+	}
+	switch {
+	case s[0] == '"' || s[0] == '/' || strings.Contains(s, ":"):
+		return true
+	case s[0] == '-' && len(s) > 1 && !strings.Contains(s, `\`):
+		c := s[1] | 0x20
+		return s[1] == '-' || c >= 'a' && c <= 'z'
+	}
+	return false
 }
 
 // InterceptorCandidates sono i file che CreateProcess proverebbe prima di
@@ -366,13 +400,67 @@ func tokens(s string) []token {
 	return out
 }
 
-// proxies sono i programmi di Windows che eseguono altro codice (MITRE
-// T1218 e interpreti): la firma di Microsoft sul programma non dice nulla
-// su ciò che eseguono.
+// proxies sono i programmi di Windows, firmati da Microsoft, che eseguono
+// altro codice ricevuto negli argomenti: la loro firma non dice nulla su
+// ciò che eseguono. Fonti:
+//   - MITRE ATT&CK T1218 (System Binary Proxy Execution) e le sottotecniche
+//     .001 hh, .002 control (e rundll32 shell32.dll,Control_RunDLL), .003
+//     cmstp, .004 installutil, .005 mshta, .007 msiexec, .008 odbcconf,
+//     .009 regsvcs e regasm, .010 regsvr32, .011 rundll32, .012 verclsid,
+//     .013 mavinject, .014 mmc;
+//   - T1059 (interpreti: cmd, powershell e pwsh, wscript e cscript), T1202
+//     (esecuzione indiretta: pcalua, forfiles, conhost), T1127.001
+//     (msbuild), T1216 (script di sistema: pubprn.vbs,
+//     SyncAppvPublishingServer), T1197 e T1105 (bitsadmin, certutil), T1047
+//     (wmic), T1053.005 (schtasks);
+//   - il progetto LOLBAS (lolbas-project.github.io): explorer, presentationhost,
+//     ieexec, infdefaultinstall, scriptrunner, atbroker, diskshadow, ftp,
+//     register-cimprovider, wuauclt, xwizard, runas, wsl e bash, e le DLL
+//     «lanciatrici» di rundll32 (launchers).
+//
+// Per ognuno ProxyTarget sa dove sta il file eseguito; quando non lo sa (un
+// comando, un indirizzo, un file INF) la voce è un «comando interpretato»:
+// si elenca sempre e il motore dichiara il programma che lo esegue. L'elenco
+// va tenuto uguale a INTERPRETERS di core/src/engine/autoruns.ts (con .exe).
 var proxies = map[string]bool{
 	"rundll32": true, "regsvr32": true, "mshta": true, "wscript": true, "cscript": true,
-	"powershell": true, "pwsh": true, "cmd": true,
+	"powershell": true, "pwsh": true, "cmd": true, "conhost": true,
+	"msiexec": true, "control": true, "explorer": true, "pcalua": true, "forfiles": true,
+	"installutil": true, "regasm": true, "regsvcs": true, "odbcconf": true, "cmstp": true,
+	"mmc": true, "hh": true, "msbuild": true, "wmic": true, "certutil": true, "bitsadmin": true,
+	"schtasks": true, "verclsid": true, "xwizard": true, "mavinject": true, "wuauclt": true,
+	"register-cimprovider": true, "presentationhost": true, "ieexec": true, "infdefaultinstall": true,
+	"scriptrunner": true, "syncappvpublishingserver": true, "atbroker": true, "diskshadow": true,
+	"ftp": true, "runas": true, "wsl": true, "bash": true,
 }
+
+// launchers sono le DLL di Windows con una funzione che esegue o apre ciò
+// che riceve come argomento (LOLBAS, sezione «Libraries»): con rundll32 il
+// file eseguito è l'argomento, non la DLL. Nomi delle funzioni in minuscolo,
+// anche nelle forme A e W.
+var launchers = map[string][]string{
+	"shell32":   {"shellexec_rundll", "shellexec_rundlla", "shellexec_rundllw", "control_rundll", "control_rundlla", "control_rundllw", "control_rundllasuser", "control_rundllasusera", "control_rundllasuserw"},
+	"url":       {"fileprotocolhandler", "fileprotocolhandlera", "openurl", "openurla"},
+	"ieframe":   {"openurl"},
+	"shdocvw":   {"openurl"},
+	"zipfldr":   {"routethecall"},
+	"advpack":   {"launchinfsection", "launchinfsectionex", "registerocx"},
+	"ieadvpack": {"launchinfsection", "launchinfsectionex", "registerocx"},
+	"setupapi":  {"installhinfsection", "installhinfsectiona", "installhinfsectionw"},
+	"syssetup":  {"setupinfobjectinstallaction"},
+	"pcwutl":    {"launchapplication"},
+	"dfshim":    {"shopenverbapplication"},
+	"mshtml":    {"printhtml"},
+	"desk":      {"installscreensaver"},
+	"scrobj":    {"generatetypelib"},
+	"shimgvw":   {"imageview_fullscreen"},
+	"davclnt":   {"davsetcookie"},
+	"comsvcs":   {"minidump", "#24"},
+}
+
+// maxProxyDepth limita i programmi che ne avviano altri (cmd /c powershell
+// ..., conhost cmd /c ...).
+const maxProxyDepth = 4
 
 // hasScheme: "javascript:...", "http://...", ma non "C:\...".
 func hasScheme(s string) bool {
@@ -380,57 +468,261 @@ func hasScheme(s string) bool {
 	return i > 1 && !strings.ContainsAny(s[:i], `\/ .`)
 }
 
+// isOption: un argomento che comincia con «/» o «-».
+func isOption(s string) bool {
+	return strings.HasPrefix(s, "/") || strings.HasPrefix(s, "-")
+}
+
+// systemPath: un nome senza cartella (Windows lo cerca nelle cartelle di
+// sistema) o un percorso dentro la cartella di Windows. Solo allora un
+// programma o una DLL con il nome di uno di Windows si tratta come quello:
+// una copia altrove è il file eseguito e si verifica.
+func systemPath(p string) bool {
+	if !strings.ContainsAny(p, `\/`) {
+		return true
+	}
+	l := strings.ToLower(strings.ReplaceAll(p, "/", `\`))
+	for _, pre := range []string{`%systemroot%\`, `%windir%\`, `\systemroot\`, `system32\`, `syswow64\`} {
+		if strings.HasPrefix(l, pre) {
+			return true
+		}
+	}
+	return len(l) > 3 && l[1] == ':' && strings.HasPrefix(l[2:], `\windows\`)
+}
+
 // ProxyTarget estrae dagli argomenti di un programma di sistema che esegue
-// altro (rundll32, regsvr32, mshta, wscript, cscript, powershell, pwsh,
-// cmd /c) il file che esegue davvero. proxy dice se file è uno di quei
-// programmi; target è "" quando esegue un comando scritto per intero negli
-// argomenti (powershell -Command, mshta javascript:...): un comando
-// interpretato, da controllare.
+// altro (proxies) il file che esegue davvero. proxy dice se file è uno di
+// quei programmi usato in quel modo (msiexec e wuauclt lo sono solo con le
+// opzioni che eseguono un pacchetto o una DLL: il servizio di Windows
+// Installer è «msiexec.exe /V»); target è "" quando esegue un comando
+// scritto negli argomenti, un indirizzo o un file che non si verifica con
+// la firma (powershell -Command, mshta javascript:..., regsvr32 /i:URL
+// scrobj.dll, cmstp file.inf): un comando interpretato, da controllare.
 func ProxyTarget(file, args string) (target string, proxy bool) {
-	name := stem(file)
+	return proxyTarget(file, args, 0)
+}
+
+func proxyTarget(file, args string, depth int) (string, bool) {
+	name := stem(strings.Trim(strings.TrimSpace(file), `"`))
 	if !proxies[name] {
 		return "", false
 	}
 	args = strings.TrimSpace(args)
 	t := tokens(args)
+	switch name {
+	case "msiexec":
+		return msiexecTarget(t)
+	case "wuauclt":
+		// /UpdateDeploymentProvider x.dll /RunHandlerComServer carica la DLL.
+		if v, ok := valueAfter(t, "/updatedeploymentprovider"); ok {
+			return v, true
+		}
+		return "", false
+	}
 	if len(t) == 0 {
 		return "", true
 	}
 	switch name {
 	case "rundll32":
-		first := t[0].text
-		if hasScheme(first) {
-			return "", true
-		}
-		if i := strings.IndexByte(first, ','); i >= 0 {
-			first = first[:i]
-		}
-		return strings.TrimSpace(first), true
+		return rundll32Target(t), true
 	case "regsvr32":
-		for _, x := range t {
-			if !strings.HasPrefix(x.text, "/") && !strings.HasPrefix(x.text, "-") {
-				return x.text, true
-			}
-		}
-		return "", true
+		return regsvr32Target(t), true
 	case "mshta":
 		if hasScheme(t[0].text) {
 			return "", true
 		}
 		return t[0].text, true
 	case "wscript", "cscript":
-		for _, x := range t {
-			if !strings.HasPrefix(x.text, "/") {
-				return x.text, true
+		for i, x := range t {
+			if strings.HasPrefix(x.text, "/") {
+				continue
 			}
+			// Script di Windows che eseguono ciò che ricevono (T1216).
+			if s := stem(x.text); (s == "pubprn" || s == "syncappvpublishingserver") && systemPath(x.text) && i+1 < len(t) {
+				return "", true
+			}
+			return x.text, true
 		}
 		return "", true
 	case "powershell", "pwsh":
 		return powershellTarget(t), true
 	case "cmd":
-		return cmdTarget(args, t), true
+		return cmdTarget(args, t, depth), true
+	case "conhost":
+		return conhostTarget(args, t, depth), true
+	case "control":
+		// control.exe x.cpl (o una DLL caricata come pannello).
+		return fileArg(t[0].text), true
+	case "explorer":
+		// explorer.exe x.exe apre (cioè esegue) il file; le opzioni (/n,
+		// /select,..., /factory,...) si saltano.
+		for _, x := range t {
+			if !isOption(x.text) {
+				return fileArg(x.text), true
+			}
+		}
+		return "", true
+	case "mmc":
+		for _, x := range t {
+			if !isOption(x.text) {
+				if strings.EqualFold(extOf(x.text), ".msc") {
+					return x.text, true
+				}
+				return "", true
+			}
+		}
+		return "", true
+	case "pcalua":
+		if v, ok := valueAfter(t, "-a"); ok {
+			return fileArg(v), true
+		}
+		return "", true
+	case "installutil", "regasm", "regsvcs":
+		for _, x := range t {
+			if !isOption(x.text) {
+				return fileArg(x.text), true
+			}
+		}
+		return "", true
+	case "register-cimprovider":
+		if v, ok := valueAfter(t, "-path"); ok {
+			return fileArg(v), true
+		}
+		return "", true
+	case "mavinject":
+		if v, ok := valueAfter(t, "/injectrunning"); ok {
+			return fileArg(v), true
+		}
+		return "", true
+	case "odbcconf":
+		// odbcconf /a {REGSVR x.dll}: registra (cioè carica) la DLL.
+		for i, x := range t {
+			if strings.EqualFold(strings.TrimLeft(x.text, "{"), "regsvr") && i+1 < len(t) {
+				return fileArg(strings.TrimRight(t[i+1].text, "}")), true
+			}
+		}
+		return "", true
 	}
+	// Gli altri eseguono un comando, un file INF, un progetto o un indirizzo:
+	// nessun file da verificare con la firma.
 	return "", true
+}
+
+// fileArg: l'argomento se indica un file eseguibile (anche «desk.cpl,,1»);
+// "" per indirizzi, cartelle, nomi e comandi.
+func fileArg(s string) string {
+	if hasScheme(s) {
+		return ""
+	}
+	if i := strings.IndexByte(s, ','); i > 0 {
+		s = s[:i]
+	}
+	if hasExecExt(s) {
+		return s
+	}
+	return ""
+}
+
+// valueAfter: il valore che segue l'opzione indicata (senza maiuscole).
+func valueAfter(t []token, option string) (string, bool) {
+	for i, x := range t {
+		if strings.EqualFold(x.text, option) {
+			if i+1 < len(t) {
+				return t[i+1].text, true
+			}
+			return "", true
+		}
+	}
+	return "", false
+}
+
+// rundll32Target: la DLL, dopo le opzioni (/d nelle attività di Windows:
+// «/d srrstr.dll,ExecuteScheduledSPPCreation»). -sta e -localserver
+// attivano un oggetto COM dal CLSID: il file non è negli argomenti. Con una
+// DLL lanciatrice di Windows (launchers) il file eseguito è l'argomento.
+func rundll32Target(t []token) string {
+	for len(t) > 0 && !t[0].quoted && isOption(t[0].text) {
+		if o := strings.ToLower(t[0].text); o == "-sta" || o == "-localserver" {
+			return ""
+		}
+		t = t[1:]
+	}
+	if len(t) == 0 {
+		return ""
+	}
+	first := t[0].text
+	if hasScheme(first) {
+		return ""
+	}
+	dll, fn, rest := first, "", t[1:]
+	if i := strings.IndexByte(first, ','); i >= 0 {
+		dll, fn = first[:i], strings.TrimSpace(first[i+1:])
+		if fn == "" && len(rest) > 0 {
+			fn, rest = rest[0].text, rest[1:]
+		}
+	} else if len(rest) > 0 {
+		fn, rest = rest[0].text, rest[1:]
+	}
+	dll = strings.TrimSpace(dll)
+	if len(rest) > 0 && systemPath(dll) {
+		fn = strings.ToLower(strings.TrimSpace(fn))
+		for _, f := range launchers[stem(dll)] {
+			if fn == f {
+				return fileArg(rest[0].text)
+			}
+		}
+	}
+	return dll
+}
+
+// regsvr32Target: la DLL registrata. Con /i: la funzione DllInstall riceve
+// un argomento: un indirizzo, o qualsiasi valore con scrobj.dll (lo
+// scriptlet, «Squiblydoo», T1218.010), è codice che non si verifica con la
+// firma. Gli altri valori di /i: (/i:U shell32.dll di Windows) lasciano la
+// DLL.
+func regsvr32Target(t []token) string {
+	dll, install, remote := "", false, false
+	for _, x := range t {
+		low := strings.ToLower(x.text)
+		switch {
+		case strings.HasPrefix(low, "/i:") || strings.HasPrefix(low, "-i:"):
+			install = true
+			remote = remote || hasScheme(strings.Trim(x.text[3:], `"`))
+		case isOption(x.text):
+		case dll == "":
+			dll = x.text
+		}
+	}
+	if install && (remote || stem(dll) == "scrobj" && systemPath(dll)) {
+		return ""
+	}
+	return dll
+}
+
+// msiexecTarget: /i, /package, /a, /j..., /y, /z, /p e /update eseguono un
+// pacchetto o una DLL (T1218.007); un indirizzo è un comando interpretato.
+// Senza quelle opzioni (il servizio msiserver «msiexec.exe /V», /x di
+// disinstallazione) msiexec non esegue codice indicato negli argomenti.
+func msiexecTarget(t []token) (string, bool) {
+	for i, x := range t {
+		o := strings.ToLower(x.text)
+		if len(o) < 2 || !isOption(o) {
+			continue
+		}
+		switch o[1:] {
+		case "i", "package", "a", "j", "jm", "ju", "y", "z", "p", "update":
+			if i+1 >= len(t) || hasScheme(t[i+1].text) {
+				return "", true
+			}
+			v := t[i+1].text
+			switch strings.ToLower(extOf(v)) {
+			case ".msi", ".msp", ".dll", ".ocx", ".exe":
+				return v, true
+			}
+			return "", true
+		}
+	}
+	return "", false
 }
 
 // powershellTarget cerca lo script di -File (o il primo argomento .ps1);
@@ -443,7 +735,7 @@ func powershellTarget(t []token) string {
 	}
 	for i := 0; i < len(t); i++ {
 		x := t[i].text
-		if !t[i].quoted && (strings.HasPrefix(x, "-") || strings.HasPrefix(x, "/")) && len(x) > 1 {
+		if !t[i].quoted && isOption(x) && len(x) > 1 {
 			name := strings.ToLower(strings.TrimLeft(x, "-/"))
 			if j := strings.IndexByte(name, ':'); j >= 0 {
 				name = name[:j]
@@ -476,7 +768,7 @@ func powershellTarget(t []token) string {
 
 // cmdTarget: il programma o lo script eseguito da cmd /c (o /k), anche
 // attraverso start e call. I comandi interni di cmd non hanno file.
-func cmdTarget(args string, t []token) string {
+func cmdTarget(args string, t []token, depth int) string {
 	rest := ""
 	for _, x := range t {
 		if strings.EqualFold(x.text, "/c") || strings.EqualFold(x.text, "/k") || strings.EqualFold(x.text, "/r") {
@@ -484,7 +776,8 @@ func cmdTarget(args string, t []token) string {
 			break
 		}
 	}
-	in := tokens(strings.TrimSpace(rest))
+	rest = strings.TrimSpace(rest)
+	in := tokens(rest)
 	for len(in) > 0 && (strings.EqualFold(in[0].text, "call") || strings.HasPrefix(in[0].text, "/")) {
 		in = in[1:]
 	}
@@ -498,12 +791,51 @@ func cmdTarget(args string, t []token) string {
 			in = in[1:]
 		}
 	}
+	return runTarget(rest, in, depth)
+}
+
+// conhostTarget: conhost.exe [--headless] [--width n ...] comando (T1202):
+// il comando dopo le opzioni.
+func conhostTarget(args string, t []token, depth int) string {
+	rest, in := args, t
+	for len(in) > 0 {
+		o := strings.ToLower(in[0].text)
+		if !strings.HasPrefix(o, "-") && !strings.HasPrefix(o, "0x") {
+			break
+		}
+		skip := 1
+		switch o {
+		case "--width", "--height", "--signal", "--server", "--feature":
+			skip = 2
+		}
+		if skip > len(in) {
+			skip = len(in)
+		}
+		rest = args[in[skip-1].end:]
+		in = in[skip:]
+	}
+	rest = strings.TrimSpace(rest)
+	return runTarget(rest, tokens(rest), depth)
+}
+
+// runTarget: il file eseguito da un comando scritto per intero il cui primo
+// argomento è in[0] (rest è il testo a cui si riferiscono le posizioni di
+// in). Se il programma è a sua volta un programma di sistema che esegue
+// altro (cmd /c powershell ..., cmd /c wscript x.vbs), conta ciò che esegue
+// quello; i comandi interni, gli indirizzi e i nomi senza estensione non
+// hanno file.
+func runTarget(rest string, in []token, depth int) string {
 	if len(in) == 0 {
 		return ""
 	}
 	x := in[0].text
 	if hasScheme(x) {
 		return ""
+	}
+	if depth < maxProxyDepth && systemPath(x) {
+		if inner, proxy := proxyTarget(x, rest[in[0].end:], depth+1); proxy {
+			return inner
+		}
 	}
 	if !strings.ContainsAny(x, `\/`) && !hasExecExt(x) {
 		return "" // comando interno (echo, del, copy...) o nome senza estensione

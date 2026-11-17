@@ -40,7 +40,7 @@ func readServices(ctx context.Context, rd reader) sourceResult {
 	var raws []rawService
 	for _, s := range list {
 		if ctx.Err() != nil {
-			res.err = errors.Join(res.err, ctx.Err())
+			// Tempo scaduto: Collect lo dice già, in italiano (Partial).
 			break
 		}
 		// Start resta «sconosciuto» (fuori dai valori 0-4) se la

@@ -25,19 +25,28 @@ import (
 // Arguments, WorkingDirectory) e ClassId delle azioni COM, tipo di accesso,
 // livello di esecuzione, chi la esegue come categoria (sys, svc, me, other:
 // mai il nome) e se l'autore dichiara Microsoft (solo il sì o no, mai il
-// testo dell'autore). Le cartelle e le attività non leggibili si contano.
-// Lo script non riceve dati dall'esterno.
+// testo dell'autore). Le cartelle e le attività non leggibili si contano,
+// separando l'accesso negato (E_ACCESSDENIED, 0x80070005) dagli altri
+// errori (attività danneggiate o tolte durante la lettura): il codice è
+// quello COM, dentro l'eccezione di PowerShell (una MethodInvocationException
+// ha sempre 0x80131501). Lo script non riceve dati dall'esterno.
 const TasksScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncoding=[Text.Encoding]::UTF8}catch{};$r=[ordered]@{};$e=[ordered]@{};` +
-	`$me=[Security.Principal.WindowsIdentity]::GetCurrent();$mine=@("$($me.User.Value)","$($me.Name)",("$($me.Name)" -split '\\')[-1])|Where-Object{$_};` +
+	`$me=[Security.Principal.WindowsIdentity]::GetCurrent();$mine=@("$($me.User.Value)","$($me.Name)",("$($me.Name)" -split '\\')[-1])|Where-Object{$_};$mysid="$($me.User.Value)".ToLowerInvariant();` +
+	`$hr={param($x) $y=$x.Exception;while($y.InnerException){$y=$y.InnerException};$y.HResult};` +
+	// SID di un account indicato per nome, una volta per nome: i nomi degli
+	// account di sistema sono tradotti («SERVIZIO LOCALE» in italiano).
+	`$sids=@{};$sid={param($u) if(-not $sids.ContainsKey($u)){$v=$u;if($u -notlike 'S-1-*'){try{$v=(New-Object Security.Principal.NTAccount($u)).Translate([Security.Principal.SecurityIdentifier]).Value}catch{}};$sids[$u]="$v".ToLowerInvariant()};$sids[$u]};` +
 	// Chi esegue l'attività, come categoria: sys (SYSTEM), svc (LOCAL SERVICE,
-	// NETWORK SERVICE), me (chi usa Polaris), other; "" se non indicato.
+	// NETWORK SERVICE), me (chi usa Polaris), other; "" se non indicato. Prima
+	// i nomi inglesi, poi il confronto per SID.
 	`$who={param($u) if(-not $u){return ''};$l=$u.ToLowerInvariant();` +
 	`if($l -eq 's-1-5-18' -or $l -eq 'system' -or $l -eq 'localsystem' -or $l -eq 'nt authority\system'){return 'sys'};` +
 	`if($l -eq 's-1-5-19' -or $l -eq 's-1-5-20' -or $l -like '*local service' -or $l -like '*network service' -or $l -like '*localservice' -or $l -like '*networkservice'){return 'svc'};` +
-	`foreach($x in $mine){if($l -eq $x.ToLowerInvariant()){return 'me'}};return 'other'};` +
+	`foreach($x in $mine){if($l -eq $x.ToLowerInvariant()){return 'me'}};` +
+	`$k=(&$sid $u);if($k -eq 's-1-5-18'){return 'sys'};if($k -eq 's-1-5-19' -or $k -eq 's-1-5-20'){return 'svc'};if($k -eq $mysid){return 'me'};return 'other'};` +
 	`$od={param($d) try{if($d -and $d.Year -gt 1980){[double]$d.ToOADate()}else{[double]0}}catch{[double]0}};` +
 	`try{$s=New-Object -ComObject Schedule.Service;$s.Connect();` +
-	`$list=New-Object System.Collections.ArrayList;$nf=0;$nd=0;$ne=0;$q=New-Object System.Collections.Queue;$q.Enqueue($s.GetFolder('\'));` +
+	`$list=New-Object System.Collections.ArrayList;$nf=0;$nd=0;$ne=0;$nb=0;$q=New-Object System.Collections.Queue;$q.Enqueue($s.GetFolder('\'));` +
 	`while($q.Count -gt 0){$f=$q.Dequeue();$nf++;` +
 	`try{foreach($t in @($f.GetTasks(1))){try{$d=$t.Definition;$p=$d.Principal;$au="$($d.RegistrationInfo.Author)";` +
 	`$x=[ordered]@{p="$($t.Path)";en=[bool]$t.Enabled;hid=[bool]$d.Settings.Hidden;last=(&$od $t.LastRunTime);res=[long]$t.LastTaskResult;next=(&$od $t.NextRunTime);` +
@@ -47,9 +56,9 @@ const TasksScript = `$ErrorActionPreference='Stop';try{[Console]::OutputEncoding
 	`lt=[int]$p.LogonType;rl=[int]$p.RunLevel;uid=(&$who "$($p.UserId)");grp=[bool]("$($p.GroupId)");` +
 	// Le attività di Windows hanno come autore una risorsa di sistema
 	// «$(@%SystemRoot%\...)» (forma osservata): conta come dichiarazione di Microsoft.
-	`ms=[bool]($au -match 'Microsoft' -or $au -like '$(@%SystemRoot%\*')};[void]$list.Add($x)}catch{$ne++}}}catch{$nd++};` +
-	`try{foreach($c in @($f.GetFolders(0))){$q.Enqueue($c)}}catch{$nd++}};` +
-	`$r.tasks=$list;$r.folders=$nf;$r.denied=$nd;$r.unreadable=$ne}catch{$e.connect=('0x{0:X8}' -f $_.Exception.HResult)};` +
+	`ms=[bool]($au -match 'Microsoft' -or $au -like '$(@%SystemRoot%\*')};[void]$list.Add($x)}catch{if((&$hr $_) -eq -2147024891){$ne++}else{$nb++}}}}catch{if((&$hr $_) -eq -2147024891){$nd++}else{$nb++}};` +
+	`try{foreach($c in @($f.GetFolders(0))){$q.Enqueue($c)}}catch{if((&$hr $_) -eq -2147024891){$nd++}else{$nb++}}};` +
+	`$r.tasks=$list;$r.folders=$nf;$r.denied=$nd;$r.unreadable=$ne;$r.broken=$nb}catch{$e.connect=('0x{0:X8}' -f (&$hr $_))};` +
 	`$r.errors=$e;ConvertTo-Json -Compress -Depth 6 -InputObject $r`
 
 // list accetta in JSON sia un valore sia un elenco (ConvertTo-Json di
@@ -102,11 +111,14 @@ type psTask struct {
 }
 
 type tasksOut struct {
-	Tasks      list[psTask]      `json:"tasks"`
-	Folders    int               `json:"folders"`
-	Denied     int               `json:"denied"`
-	Unreadable int               `json:"unreadable"`
-	Errors     map[string]string `json:"errors"`
+	Tasks      list[psTask] `json:"tasks"`
+	Folders    int          `json:"folders"`
+	Denied     int          `json:"denied"`     // cartelle con l'accesso negato
+	Unreadable int          `json:"unreadable"` // attività con l'accesso negato
+	// Broken: attività o cartelle non lette per un errore diverso dai
+	// permessi (attività danneggiata, tolta durante la lettura).
+	Broken int               `json:"broken"`
+	Errors map[string]string `json:"errors"`
 }
 
 // jsonStart salta le righe di avviso prima del JSON.
@@ -179,8 +191,9 @@ func ResultHex(v int64) string {
 }
 
 // runAsOf riduce chi esegue l'attività a una categoria: system, service,
-// user (chi usa Polaris o chiunque abbia effettuato l'accesso, tipo
-// InteractiveToken = 3), group, other.
+// user (chi usa Polaris, o chiunque abbia effettuato l'accesso: tipo
+// InteractiveToken = 3 senza un utente indicato), group, other. Un'attività
+// InteractiveToken di un altro utente gira con il profilo di quello: other.
 func runAsOf(uid string, group bool, logonType int) string {
 	switch {
 	case uid == "sys":
@@ -191,10 +204,49 @@ func runAsOf(uid string, group bool, logonType int) string {
 		return "user"
 	case group || logonType == 4:
 		return "group"
-	case logonType == 3:
+	case logonType == 3 && uid != "other":
 		return "user"
 	}
 	return "other"
+}
+
+// Esito e data delle attività mai eseguite: SCHED_S_TASK_HAS_NOT_RUN e la
+// data simbolica del 30/11/1999 (giorno OLE 36494) che Utilità di
+// pianificazione restituisce al posto dell'ultima esecuzione.
+const (
+	schedHasNotRun = 0x41303
+	neverRunBefore = 36495
+)
+
+// tasksSource trasforma l'uscita di TasksScript nella lettura della
+// sorgente: le voci, le categorie negate per i permessi e l'errore per le
+// parti non lette per altri motivi.
+func (rd reader) tasksSource(t *tasksOut, loc *time.Location, com func(string) string) sourceResult {
+	var res sourceResult
+	if c := t.Errors["connect"]; c != "" {
+		if deniedCode(c) {
+			res.denied = []string{"tasks"}
+			return res
+		}
+		res.err = fmt.Errorf("attività pianificate: Utilità di pianificazione non raggiungibile (%s)", c)
+		return res
+	}
+	for _, x := range t.Tasks {
+		res.items = append(res.items, rd.taskItems(x, loc, com))
+	}
+	if t.Denied > 0 || t.Unreadable > 0 {
+		res.denied = []string{"tasks"}
+	}
+	if t.Broken > 0 {
+		res.err = fmt.Errorf("attività pianificate: %d %s per un errore diverso dai permessi (attività danneggiate o cambiate durante la lettura)", t.Broken, plural(t.Broken, "non letta", "non lette"))
+	}
+	return res
+}
+
+// relativeName: un percorso relativo senza variabili («update.ps1»,
+// «script\x.vbs»), da cercare nella cartella di lavoro.
+func relativeName(p string) bool {
+	return p != "" && !isAbs(p) && !strings.HasPrefix(p, `\`) && !strings.HasPrefix(p, "/") && !strings.Contains(p, "%")
 }
 
 // userVars sono le variabili che cambiano con l'utente: in un'attività che
@@ -211,9 +263,13 @@ func usesUserVars(s string) bool {
 	return false
 }
 
-// taskItems prepara la voce di un'attività: una sola per attività, con
-// l'azione da mostrare (la prima che non sarebbe di Windows, altrimenti la
-// prima). com risolve il ClassId di un'azione COM nella DLL registrata.
+// taskItems prepara la voce di un'attività: una sola per attività. Ogni
+// azione si prepara a sé, con il programma e gli argomenti come li dà
+// Utilità di pianificazione (Path e Arguments, senza ricomporre e dividere
+// di nuovo la riga); la voce mostra la prima azione che non sarebbe di
+// Windows e porta le altre in others, verificate come lei: dopo la verifica
+// settle mostra quella giusta. com risolve il ClassId di un'azione COM nella
+// DLL registrata.
 func (rd reader) taskItems(t psTask, loc *time.Location, com func(string) string) item {
 	path := t.Path
 	name := baseOf(path)
@@ -232,38 +288,58 @@ func (rd reader) taskItems(t psTask, loc *time.Location, com func(string) string
 	e.Highest = t.Level == 1
 	e.Hidden = t.Hidden
 	e.AuthorMicrosoft = t.MS
-	e.LastRun = OADate(t.Last, loc)
+	// Un'attività mai eseguita non ha un'ultima esecuzione, anche se la data
+	// restituita è quella simbolica del 1999.
+	if uint32(t.Result) != schedHasNotRun && !(t.Last > 0 && t.Last < neverRunBefore) {
+		e.LastRun = OADate(t.Last, loc)
+	}
 	e.NextRun = OADate(t.Next, loc)
 	e.LastResult = ResultHex(t.Result)
+	// Le variabili dell'utente (%LOCALAPPDATA%...) sono quelle di chi esegue
+	// l'attività: si espandono con il profilo di chi usa Polaris solo se
+	// gira come lui o come chiunque abbia effettuato l'accesso.
+	own := e.RunAs == "user" || e.RunAs == "group"
 	var actions []item
 	for _, x := range t.Exec {
-		cmd := strings.TrimSpace(x.Path)
-		if cmd == "" {
+		prog := strings.TrimSpace(x.Path)
+		if prog == "" {
 			continue
 		}
+		args := strings.TrimSpace(x.Args)
+		cmd := prog
 		if strings.Contains(cmd, " ") && !strings.HasPrefix(cmd, `"`) {
 			cmd = `"` + cmd + `"`
 		}
-		if a := strings.TrimSpace(x.Args); a != "" {
-			cmd += " " + a
+		if args != "" {
+			cmd += " " + args
 		}
-		it := rd.commandItem(e, cmd, false)
-		// Un programma indicato senza cartella si cerca prima nella
-		// cartella di lavoro dell'attività.
-		if file, _, _ := rd.res.Split(cmd, false); file != "" && !strings.ContainsAny(file, `\/`) && strings.TrimSpace(x.WD) != "" {
-			if p := rd.res.Locate(strings.TrimRight(strings.TrimSpace(x.WD), `\`)+`\`+file, false); rd.res.exists(p) {
-				it.file = p
+		file := strings.TrimSpace(strings.Trim(prog, `"`))
+		raw, proxy := ProxyTarget(file, args)
+		if !own && usesUserVars(prog+" "+args) {
+			// Il percorso si mostra come è scritto, senza espanderlo e senza
+			// verificarlo.
+			it := item{entry: e, unverified: true, file: file}
+			it.entry.Command = rd.cl.command(cmd)
+			if proxy {
+				it.target = raw
 			}
+			actions = append(actions, it)
+			continue
 		}
-		if e.RunAs != "user" && e.RunAs != "group" && usesUserVars(x.Path+" "+x.Args) {
-			// Le variabili sono quelle dell'utente dell'attività: il percorso
-			// si mostra come è scritto, senza espanderlo con il profilo di chi
-			// usa Polaris.
-			it.unverified = true
-			file, args, _ := rd.res.Split(cmd, false)
-			it.file = file
-			if t, proxy := ProxyTarget(file, args); proxy {
-				it.target = t
+		it := rd.execItem(e, cmd, file, args, false)
+		// Nella cartella di lavoro dell'attività si cercano prima un programma
+		// indicato senza cartella e il file relativo che un interprete esegue
+		// (powershell -File update.ps1, wscript x.vbs, cmd /c avvio.bat).
+		if wd := strings.TrimRight(strings.TrimSpace(x.WD), `\`); wd != "" {
+			if !strings.ContainsAny(file, `\/`) {
+				if p := rd.res.Locate(wd+`\`+file, false); rd.res.exists(p) {
+					it.file = p
+				}
+			}
+			if proxy && relativeName(raw) {
+				if p := rd.res.Locate(wd+`\`+raw, false); rd.res.exists(p) {
+					it.target = p
+				}
 			}
 		}
 		actions = append(actions, it)
@@ -285,27 +361,38 @@ func (rd reader) taskItems(t psTask, loc *time.Location, com func(string) string
 	if len(actions) == 0 {
 		return item{entry: e}
 	}
-	// Si mostra la prima azione che non sarebbe nascosta come voce di
-	// Windows; la verifica dei file arriva dopo, quindi qui si sceglie la
-	// prima con un file fuori dalla cartella di Windows, poi la prima con un
-	// comando interpretato o un file non verificabile, altrimenti la prima.
-	pick := actions[0]
-	found := false
-	for _, a := range actions {
-		if a.file != "" && !a.unverified && sign.FolderOf(a.file, rd.cl.profile) != "windows" {
-			pick, found = a, true
+	if n := len(actions) - 1; n > 0 {
+		for i := range actions {
+			actions[i].entry.Command += fmt.Sprintf(" (+%d %s)", n, plural(n, "altra azione", "altre azioni"))
+		}
+	}
+	// Prima della verifica si sceglie la prima azione con il file o il file
+	// eseguito fuori dalla cartella di Windows, poi la prima con un comando
+	// interpretato o un file non verificabile, altrimenti la prima.
+	outside := func(p string) bool { return p != "" && sign.FolderOf(p, rd.cl.profile) != "windows" }
+	pick := -1
+	for i, a := range actions {
+		if !a.unverified && (outside(a.file) || outside(a.target)) {
+			pick = i
 			break
 		}
 	}
-	for _, a := range actions {
-		if !found && (a.interpreted || a.unverified || a.file == "") {
-			pick, found = a, true
+	if pick < 0 {
+		pick = 0
+		for i, a := range actions {
+			if a.interpreted || a.unverified || a.file == "" {
+				pick = i
+				break
+			}
 		}
 	}
-	if len(actions) > 1 {
-		pick.entry.Command += fmt.Sprintf(" (+%d %s)", len(actions)-1, plural(len(actions)-1, "altra azione", "altre azioni"))
+	it := actions[pick]
+	for i, a := range actions {
+		if i != pick {
+			it.others = append(it.others, a)
+		}
 	}
-	return pick
+	return it
 }
 
 func plural(n int, one, many string) string {

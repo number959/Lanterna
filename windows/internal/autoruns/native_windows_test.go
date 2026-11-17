@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"lanterna/internal/scan"
 )
 
 // Prove su Windows reale (nella CI, da amministratore): le letture native
@@ -134,6 +136,14 @@ func TestTasksWindows(t *testing.T) {
 			if _, err := time.Parse(time.RFC3339, e.LastRun); err != nil {
 				t.Errorf("data non RFC 3339: %q", e.LastRun)
 			}
+			if strings.HasPrefix(e.LastRun, "1999-11-30") {
+				t.Errorf("data simbolica delle attività mai eseguite: %s %s", e.Location, e.LastRun)
+			}
+		}
+		// rundll32 con un'opzione prima della DLL (SystemRestore\SR,
+		// Autochk\Proxy): il file eseguito è la DLL, non l'opzione.
+		if strings.EqualFold(baseOf(it.file), "rundll32.exe") && it.target != "" && extOf(it.target) == "" {
+			t.Errorf("rundll32 con un file eseguito senza estensione: %s → %s", e.Location, it.target)
 		}
 	}
 	noPersonal(t, r.items)
@@ -170,6 +180,21 @@ func TestCollectWindows(t *testing.T) {
 	if p := os.Getenv("USERPROFILE"); p != "" {
 		if esc, _ := json.Marshal(p); strings.Contains(strings.ToLower(string(b)), strings.ToLower(strings.Trim(string(esc), `"`))) {
 			t.Error("cartella del profilo nel risultato")
+		}
+	}
+	// Ogni «file mancante» manca davvero (osservazione c della CI: Edge
+	// Update risultava mancante): si controlla il percorso sul disco.
+	for _, e := range d.Entries {
+		for _, f := range []*scan.FileFacts{e.File, e.Target} {
+			if f == nil || !f.Missing || strings.Contains(f.Path, "‹") {
+				continue
+			}
+			p := strings.Replace(f.Path, "%USERPROFILE%", os.Getenv("USERPROFILE"), 1)
+			if _, err := os.Stat(p); err == nil {
+				t.Errorf("%s/%s %q: segnato mancante ma il file c'è (%s)", e.Category, e.Kind, e.Name, p)
+			} else if strings.Contains(strings.ToLower(p), "edgeupdate") {
+				t.Logf("Edge Update mancante davvero: %s (%v)", p, err)
+			}
 		}
 	}
 	t.Logf("%d voci elencate; conteggi %+v; negati %v; parziale %v; amministratore %v", len(d.Entries), d.Counts, d.Denied, d.Partial, d.Elevated)

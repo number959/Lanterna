@@ -42,6 +42,11 @@ func runAutoruns(args []string) error {
 	if *asJSON {
 		b, _ := json.MarshalIndent(d, "", "  ")
 		fmt.Println(string(b))
+		// Le parti non lette non stanno nel JSON (che ha solo Denied e
+		// Partial): si dicono sullo standard error, che non lo sporca.
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Non letto del tutto: "+err.Error())
+		}
 		return nil
 	}
 	printAutoruns(d)

@@ -304,10 +304,14 @@ func (rd reader) chromiumItems(fs fileReader, b chromiumBrowser, locales []strin
 	if err != nil {
 		return nil
 	}
+	// Preferences si legge una volta sola: dice che la cartella è un profilo
+	// e poi serve per le estensioni.
 	var profiles []string
+	prefs := map[string][]byte{}
 	for _, n := range names {
-		if _, err := fs.read(filepath.Join(b.UserData, n, "Preferences")); err == nil {
+		if raw, err := fs.read(filepath.Join(b.UserData, n, "Preferences")); err == nil {
 			profiles = append(profiles, n)
+			prefs[n] = raw
 		}
 	}
 	var out []item
@@ -316,8 +320,12 @@ func (rd reader) chromiumItems(fs fileReader, b chromiumBrowser, locales []strin
 		dir := filepath.Join(b.UserData, prof)
 		settings := map[string]json.RawMessage{}
 		for _, f := range []string{"Secure Preferences", "Preferences"} {
-			raw, err := fs.read(filepath.Join(dir, f))
-			if err != nil {
+			var raw []byte
+			var err error
+			if f == "Preferences" {
+				raw = prefs[prof]
+				delete(prefs, prof)
+			} else if raw, err = fs.read(filepath.Join(dir, f)); err != nil {
 				continue
 			}
 			for id, v := range prefsSettings(raw) {
