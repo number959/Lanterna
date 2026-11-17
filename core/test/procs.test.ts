@@ -18,6 +18,7 @@ import {
   signatureLabel,
 } from '../src/engine';
 import type { FileFacts, FolderKind, ProcessDetail, Scan, SignatureStatus } from '../src/engine';
+import { isKernelProc } from '../src/engine/procs';
 import { clinicScan } from '../src/demo/clinic';
 import { demoScan } from '../src/demo/sample';
 import { guideById } from '../src/guides';
@@ -201,6 +202,31 @@ describe('giudizi sui processi', () => {
     expect(ok).toMatchObject({ severity: 'ok', value: '2 programmi in ascolto, nessuno da controllare' });
   });
 
+  it('nucleo di Windows con la regola dell\'agente: il nome da solo non basta; da amministratore niente «senza amministratore»', () => {
+    // Un processo non letto in tempo che si chiama «Idle» o «Registry» ma non è figlio di System non è il nucleo (kernelPseudo dell'agente).
+    const items = [
+      proc(5000, 'Idle', undefined, { parentPid: 700, listen: [{ proto: 'tcp', port: 4444, scope: 'all' }] }),
+      proc(5001, 'Registry', undefined, { parentPid: 700, listen: [{ proto: 'tcp', port: 4445, scope: 'all' }] }),
+      proc(120, 'Registry', undefined, { parentPid: 4 }),
+    ];
+    expect(listeners(withProcs(items)).map((l) => [l.proc.name, l.kernel, l.unverified])).toEqual([
+      ['Idle', false, true],
+      ['Registry', false, true],
+    ]);
+    expect(isKernelProc(items[2])).toBe(true);
+    expect(isKernelProc(items[1])).toBe(false);
+    const f = find(withProcs(items), 'pc.procs.listen');
+    expect(f).toMatchObject({ severity: 'info', value: '2 programmi in ascolto, 2 non verificati' });
+    expect(f?.verdict).not.toContain('nucleo di Windows');
+    // Da amministratore i processi che non si aprono sono protetti da Windows: «senza amministratore» sarebbe falso.
+    const closed = proc(30, 'vncserver.exe', undefined, { access: 'none', owner: 'unknown', listen: [{ proto: 'tcp', port: 5900, scope: 'all' }] });
+    const admin = find(withProcs([closed], { elevated: true }), 'pc.procs.listen');
+    expect(admin?.severity).toBe('info');
+    expect(admin?.verdict).toContain('protetti da Windows');
+    expect(admin?.verdict).not.toMatch(/senza amministratore|avviando Polaris come amministratore/);
+    expect(find(withProcs([closed]), 'pc.procs.listen')?.verdict).toContain('avviando Polaris come amministratore');
+  });
+
   it('in ascolto da ProgramData o da un\'altra cartella: da controllare anche con la firma valida', () => {
     const svc = proc(40, 'vendorsvc.exe', file('C:\\ProgramData\\Vendor\\vendorsvc.exe', 'programData', 'valid', 'Vendor'), { listen: [{ proto: 'tcp', port: 7070, scope: 'all' }] });
     expect(listeners(withProcs([svc]))[0].risky).toBe(true);
@@ -212,6 +238,12 @@ describe('giudizi sui processi', () => {
     const items = [proc(20, 'share.exe', share, { listen: [{ proto: 'udp', port: 1900, scope: 'all' }, { proto: 'tcp', port: 9000, scope: 'local' }] })];
     expect(find(withProcs(items), 'pc.procs.listen')).toMatchObject({ severity: 'ok', value: 'nessun programma in ascolto su tutte le reti' });
     expect(find(withProcs(items, { connsRead: false }), 'pc.procs.listen')).toBeUndefined();
+    // Nel rapporto le tabelle non lette (connsRead assente nel JSON) si dicono «non lette», mai «nessun programma».
+    const unread = withProcs(items);
+    delete unread.pc!.procs!.connsRead;
+    const txt = renderText(unread, analyze(unread));
+    expect(txt).toContain('In ascolto su tutte le reti: non letto');
+    expect(txt).not.toContain('In ascolto su tutte le reti: nessun programma');
   });
 
   it('programma con il nome di un file di Windows altrove', () => {
@@ -261,6 +293,17 @@ describe('demo, rapporto, documento e privacy', () => {
       for (const line of txt.split('\n')) expect(line.length).toBeLessThanOrEqual(90);
     }
     expect(renderText(long, analyze(long), { verbose: true })).toContain('WindowsTerminal.exe');
+    // Un percorso lungo più righe le riempie fino in fondo: niente righe di due caratteri né spazi dentro il percorso.
+    const deep = clone(clinicScan);
+    const path = 'C:\\Program Files\\WindowsApps\\' + 'Microsoft.WindowsTerminal_1.21.2361.0_x64__8wekyb3d8bbwe\\'.repeat(4) + 'WindowsTerminal.exe';
+    deep.pc!.procs!.items.push(proc(9100, 'WindowsTerminal.exe', file(path, 'programFiles', 'unsigned')));
+    const lines = renderText(deep, analyze(deep), { verbose: true, width: 90 }).split('\n');
+    const at = lines.findIndex((l) => l.startsWith('     WindowsTerminal.exe: '));
+    const cont: string[] = [];
+    for (let i = at + 1; i < lines.length && /^ {7}\S/.test(lines[i]); i++) cont.push(lines[i]);
+    expect(cont.length).toBeGreaterThan(2);
+    for (const l of cont.slice(0, -1)) expect(l.length, l).toBe(90);
+    expect(lines[at].endsWith('C:\\Program') && cont.map((l) => l.trim()).join('')).toBe(path.slice('C:\\Program '.length));
     const doc = documentParts(demoScan, analyze(demoScan)).body;
     expect(doc).toContain('<h2>Processi e avvio automatico</h2>');
     expect(doc).toContain('acmeshare.exe (8200) <b>da controllare</b>');

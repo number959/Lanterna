@@ -17,7 +17,7 @@ import type { AutorunEntry, AutorunsData, FileFacts, FileSignature, FolderKind, 
 // che scrive nel registro eventi, un'estensione imposta dall'organizzazione.
 //
 // I dati sono quelli che l'agente può produrre (lo controlla
-// test/autoruns.test.ts): per ogni categoria il totale è la somma delle voci
+// test/autoruns-ui.test.ts): per ogni categoria il totale è la somma delle voci
 // di Microsoft non elencate e di quelle elencate (per le estensioni anche i
 // componenti interni del browser, contati e non elencati); «unreadable» è il
 // numero dei processi con access 'none', che hanno owner 'unknown'; gli

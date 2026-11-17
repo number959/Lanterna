@@ -263,9 +263,20 @@ function hijackIssue(e: AutorunEntry, secureBoot?: boolean): AutorunIssue | unde
   const issue = (severity: Severity, why: string): AutorunIssue => ({ entry: e, kind: 'hijack', severity, why });
   switch (e.kind) {
     case 'shell':
-      return isDefaultShell(cmd) ? undefined : issue('crit', `la shell di Windows non è explorer.exe della cartella di Windows (${cmd || 'vuota'})`);
-    case 'userinit':
-      return isDefaultUserinit(cmd) ? undefined : issue('crit', `Userinit non è userinit.exe della cartella di sistema (${cmd || 'vuoto'})`);
+    case 'userinit': {
+      const shell = e.kind === 'shell';
+      // La cartella di Windows vera è %SystemRoot% dell'agente: il file che
+      // l'agente ha trovato deve stare lì (D:\Windows\explorer.exe, su un
+      // altro disco, non è quello di Windows anche se il comando gli somiglia).
+      const home = !f || !f.folder || f.folder === 'windows';
+      if (!home || !(shell ? isDefaultShell(cmd) : isDefaultUserinit(cmd)))
+        return shell
+          ? issue('crit', `la shell di Windows non è explorer.exe della cartella di Windows (${cmd || 'vuota'})`)
+          : issue('crit', `Userinit non è userinit.exe della cartella di sistema (${cmd || 'vuoto'})`);
+      // Il programma di Windows, ma con il file cambiato dopo la firma o il certificato revocato.
+      const s = f && f.signature;
+      return f && s && SIG_CRIT.indexOf(s.status) >= 0 ? issue('crit', `${fileName(f.path) || cmd}: ${sigWhy(f)}`) : undefined;
+    }
     case 'ifeo':
       // Il «debugger» di uno strumento di accessibilità parte dalla schermata di accesso come SYSTEM, senza password (MITRE T1546.008).
       if (ACCESSIBILITY.indexOf(e.name.toLowerCase()) >= 0) return issue('crit', `uno strumento di accessibilità della schermata di accesso (${e.name}) è sostituito da un altro programma (debugger IFEO): dalla schermata di accesso partirebbe quello, con i privilegi di sistema`);
@@ -479,7 +490,7 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
             ? 'Shell e Userinit di Winlogon, gli strumenti di accessibilità della schermata di accesso e le DLL dei componenti di sistema decidono che cosa parte all\'accesso o dentro Windows: un valore diverso da quello di Windows, o un file alterato, è una tecnica nota per far partire un programma prima di tutto il resto o con i privilegi di sistema. Va controllato subito, da un tecnico.'
             : sev === 'warn'
               ? 'Sono punti di Windows usati anche da programmi legittimi (antivirus, strumenti di disco o di diagnostica), ma raramente: ogni voce va riconosciuta, da un tecnico.'
-              : 'Sono voci da conoscere in punti delicati di Windows: un controllo del disco programmato da Windows, un «debugger» firmato da Microsoft, DLL di altri produttori normali per alcuni antivirus, VPN e stampanti. Da controllare se non le riconosci.')
+              : 'Sono voci da conoscere in punti delicati di Windows, come un controllo del disco programmato da Windows, un «debugger» firmato da Microsoft o le DLL di altri produttori che usano alcuni antivirus, VPN e stampanti: da controllare se non le riconosci.')
         : `Shell e Userinit di Winlogon sono quelli di Windows; nessun debugger IFEO, BootExecute diverso da quello di Windows o AppInit attivo, e nessuna DLL senza firma nei pacchetti di sicurezza, nella stampa o nei provider di rete.${hijDenied ? ` ${hijDenied}` : ''}`,
       actions: sev === 'crit' || sev === 'warn' ? ['review-startup-entry', 'defender-scan-file'] : hij.length ? ['review-startup-entry'] : [],
     });
@@ -565,7 +576,8 @@ export function analyzeAutoruns(scan: Scan, add: Add) {
       verdict: tasks.length
         ? `${listText(byWorst(tasks))}. ` +
           (sev === 'crit' || sev === 'warn'
-            ? 'Un\'attività che esegue un programma da una cartella che un utente può scrivere, senza firma valida, nascosta o con privilegi elevati, è il modo più comune per far ripartire un programma indesiderato, anche quando l\'autore dichiarato è Microsoft: verifica da dove viene.'
+            ? 'Un\'attività che esegue un programma da una cartella che un utente può scrivere, senza firma valida, nascosta o con privilegi elevati, è il modo più comune per far ripartire un programma indesiderato: verifica da dove viene.' +
+              (bad.some((x) => x.entry.authorMicrosoft) ? ' L\'autore «Microsoft» scritto nell\'attività lo sceglie chi la crea: non conta, conta la firma del file.' : '')
             : 'Sono attività di altri produttori, di solito aggiornatori installati per l\'utente: da conoscere, non da togliere per forza.') +
           (denied.indexOf('tasks') >= 0 ? ' Senza amministratore si vedono solo le attività leggibili da questo utente: le altre sono da verificare da amministratore.' : '')
         : 'Senza amministratore si vedono solo le attività pianificate leggibili da questo utente, e tra queste non c\'è nulla da segnalare: le altre sono da verificare da amministratore.',

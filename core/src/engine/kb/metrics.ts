@@ -917,7 +917,7 @@ const list: Metric[] = [
     what: 'I programmi che aspettano connessioni TCP da tutte le reti (indirizzo 0.0.0.0 o ::), letti dalle tabelle delle connessioni di Windows a fine analisi, con la firma e la cartella del programma.',
     scale: [
       { range: 'nessun programma in ascolto su tutte le reti, o solo programmi con firma valida in Programmi o nella cartella di Windows (e System, il nucleo di Windows)', severity: 'ok', meaning: 'Nulla da controllare.' },
-      { range: 'programmi in ascolto su tutte le reti che non si sono potuti verificare: senza amministratore non si aprono, o la firma non è stata verificata in tempo', severity: 'info', meaning: 'Non verificati: da verificare da amministratore.' },
+      { range: 'programmi in ascolto su tutte le reti che non si sono potuti verificare: non si aprono (senza amministratore, o processi protetti da Windows) o la firma non è stata verificata in tempo', severity: 'info', meaning: 'Non verificati: né da controllare né a posto; senza amministratore, da verificare da amministratore.' },
       { range: 'un programma senza firma valida, o avviato da una cartella che un utente può scrivere, in ascolto su tutte le reti', severity: 'warn', meaning: 'Da riconoscere: è raggiungibile dagli altri dispositivi.' },
       { range: 'come sopra, con il firewall del profilo di rete in uso spento', severity: 'crit', meaning: 'La porta è aperta a tutta la rete.' },
     ],
@@ -983,10 +983,10 @@ const list: Metric[] = [
       { range: 'valori di Windows e nessuna DLL senza firma', severity: 'ok', meaning: 'Nulla da segnalare.' },
       { range: 'DLL firmate da altri produttori in LSA, stampa o rete; AppInit impostato ma inattivo con Secure Boot; debugger IFEO firmato da Microsoft (non un interprete come cmd.exe); controllo del disco programmato da Windows in BootExecute (autocheck autochk con un volume, per esempio /r \\??\\C:)', severity: 'info', meaning: 'Normale per alcuni antivirus, VPN, stampanti e strumenti di diagnostica, o dopo un chkdsk programmato.' },
       { range: 'debugger IFEO (anche uno che non esiste: blocca il programma), SilentProcessExit, righe di BootExecute diverse da quelle di Windows (autocheck autochk seguito solo da opzioni, asterisco o volumi), AppInit attivo senza Secure Boot, DLL senza firma valida in LSA, stampa o rete', severity: 'warn', meaning: 'Usati di rado anche da programmi legittimi: da riconoscere.' },
-      { range: 'Shell diversa da explorer.exe della cartella di Windows o Userinit diverso da userinit.exe di System32 (altra cartella o argomenti); debugger IFEO su uno strumento di accessibilità della schermata di accesso (sethc.exe, utilman.exe, osk.exe...); DLL alterate in LSA, stampa o rete', severity: 'crit', meaning: 'Da controllare subito, da un tecnico.' },
+      { range: 'Shell diversa da explorer.exe della cartella di Windows o Userinit diverso da userinit.exe di System32 (altra cartella, anche una cartella Windows su un altro disco, o argomenti), oppure con il file alterato dopo la firma; debugger IFEO su uno strumento di accessibilità della schermata di accesso (sethc.exe, utilman.exe, osk.exe...); DLL alterate in LSA, stampa o rete', severity: 'crit', meaning: 'Da controllare subito, da un tecnico.' },
     ],
     why: 'Sono tecniche note di persistenza (MITRE ATT&CK T1547.004, T1546.012, T1546.008, T1546.010, T1547.001): un programma messo lì parte prima di tutto il resto o al posto di un altro, spesso con i privilegi di sistema; dagli strumenti di accessibilità parte dalla schermata di accesso, senza password.',
-    limits: 'Shell e Userinit si confrontano con il programma di Windows nella sua cartella e senza argomenti, come fa l\'agente; la cartella di Windows si riconosce come C:\\Windows, %SystemRoot% o %windir%. Alcuni strumenti legittimi usano IFEO e BootExecute: Polaris dice che cosa c\'è, il tecnico decide.',
+    limits: 'Shell e Userinit si confrontano con il programma di Windows nella sua cartella e senza argomenti, come fa l\'agente: la cartella di Windows è quella in cui è installato Windows (%SystemRoot%), riconosciuta dall\'agente. Alcuni strumenti legittimi usano IFEO e BootExecute: Polaris dice che cosa c\'è, il tecnico decide.',
   },
   {
     id: 'pc.autoruns.wmi',

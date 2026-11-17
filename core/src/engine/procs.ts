@@ -111,16 +111,14 @@ export const fileName = (path?: string) => (path || '').split(/[\\/]/).pop() || 
 /** Processi su cui si danno giudizi: tutti tranne STARNET Polaris e le sue finestre. */
 const judged = (p: ProcessDetail) => !p.polaris;
 
-/** Nomi degli pseudo-processi del nucleo di Windows, che non hanno un file da verificare. */
-const KERNEL_NAMES = ['system', 'registry', 'memory compression', 'secure system', '[system process]', 'system idle process', 'idle', 'memcompression', 'vmmem'];
-
 /**
  * Processo del nucleo di Windows senza un file da verificare (System, PID 4;
- * Registry, Memory Compression...): come kernelPseudo dell'agente, PID 0 e 4
- * e i figli di System senza estensione .exe, più i nomi noti.
+ * Registry, Memory Compression, Secure System), con la stessa regola di
+ * kernelPseudo dell'agente: PID 0 e 4, e i figli di System senza «.exe» nel
+ * nome. Il nome da solo non basta: un processo qualsiasi può chiamarsi
+ * «Registry» o «Idle», e se non si è potuto leggere resta non verificato.
  */
-export const isKernelProc = (p: ProcessDetail) =>
-  p.pid === 0 || p.pid === 4 || (p.parentPid === 4 && !/\.exe$/i.test(p.name || '')) || KERNEL_NAMES.indexOf((p.name || '').toLowerCase()) >= 0;
+export const isKernelProc = (p: ProcessDetail) => p.pid === 0 || p.pid === 4 || (p.parentPid === 4 && !/\.exe$/i.test(p.name || ''));
 
 export interface ProcGroup {
   file: FileFacts;
@@ -296,11 +294,13 @@ export function analyzeProcs(scan: Scan, add: Add) {
     const ports = (l: Listener) => `porta ${l.ports.slice(0, 3).join(', ')}${l.ports.length > 3 ? '...' : ''}`;
     const item = (l: Listener) => `${l.proc.name} (${ports(l)}${l.proc.file && l.proc.access !== 'none' ? `; ${lc1(signatureLabel(l.proc.file.signature).text)}, ${folderLabel(l.proc.file.folder)}` : ''})`;
     const plain = (l: Listener) => `${l.proc.name} (${ports(l)})`;
+    // Da amministratore «senza amministratore» sarebbe falso: i processi che non si aprono sono protetti da Windows.
+    const why = data.elevated ? 'processi protetti da Windows, che non si aprono nemmeno da amministratore, oppure firma non verificata in tempo' : 'senza amministratore non si aprono, oppure la firma non è stata verificata in tempo';
     const unverifiedText = unverified.length
-      ? `${unverified.length === 1 ? 'Accetta connessioni da tutta la rete 1 programma che non si è potuto verificare' : `Accettano connessioni da tutta la rete ${unverified.length} programmi che non si sono potuti verificare`} (senza amministratore non si aprono, oppure la firma non è stata verificata in tempo): ${unverified
+      ? `${unverified.length === 1 ? 'Accetta connessioni da tutta la rete 1 programma che non si è potuto verificare' : `Accettano connessioni da tutta la rete ${unverified.length} programmi che non si sono potuti verificare`} (${why}): ${unverified
           .slice(0, 4)
           .map(plain)
-          .join('; ')}${more(unverified.length, 4)}. Non sono né da controllare né a posto: per verificarli ripeti l'analisi avviando Polaris come amministratore.`
+          .join('; ')}${more(unverified.length, 4)}. Non sono né da controllare né a posto${data.elevated ? '.' : ': per verificarli ripeti l\'analisi avviando Polaris come amministratore.'}`
       : '';
     const signedText = signed.length
       ? signed.length === 1

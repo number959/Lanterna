@@ -245,6 +245,9 @@ describe('voci da guardare', () => {
     expect(why).toContain('con privilegi di sistema');
     expect(why).toContain('autore dichiarato Microsoft');
     expect(autorunIssues(withAutoruns([task('Utente', { runAs: 'user', highest: true })]))[0].why).toContain('con privilegi elevati');
+    // Il giudizio spiega l'autore dichiarato solo quando c'è un'attività che lo dichiara.
+    expect(find(withAutoruns([task('Finta', { runAs: 'system', authorMicrosoft: true })]), 'pc.autoruns.tasks')?.verdict).toContain('conta la firma del file');
+    expect(find(withAutoruns([task('Vera', { runAs: 'system' })]), 'pc.autoruns.tasks')?.verdict).not.toContain('Microsoft');
   });
 });
 
@@ -271,6 +274,23 @@ describe('regole dell\'agente rifatte nel motore', () => {
     for (const v of ['explorer.exe /factory', '%USERPROFILE%\\AppData\\Roaming\\explorer.exe', 'C:\\Windows\\System32\\explorer.exe', 'C:\\Windows\\explorer', '"C:\\Windows\\explorer.exe" /x', 'explorer.exe, C:\\ProgramData\\x\\run.exe', 'cmd.exe', '']) expect(isDefaultShell(v), v).toBe(false);
     for (const v of ['userinit.exe', 'userinit', 'C:\\Windows\\system32\\userinit.exe', '%SystemRoot%\\System32\\userinit.exe', 'C:\\Windows\\system32\\userinit.exe,']) expect(isDefaultUserinit(v), v).toBe(true);
     for (const v of ['C:\\Users\\Public\\userinit.exe', 'userinit.exe /x', 'C:\\Windows\\userinit.exe', 'C:\\Windows\\system32\\userinit.exe,C:\\Users\\Public\\x.exe', '']) expect(isDefaultUserinit(v), v).toBe(false);
+  });
+
+  it('Shell e Userinit: la cartella di Windows è quella dell\'agente, e il file di Windows alterato è grave', () => {
+    // D:\Windows su un altro disco somiglia al comando di Windows, ma l'agente ne riconosce la cartella (folder 'other'): ogni utente può crearla.
+    const fakeShell = entry('winlogon', 'Shell', file('D:\\Windows\\explorer.exe', 'other', 'unsigned'), { kind: 'shell', command: 'D:\\Windows\\explorer.exe' });
+    const fakeInit = entry('winlogon', 'Userinit', file('D:\\Windows\\System32\\userinit.exe', 'other', 'unsigned'), { kind: 'userinit', command: 'D:\\Windows\\System32\\userinit.exe' });
+    // Il programma giusto nella cartella giusta, ma cambiato dopo la firma: l'agente lo elenca perché non è più di Microsoft.
+    const tampered = entry('winlogon', 'Shell', file('C:\\Windows\\explorer.exe', 'windows', 'tampered'), { kind: 'shell', command: 'explorer.exe' });
+    // Il valore di Windows con il suo file: nessun giudizio.
+    const ok = entry('winlogon', 'Userinit', ms('C:\\Windows\\System32\\userinit.exe'), { kind: 'userinit', command: 'C:\\Windows\\system32\\userinit.exe' });
+    const got = autorunIssues(withAutoruns([fakeShell, fakeInit, tampered, ok]));
+    expect(got.map((x) => [x.entry.command, x.severity])).toEqual([
+      ['D:\\Windows\\explorer.exe', 'crit'],
+      ['D:\\Windows\\System32\\userinit.exe', 'crit'],
+      ['explorer.exe', 'crit'],
+    ]);
+    expect(got[2].why).toContain('file modificato dopo la firma');
   });
 
   it('IFEO: strumenti di accessibilità sostituiti gravi, debugger mancante che blocca il programma, interpreti non rassicurano', () => {
